@@ -1,0 +1,275 @@
+/* Админ-панель: только сплошные цвета, без прозрачности */
+
+.admin-root {
+  --admin-accent-hover: #7d96ff;
+  --admin-success-bg: #14532d;
+  --admin-success-border: #16a34a;
+  --admin-success-text: #ecfdf5;
+  --admin-error-bg: #450a0a;
+  --admin-error-border: #dc2626;
+  --admin-error-text: #fee2e2;
+}
+
+.admin-panel {
+  border: 1px solid var(--border);
+  border-radius: 0.75rem;
+  background-color: var(--card);
+}
+
+.admin-sidebar {
+  border: 1px solid var(--border);
+  border-radius: 0.75rem;
+  background-color: var(--card);
+  padding: 0.5rem;
+}
+
+.admin-nav-link {
+  display: block;
+  border: 1px solid var(--border);
+  border-radius: 0.5rem;
+  background-color: var(--background);
+  padding: 0.625rem 0.75rem;
+  font-size: 0.875rem;
+  font-weight: 600;
+  line-height: 1.25rem;
+  color: var(--foreground);
+  transition: border-color 0.15s ease, background-color 0.15s ease;
+}
+
+.admin-nav-link:hover {
+  border-color: var(--accent);
+  background-color: var(--surface-dim);
+}
+
+.admin-nav-link-active {
+  display: block;
+  border: 1px solid var(--accent);
+  border-radius: 0.5rem;
+  background-color: var(--accent);
+  padding: 0.625rem 0.75rem;
+  font-size: 0.875rem;
+  font-weight: 600;
+  line-height: 1.25rem;
+  color: #ffffff;
+}
+
+.admin-btn {
+  display: flex;
+  min-height: 2.75rem;
+  width: 100%;
+  align-items: center;
+  justify-content: center;
+  border-radius: 0.5rem;
+  border-width: 1px;
+  border-style: solid;
+  padding: 0.625rem 1rem;
+  font-size: 0.875rem;
+  font-weight: 600;
+  line-height: 1.25rem;
+  transition: background-color 0.15s ease, border-color 0.15s ease, color 0.15s ease;
+}
+
+.admin-btn:disabled {
+  cursor: not-allowed;
+  border-color: var(--border);
+  background-color: var(--surface-dim);
+  color: var(--muted);
+}
+
+.admin-btn-primary {
+  border-color: var(--accent);
+  background-color: var(--accent);
+  color: #ffffff;
+}
+
+.admin-btn-primary:hover:not(:disabled) {
+  border-color: var(--admin-accent-hover);
+  background-color: var(--admin-accent-hover);
+}
+
+.admin-btn-secondary {
+  border-color: var(--border);
+  background-color: var(--background);
+  color: var(--foreground);
+}
+
+.admin-btn-secondary:hover:not(:disabled) {
+  border-color: var(--accent);
+  background-color: var(--surface-dim);
+}
+
+.admin-btn-sm {
+  display: inline-flex;
+  min-height: 2rem;
+  width: auto;
+  align-items: center;
+  justify-content: center;
+  border-radius: 0.375rem;
+  border-width: 1px;
+  border-style: solid;
+  padding: 0.375rem 0.75rem;
+  font-size: 0.75rem;
+  font-weight: 600;
+  line-height: 1rem;
+  transition: background-color 0.15s ease, border-color 0.15s ease;
+}
+
+.admin-btn-sm-on {
+  border-color: var(--accent);
+  background-color: var(--accent);
+  color: #ffffff;
+}
+
+.admin-btn-sm-on:hover:not(:disabled) {
+  border-color: var(--admin-accent-hover);
+  background-color: var(--admin-accent-hover);
+}
+
+.admin-btn-sm-off {
+  border-color: var(--border);
+  background-color: var(--background);
+  color: var(--foreground);
+}
+
+.admin-btn-sm-off:hover:not(:disabled) {
+  border-color: var(--accent);
+  background-color: var(--surface-dim);
+}
+
+.admin-badge {
+  display: inline-flex;
+  border-radius: 9999px;
+  border-width: 1px;
+  border-style: solid;
+  padding: 0.125rem 0.625rem;
+  font-size: 0.75rem;
+  font-weight: 600;
+  line-height: 1rem;
+}
+
+.admin-badge-running {
+  border-color: var(--accent);
+  background-color: var(--accent);
+  color: #ffffff;
+}
+
+.admin-badge-done {
+  border-color: var(--admin-success-border);
+  background-color: var(--admin-success-border);
+  color: #ffffff;
+}
+
+.admin-badge-error {
+  border-color: var(--admin-error-border);
+  background-color: var(--admin-error-border);
+  color: #ffffff;
+}
+
+.admin-badge-idle {
+  border-color: var(--border);
+  background-color: var(--surface-dim);
+  color: var(--foreground);
+}
+
+.admin-alert-error {
+  border: 1px solid var(--admin-error-border);
+  border-radius: 0.5rem;
+  background-color: var(--admin-error-bg);
+  padding: 0.625rem 0.75rem;
+  font-size: 0.875rem;
+  line-height: 1.375rem;
+  color: var(--admin-error-text);
+}
+
+.admin-alert-success {
+  border: 1px solid var(--admin-success-border);
+  border-radius: 0.5rem;
+  background-color: var(--admin-success-bg);
+  padding: 0.625rem 0.75rem;
+  font-size: 0.875rem;
+  line-height: 1.375rem;
+  color: var(--admin-success-text);
+}
+
+.admin-progress-track {
+  overflow: hidden;
+  height: 0.625rem;
+  border: 1px solid var(--border);
+  border-radius: 9999px;
+  background-color: var(--background);
+}
+
+.admin-progress-fill {
+  height: 100%;
+  border-radius: 9999px;
+  background-color: var(--accent);
+  transition: width 0.5s ease-out;
+}
+
+.admin-table-head {
+  border-bottom: 1px solid var(--border);
+  background-color: var(--surface-dim);
+  font-size: 0.75rem;
+  font-weight: 600;
+  letter-spacing: 0.05em;
+  text-transform: uppercase;
+  color: var(--muted);
+}
+
+.admin-table-row {
+  border-bottom: 1px solid var(--border);
+}
+
+.admin-stat-label {
+  font-size: 0.75rem;
+  font-weight: 600;
+  letter-spacing: 0.05em;
+  text-transform: uppercase;
+  color: var(--muted);
+}
+
+.admin-stat-value {
+  margin-top: 0.5rem;
+  font-size: 1.5rem;
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
+  color: var(--foreground);
+}
+
+.admin-link {
+  display: inline-flex;
+  min-height: 2.5rem;
+  align-items: center;
+  border: 1px solid var(--border);
+  border-radius: 0.5rem;
+  background-color: var(--background);
+  padding: 0.5rem 0.75rem;
+  font-size: 0.875rem;
+  font-weight: 600;
+  color: var(--foreground);
+  transition: border-color 0.15s ease, background-color 0.15s ease;
+}
+
+.admin-link:hover {
+  border-color: var(--accent);
+  background-color: var(--surface-dim);
+}
+
+.admin-text-link {
+  font-weight: 600;
+  color: var(--accent);
+}
+
+.admin-text-link:hover {
+  text-decoration: underline;
+}
+
+.admin-code {
+  border: 1px solid var(--border);
+  border-radius: 0.25rem;
+  background-color: var(--background);
+  padding: 0.125rem 0.375rem;
+  font-family: ui-monospace, monospace;
+  font-size: 0.75rem;
+  color: var(--foreground);
+}

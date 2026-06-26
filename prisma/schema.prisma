@@ -1,0 +1,280 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+/// Настройки автоматической проверки обновлений Kodik
+model KodikSyncSettings {
+  id              String    @id @default("default")
+  enabled         Boolean   @default(true)
+  intervalMinutes Int       @default(10)
+  syncPages       Int       @default(3)
+  lastAutoRunAt   DateTime?
+  updatedAt       DateTime  @updatedAt
+}
+
+/// Кэш обложек (/api/cover)
+model CoverCacheSettings {
+  id                String   @id @default("default")
+  enabled           Boolean  @default(true)
+  maxAgeDays        Int      @default(7)
+  quality           Int      @default(70)
+  maxHeight         Int      @default(450)
+  browserCacheDays  Int      @default(7)
+  updatedAt         DateTime @updatedAt
+}
+
+/// История запусков sync (ручных и автоматических)
+model KodikSyncRun {
+  id               String    @id @default(cuid())
+  trigger          String
+  status           String
+  checkedMaterials Int       @default(0)
+  updatedMaterials Int       @default(0)
+  newReleases      Int       @default(0)
+  error            String?
+  startedAt        DateTime  @default(now())
+  finishedAt       DateTime?
+  durationMs       Int?
+
+  @@index([startedAt(sort: Desc)])
+  @@index([trigger, startedAt(sort: Desc)])
+}
+
+/// Состояние полного импорта (можно продолжить после остановки)
+model KodikImportJob {
+  id               String   @id @default("full")
+  phase            String   @default("catalog")
+  nextPageUrl      String?
+  processed        Int      @default(0)
+  total            Int?
+  status           String   @default("idle")
+  lastError        String?
+  currentItem      String?
+  sessionProcessed Int      @default(0)
+  sessionSkipped   Int      @default(0)
+  sessionTotal     Int?
+  sessionStartedAt DateTime?
+  sessionBaselineProcessed Int @default(0)
+  lastItemsPerSecond Float?
+  updatedAt        DateTime @updatedAt
+}
+
+/// Один материал Kodik = одно аниме + одна озвучка (как в API Kodik)
+model KodikMaterial {
+  kodikId          String    @id
+  shikimoriId      Int?
+  type             String
+  title            String
+  titleOrig        String?
+  otherTitle       String?
+  year             Int?
+  quality          String?
+  playerLink       String?
+  lastSeason       Int?
+  lastEpisode      Int?
+  episodesCount    Int?
+  translationId    Int
+  translationTitle String
+  translationType  String
+  kodikCreatedAt   DateTime?
+  kodikUpdatedAt   DateTime?
+  episodesLoaded   Boolean   @default(false)
+  materialData     Json?
+  seasons          KodikSeason[]
+  episodes         KodikEpisode[]
+  releases         KodikEpisodeRelease[]
+  createdAt        DateTime  @default(now())
+  updatedAt        DateTime  @updatedAt
+
+  @@index([shikimoriId])
+  @@index([kodikUpdatedAt(sort: Desc)])
+  @@index([shikimoriId, kodikUpdatedAt(sort: Desc)])
+  @@index([translationId])
+  @@index([episodesLoaded])
+}
+
+model KodikSeason {
+  id           String        @id @default(cuid())
+  materialId   String
+  material     KodikMaterial @relation(fields: [materialId], references: [kodikId], onDelete: Cascade)
+  seasonNumber Int
+  playerLink   String?
+  episodes     KodikEpisode[]
+
+  @@unique([materialId, seasonNumber])
+}
+
+/// Каждая серия каждой озвучки (как seasons.episodes в Kodik)
+model KodikEpisode {
+  id            String        @id @default(cuid())
+  materialId    String
+  material      KodikMaterial @relation(fields: [materialId], references: [kodikId], onDelete: Cascade)
+  seasonId      String?
+  season        KodikSeason?  @relation(fields: [seasonId], references: [id], onDelete: Cascade)
+  seasonNumber  Int
+  episodeNumber Int
+  playerLink    String
+  title         String?
+  screenshots   Json?
+  firstSeenAt   DateTime      @default(now())
+  updatedAt     DateTime      @updatedAt
+
+  @@unique([materialId, seasonNumber, episodeNumber])
+  @@index([firstSeenAt(sort: Desc)])
+  @@index([materialId, seasonNumber, episodeNumber])
+}
+
+/// Лента «новые серии» на главной
+model KodikEpisodeRelease {
+  id              String        @id @default(cuid())
+  shikimoriId     Int?
+  materialId      String
+  material        KodikMaterial @relation(fields: [materialId], references: [kodikId], onDelete: Cascade)
+  seasonNumber    Int
+  episodeNumber   Int
+  translationId   Int
+  translationName String
+  animeTitle      String
+  posterUrl       String?
+  playerLink      String?
+  releasedAt      DateTime      @default(now())
+
+  @@unique([materialId, seasonNumber, episodeNumber])
+  @@index([releasedAt(sort: Desc)])
+  @@index([shikimoriId])
+  @@index([shikimoriId, releasedAt(sort: Desc)])
+  @@index([materialId, seasonNumber, episodeNumber])
+}
+
+/// Пользователь (вход через Shikimori OAuth)
+model User {
+  id                 String               @id @default(cuid())
+  shikimoriId        Int                  @unique
+  nickname           String
+  avatar             String?
+  isAdmin            Boolean              @default(false)
+  siteSettings       Json?
+  createdAt          DateTime             @default(now())
+  updatedAt          DateTime             @updatedAt
+  account            ShikimoriAccount?
+  sessions           Session[]
+  listSync           UserListSync?
+  animeListEntries   UserAnimeListEntry[]
+  animeBookmarks     UserAnimeBookmark[]
+  watchProgress      UserWatchProgress[]
+}
+
+/// Метаданные последней синхронизации списков с Shikimori
+model UserListSync {
+  userId             String    @id
+  user               User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  lastSyncedAt       DateTime?
+  lastSyncError      String?
+  mangaBookmarkCount Int       @default(0)
+  updatedAt          DateTime  @updatedAt
+}
+
+/// Локальная копия записи списка аниме пользователя (Shikimori user_rates)
+model UserAnimeListEntry {
+  id              String    @id @default(cuid())
+  userId          String
+  user            User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  shikimoriId     Int
+  shikimoriRateId Int?
+  listStatus      String
+  userScore       Int       @default(0)
+  watchedEpisodes Int       @default(0)
+  addedAt         DateTime?
+  listUpdatedAt   DateTime?
+  createdAt       DateTime  @default(now())
+  updatedAt       DateTime  @updatedAt
+
+  @@unique([userId, shikimoriId])
+  @@index([userId, listStatus])
+  @@index([userId, listUpdatedAt(sort: Desc)])
+}
+
+/// Локальная копия закладок аниме (Shikimori favourites)
+model UserAnimeBookmark {
+  id          String   @id @default(cuid())
+  userId      String
+  user        User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  shikimoriId Int
+  createdAt   DateTime @default(now())
+
+  @@unique([userId, shikimoriId])
+  @@index([userId])
+}
+
+/// OAuth-токены Shikimori (только на сервере)
+model ShikimoriAccount {
+  id           String   @id @default(cuid())
+  userId       String   @unique
+  user         User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  accessToken  String   @db.Text
+  refreshToken String   @db.Text
+  expiresAt    DateTime
+  scope        String
+  updatedAt    DateTime @updatedAt
+}
+
+/// Серверная сессия (httpOnly cookie)
+model Session {
+  id        String   @id @default(cuid())
+  token     String   @unique @default(cuid())
+  userId    String
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  expiresAt DateTime
+  createdAt DateTime @default(now())
+
+  @@index([token])
+  @@index([userId])
+}
+
+/// Прогресс просмотра (последняя позиция по каждому тайтлу)
+model UserWatchProgress {
+  id              String   @id @default(cuid())
+  userId          String
+  user            User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  shikimoriId     Int
+  kodikId         String
+  seasonNumber    Int      @default(1)
+  episodeNumber   Int      @default(1)
+  positionSeconds Float    @default(0)
+  updatedAt       DateTime @updatedAt
+  createdAt       DateTime @default(now())
+
+  @@unique([userId, shikimoriId])
+  @@index([userId, updatedAt(sort: Desc)])
+  @@index([shikimoriId])
+}
+
+/// План разработки (админ to-do)
+model AdminTodo {
+  id          String   @id @default(cuid())
+  title       String
+  description String?  @db.Text
+  importance  Int      @default(50)
+  complexity  Int      @default(50)
+  status      String   @default("planned")
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  @@index([status])
+  @@index([importance(sort: Desc)])
+}
+
+/// OAuth state (fallback если cookies не сохранились между редиректами)
+model OAuthState {
+  state       String   @id
+  redirectUri String
+  expiresAt   DateTime
+  createdAt   DateTime @default(now())
+
+  @@index([expiresAt])
+}

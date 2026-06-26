@@ -1,0 +1,206 @@
+/* Studio badge colors — regenerate: node scripts/generate-translation-badges-css.mjs */
+.translation-badge, .translation-btn[data-studio] { border-width: 1px; border-style: solid; }
+html[data-theme="dark"] .translation-badge[data-studio="anilib"], .translation-badge[data-studio="anilib"] { background-color:rgba(67, 160, 71, 0.16); color:rgb(137, 230, 141); border-color:rgba(67, 160, 71, 0.42); }
+html[data-theme="light"] .translation-badge[data-studio="anilib"] { background-color:rgba(67, 160, 71, 0.1); color:rgb(27, 120, 31); border-color:rgba(67, 160, 71, 0.32); }
+html[data-theme="dark"] .translation-btn[data-studio="anilib"], .translation-btn[data-studio="anilib"] { background-color:rgba(67, 160, 71, 0.16); color:rgb(137, 230, 141); border-color:rgba(67, 160, 71, 0.42); }
+html[data-theme="light"] .translation-btn[data-studio="anilib"] { background-color:rgba(67, 160, 71, 0.1); color:rgb(27, 120, 31); border-color:rgba(67, 160, 71, 0.32); }
+html[data-theme="dark"] .translation-btn[data-studio="anilib"].translation-btn--active, .translation-btn[data-studio="anilib"].translation-btn--active { background-color:rgba(67, 160, 71, 0.28); }
+html[data-theme="light"] .translation-btn[data-studio="anilib"].translation-btn--active { background-color:rgba(67, 160, 71, 0.2); }
+html[data-theme="dark"] .translation-badge[data-studio="anidub"], .translation-badge[data-studio="anidub"] { background-color:rgba(229, 57, 53, 0.16); color:rgb(255, 127, 123); border-color:rgba(229, 57, 53, 0.42); }
+html[data-theme="light"] .translation-badge[data-studio="anidub"] { background-color:rgba(229, 57, 53, 0.1); color:rgb(189, 17, 13); border-color:rgba(229, 57, 53, 0.32); }
+html[data-theme="dark"] .translation-btn[data-studio="anidub"], .translation-btn[data-studio="anidub"] { background-color:rgba(229, 57, 53, 0.16); color:rgb(255, 127, 123); border-color:rgba(229, 57, 53, 0.42); }
+html[data-theme="light"] .translation-btn[data-studio="anidub"] { background-color:rgba(229, 57, 53, 0.1); color:rgb(189, 17, 13); border-color:rgba(229, 57, 53, 0.32); }
+html[data-theme="dark"] .translation-btn[data-studio="anidub"].translation-btn--active, .translation-btn[data-studio="anidub"].translation-btn--active { background-color:rgba(229, 57, 53, 0.28); }
+html[data-theme="light"] .translation-btn[data-studio="anidub"].translation-btn--active { background-color:rgba(229, 57, 53, 0.2); }
+html[data-theme="dark"] .translation-badge[data-studio="animevost"], .translation-badge[data-studio="animevost"] { background-color:rgba(142, 36, 170, 0.16); color:rgb(212, 106, 240); border-color:rgba(142, 36, 170, 0.42); }
+html[data-theme="light"] .translation-badge[data-studio="animevost"] { background-color:rgba(142, 36, 170, 0.1); color:rgb(102, 0, 130); border-color:rgba(142, 36, 170, 0.32); }
+html[data-theme="dark"] .translation-btn[data-studio="animevost"], .translation-btn[data-studio="animevost"] { background-color:rgba(142, 36, 170, 0.16); color:rgb(212, 106, 240); border-color:rgba(142, 36, 170, 0.42); }
+html[data-theme="light"] .translation-btn[data-studio="animevost"] { background-color:rgba(142, 36, 170, 0.1); color:rgb(102, 0, 130); border-color:rgba(142, 36, 170, 0.32); }
+html[data-theme="dark"] .translation-btn[data-studio="animevost"].translation-btn--active, .translation-btn[data-studio="animevost"].translation-btn--active { background-color:rgba(142, 36, 170, 0.28); }
+html[data-theme="light"] .translation-btn[data-studio="animevost"].translation-btn--active { background-color:rgba(142, 36, 170, 0.2); }
+html[data-theme="dark"] .translation-badge[data-studio="anistar"], .translation-badge[data-studio="anistar"] { background-color:rgba(30, 136, 229, 0.16); color:rgb(100, 206, 255); border-color:rgba(30, 136, 229, 0.42); }
+html[data-theme="light"] .translation-badge[data-studio="anistar"] { background-color:rgba(30, 136, 229, 0.1); color:rgb(0, 96, 189); border-color:rgba(30, 136, 229, 0.32); }
+html[data-theme="dark"] .translation-btn[data-studio="anistar"], .translation-btn[data-studio="anistar"] { background-color:rgba(30, 136, 229, 0.16); color:rgb(100, 206, 255); border-color:rgba(30, 136, 229, 0.42); }
+html[data-theme="light"] .translation-btn[data-studio="anistar"] { background-color:rgba(30, 136, 229, 0.1); color:rgb(0, 96, 189); border-color:rgba(30, 136, 229, 0.32); }
+html[data-theme="dark"] .translation-btn[data-studio="anistar"].translation-btn--active, .translation-btn[data-studio="anistar"].translation-btn--active { background-color:rgba(30, 136, 229, 0.28); }
+html[data-theme="light"] .translation-btn[data-studio="anistar"].translation-btn--active { background-color:rgba(30, 136, 229, 0.2); }
+html[data-theme="dark"] .translation-badge[data-studio="crunchyroll"], .translation-badge[data-studio="crunchyroll"] { background-color:rgba(244, 117, 33, 0.16); color:rgb(255, 187, 103); border-color:rgba(244, 117, 33, 0.42); }
+html[data-theme="light"] .translation-badge[data-studio="crunchyroll"] { background-color:rgba(244, 117, 33, 0.1); color:rgb(204, 77, 0); border-color:rgba(244, 117, 33, 0.32); }
+html[data-theme="dark"] .translation-btn[data-studio="crunchyroll"], .translation-btn[data-studio="crunchyroll"] { background-color:rgba(244, 117, 33, 0.16); color:rgb(255, 187, 103); border-color:rgba(244, 117, 33, 0.42); }
+html[data-theme="light"] .translation-btn[data-studio="crunchyroll"] { background-color:rgba(244, 117, 33, 0.1); color:rgb(204, 77, 0); border-color:rgba(244, 117, 33, 0.32); }
+html[data-theme="dark"] .translation-btn[data-studio="crunchyroll"].translation-btn--active, .translation-btn[data-studio="crunchyroll"].translation-btn--active { background-color:rgba(244, 117, 33, 0.28); }
+html[data-theme="light"] .translation-btn[data-studio="crunchyroll"].translation-btn--active { background-color:rgba(244, 117, 33, 0.2); }
+html[data-theme="dark"] .translation-badge[data-studio="anibaza"], .translation-badge[data-studio="anibaza"] { background-color:rgba(0, 137, 123, 0.16); color:rgb(70, 207, 193); border-color:rgba(0, 137, 123, 0.42); }
+html[data-theme="light"] .translation-badge[data-studio="anibaza"] { background-color:rgba(0, 137, 123, 0.1); color:rgb(0, 97, 83); border-color:rgba(0, 137, 123, 0.32); }
+html[data-theme="dark"] .translation-btn[data-studio="anibaza"], .translation-btn[data-studio="anibaza"] { background-color:rgba(0, 137, 123, 0.16); color:rgb(70, 207, 193); border-color:rgba(0, 137, 123, 0.42); }
+html[data-theme="light"] .translation-btn[data-studio="anibaza"] { background-color:rgba(0, 137, 123, 0.1); color:rgb(0, 97, 83); border-color:rgba(0, 137, 123, 0.32); }
+html[data-theme="dark"] .translation-btn[data-studio="anibaza"].translation-btn--active, .translation-btn[data-studio="anibaza"].translation-btn--active { background-color:rgba(0, 137, 123, 0.28); }
+html[data-theme="light"] .translation-btn[data-studio="anibaza"].translation-btn--active { background-color:rgba(0, 137, 123, 0.2); }
+html[data-theme="dark"] .translation-badge[data-studio="animy"], .translation-badge[data-studio="animy"] { background-color:rgba(158, 157, 36, 0.16); color:rgb(228, 227, 106); border-color:rgba(158, 157, 36, 0.42); }
+html[data-theme="light"] .translation-badge[data-studio="animy"] { background-color:rgba(158, 157, 36, 0.1); color:rgb(118, 117, 0); border-color:rgba(158, 157, 36, 0.32); }
+html[data-theme="dark"] .translation-btn[data-studio="animy"], .translation-btn[data-studio="animy"] { background-color:rgba(158, 157, 36, 0.16); color:rgb(228, 227, 106); border-color:rgba(158, 157, 36, 0.42); }
+html[data-theme="light"] .translation-btn[data-studio="animy"] { background-color:rgba(158, 157, 36, 0.1); color:rgb(118, 117, 0); border-color:rgba(158, 157, 36, 0.32); }
+html[data-theme="dark"] .translation-btn[data-studio="animy"].translation-btn--active, .translation-btn[data-studio="animy"].translation-btn--active { background-color:rgba(158, 157, 36, 0.28); }
+html[data-theme="light"] .translation-btn[data-studio="animy"].translation-btn--active { background-color:rgba(158, 157, 36, 0.2); }
+html[data-theme="dark"] .translation-badge[data-studio="dream-cast"], .translation-badge[data-studio="dream-cast"] { background-color:rgba(255, 179, 0, 0.16); color:rgb(255, 249, 70); border-color:rgba(255, 179, 0, 0.42); }
+html[data-theme="light"] .translation-badge[data-studio="dream-cast"] { background-color:rgba(255, 179, 0, 0.1); color:rgb(215, 139, 0); border-color:rgba(255, 179, 0, 0.32); }
+html[data-theme="dark"] .translation-btn[data-studio="dream-cast"], .translation-btn[data-studio="dream-cast"] { background-color:rgba(255, 179, 0, 0.16); color:rgb(255, 249, 70); border-color:rgba(255, 179, 0, 0.42); }
+html[data-theme="light"] .translation-btn[data-studio="dream-cast"] { background-color:rgba(255, 179, 0, 0.1); color:rgb(215, 139, 0); border-color:rgba(255, 179, 0, 0.32); }
+html[data-theme="dark"] .translation-btn[data-studio="dream-cast"].translation-btn--active, .translation-btn[data-studio="dream-cast"].translation-btn--active { background-color:rgba(255, 179, 0, 0.28); }
+html[data-theme="light"] .translation-btn[data-studio="dream-cast"].translation-btn--active { background-color:rgba(255, 179, 0, 0.2); }
+html[data-theme="dark"] .translation-badge[data-studio="jam"], .translation-badge[data-studio="jam"] { background-color:rgba(236, 64, 122, 0.16); color:rgb(255, 134, 192); border-color:rgba(236, 64, 122, 0.42); }
+html[data-theme="light"] .translation-badge[data-studio="jam"] { background-color:rgba(236, 64, 122, 0.1); color:rgb(196, 24, 82); border-color:rgba(236, 64, 122, 0.32); }
+html[data-theme="dark"] .translation-btn[data-studio="jam"], .translation-btn[data-studio="jam"] { background-color:rgba(236, 64, 122, 0.16); color:rgb(255, 134, 192); border-color:rgba(236, 64, 122, 0.42); }
+html[data-theme="light"] .translation-btn[data-studio="jam"] { background-color:rgba(236, 64, 122, 0.1); color:rgb(196, 24, 82); border-color:rgba(236, 64, 122, 0.32); }
+html[data-theme="dark"] .translation-btn[data-studio="jam"].translation-btn--active, .translation-btn[data-studio="jam"].translation-btn--active { background-color:rgba(236, 64, 122, 0.28); }
+html[data-theme="light"] .translation-btn[data-studio="jam"].translation-btn--active { background-color:rgba(236, 64, 122, 0.2); }
+html[data-theme="dark"] .translation-badge[data-studio="shiza"], .translation-badge[data-studio="shiza"] { background-color:rgba(123, 31, 162, 0.16); color:rgb(193, 101, 232); border-color:rgba(123, 31, 162, 0.42); }
+html[data-theme="light"] .translation-badge[data-studio="shiza"] { background-color:rgba(123, 31, 162, 0.1); color:rgb(83, 0, 122); border-color:rgba(123, 31, 162, 0.32); }
+html[data-theme="dark"] .translation-btn[data-studio="shiza"], .translation-btn[data-studio="shiza"] { background-color:rgba(123, 31, 162, 0.16); color:rgb(193, 101, 232); border-color:rgba(123, 31, 162, 0.42); }
+html[data-theme="light"] .translation-btn[data-studio="shiza"] { background-color:rgba(123, 31, 162, 0.1); color:rgb(83, 0, 122); border-color:rgba(123, 31, 162, 0.32); }
+html[data-theme="dark"] .translation-btn[data-studio="shiza"].translation-btn--active, .translation-btn[data-studio="shiza"].translation-btn--active { background-color:rgba(123, 31, 162, 0.28); }
+html[data-theme="light"] .translation-btn[data-studio="shiza"].translation-btn--active { background-color:rgba(123, 31, 162, 0.2); }
+html[data-theme="dark"] .translation-badge[data-studio="fumodub"], .translation-badge[data-studio="fumodub"] { background-color:rgba(255, 112, 67, 0.16); color:rgb(255, 182, 137); border-color:rgba(255, 112, 67, 0.42); }
+html[data-theme="light"] .translation-badge[data-studio="fumodub"] { background-color:rgba(255, 112, 67, 0.1); color:rgb(215, 72, 27); border-color:rgba(255, 112, 67, 0.32); }
+html[data-theme="dark"] .translation-btn[data-studio="fumodub"], .translation-btn[data-studio="fumodub"] { background-color:rgba(255, 112, 67, 0.16); color:rgb(255, 182, 137); border-color:rgba(255, 112, 67, 0.42); }
+html[data-theme="light"] .translation-btn[data-studio="fumodub"] { background-color:rgba(255, 112, 67, 0.1); color:rgb(215, 72, 27); border-color:rgba(255, 112, 67, 0.32); }
+html[data-theme="dark"] .translation-btn[data-studio="fumodub"].translation-btn--active, .translation-btn[data-studio="fumodub"].translation-btn--active { background-color:rgba(255, 112, 67, 0.28); }
+html[data-theme="light"] .translation-btn[data-studio="fumodub"].translation-btn--active { background-color:rgba(255, 112, 67, 0.2); }
+html[data-theme="dark"] .translation-badge[data-studio="animaunt"], .translation-badge[data-studio="animaunt"] { background-color:rgba(0, 172, 193, 0.16); color:rgb(70, 242, 255); border-color:rgba(0, 172, 193, 0.42); }
+html[data-theme="light"] .translation-badge[data-studio="animaunt"] { background-color:rgba(0, 172, 193, 0.1); color:rgb(0, 132, 153); border-color:rgba(0, 172, 193, 0.32); }
+html[data-theme="dark"] .translation-btn[data-studio="animaunt"], .translation-btn[data-studio="animaunt"] { background-color:rgba(0, 172, 193, 0.16); color:rgb(70, 242, 255); border-color:rgba(0, 172, 193, 0.42); }
+html[data-theme="light"] .translation-btn[data-studio="animaunt"] { background-color:rgba(0, 172, 193, 0.1); color:rgb(0, 132, 153); border-color:rgba(0, 172, 193, 0.32); }
+html[data-theme="dark"] .translation-btn[data-studio="animaunt"].translation-btn--active, .translation-btn[data-studio="animaunt"].translation-btn--active { background-color:rgba(0, 172, 193, 0.28); }
+html[data-theme="light"] .translation-btn[data-studio="animaunt"].translation-btn--active { background-color:rgba(0, 172, 193, 0.2); }
+html[data-theme="dark"] .translation-badge[data-studio="kazoku"], .translation-badge[data-studio="kazoku"] { background-color:rgba(57, 73, 171, 0.16); color:rgb(127, 143, 241); border-color:rgba(57, 73, 171, 0.42); }
+html[data-theme="light"] .translation-badge[data-studio="kazoku"] { background-color:rgba(57, 73, 171, 0.1); color:rgb(17, 33, 131); border-color:rgba(57, 73, 171, 0.32); }
+html[data-theme="dark"] .translation-btn[data-studio="kazoku"], .translation-btn[data-studio="kazoku"] { background-color:rgba(57, 73, 171, 0.16); color:rgb(127, 143, 241); border-color:rgba(57, 73, 171, 0.42); }
+html[data-theme="light"] .translation-btn[data-studio="kazoku"] { background-color:rgba(57, 73, 171, 0.1); color:rgb(17, 33, 131); border-color:rgba(57, 73, 171, 0.32); }
+html[data-theme="dark"] .translation-btn[data-studio="kazoku"].translation-btn--active, .translation-btn[data-studio="kazoku"].translation-btn--active { background-color:rgba(57, 73, 171, 0.28); }
+html[data-theme="light"] .translation-btn[data-studio="kazoku"].translation-btn--active { background-color:rgba(57, 73, 171, 0.2); }
+html[data-theme="dark"] .translation-badge[data-studio="red-head"], .translation-badge[data-studio="red-head"] { background-color:rgba(198, 40, 40, 0.16); color:rgb(255, 110, 110); border-color:rgba(198, 40, 40, 0.42); }
+html[data-theme="light"] .translation-badge[data-studio="red-head"] { background-color:rgba(198, 40, 40, 0.1); color:rgb(158, 0, 0); border-color:rgba(198, 40, 40, 0.32); }
+html[data-theme="dark"] .translation-btn[data-studio="red-head"], .translation-btn[data-studio="red-head"] { background-color:rgba(198, 40, 40, 0.16); color:rgb(255, 110, 110); border-color:rgba(198, 40, 40, 0.42); }
+html[data-theme="light"] .translation-btn[data-studio="red-head"] { background-color:rgba(198, 40, 40, 0.1); color:rgb(158, 0, 0); border-color:rgba(198, 40, 40, 0.32); }
+html[data-theme="dark"] .translation-btn[data-studio="red-head"].translation-btn--active, .translation-btn[data-studio="red-head"].translation-btn--active { background-color:rgba(198, 40, 40, 0.28); }
+html[data-theme="light"] .translation-btn[data-studio="red-head"].translation-btn--active { background-color:rgba(198, 40, 40, 0.2); }
+html[data-theme="dark"] .translation-badge[data-studio="onwave"], .translation-badge[data-studio="onwave"] { background-color:rgba(41, 182, 246, 0.16); color:rgb(111, 252, 255); border-color:rgba(41, 182, 246, 0.42); }
+html[data-theme="light"] .translation-badge[data-studio="onwave"] { background-color:rgba(41, 182, 246, 0.1); color:rgb(1, 142, 206); border-color:rgba(41, 182, 246, 0.32); }
+html[data-theme="dark"] .translation-btn[data-studio="onwave"], .translation-btn[data-studio="onwave"] { background-color:rgba(41, 182, 246, 0.16); color:rgb(111, 252, 255); border-color:rgba(41, 182, 246, 0.42); }
+html[data-theme="light"] .translation-btn[data-studio="onwave"] { background-color:rgba(41, 182, 246, 0.1); color:rgb(1, 142, 206); border-color:rgba(41, 182, 246, 0.32); }
+html[data-theme="dark"] .translation-btn[data-studio="onwave"].translation-btn--active, .translation-btn[data-studio="onwave"].translation-btn--active { background-color:rgba(41, 182, 246, 0.28); }
+html[data-theme="light"] .translation-btn[data-studio="onwave"].translation-btn--active { background-color:rgba(41, 182, 246, 0.2); }
+html[data-theme="dark"] .translation-badge[data-studio="silver-aniage"], .translation-badge[data-studio="silver-aniage"] { background-color:rgba(120, 144, 156, 0.16); color:rgb(190, 214, 226); border-color:rgba(120, 144, 156, 0.42); }
+html[data-theme="light"] .translation-badge[data-studio="silver-aniage"] { background-color:rgba(120, 144, 156, 0.1); color:rgb(80, 104, 116); border-color:rgba(120, 144, 156, 0.32); }
+html[data-theme="dark"] .translation-btn[data-studio="silver-aniage"], .translation-btn[data-studio="silver-aniage"] { background-color:rgba(120, 144, 156, 0.16); color:rgb(190, 214, 226); border-color:rgba(120, 144, 156, 0.42); }
+html[data-theme="light"] .translation-btn[data-studio="silver-aniage"] { background-color:rgba(120, 144, 156, 0.1); color:rgb(80, 104, 116); border-color:rgba(120, 144, 156, 0.32); }
+html[data-theme="dark"] .translation-btn[data-studio="silver-aniage"].translation-btn--active, .translation-btn[data-studio="silver-aniage"].translation-btn--active { background-color:rgba(120, 144, 156, 0.28); }
+html[data-theme="light"] .translation-btn[data-studio="silver-aniage"].translation-btn--active { background-color:rgba(120, 144, 156, 0.2); }
+html[data-theme="dark"] .translation-badge[data-studio="todo-dublyazh"], .translation-badge[data-studio="todo-dublyazh"] { background-color:rgba(251, 140, 0, 0.16); color:rgb(255, 210, 70); border-color:rgba(251, 140, 0, 0.42); }
+html[data-theme="light"] .translation-badge[data-studio="todo-dublyazh"] { background-color:rgba(251, 140, 0, 0.1); color:rgb(211, 100, 0); border-color:rgba(251, 140, 0, 0.32); }
+html[data-theme="dark"] .translation-btn[data-studio="todo-dublyazh"], .translation-btn[data-studio="todo-dublyazh"] { background-color:rgba(251, 140, 0, 0.16); color:rgb(255, 210, 70); border-color:rgba(251, 140, 0, 0.42); }
+html[data-theme="light"] .translation-btn[data-studio="todo-dublyazh"] { background-color:rgba(251, 140, 0, 0.1); color:rgb(211, 100, 0); border-color:rgba(251, 140, 0, 0.32); }
+html[data-theme="dark"] .translation-btn[data-studio="todo-dublyazh"].translation-btn--active, .translation-btn[data-studio="todo-dublyazh"].translation-btn--active { background-color:rgba(251, 140, 0, 0.28); }
+html[data-theme="light"] .translation-btn[data-studio="todo-dublyazh"].translation-btn--active { background-color:rgba(251, 140, 0, 0.2); }
+html[data-theme="dark"] .translation-badge[data-studio="komnata-didi"], .translation-badge[data-studio="komnata-didi"] { background-color:rgba(253, 216, 53, 0.16); color:rgb(255, 255, 123); border-color:rgba(253, 216, 53, 0.42); }
+html[data-theme="light"] .translation-badge[data-studio="komnata-didi"] { background-color:rgba(253, 216, 53, 0.1); color:rgb(213, 176, 13); border-color:rgba(253, 216, 53, 0.32); }
+html[data-theme="dark"] .translation-btn[data-studio="komnata-didi"], .translation-btn[data-studio="komnata-didi"] { background-color:rgba(253, 216, 53, 0.16); color:rgb(255, 255, 123); border-color:rgba(253, 216, 53, 0.42); }
+html[data-theme="light"] .translation-btn[data-studio="komnata-didi"] { background-color:rgba(253, 216, 53, 0.1); color:rgb(213, 176, 13); border-color:rgba(253, 216, 53, 0.32); }
+html[data-theme="dark"] .translation-btn[data-studio="komnata-didi"].translation-btn--active, .translation-btn[data-studio="komnata-didi"].translation-btn--active { background-color:rgba(253, 216, 53, 0.28); }
+html[data-theme="light"] .translation-btn[data-studio="komnata-didi"].translation-btn--active { background-color:rgba(253, 216, 53, 0.2); }
+html[data-theme="dark"] .translation-badge[data-studio="anicosmic"], .translation-badge[data-studio="anicosmic"] { background-color:rgba(92, 107, 192, 0.16); color:rgb(162, 177, 255); border-color:rgba(92, 107, 192, 0.42); }
+html[data-theme="light"] .translation-badge[data-studio="anicosmic"] { background-color:rgba(92, 107, 192, 0.1); color:rgb(52, 67, 152); border-color:rgba(92, 107, 192, 0.32); }
+html[data-theme="dark"] .translation-btn[data-studio="anicosmic"], .translation-btn[data-studio="anicosmic"] { background-color:rgba(92, 107, 192, 0.16); color:rgb(162, 177, 255); border-color:rgba(92, 107, 192, 0.42); }
+html[data-theme="light"] .translation-btn[data-studio="anicosmic"] { background-color:rgba(92, 107, 192, 0.1); color:rgb(52, 67, 152); border-color:rgba(92, 107, 192, 0.32); }
+html[data-theme="dark"] .translation-btn[data-studio="anicosmic"].translation-btn--active, .translation-btn[data-studio="anicosmic"].translation-btn--active { background-color:rgba(92, 107, 192, 0.28); }
+html[data-theme="light"] .translation-btn[data-studio="anicosmic"].translation-btn--active { background-color:rgba(92, 107, 192, 0.2); }
+html[data-theme="dark"] .translation-badge[data-studio="fsg-sanae"], .translation-badge[data-studio="fsg-sanae"] { background-color:rgba(38, 166, 154, 0.16); color:rgb(108, 236, 224); border-color:rgba(38, 166, 154, 0.42); }
+html[data-theme="light"] .translation-badge[data-studio="fsg-sanae"] { background-color:rgba(38, 166, 154, 0.1); color:rgb(0, 126, 114); border-color:rgba(38, 166, 154, 0.32); }
+html[data-theme="dark"] .translation-btn[data-studio="fsg-sanae"], .translation-btn[data-studio="fsg-sanae"] { background-color:rgba(38, 166, 154, 0.16); color:rgb(108, 236, 224); border-color:rgba(38, 166, 154, 0.42); }
+html[data-theme="light"] .translation-btn[data-studio="fsg-sanae"] { background-color:rgba(38, 166, 154, 0.1); color:rgb(0, 126, 114); border-color:rgba(38, 166, 154, 0.32); }
+html[data-theme="dark"] .translation-btn[data-studio="fsg-sanae"].translation-btn--active, .translation-btn[data-studio="fsg-sanae"].translation-btn--active { background-color:rgba(38, 166, 154, 0.28); }
+html[data-theme="light"] .translation-btn[data-studio="fsg-sanae"].translation-btn--active { background-color:rgba(38, 166, 154, 0.2); }
+html[data-theme="dark"] .translation-badge[data-studio="anifilm"], .translation-badge[data-studio="anifilm"] { background-color:rgba(63, 81, 181, 0.16); color:rgb(133, 151, 251); border-color:rgba(63, 81, 181, 0.42); }
+html[data-theme="light"] .translation-badge[data-studio="anifilm"] { background-color:rgba(63, 81, 181, 0.1); color:rgb(23, 41, 141); border-color:rgba(63, 81, 181, 0.32); }
+html[data-theme="dark"] .translation-btn[data-studio="anifilm"], .translation-btn[data-studio="anifilm"] { background-color:rgba(63, 81, 181, 0.16); color:rgb(133, 151, 251); border-color:rgba(63, 81, 181, 0.42); }
+html[data-theme="light"] .translation-btn[data-studio="anifilm"] { background-color:rgba(63, 81, 181, 0.1); color:rgb(23, 41, 141); border-color:rgba(63, 81, 181, 0.32); }
+html[data-theme="dark"] .translation-btn[data-studio="anifilm"].translation-btn--active, .translation-btn[data-studio="anifilm"].translation-btn--active { background-color:rgba(63, 81, 181, 0.28); }
+html[data-theme="light"] .translation-btn[data-studio="anifilm"].translation-btn--active { background-color:rgba(63, 81, 181, 0.2); }
+html[data-theme="dark"] .translation-badge[data-studio="studio-band"], .translation-badge[data-studio="studio-band"] { background-color:rgba(171, 71, 188, 0.16); color:rgb(241, 141, 255); border-color:rgba(171, 71, 188, 0.42); }
+html[data-theme="light"] .translation-badge[data-studio="studio-band"] { background-color:rgba(171, 71, 188, 0.1); color:rgb(131, 31, 148); border-color:rgba(171, 71, 188, 0.32); }
+html[data-theme="dark"] .translation-btn[data-studio="studio-band"], .translation-btn[data-studio="studio-band"] { background-color:rgba(171, 71, 188, 0.16); color:rgb(241, 141, 255); border-color:rgba(171, 71, 188, 0.42); }
+html[data-theme="light"] .translation-btn[data-studio="studio-band"] { background-color:rgba(171, 71, 188, 0.1); color:rgb(131, 31, 148); border-color:rgba(171, 71, 188, 0.32); }
+html[data-theme="dark"] .translation-btn[data-studio="studio-band"].translation-btn--active, .translation-btn[data-studio="studio-band"].translation-btn--active { background-color:rgba(171, 71, 188, 0.28); }
+html[data-theme="light"] .translation-btn[data-studio="studio-band"].translation-btn--active { background-color:rgba(171, 71, 188, 0.2); }
+html[data-theme="dark"] .translation-badge[data-studio="reanimedia"], .translation-badge[data-studio="reanimedia"] { background-color:rgba(173, 20, 87, 0.16); color:rgb(243, 90, 157); border-color:rgba(173, 20, 87, 0.42); }
+html[data-theme="light"] .translation-badge[data-studio="reanimedia"] { background-color:rgba(173, 20, 87, 0.1); color:rgb(133, 0, 47); border-color:rgba(173, 20, 87, 0.32); }
+html[data-theme="dark"] .translation-btn[data-studio="reanimedia"], .translation-btn[data-studio="reanimedia"] { background-color:rgba(173, 20, 87, 0.16); color:rgb(243, 90, 157); border-color:rgba(173, 20, 87, 0.42); }
+html[data-theme="light"] .translation-btn[data-studio="reanimedia"] { background-color:rgba(173, 20, 87, 0.1); color:rgb(133, 0, 47); border-color:rgba(173, 20, 87, 0.32); }
+html[data-theme="dark"] .translation-btn[data-studio="reanimedia"].translation-btn--active, .translation-btn[data-studio="reanimedia"].translation-btn--active { background-color:rgba(173, 20, 87, 0.28); }
+html[data-theme="light"] .translation-btn[data-studio="reanimedia"].translation-btn--active { background-color:rgba(173, 20, 87, 0.2); }
+html[data-theme="dark"] .translation-badge[data-studio="youkai"], .translation-badge[data-studio="youkai"] { background-color:rgba(126, 87, 194, 0.16); color:rgb(196, 157, 255); border-color:rgba(126, 87, 194, 0.42); }
+html[data-theme="light"] .translation-badge[data-studio="youkai"] { background-color:rgba(126, 87, 194, 0.1); color:rgb(86, 47, 154); border-color:rgba(126, 87, 194, 0.32); }
+html[data-theme="dark"] .translation-btn[data-studio="youkai"], .translation-btn[data-studio="youkai"] { background-color:rgba(126, 87, 194, 0.16); color:rgb(196, 157, 255); border-color:rgba(126, 87, 194, 0.42); }
+html[data-theme="light"] .translation-btn[data-studio="youkai"] { background-color:rgba(126, 87, 194, 0.1); color:rgb(86, 47, 154); border-color:rgba(126, 87, 194, 0.32); }
+html[data-theme="dark"] .translation-btn[data-studio="youkai"].translation-btn--active, .translation-btn[data-studio="youkai"].translation-btn--active { background-color:rgba(126, 87, 194, 0.28); }
+html[data-theme="light"] .translation-btn[data-studio="youkai"].translation-btn--active { background-color:rgba(126, 87, 194, 0.2); }
+html[data-theme="dark"] .translation-badge[data-studio="flowers-media"], .translation-badge[data-studio="flowers-media"] { background-color:rgba(102, 187, 106, 0.16); color:rgb(172, 255, 176); border-color:rgba(102, 187, 106, 0.42); }
+html[data-theme="light"] .translation-badge[data-studio="flowers-media"] { background-color:rgba(102, 187, 106, 0.1); color:rgb(62, 147, 66); border-color:rgba(102, 187, 106, 0.32); }
+html[data-theme="dark"] .translation-btn[data-studio="flowers-media"], .translation-btn[data-studio="flowers-media"] { background-color:rgba(102, 187, 106, 0.16); color:rgb(172, 255, 176); border-color:rgba(102, 187, 106, 0.42); }
+html[data-theme="light"] .translation-btn[data-studio="flowers-media"] { background-color:rgba(102, 187, 106, 0.1); color:rgb(62, 147, 66); border-color:rgba(102, 187, 106, 0.32); }
+html[data-theme="dark"] .translation-btn[data-studio="flowers-media"].translation-btn--active, .translation-btn[data-studio="flowers-media"].translation-btn--active { background-color:rgba(102, 187, 106, 0.28); }
+html[data-theme="light"] .translation-btn[data-studio="flowers-media"].translation-btn--active { background-color:rgba(102, 187, 106, 0.2); }
+html[data-theme="dark"] .translation-badge[data-studio="ogurcik"], .translation-badge[data-studio="ogurcik"] { background-color:rgba(124, 179, 66, 0.16); color:rgb(194, 249, 136); border-color:rgba(124, 179, 66, 0.42); }
+html[data-theme="light"] .translation-badge[data-studio="ogurcik"] { background-color:rgba(124, 179, 66, 0.1); color:rgb(84, 139, 26); border-color:rgba(124, 179, 66, 0.32); }
+html[data-theme="dark"] .translation-btn[data-studio="ogurcik"], .translation-btn[data-studio="ogurcik"] { background-color:rgba(124, 179, 66, 0.16); color:rgb(194, 249, 136); border-color:rgba(124, 179, 66, 0.42); }
+html[data-theme="light"] .translation-btn[data-studio="ogurcik"] { background-color:rgba(124, 179, 66, 0.1); color:rgb(84, 139, 26); border-color:rgba(124, 179, 66, 0.32); }
+html[data-theme="dark"] .translation-btn[data-studio="ogurcik"].translation-btn--active, .translation-btn[data-studio="ogurcik"].translation-btn--active { background-color:rgba(124, 179, 66, 0.28); }
+html[data-theme="light"] .translation-btn[data-studio="ogurcik"].translation-btn--active { background-color:rgba(124, 179, 66, 0.2); }
+html[data-theme="dark"] .translation-badge[data-studio="blackcat"], .translation-badge[data-studio="blackcat"] { background-color:rgba(66, 66, 66, 0.16); color:rgb(136, 136, 136); border-color:rgba(66, 66, 66, 0.42); }
+html[data-theme="light"] .translation-badge[data-studio="blackcat"] { background-color:rgba(66, 66, 66, 0.1); color:rgb(26, 26, 26); border-color:rgba(66, 66, 66, 0.32); }
+html[data-theme="dark"] .translation-btn[data-studio="blackcat"], .translation-btn[data-studio="blackcat"] { background-color:rgba(66, 66, 66, 0.16); color:rgb(136, 136, 136); border-color:rgba(66, 66, 66, 0.42); }
+html[data-theme="light"] .translation-btn[data-studio="blackcat"] { background-color:rgba(66, 66, 66, 0.1); color:rgb(26, 26, 26); border-color:rgba(66, 66, 66, 0.32); }
+html[data-theme="dark"] .translation-btn[data-studio="blackcat"].translation-btn--active, .translation-btn[data-studio="blackcat"].translation-btn--active { background-color:rgba(66, 66, 66, 0.28); }
+html[data-theme="light"] .translation-btn[data-studio="blackcat"].translation-btn--active { background-color:rgba(66, 66, 66, 0.2); }
+html[data-theme="dark"] .translation-badge[data-studio="heat-sound"], .translation-badge[data-studio="heat-sound"] { background-color:rgba(255, 87, 34, 0.16); color:rgb(255, 157, 104); border-color:rgba(255, 87, 34, 0.42); }
+html[data-theme="light"] .translation-badge[data-studio="heat-sound"] { background-color:rgba(255, 87, 34, 0.1); color:rgb(215, 47, 0); border-color:rgba(255, 87, 34, 0.32); }
+html[data-theme="dark"] .translation-btn[data-studio="heat-sound"], .translation-btn[data-studio="heat-sound"] { background-color:rgba(255, 87, 34, 0.16); color:rgb(255, 157, 104); border-color:rgba(255, 87, 34, 0.42); }
+html[data-theme="light"] .translation-btn[data-studio="heat-sound"] { background-color:rgba(255, 87, 34, 0.1); color:rgb(215, 47, 0); border-color:rgba(255, 87, 34, 0.32); }
+html[data-theme="dark"] .translation-btn[data-studio="heat-sound"].translation-btn--active, .translation-btn[data-studio="heat-sound"].translation-btn--active { background-color:rgba(255, 87, 34, 0.28); }
+html[data-theme="light"] .translation-btn[data-studio="heat-sound"].translation-btn--active { background-color:rgba(255, 87, 34, 0.2); }
+html[data-theme="dark"] .translation-badge[data-studio="calliope"], .translation-badge[data-studio="calliope"] { background-color:rgba(186, 104, 200, 0.16); color:rgb(255, 174, 255); border-color:rgba(186, 104, 200, 0.42); }
+html[data-theme="light"] .translation-badge[data-studio="calliope"] { background-color:rgba(186, 104, 200, 0.1); color:rgb(146, 64, 160); border-color:rgba(186, 104, 200, 0.32); }
+html[data-theme="dark"] .translation-btn[data-studio="calliope"], .translation-btn[data-studio="calliope"] { background-color:rgba(186, 104, 200, 0.16); color:rgb(255, 174, 255); border-color:rgba(186, 104, 200, 0.42); }
+html[data-theme="light"] .translation-btn[data-studio="calliope"] { background-color:rgba(186, 104, 200, 0.1); color:rgb(146, 64, 160); border-color:rgba(186, 104, 200, 0.32); }
+html[data-theme="dark"] .translation-btn[data-studio="calliope"].translation-btn--active, .translation-btn[data-studio="calliope"].translation-btn--active { background-color:rgba(186, 104, 200, 0.28); }
+html[data-theme="light"] .translation-btn[data-studio="calliope"].translation-btn--active { background-color:rgba(186, 104, 200, 0.2); }
+html[data-theme="dark"] .translation-badge[data-studio="new-horizons"], .translation-badge[data-studio="new-horizons"] { background-color:rgba(3, 169, 244, 0.16); color:rgb(73, 239, 255); border-color:rgba(3, 169, 244, 0.42); }
+html[data-theme="light"] .translation-badge[data-studio="new-horizons"] { background-color:rgba(3, 169, 244, 0.1); color:rgb(0, 129, 204); border-color:rgba(3, 169, 244, 0.32); }
+html[data-theme="dark"] .translation-btn[data-studio="new-horizons"], .translation-btn[data-studio="new-horizons"] { background-color:rgba(3, 169, 244, 0.16); color:rgb(73, 239, 255); border-color:rgba(3, 169, 244, 0.42); }
+html[data-theme="light"] .translation-btn[data-studio="new-horizons"] { background-color:rgba(3, 169, 244, 0.1); color:rgb(0, 129, 204); border-color:rgba(3, 169, 244, 0.32); }
+html[data-theme="dark"] .translation-btn[data-studio="new-horizons"].translation-btn--active, .translation-btn[data-studio="new-horizons"].translation-btn--active { background-color:rgba(3, 169, 244, 0.28); }
+html[data-theme="light"] .translation-btn[data-studio="new-horizons"].translation-btn--active { background-color:rgba(3, 169, 244, 0.2); }
+html[data-theme="dark"] .translation-badge[data-studio="mda"], .translation-badge[data-studio="mda"] { background-color:rgba(96, 125, 139, 0.16); color:rgb(166, 195, 209); border-color:rgba(96, 125, 139, 0.42); }
+html[data-theme="light"] .translation-badge[data-studio="mda"] { background-color:rgba(96, 125, 139, 0.1); color:rgb(56, 85, 99); border-color:rgba(96, 125, 139, 0.32); }
+html[data-theme="dark"] .translation-btn[data-studio="mda"], .translation-btn[data-studio="mda"] { background-color:rgba(96, 125, 139, 0.16); color:rgb(166, 195, 209); border-color:rgba(96, 125, 139, 0.42); }
+html[data-theme="light"] .translation-btn[data-studio="mda"] { background-color:rgba(96, 125, 139, 0.1); color:rgb(56, 85, 99); border-color:rgba(96, 125, 139, 0.32); }
+html[data-theme="dark"] .translation-btn[data-studio="mda"].translation-btn--active, .translation-btn[data-studio="mda"].translation-btn--active { background-color:rgba(96, 125, 139, 0.28); }
+html[data-theme="light"] .translation-btn[data-studio="mda"].translation-btn--active { background-color:rgba(96, 125, 139, 0.2); }
+html[data-theme="dark"] .translation-badge[data-studio="deep"], .translation-badge[data-studio="deep"] { background-color:rgba(69, 90, 100, 0.16); color:rgb(139, 160, 170); border-color:rgba(69, 90, 100, 0.42); }
+html[data-theme="light"] .translation-badge[data-studio="deep"] { background-color:rgba(69, 90, 100, 0.1); color:rgb(29, 50, 60); border-color:rgba(69, 90, 100, 0.32); }
+html[data-theme="dark"] .translation-btn[data-studio="deep"], .translation-btn[data-studio="deep"] { background-color:rgba(69, 90, 100, 0.16); color:rgb(139, 160, 170); border-color:rgba(69, 90, 100, 0.42); }
+html[data-theme="light"] .translation-btn[data-studio="deep"] { background-color:rgba(69, 90, 100, 0.1); color:rgb(29, 50, 60); border-color:rgba(69, 90, 100, 0.32); }
+html[data-theme="dark"] .translation-btn[data-studio="deep"].translation-btn--active, .translation-btn[data-studio="deep"].translation-btn--active { background-color:rgba(69, 90, 100, 0.28); }
+html[data-theme="light"] .translation-btn[data-studio="deep"].translation-btn--active { background-color:rgba(69, 90, 100, 0.2); }
+html[data-theme="dark"] .translation-badge[data-studio="dublirovan"], .translation-badge[data-studio="dublirovan"] { background-color:rgba(141, 110, 99, 0.16); color:rgb(211, 180, 169); border-color:rgba(141, 110, 99, 0.42); }
+html[data-theme="light"] .translation-badge[data-studio="dublirovan"] { background-color:rgba(141, 110, 99, 0.1); color:rgb(101, 70, 59); border-color:rgba(141, 110, 99, 0.32); }
+html[data-theme="dark"] .translation-btn[data-studio="dublirovan"], .translation-btn[data-studio="dublirovan"] { background-color:rgba(141, 110, 99, 0.16); color:rgb(211, 180, 169); border-color:rgba(141, 110, 99, 0.42); }
+html[data-theme="light"] .translation-btn[data-studio="dublirovan"] { background-color:rgba(141, 110, 99, 0.1); color:rgb(101, 70, 59); border-color:rgba(141, 110, 99, 0.32); }
+html[data-theme="dark"] .translation-btn[data-studio="dublirovan"].translation-btn--active, .translation-btn[data-studio="dublirovan"].translation-btn--active { background-color:rgba(141, 110, 99, 0.28); }
+html[data-theme="light"] .translation-btn[data-studio="dublirovan"].translation-btn--active { background-color:rgba(141, 110, 99, 0.2); }
+html[data-theme="dark"] .translation-badge[data-studio="subtitles"], .translation-badge[data-studio="subtitles"] { background-color:rgba(144, 164, 174, 0.16); color:rgb(214, 234, 244); border-color:rgba(144, 164, 174, 0.42); }
+html[data-theme="light"] .translation-badge[data-studio="subtitles"] { background-color:rgba(144, 164, 174, 0.1); color:rgb(104, 124, 134); border-color:rgba(144, 164, 174, 0.32); }
+html[data-theme="dark"] .translation-btn[data-studio="subtitles"], .translation-btn[data-studio="subtitles"] { background-color:rgba(144, 164, 174, 0.16); color:rgb(214, 234, 244); border-color:rgba(144, 164, 174, 0.42); }
+html[data-theme="light"] .translation-btn[data-studio="subtitles"] { background-color:rgba(144, 164, 174, 0.1); color:rgb(104, 124, 134); border-color:rgba(144, 164, 174, 0.32); }
+html[data-theme="dark"] .translation-btn[data-studio="subtitles"].translation-btn--active, .translation-btn[data-studio="subtitles"].translation-btn--active { background-color:rgba(144, 164, 174, 0.28); }
+html[data-theme="light"] .translation-btn[data-studio="subtitles"].translation-btn--active { background-color:rgba(144, 164, 174, 0.2); }

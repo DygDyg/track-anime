@@ -1,0 +1,8 @@
+source=D:\GitHub\ta_new\public\logo.png
+pad_left=72
+pad_right=96
+pad_top=16
+pad_bottom=88
+scale=2
+output_size=1360x1232
+source_size=512x512

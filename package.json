@@ -1,0 +1,49 @@
+{
+  "name": "track-anime",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "postinstall": "prisma generate",
+    "dev": "prisma generate && next dev",
+    "dev:custom": "prisma generate && next dev --experimental-https",
+    "dev:with-port": "prisma generate && next dev -p $PORT",
+    "build": "node scripts/sync-brand-assets.mjs && next build && node scripts/write-build-info.mjs",
+    "brand:sync": "node scripts/sync-brand-assets.mjs",
+    "start": "next start",
+    "lint": "next lint",
+    "db:generate": "prisma generate",
+    "db:push": "prisma db push",
+    "db:push:schema": "prisma db push --skip-generate",
+    "db:studio": "prisma studio",
+    "docker:up": "docker compose up -d",
+    "docker:down": "docker compose down",
+    "kodik:import": "tsx scripts/kodik-import-full.ts",
+    "kodik:import:resume": "tsx scripts/kodik-import-full.ts --resume",
+    "kodik:import:episodes": "tsx scripts/kodik-import-full.ts --episodes-only",
+    "kodik:sync": "tsx scripts/kodik-sync-recent.ts",
+    "kodik:sync:scheduled": "tsx scripts/kodik-sync-scheduled.ts",
+    "kodik:backfill-dates": "tsx scripts/kodik-backfill-release-dates.ts"
+  },
+  "dependencies": {
+    "@prisma/client": "^6.9.0",
+    "dotenv": "^16.5.0",
+    "next": "^16.2.9",
+    "react": "^19.2.7",
+    "react-dom": "^19.2.7",
+    "sharp": "^0.34.5"
+  },
+  "devDependencies": {
+    "@types/node": "^22.15.0",
+    "@types/react": "^19.2.17",
+    "@types/react-dom": "^19.2.3",
+    "autoprefixer": "^10.5.0",
+    "eslint": "^9.39.4",
+    "eslint-config-next": "^16.2.9",
+    "postcss": "^8.5.15",
+    "prisma": "^6.9.0",
+    "tailwindcss": "^3.4.19",
+    "tsx": "^4.19.4",
+    "typescript": "^5.8.3"
+  }
+}
