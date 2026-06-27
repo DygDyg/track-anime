@@ -1,4 +1,6 @@
+import { extractScoreFromMaterialData } from "@/lib/anime-score";
 import { toDate } from "@/lib/dates";
+import { resolveEpisodesTotal } from "@/lib/episode-totals";
 import { resolveMaterialPosterUrl, type MaterialPosterSource } from "@/lib/material-poster";
 import { prisma } from "@/lib/prisma";
 import type { ReleaseItem } from "@/lib/releases";
@@ -17,12 +19,20 @@ type MaterialRow = {
   title: string;
   lastSeason: number | null;
   lastEpisode: number | null;
+  episodesCount: number | null;
   kodikUpdatedAt: Date | null;
   updatedAt: Date;
   translationTitle: string;
   playerLink: string | null;
   materialData: unknown;
 };
+
+function readEpisodesTotal(material: MaterialRow): number | null {
+  return resolveEpisodesTotal({
+    materialData: material.materialData,
+    material,
+  });
+}
 
 function episodeRank(season: number, episode: number): number {
   return season * 100_000 + episode;
@@ -82,6 +92,7 @@ function mapMaterialToReleaseItem(
     description: data?.anime_description || data?.description ? stripHtml(data.anime_description ?? data.description ?? "") : null,
     genres: parseGenres(data?.anime_genres ?? data?.all_genres ?? data?.genres),
     status: data?.anime_status?.trim() || null,
+    score: extractScoreFromMaterialData(material.materialData),
   };
 }
 
@@ -108,12 +119,6 @@ function readMaterialStatus(materialData: unknown): string | null {
   return null;
 }
 
-function readEpisodesTotal(materialData: unknown): number | null {
-  if (!materialData || typeof materialData !== "object") return null;
-  const total = (materialData as { episodes_total?: unknown }).episodes_total;
-  return typeof total === "number" && total > 0 ? total : null;
-}
-
 function isActiveMaterial(materialData: unknown): boolean {
   const status = readMaterialStatus(materialData);
   return status === "ongoing" || status === "anons";
@@ -121,12 +126,11 @@ function isActiveMaterial(materialData: unknown): boolean {
 
 /** Завершённый тайтл, последняя серия вышла давно — это бэклог, а не «новинка». */
 function isCompletedSeriesBacklog(
-  materialData: unknown,
+  material: MaterialRow,
   cutoff: Date,
   latestEpisode: number,
 ): boolean {
-  if (!materialData || typeof materialData !== "object") return false;
-
+  const materialData = material.materialData;
   const status = readMaterialStatus(materialData);
   if (status === "ongoing" || status === "anons") return false;
 
@@ -136,7 +140,7 @@ function isCompletedSeriesBacklog(
 
   if (status !== "released") return false;
 
-  const episodesTotal = readEpisodesTotal(materialData);
+  const episodesTotal = readEpisodesTotal(material);
   const year = (materialData as { year?: unknown }).year;
   if (
     episodesTotal != null &&
@@ -160,7 +164,7 @@ function resolveFreshnessDate(
   const materialData = material.materialData;
   const trackedAt = releaseAt ?? firstSeenAt ?? null;
   const endDate = parseSeriesEndDate(materialData);
-  const episodesTotal = readEpisodesTotal(materialData);
+  const episodesTotal = readEpisodesTotal(material);
 
   if (trackedAt && trackedAt >= cutoff) {
     return trackedAt;
@@ -217,6 +221,7 @@ export async function getHistoryNewEpisodes(userId: string, limit = 48): Promise
       title: true,
       lastSeason: true,
       lastEpisode: true,
+      episodesCount: true,
       kodikUpdatedAt: true,
       updatedAt: true,
       translationTitle: true,
@@ -341,7 +346,7 @@ export async function getHistoryNewEpisodes(userId: string, limit = 48): Promise
       const { candidate, releasedAt } = entry;
       if (
         isCompletedSeriesBacklog(
-          candidate.displayMaterial.materialData,
+          candidate.displayMaterial,
           cutoff,
           candidate.latestEpisode,
         )

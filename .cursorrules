@@ -1,0 +1,49 @@
+# Track Anime — Cursor Rules
+
+See `AI_RULES.md` for full AI development rules.
+See `AI_CONTEXT.md` for project quick reference.
+
+## Project Development Rules
+
+Always:
+
+* first study existing implementation
+* reuse existing patterns
+* follow project conventions
+* prefer minimal targeted changes
+
+Before changing code:
+
+1. Find similar implementation in project
+2. Study dependencies
+3. Check side effects
+
+Never:
+
+* break backward compatibility
+* duplicate existing logic
+* introduce new abstractions without clear need
+* refactor unrelated code during bug fixes
+
+Debugging workflow:
+
+1. Reproduce issue
+2. Trace call chain
+3. Trace data flow
+4. Identify root cause
+5. Propose minimal fix
+6. Show diff
+
+Critical rules:
+
+* Never invent files, functions, or code paths
+* If file is missing, say NOT FOUND
+* If uncertain, say NOT VERIFIED
+* Use only real project files as evidence
+
+For local models:
+
+* avoid generic explanations
+* prefer concise technical output
+* prefer raw code over summaries
+* do not switch to helpdesk mode

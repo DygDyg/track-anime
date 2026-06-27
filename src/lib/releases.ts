@@ -19,6 +19,7 @@ export type ReleaseItem = {
   description: string | null;
   genres: string[];
   status: string | null;
+  score: string | null;
 };
 
 /** Для передачи на клиент / в JSON */
@@ -67,6 +68,7 @@ function mapReleaseRow(row: RawReleaseRow): ReleaseItem {
     description: row.description ? stripHtml(row.description) : null,
     genres: parseGenres(row.genres),
     status: row.status,
+    score: row.score,
   };
 }
 
@@ -112,6 +114,7 @@ type RawReleaseRow = {
   description: string | null;
   genres: unknown;
   status: string | null;
+  score: string | null;
 };
 
 /** title_key тайтлов, у которых есть KodikEpisodeRelease (для исключения из каталога) */
@@ -157,6 +160,7 @@ async function queryFreshReleasesPerTitle(
         description,
         genres,
         status,
+        score,
         "animeScreenshots",
         "episodeScreenshots"
       FROM (
@@ -191,6 +195,10 @@ async function queryFreshReleasesPerTitle(
             '[]'::jsonb
           ) AS genres,
           NULLIF(m."materialData"->>'anime_status', '') AS status,
+          NULLIF(TRIM(COALESCE(
+            m."materialData"->>'shikimori_rating',
+            m."materialData"->>'shikimori_score'
+          )), '') AS score,
           m."materialData"->'screenshots' AS "animeScreenshots",
           e."screenshots" AS "episodeScreenshots"
         FROM "KodikEpisodeRelease" r
@@ -292,6 +300,10 @@ async function queryCatalogReleasesPerTitle(
           '[]'::jsonb
         ) AS genres,
         NULLIF(m."materialData"->>'anime_status', '') AS status,
+        NULLIF(TRIM(COALESCE(
+          m."materialData"->>'shikimori_rating',
+          m."materialData"->>'shikimori_score'
+        )), '') AS score,
         m."materialData"->'screenshots' AS "animeScreenshots",
         e."screenshots" AS "episodeScreenshots"
       FROM best_material bm

@@ -17,6 +17,7 @@ import {
   buildPopularHomeTranslationFilter,
   normalizeSiteSettings,
   readStoredSiteSettings,
+  type BackgroundSlideshowFilter,
   type SiteSettings,
 } from "@/lib/site-settings";
 
@@ -30,11 +31,36 @@ type SiteSettingsContextValue = {
   toggleTranslationOnHome: (name: string, enabled: boolean, allNames: string[]) => void;
   setAllHomeTranslations: (enabled: boolean, allNames: string[]) => void;
   setPopularHomeTranslations: (allNames: string[]) => void;
+  toggleBackgroundInSlideshow: (url: string, enabled: boolean, allUrls: string[]) => void;
+  setAllBackgroundSlideshow: (enabled: boolean, allUrls: string[]) => void;
 };
 
 const SiteSettingsContext = createContext<SiteSettingsContextValue | null>(null);
 
 const REMOTE_SAVE_DELAY_MS = 500;
+
+function buildSelectionFilter(
+  value: string,
+  enabled: boolean,
+  current: string[] | null,
+  allValues: string[],
+): string[] | null {
+  const total = allValues.length;
+  if (total === 0) return null;
+
+  const currentSet =
+    current === null ? new Set(allValues) : new Set(current.filter((item) => allValues.includes(item)));
+
+  if (enabled) {
+    currentSet.add(value);
+  } else {
+    currentSet.delete(value);
+  }
+
+  if (currentSet.size >= total) return null;
+  if (currentSet.size === 0) return [];
+  return allValues.filter((item) => currentSet.has(item));
+}
 
 function buildTranslationFilter(
   name: string,
@@ -42,21 +68,16 @@ function buildTranslationFilter(
   current: SiteSettings["homeTranslationFilter"],
   allNames: string[],
 ): SiteSettings["homeTranslationFilter"] {
-  const total = allNames.length;
-  if (total === 0) return null;
+  return buildSelectionFilter(name, enabled, current, allNames);
+}
 
-  const currentSet =
-    current === null ? new Set(allNames) : new Set(current.filter((item) => allNames.includes(item)));
-
-  if (enabled) {
-    currentSet.add(name);
-  } else {
-    currentSet.delete(name);
-  }
-
-  if (currentSet.size >= total) return null;
-  if (currentSet.size === 0) return [];
-  return allNames.filter((item) => currentSet.has(item));
+function buildBackgroundSlideshowFilter(
+  url: string,
+  enabled: boolean,
+  current: BackgroundSlideshowFilter,
+  allUrls: string[],
+): BackgroundSlideshowFilter {
+  return buildSelectionFilter(url, enabled, current, allUrls);
 }
 
 async function fetchRemoteSiteSettings(): Promise<SiteSettings | null> {
@@ -206,6 +227,31 @@ export function SiteSettingsProvider({ children }: { children: ReactNode }) {
     [commitSettings],
   );
 
+  const toggleBackgroundInSlideshow = useCallback(
+    (url: string, enabled: boolean, allUrls: string[]) => {
+      const current = settingsRef.current;
+      const nextFilter = buildBackgroundSlideshowFilter(
+        url,
+        enabled,
+        current.backgroundSlideshowFilter,
+        allUrls,
+      );
+      commitSettings({ ...current, backgroundSlideshowFilter: nextFilter });
+    },
+    [commitSettings],
+  );
+
+  const setAllBackgroundSlideshow = useCallback(
+    (enabled: boolean, _allUrls?: string[]) => {
+      const current = settingsRef.current;
+      commitSettings({
+        ...current,
+        backgroundSlideshowFilter: enabled ? null : [],
+      });
+    },
+    [commitSettings],
+  );
+
   const value = useMemo<SiteSettingsContextValue>(
     () => ({
       settings: hydrated ? settings : DEFAULT_SITE_SETTINGS,
@@ -217,6 +263,8 @@ export function SiteSettingsProvider({ children }: { children: ReactNode }) {
       toggleTranslationOnHome,
       setAllHomeTranslations,
       setPopularHomeTranslations,
+      toggleBackgroundInSlideshow,
+      setAllBackgroundSlideshow,
     }),
     [
       hydrated,
@@ -227,6 +275,8 @@ export function SiteSettingsProvider({ children }: { children: ReactNode }) {
       toggleTranslationOnHome,
       setAllHomeTranslations,
       setPopularHomeTranslations,
+      toggleBackgroundInSlideshow,
+      setAllBackgroundSlideshow,
     ],
   );
 

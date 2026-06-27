@@ -17,6 +17,7 @@ const logoVersion = crypto.createHash("md5").update(fs.readFileSync(logoPath)).d
 async function writeSquarePng(source, size, outPath) {
   await source
     .clone()
+    .ensureAlpha()
     .resize(size, size, {
       fit: "contain",
       background: { r: 0, g: 0, b: 0, alpha: 0 },
@@ -31,6 +32,7 @@ async function writeFaviconIco(source, outPath) {
     sizes.map((size) =>
       source
         .clone()
+        .ensureAlpha()
         .resize(size, size, {
           fit: "contain",
           background: { r: 0, g: 0, b: 0, alpha: 0 },
@@ -73,7 +75,7 @@ async function writeFaviconIco(source, outPath) {
   fs.writeFileSync(outPath, Buffer.concat([header, dir, ...images]));
 }
 
-const source = sharp(logoPath, { animated: false });
+const source = sharp(logoPath, { animated: false }).ensureAlpha();
 
 const pngTargets = [
   { size: 512, path: path.join(root, "src", "app", "icon.png") },

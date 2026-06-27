@@ -1,5 +1,17 @@
 import { prisma } from "@/lib/prisma";
+import { extractScoreFromMaterialData, normalizeAnimeScore } from "@/lib/anime-score";
+import {
+  buildKodikEpisodeTotalsByShikimori,
+  isOnSeasonMaxEpisode,
+  loadEpisodeSeasonStats,
+  resolveEpisodesTotal,
+  resolveSeasonBounds,
+  seasonStatsKey,
+  type EpisodeSeasonStats,
+  type KodikMaterialEpisodesHint,
+} from "@/lib/episode-totals";
 import { resolveMaterialPosterUrl, type MaterialPosterSource } from "@/lib/material-poster";
+import { getWatchHistoryCompleteThresholdRatio } from "@/lib/admin/watch-history-settings";
 import { loadShikimoriAnimeCacheBatch } from "@/lib/shikimori/anime-cache";
 import type { ShikimoriAnime } from "@/lib/shikimori/types";
 
@@ -20,21 +32,167 @@ export type WatchHistoryItemDto = WatchProgressDto & {
   episodeDurationSeconds: number;
   watchProgressPercent: number;
   episodesTotal: number | null;
+  score: string | null;
 };
 
 const DEFAULT_EPISODE_SECONDS = 24 * 60;
+
+type SeasonCompleteContext = {
+  episodesTotal: number;
+  seasonMaxEpisode: number;
+  maxSeason: number;
+  episodeDurationSeconds: number;
+};
+
+function resolveEpisodeDurationSeconds(
+  materialData: unknown,
+  shikimoriAnime: ShikimoriAnime | undefined,
+): number {
+  if (shikimoriAnime) {
+    return metaFromShikimoriAnime(shikimoriAnime).episodeDurationSeconds;
+  }
+
+  const fromMaterial = metaFromMaterialData(materialData);
+  return fromMaterial.episodeDurationSeconds ?? DEFAULT_EPISODE_SECONDS;
+}
+
+function isPastCompleteEpisodeThreshold(
+  positionSeconds: number,
+  episodeDurationSeconds: number,
+  thresholdRatio: number,
+): boolean {
+  if (episodeDurationSeconds <= 0) return false;
+  return positionSeconds > episodeDurationSeconds * thresholdRatio;
+}
+
+function resolveEpisodesTotalForRow(
+  material: KodikMaterialEpisodesHint | undefined,
+  shikimoriAnime: ShikimoriAnime | undefined,
+  shikimoriId: number,
+  kodikTotals: Map<number, number>,
+  episodeStats: EpisodeSeasonStats,
+  kodikId: string,
+  seasonNumber: number,
+): number | null {
+  const kodikSeasonMaxEpisode =
+    episodeStats.maxEpisodeByMaterialSeason.get(seasonStatsKey(kodikId, seasonNumber)) ?? null;
+
+  return resolveEpisodesTotal({
+    materialData: material?.materialData,
+    shikimoriAnime,
+    material,
+    kodikShikimoriMax: kodikTotals.get(shikimoriId),
+    kodikSeasonMaxEpisode,
+  });
+}
+
+function isWatchProgressCompleteFromSeasonMeta(
+  seasonNumber: number,
+  episodeNumber: number,
+  positionSeconds: number,
+  kodikId: string,
+  material: KodikMaterialEpisodesHint | undefined,
+  episodesTotal: number | null,
+  episodeDurationSeconds: number,
+  stats: EpisodeSeasonStats,
+  thresholdRatio: number,
+): boolean {
+  if (episodesTotal == null) return false;
+  if (!isOnSeasonMaxEpisode(seasonNumber, episodeNumber, kodikId, material, episodesTotal, stats)) {
+    return false;
+  }
+  return isPastCompleteEpisodeThreshold(positionSeconds, episodeDurationSeconds, thresholdRatio);
+}
+
+async function resolveSeasonCompleteContext(
+  shikimoriId: number,
+  kodikId: string,
+  seasonNumber: number,
+  episodeNumber: number,
+): Promise<SeasonCompleteContext | null> {
+  const [material, shikimoriAnime, stats, kodikTotals] = await Promise.all([
+    prisma.kodikMaterial.findUnique({
+      where: { kodikId },
+      select: {
+        materialData: true,
+        lastSeason: true,
+        lastEpisode: true,
+        episodesCount: true,
+      },
+    }),
+    loadShikimoriAnimeCacheBatch([shikimoriId], { allowStale: true }).then(
+      (map) => map.get(shikimoriId),
+    ),
+    loadEpisodeSeasonStats([kodikId]),
+    prisma.kodikMaterial
+      .findMany({
+        where: { shikimoriId },
+        select: { shikimoriId: true, lastEpisode: true, episodesCount: true, materialData: true },
+      })
+      .then(buildKodikEpisodeTotalsByShikimori),
+  ]);
+
+  const kodikSeasonMaxEpisode =
+    stats.maxEpisodeByMaterialSeason.get(seasonStatsKey(kodikId, seasonNumber)) ?? null;
+  const episodesTotal = resolveEpisodesTotal({
+    materialData: material?.materialData,
+    shikimoriAnime,
+    material: material ?? undefined,
+    kodikShikimoriMax: kodikTotals.get(shikimoriId),
+    kodikSeasonMaxEpisode,
+  });
+  if (episodesTotal == null) return null;
+
+  const bounds = resolveSeasonBounds(
+    kodikId,
+    seasonNumber,
+    material ?? undefined,
+    episodesTotal,
+    stats,
+  );
+  if (!bounds || episodeNumber < bounds.seasonMaxEpisode) return null;
+
+  return {
+    episodesTotal,
+    seasonMaxEpisode: bounds.seasonMaxEpisode,
+    maxSeason: bounds.maxSeason,
+    episodeDurationSeconds: resolveEpisodeDurationSeconds(material?.materialData, shikimoriAnime),
+  };
+}
+
+async function clearCompletedWatchProgress(
+  userId: string,
+  shikimoriId: number,
+  input: {
+    kodikId: string;
+    seasonNumber: number;
+    episodeNumber: number;
+    positionSeconds: number;
+  },
+): Promise<boolean> {
+  const context = await resolveSeasonCompleteContext(
+    shikimoriId,
+    input.kodikId,
+    input.seasonNumber,
+    input.episodeNumber,
+  );
+  if (!context) return false;
+
+  const thresholdRatio = await getWatchHistoryCompleteThresholdRatio();
+  if (!isPastCompleteEpisodeThreshold(input.positionSeconds, context.episodeDurationSeconds, thresholdRatio)) {
+    return false;
+  }
+
+  await deleteWatchProgress(userId, shikimoriId);
+  return true;
+}
 
 type ShikimoriHistoryMeta = {
   episodeDurationSeconds: number;
   episodesTotal: number | null;
 };
 
-type KodikMaterialMetaRow = {
-  shikimoriId: number | null;
-  lastEpisode: number | null;
-  episodesCount: number | null;
-  materialData: unknown;
-};
+type KodikMaterialMetaRow = KodikMaterialEpisodesHint;
 
 function mapRow(row: {
   shikimoriId: number;
@@ -89,7 +247,11 @@ export async function upsertWatchProgress(
     episodeNumber: number;
     positionSeconds: number;
   },
-): Promise<WatchProgressDto> {
+): Promise<WatchProgressDto | null> {
+  if (await clearCompletedWatchProgress(userId, input.shikimoriId, input)) {
+    return null;
+  }
+
   const row = await prisma.userWatchProgress.upsert({
     where: {
       userId_shikimoriId: {
@@ -128,18 +290,11 @@ function metaFromMaterialData(data: unknown): Partial<ShikimoriHistoryMeta> {
 
   const record = data as Record<string, unknown>;
   const durationMinutes = typeof record.duration === "number" ? record.duration : null;
-  const episodesTotal =
-    typeof record.episodes_total === "number"
-      ? record.episodes_total
-      : typeof record.shikimori_episodes === "number"
-        ? record.shikimori_episodes
-        : null;
 
   return {
     ...(durationMinutes != null && durationMinutes > 0
       ? { episodeDurationSeconds: durationMinutes * 60 }
       : {}),
-    ...(episodesTotal != null && episodesTotal > 0 ? { episodesTotal } : {}),
   };
 }
 
@@ -151,24 +306,6 @@ function metaFromShikimoriAnime(anime: ShikimoriAnime): ShikimoriHistoryMeta {
         : DEFAULT_EPISODE_SECONDS,
     episodesTotal: anime.episodes,
   };
-}
-
-function buildKodikEpisodeTotals(materials: KodikMaterialMetaRow[]): Map<number, number> {
-  const totals = new Map<number, number>();
-
-  for (const material of materials) {
-    if (material.shikimoriId == null) continue;
-
-    const candidate = material.lastEpisode ?? material.episodesCount;
-    if (candidate == null || candidate <= 0) continue;
-
-    const prev = totals.get(material.shikimoriId);
-    if (prev == null || candidate > prev) {
-      totals.set(material.shikimoriId, candidate);
-    }
-  }
-
-  return totals;
 }
 
 function buildPosterByShikimori(materials: KodikMaterialMetaRow[]): Map<number, string> {
@@ -189,20 +326,28 @@ function buildPosterByShikimori(materials: KodikMaterialMetaRow[]): Map<number, 
 
 function resolveHistoryMeta(
   shikimoriId: number,
-  materialData: unknown,
+  material: KodikMaterialEpisodesHint | undefined,
   shikimoriAnime: ShikimoriAnime | undefined,
   kodikTotals: Map<number, number>,
+  episodeStats: EpisodeSeasonStats,
+  kodikId: string,
+  seasonNumber: number,
 ): ShikimoriHistoryMeta {
-  if (shikimoriAnime) {
-    return metaFromShikimoriAnime(shikimoriAnime);
-  }
-
-  const fromMaterial = metaFromMaterialData(materialData);
-  const episodesTotal = fromMaterial.episodesTotal ?? kodikTotals.get(shikimoriId) ?? null;
+  const fromMaterial = metaFromMaterialData(material?.materialData);
+  const episodesTotal = resolveEpisodesTotalForRow(
+    material,
+    shikimoriAnime,
+    shikimoriId,
+    kodikTotals,
+    episodeStats,
+    kodikId,
+    seasonNumber,
+  );
 
   return {
-    episodeDurationSeconds:
-      fromMaterial.episodeDurationSeconds ?? DEFAULT_EPISODE_SECONDS,
+    episodeDurationSeconds: shikimoriAnime
+      ? metaFromShikimoriAnime(shikimoriAnime).episodeDurationSeconds
+      : (fromMaterial.episodeDurationSeconds ?? DEFAULT_EPISODE_SECONDS),
     episodesTotal,
   };
 }
@@ -245,7 +390,7 @@ export async function getWatchHistory(userId: string, limit = 100): Promise<Watc
   const shikimoriIds = [...new Set(rows.map((row) => row.shikimoriId))];
   const kodikIds = [...new Set(rows.map((row) => row.kodikId))];
 
-  const [materialsByKodikId, materialsByShikimoriId, shikimoriAnimeCache, releasePosters] =
+  const [materialsByKodikId, materialsByShikimoriId, shikimoriAnimeCache, releasePosters, episodeStats] =
     await Promise.all([
       prisma.kodikMaterial.findMany({
         where: { kodikId: { in: kodikIds } },
@@ -255,6 +400,7 @@ export async function getWatchHistory(userId: string, limit = 100): Promise<Watc
           translationTitle: true,
           materialData: true,
           shikimoriId: true,
+          lastSeason: true,
           lastEpisode: true,
           episodesCount: true,
         },
@@ -270,24 +416,52 @@ export async function getWatchHistory(userId: string, limit = 100): Promise<Watc
       }),
       loadShikimoriAnimeCacheBatch(shikimoriIds, { allowStale: true }),
       resolveReleasePosterMap(shikimoriIds),
+      loadEpisodeSeasonStats(kodikIds),
     ]);
 
   const materialById = new Map(materialsByKodikId.map((material) => [material.kodikId, material]));
-  const kodikTotals = buildKodikEpisodeTotals(materialsByShikimoriId);
+  const kodikTotals = buildKodikEpisodeTotalsByShikimori(materialsByShikimoriId);
   const posterByShikimori = buildPosterByShikimori(materialsByShikimoriId);
+  const completeThresholdRatio = await getWatchHistoryCompleteThresholdRatio();
 
-  return rows.map((row) => {
+  const items: WatchHistoryItemDto[] = [];
+
+  for (const row of rows) {
     const material = materialById.get(row.kodikId);
-    const posterFromMaterial = material?.materialData
-      ? resolveMaterialPosterUrl(material.materialData as MaterialPosterSource)
-      : null;
     const shikimoriAnime = shikimoriAnimeCache.get(row.shikimoriId);
     const meta = resolveHistoryMeta(
       row.shikimoriId,
-      material?.materialData,
+      material,
       shikimoriAnime,
       kodikTotals,
+      episodeStats,
+      row.kodikId,
+      row.seasonNumber,
     );
+
+    const episodesTotal = meta.episodesTotal;
+    const episodeDurationSeconds = meta.episodeDurationSeconds;
+
+    if (
+      isWatchProgressCompleteFromSeasonMeta(
+        row.seasonNumber,
+        row.episodeNumber,
+        row.positionSeconds,
+        row.kodikId,
+        material,
+        episodesTotal,
+        episodeDurationSeconds,
+        episodeStats,
+        completeThresholdRatio,
+      )
+    ) {
+      await deleteWatchProgress(userId, row.shikimoriId);
+      continue;
+    }
+
+    const posterFromMaterial = material?.materialData
+      ? resolveMaterialPosterUrl(material.materialData as MaterialPosterSource)
+      : null;
 
     const posterUrl =
       posterFromMaterial ??
@@ -295,7 +469,7 @@ export async function getWatchHistory(userId: string, limit = 100): Promise<Watc
       releasePosters.get(row.shikimoriId) ??
       null;
 
-    return {
+    items.push({
       ...mapRow(row),
       animeTitle: material?.title ?? shikimoriAnime?.russian ?? shikimoriAnime?.name ?? `Аниме #${row.shikimoriId}`,
       translationTitle: material?.translationTitle ?? "Озвучка",
@@ -303,6 +477,11 @@ export async function getWatchHistory(userId: string, limit = 100): Promise<Watc
       episodeDurationSeconds: meta.episodeDurationSeconds,
       episodesTotal: meta.episodesTotal,
       watchProgressPercent: watchProgressPercent(row.positionSeconds, meta.episodeDurationSeconds),
-    };
-  });
+      score:
+        normalizeAnimeScore(shikimoriAnime?.score) ??
+        extractScoreFromMaterialData(material?.materialData),
+    });
+  }
+
+  return items;
 }

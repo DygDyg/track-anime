@@ -2,6 +2,7 @@
 
 import { AnimeLink } from "@/components/AnimeLink";
 import { AnimePoster } from "@/components/AnimePoster";
+import { AnimeScoreBadge } from "@/components/AnimeScoreBadge";
 import { ListStatusBadge } from "@/components/favorites/ListStatusBadge";
 import { useUserListStatus } from "@/components/favorites/UserListStatusProvider";
 import type { RelatedAnimeDto } from "@/lib/anime-related";
@@ -30,6 +31,7 @@ function RelatedAnimeCard({ item }: { item: RelatedAnimeDto }) {
           className="h-full w-full object-cover transition duration-300 group-hover:scale-105"
         />
         <ListStatusBadge info={listInfo} className="absolute right-1.5 top-1.5 z-10" />
+        <AnimeScoreBadge score={item.score} className="absolute left-1.5 bottom-1.5 z-10" size="sm" />
         <span
           className={`absolute left-2 top-2 z-10 max-w-[calc(100%-0.75rem)] truncate ${relationBadgeClass(item.relation)}`}
         >
@@ -42,7 +44,6 @@ function RelatedAnimeCard({ item }: { item: RelatedAnimeDto }) {
           {item.title}
         </h3>
         <div className="mt-auto flex flex-wrap items-center gap-1.5 text-[10px]">
-          {item.score ? <span className="font-medium text-accent">★ {item.score}</span> : null}
           {year ? <span className="text-muted">{year}</span> : null}
           {item.episodes ? <span className="text-muted">{item.episodes} эп.</span> : null}
           {kindLabel && kindClass ? (

@@ -224,7 +224,7 @@ async function runKodikEpisodesImport() {
     // Получаем список материалов без серий
     const materials = await prisma.kodikMaterial.findMany({
       where: { episodesLoaded: false },
-      select: { id: true, kodikId: true },
+      select: { kodikId: true },
       take: batchCount,
     });
     

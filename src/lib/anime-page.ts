@@ -1,5 +1,6 @@
 import { isShikimoriStubMaterial } from "@/db/save-shikimori-material";
 import { cache } from "react";
+import { resolveEpisodesTotalForShikimoriMaterials } from "@/lib/episode-totals";
 import { prisma } from "@/lib/prisma";
 import { extractKodikMaterialMeta } from "@/lib/kodik-material-meta";
 import { resolveMaterialPosterUrl, type MaterialPosterSource } from "@/lib/material-poster";
@@ -11,6 +12,7 @@ import {
   scheduleShikimoriAnimeRefresh,
 } from "@/lib/shikimori/animes";
 import { isShikimoriMissingImage, shikimoriAssetUrl } from "@/lib/shikimori/client";
+import { getShikimoriEndpoints, shikimoriSiteUrl } from "@/lib/shikimori/endpoints";
 import type { ShikimoriAnime } from "@/lib/shikimori/types";
 
 export type KodikTranslationDto = {
@@ -134,11 +136,21 @@ function mapAnimeToDto(
   fallbackTitle: string | null,
   kodikScreenshots: string[],
   kodikMeta: ReturnType<typeof extractKodikMaterialMeta>,
+  metaMaterials: Array<{
+    lastEpisode: number | null;
+    episodesCount: number | null;
+    materialData: unknown;
+  }>,
 ): AnimePageDto {
   const title = anime?.russian || anime?.name || fallbackTitle || "Без названия";
   const posterUrl =
     posterFromShikimoriAnime(anime) ??
     (fallbackPoster && !isShikimoriMissingImage(fallbackPoster) ? fallbackPoster : null);
+
+  const episodes =
+    resolveEpisodesTotalForShikimoriMaterials(shikimoriId, anime, metaMaterials) ??
+    anime?.episodes ??
+    null;
 
   return {
     shikimoriId,
@@ -149,7 +161,7 @@ function mapAnimeToDto(
     status: anime?.status ?? null,
     kind: anime?.kind ?? null,
     rating: anime?.rating ?? null,
-    episodes: anime?.episodes ?? null,
+    episodes,
     episodesAired: anime?.episodes_aired ?? null,
     duration: anime?.duration ?? null,
     airedOn: anime?.aired_on ?? null,
@@ -158,7 +170,7 @@ function mapAnimeToDto(
     genres: mapGenres(anime, kodikMeta.genres),
     studios: mapStudios(anime, kodikMeta.studios),
     synonyms: anime?.synonyms?.slice(0, 6) ?? [],
-    shikimoriUrl: anime ? `https://shikimori.one${anime.url}` : null,
+    shikimoriUrl: anime ? shikimoriSiteUrl(anime.url) : null,
     screenshots: [
       ...new Set([
         ...(anime?.screenshots ?? [])
@@ -175,6 +187,8 @@ function mapAnimeToDto(
 }
 
 export const getAnimePageData = cache(async (shikimoriId: number): Promise<AnimePageDto | null> => {
+  await getShikimoriEndpoints();
+
   const [materials, releasePoster] = await Promise.all([
     prisma.kodikMaterial.findMany({
       where: { shikimoriId },
@@ -187,6 +201,7 @@ export const getAnimePageData = cache(async (shikimoriId: number): Promise<Anime
         translationType: true,
         lastSeason: true,
         lastEpisode: true,
+        episodesCount: true,
         playerLink: true,
         quality: true,
         materialData: true,
@@ -246,6 +261,7 @@ export const getAnimePageData = cache(async (shikimoriId: number): Promise<Anime
     fallbackTitle,
     kodikScreenshots,
     kodikMeta,
+    metaMaterials,
   );
 
   if (!dto.posterUrl) {

@@ -1,5 +1,6 @@
 import Link from "next/link";
 import { RelativeTime } from "@/components/RelativeTime";
+import { shikimoriSiteUrl } from "@/lib/shikimori/endpoints";
 import { userProfilePath } from "@/lib/public-user";
 import type { ProfileFriendsData } from "@/lib/user-friends";
 
@@ -79,7 +80,7 @@ export function ProfileFriendsSection({
           </div>
           <p className="mt-3 text-xs text-muted">
             <a
-              href={`https://shikimori.one/${nickname}/friends`}
+              href={shikimoriSiteUrl(`/${nickname}/friends`)}
               target="_blank"
               rel="noopener noreferrer"
               className="font-medium text-accent hover:underline"

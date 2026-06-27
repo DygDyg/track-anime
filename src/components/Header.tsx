@@ -8,6 +8,8 @@ import { useEffect, useState } from "react";
 import { useNavigationClick } from "@/components/NavigationProgress";
 import { HeaderSearch } from "@/components/search/HeaderSearch";
 import { HeaderAuth } from "@/components/auth/HeaderAuth";
+import { HeaderDiscordRpcButton } from "@/components/HeaderDiscordRpcButton";
+import { HeaderPwaInstallButton } from "@/components/HeaderPwaInstallButton";
 import { SiteSettingsButton } from "@/components/SiteSettingsMenu";
 import { ThemeToggle } from "@/components/ThemeToggle";
 import { headerControl } from "@/components/header/header-styles";
@@ -19,7 +21,7 @@ const nav = [
   { href: "/history", label: "История" },
 ];
 
-function PlayersIcon() {
+function UsersIcon() {
   return (
     <svg viewBox="0 0 24 24" className="h-5 w-5" fill="none" stroke="currentColor" strokeWidth="2" aria-hidden>
       <path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2" strokeLinecap="round" strokeLinejoin="round" />
@@ -30,23 +32,23 @@ function PlayersIcon() {
   );
 }
 
-function HeaderPlayersLink() {
+function HeaderUsersLink() {
   const pathname = usePathname();
-  const active = pathname === "/players" || pathname.startsWith("/user/");
-  const handleClick = useNavigationClick("/players");
+  const active = pathname === "/user" || pathname.startsWith("/user/");
+  const handleClick = useNavigationClick("/user");
 
   return (
     <Link
-      href="/players"
+      href="/user"
       onClick={handleClick}
       className={[
         headerControl.icon,
         active ? "text-accent hover:text-accent" : "text-muted hover:text-foreground",
       ].join(" ")}
-      aria-label="Игроки Shikimori"
-      title="Игроки Shikimori"
+      aria-label="Пользователи Shikimori"
+      title="Пользователи Shikimori"
     >
-      <PlayersIcon />
+      <UsersIcon />
     </Link>
   );
 }
@@ -173,7 +175,11 @@ export function Header() {
         <div className="ml-auto flex min-w-0 items-center gap-1.5 sm:gap-2">
           <HeaderSearch className="hidden w-44 sm:block sm:w-52 md:w-60 lg:w-72" />
 
-          <HeaderPlayersLink />
+          <HeaderUsersLink />
+
+          <HeaderDiscordRpcButton />
+
+          <HeaderPwaInstallButton />
 
           <ThemeToggle className="hidden sm:inline-flex" />
 

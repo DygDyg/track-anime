@@ -117,8 +117,8 @@ export function AdminDbExplorer({ tableCounts }: Props) {
               onClick={() => setModel(item.key)}
               className={`rounded-lg border px-3 py-2 text-left text-sm transition-colors ${
                 model === item.key
-                  ? "border-accent bg-accent/10 text-foreground"
-                  : "border-border text-muted hover:border-accent/40 hover:text-foreground"
+                  ? "border-accent bg-surface-dim text-foreground"
+                  : "border-border bg-background text-muted hover:border-accent hover:text-foreground"
               }`}
             >
               <span className="block font-medium">{item.label}</span>
@@ -140,7 +140,7 @@ export function AdminDbExplorer({ tableCounts }: Props) {
             <select
               value={model}
               onChange={(event) => setModel(event.target.value as DbModelKey)}
-              className="rounded-lg border border-border bg-background px-3 py-2 text-foreground"
+              className={adminClass.input}
             >
               {models.map((item) => (
                 <option key={item.key} value={item.key}>
@@ -155,7 +155,7 @@ export function AdminDbExplorer({ tableCounts }: Props) {
             <select
               value={field}
               onChange={(event) => setField(event.target.value)}
-              className="rounded-lg border border-border bg-background px-3 py-2 text-foreground"
+              className={adminClass.input}
             >
               <option value="">— без фильтра —</option>
               {searchableFields.map(([key, def]) => (
@@ -173,7 +173,7 @@ export function AdminDbExplorer({ tableCounts }: Props) {
               value={value}
               onChange={(event) => setValue(event.target.value)}
               placeholder={field ? "Введите значение…" : "Показать последние записи"}
-              className="rounded-lg border border-border bg-background px-3 py-2 text-foreground"
+              className={adminClass.input}
             />
           </label>
 
@@ -183,7 +183,7 @@ export function AdminDbExplorer({ tableCounts }: Props) {
               value={mode}
               onChange={(event) => setMode(event.target.value as DbSearchMode)}
               disabled={selectedFieldType !== "string"}
-              className="rounded-lg border border-border bg-background px-3 py-2 text-foreground disabled:opacity-50"
+              className={`${adminClass.input} disabled:opacity-50`}
             >
               <option value="contains">Содержит</option>
               <option value="exact">Точно</option>

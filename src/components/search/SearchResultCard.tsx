@@ -2,20 +2,20 @@
 
 import { AnimeLink } from "@/components/AnimeLink";
 import { AnimePoster } from "@/components/AnimePoster";
+import { AnimeScoreBadge } from "@/components/AnimeScoreBadge";
 import { ListStatusBadge } from "@/components/favorites/ListStatusBadge";
 import { useUserListStatus } from "@/components/favorites/UserListStatusProvider";
-import { labelKind, labelStatus } from "@/lib/anime-labels";
+import { SearchResultMeta } from "@/components/search/SearchResultMeta";
+import { siteClass } from "@/components/site/site-styles";
 import type { SearchResultDto } from "@/lib/search-shared";
 
 export function SearchResultCard({ item }: { item: SearchResultDto }) {
   const listInfo = useUserListStatus(item.shikimoriId);
-  const kindLabel = labelKind(item.kind);
-  const statusLabel = labelStatus(item.status);
 
   return (
     <AnimeLink
       href={`/anime/${item.shikimoriId}`}
-      className="group flex flex-col overflow-hidden rounded-xl border border-border bg-card transition duration-200 hover:-translate-y-0.5 hover:border-accent/50 hover:shadow-lg hover:shadow-accent/15"
+      className={`${siteClass.card} group flex flex-col`}
     >
       <div className="relative aspect-[3/4] overflow-hidden bg-surface-dim">
         <AnimePoster
@@ -25,6 +25,7 @@ export function SearchResultCard({ item }: { item: SearchResultDto }) {
           className="h-full w-full object-cover transition duration-300 group-hover:scale-105"
         />
         <ListStatusBadge info={listInfo} className="absolute left-1.5 top-1.5 z-10" />
+        <AnimeScoreBadge score={item.score} className="absolute right-1.5 top-1.5" />
       </div>
 
       <div className="flex flex-1 flex-col gap-1 p-3">
@@ -34,12 +35,7 @@ export function SearchResultCard({ item }: { item: SearchResultDto }) {
         {item.titleOriginal && item.titleOriginal !== item.title ? (
           <p className="line-clamp-1 text-xs text-muted">{item.titleOriginal}</p>
         ) : null}
-        <div className="mt-auto flex flex-wrap gap-1.5 text-[11px] text-muted">
-          {item.year ? <span>{item.year}</span> : null}
-          {kindLabel ? <span>{kindLabel}</span> : null}
-          {statusLabel ? <span>{statusLabel}</span> : null}
-          {item.episodes ? <span>{item.episodes} эп.</span> : null}
-        </div>
+        <SearchResultMeta item={item} className="mt-auto" />
       </div>
     </AnimeLink>
   );

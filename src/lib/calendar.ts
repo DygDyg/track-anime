@@ -22,6 +22,7 @@ export type CalendarItem = {
   scheduleSource: CalendarScheduleSource;
   dayOfWeek: number;
   status: string | null;
+  score: string | null;
 };
 
 export type CalendarItemDto = Omit<CalendarItem, "scheduleAt"> & {
@@ -66,6 +67,7 @@ type RawCalendarRow = {
   scheduleSource: CalendarScheduleSource;
   dayOfWeek: number;
   status: string | null;
+  score: string | null;
 };
 
 function stripHtml(text: string): string {
@@ -118,6 +120,7 @@ function mapCalendarRow(row: RawCalendarRow): CalendarItem {
     scheduleSource: row.scheduleSource,
     dayOfWeek: row.dayOfWeek,
     status: row.status ?? "ongoing",
+    score: row.score,
   };
 }
 
@@ -136,6 +139,7 @@ export function calendarItemToReleaseDto(item: CalendarItemDto): ReleaseItemDto 
     description: item.description,
     genres: item.genres,
     status: item.status,
+    score: item.score,
   };
 }
 
@@ -177,7 +181,11 @@ export async function getOngoingCalendarItems(): Promise<CalendarItem[]> {
         NULLIF(m."materialData"->>'poster_url', '') AS "posterUrlFromMaterial",
         NULLIF(m."materialData"->>'worldart_poster_url', '') AS "worldartPosterFromMaterial",
         NULLIF(m."materialData"->>'worldart_link', '') AS "worldartLinkFromMaterial",
-        (m."materialData"->>'next_episode_at')::timestamptz AS "nextEpisodeAt"
+        (m."materialData"->>'next_episode_at')::timestamptz AS "nextEpisodeAt",
+        NULLIF(TRIM(COALESCE(
+          m."materialData"->>'shikimori_rating',
+          m."materialData"->>'shikimori_score'
+        )), '') AS score
       FROM "KodikMaterial" m
       WHERE m."shikimoriId" IS NOT NULL
         AND m."materialData"->>'anime_status' = 'ongoing'
@@ -249,6 +257,7 @@ export async function getOngoingCalendarItems(): Promise<CalendarItem[]> {
         fdr."playerLink",
         mm.description,
         mm.genres,
+        om.score,
         COALESCE(om."nextEpisodeAt", fk."firstKodikAt") AS "scheduleAt",
         CASE
           WHEN om."nextEpisodeAt" IS NOT NULL THEN 'next_episode'::text
@@ -277,6 +286,7 @@ export async function getOngoingCalendarItems(): Promise<CalendarItem[]> {
       cr."scheduleAt",
       cr."scheduleSource",
       cr.status,
+      cr.score,
       EXTRACT(ISODOW FROM cr."scheduleAt" AT TIME ZONE 'Europe/Moscow')::int AS "dayOfWeek",
       mat."animeScreenshots",
       ep."episodeScreenshots"

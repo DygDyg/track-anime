@@ -3,8 +3,10 @@ import Link from "next/link";
 import { notFound } from "next/navigation";
 import { ProfileCard } from "@/components/profile/ProfileCard";
 import { getSession } from "@/lib/auth/session";
-import { parseShikimoriIdParam } from "@/lib/public-user";
+import { parseShikimoriIdParam, userProfilePath } from "@/lib/public-user";
+import { buildUserProfilePageMetadata } from "@/lib/site-metadata";
 import { getProfileFriends } from "@/lib/user-friends";
+import { loadProfileFriendStatus } from "@/lib/shikimori/friend-mutations";
 import {
   getResolvedProfileStats,
   resolveUserProfile,
@@ -20,18 +22,19 @@ export async function generateMetadata({ params }: Props): Promise<Metadata> {
   const { shikimoriId: raw } = await params;
   const shikimoriId = parseShikimoriIdParam(raw);
   if (!shikimoriId) {
-    return { title: "Пользователь не найден — Track Anime" };
+    return { title: "Пользователь не найден" };
   }
 
   const resolved = await resolveUserProfile(shikimoriId);
   if (!resolved) {
-    return { title: "Пользователь не найден — Track Anime" };
+    return { title: "Пользователь не найден" };
   }
 
-  return {
-    title: `${resolved.profile.nickname} — Track Anime`,
-    description: `Профиль ${resolved.profile.nickname}: списки аниме и статистика`,
-  };
+  return buildUserProfilePageMetadata({
+    nickname: resolved.profile.nickname,
+    avatar: resolved.profile.avatar,
+    canonicalPath: userProfilePath(resolved.profile.shikimoriId),
+  });
 }
 
 export default async function PublicUserProfilePage({ params }: Props) {
@@ -46,9 +49,16 @@ export default async function PublicUserProfilePage({ params }: Props) {
   const { profile, shikimori } = resolved;
   const viewingSelf = session?.user.shikimoriId === shikimoriId;
 
-  const [{ stats, source }, friends] = await Promise.all([
+  const [{ stats, source }, friends, friendStatus] = await Promise.all([
     getResolvedProfileStats(profile, shikimori),
     getProfileFriends(profile.shikimoriId),
+    viewingSelf
+      ? Promise.resolve(null)
+      : loadProfileFriendStatus(
+          session?.user.id,
+          session?.user.shikimoriId,
+          profile.shikimoriId,
+        ),
   ]);
 
   return (
@@ -67,8 +77,8 @@ export default async function PublicUserProfilePage({ params }: Props) {
       ) : !profile.onTrackAnime ? (
         <p className="mb-4 rounded-xl border border-border bg-card px-4 py-3 text-sm text-muted">
           Профиль загружен с Shikimori.{" "}
-          <Link href="/players" className="font-semibold text-accent hover:underline">
-            Найти другого игрока
+          <Link href="/user" className="font-semibold text-accent hover:underline">
+            Найти другого пользователя
           </Link>
         </p>
       ) : null}
@@ -87,6 +97,7 @@ export default async function PublicUserProfilePage({ params }: Props) {
         friends={friends}
         onTrackAnime={profile.onTrackAnime}
         dataSource={source}
+        friendStatus={friendStatus}
       />
     </div>
   );

@@ -13,19 +13,29 @@ import {
   SITE_CARD_SIZE_OPTIONS,
   SITE_CURSOR_OPTIONS,
   SITE_FONT_OPTIONS,
+  backgroundSlideshowFilterSummary,
   homeTranslationFilterSummary,
   HOVER_TRAILER_DELAY_MAX_SEC,
   HOVER_TRAILER_DELAY_MIN_SEC,
+  type SiteCursorStyle,
+  type SiteFontFamily,
   type SiteSettings,
 } from "@/lib/site-settings";
+import {
+  FONT_PREVIEW_SAMPLE,
+  SITE_CURSOR_URLS,
+  SITE_FONT_STACKS,
+} from "@/lib/site-appearance";
+import { DiscordRpcSettingsTab } from "@/components/settings/DiscordRpcSettingsTab";
 import type { AdminTodoDto } from "@/lib/admin/todos";
 import type { Theme } from "@/lib/theme";
 
-type TabId = "appearance" | "home" | "future";
+type TabId = "appearance" | "home" | "discord" | "future";
 
 const TABS: { id: TabId; label: string }[] = [
   { id: "home", label: "Главная" },
   { id: "appearance", label: "Внешний вид" },
+  { id: "discord", label: "Discord RPC" },
   { id: "future", label: "Идеи" },
 ];
 
@@ -168,12 +178,243 @@ function ThemeSection() {
   );
 }
 
+function DefaultCursorPreview() {
+  return (
+    <svg viewBox="0 0 24 24" className="h-7 w-7" aria-hidden>
+      <path
+        d="M5 3l14 9-6 1-3 7z"
+        fill="currentColor"
+        className="text-foreground"
+        stroke="var(--border)"
+        strokeWidth="1.2"
+      />
+    </svg>
+  );
+}
+
+function CursorPreview({ style }: { style: SiteCursorStyle }) {
+  if (style === "default") {
+    return <DefaultCursorPreview />;
+  }
+
+  if (style === "retro") {
+    return (
+      <img
+        src={SITE_CURSOR_URLS.retro}
+        alt=""
+        className="h-7 w-7 object-contain [image-rendering:pixelated]"
+      />
+    );
+  }
+
+  return <img src={SITE_CURSOR_URLS[style]} alt="" className="h-7 w-7 object-contain" />;
+}
+
+function FontOptionButton({
+  active,
+  fontId,
+  label,
+  onClick,
+}: {
+  active: boolean;
+  fontId: SiteFontFamily;
+  label: string;
+  onClick: () => void;
+}) {
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      className={[
+        "rounded-lg border px-3 py-2.5 text-left transition",
+        active
+          ? "border-accent bg-accent/10 text-foreground"
+          : "border-border bg-card text-muted hover:border-accent/40 hover:text-foreground",
+      ].join(" ")}
+    >
+      <span
+        className="block truncate text-lg leading-none tracking-tight"
+        style={{ fontFamily: SITE_FONT_STACKS[fontId] }}
+      >
+        {FONT_PREVIEW_SAMPLE}
+      </span>
+      <span className="mt-1.5 block text-xs font-medium">{label}</span>
+    </button>
+  );
+}
+
+function CursorOptionButton({
+  active,
+  style,
+  label,
+  onClick,
+}: {
+  active: boolean;
+  style: SiteCursorStyle;
+  label: string;
+  onClick: () => void;
+}) {
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      className={[
+        "rounded-lg border px-3 py-2.5 text-left transition",
+        active
+          ? "border-accent bg-accent/10 text-foreground"
+          : "border-border bg-card text-muted hover:border-accent/40 hover:text-foreground",
+      ].join(" ")}
+    >
+      <span className="flex h-10 items-center justify-center rounded-md border border-border/70 bg-background/50">
+        <CursorPreview style={style} />
+      </span>
+      <span className="mt-1.5 block text-center text-xs font-medium">{label}</span>
+    </button>
+  );
+}
+
+function BackgroundSlideshowSection({
+  settings,
+  toggleBackgroundInSlideshow,
+  setAllBackgroundSlideshow,
+}: {
+  settings: SiteSettings;
+  toggleBackgroundInSlideshow: (url: string, enabled: boolean, allUrls: string[]) => void;
+  setAllBackgroundSlideshow: (enabled: boolean, allUrls: string[]) => void;
+}) {
+  const [backgrounds, setBackgrounds] = useState<Array<{ url: string; label: string }>>([]);
+  const [loading, setLoading] = useState(true);
+
+  useEffect(() => {
+    let cancelled = false;
+
+    void (async () => {
+      try {
+        const res = await fetch("/api/settings/backgrounds");
+        if (!res.ok) throw new Error("load failed");
+        const data: { backgrounds: Array<{ url: string; label: string }> } = await res.json();
+        if (!cancelled) setBackgrounds(data.backgrounds);
+      } catch {
+        if (!cancelled) setBackgrounds([]);
+      } finally {
+        if (!cancelled) setLoading(false);
+      }
+    })();
+
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
+  if (!loading && backgrounds.length === 0) {
+    return null;
+  }
+
+  const allUrls = backgrounds.map((item) => item.url);
+
+  const isBackgroundEnabled = (url: string) => {
+    if (settings.backgroundSlideshowFilter === null) return true;
+    return settings.backgroundSlideshowFilter.includes(url);
+  };
+
+  const allEnabled =
+    settings.backgroundSlideshowFilter === null ||
+    (backgrounds.length > 0 &&
+      backgrounds.every((item) => settings.backgroundSlideshowFilter!.includes(item.url)));
+
+  const slideshowDisabled = settings.backgroundSlideshowFilter?.length === 0;
+
+  return (
+    <section className="space-y-3">
+      <div className="flex flex-wrap items-end justify-between gap-2">
+        <div>
+          <SectionTitle>Фон-слайдшоу</SectionTitle>
+          <SectionHint>
+            {loading
+              ? "Загрузка фонов…"
+              : backgroundSlideshowFilterSummary(settings.backgroundSlideshowFilter, backgrounds.length)}
+          </SectionHint>
+        </div>
+        <div className="flex flex-wrap gap-2">
+          <button
+            type="button"
+            onClick={() => setAllBackgroundSlideshow(true, allUrls)}
+            disabled={loading || backgrounds.length === 0 || allEnabled}
+            className="rounded-md border border-border px-2.5 py-1 text-xs text-muted transition hover:border-accent/40 hover:text-foreground disabled:cursor-not-allowed disabled:opacity-40"
+          >
+            Все
+          </button>
+          <button
+            type="button"
+            onClick={() => setAllBackgroundSlideshow(false, allUrls)}
+            disabled={loading || backgrounds.length === 0 || slideshowDisabled}
+            className="rounded-md border border-border px-2.5 py-1 text-xs text-muted transition hover:border-accent/40 hover:text-foreground disabled:cursor-not-allowed disabled:opacity-40"
+          >
+            Отключить
+          </button>
+        </div>
+      </div>
+
+      {loading ? (
+        <p className="text-sm text-muted">Загрузка…</p>
+      ) : (
+        <div className="grid max-h-72 grid-cols-2 gap-2 overflow-y-auto pr-1 sm:grid-cols-3">
+          {backgrounds.map((item) => {
+            const enabled = isBackgroundEnabled(item.url);
+            return (
+              <label
+                key={item.url}
+                className={[
+                  "group cursor-pointer overflow-hidden rounded-xl border transition",
+                  enabled
+                    ? "border-accent/50 ring-1 ring-accent/20"
+                    : "border-border opacity-70 hover:border-accent/30 hover:opacity-100",
+                ].join(" ")}
+              >
+                <input
+                  type="checkbox"
+                  checked={enabled}
+                  onChange={(event) =>
+                    toggleBackgroundInSlideshow(item.url, event.target.checked, allUrls)
+                  }
+                  className="sr-only"
+                />
+                <div className="relative aspect-[16/10] overflow-hidden bg-surface-dim">
+                  {/* eslint-disable-next-line @next/next/no-img-element */}
+                  <img
+                    src={item.url}
+                    alt=""
+                    className="h-full w-full object-cover transition duration-300 group-hover:scale-105"
+                  />
+                  <div className="absolute inset-0 bg-black/20" />
+                  {enabled ? (
+                    <span className="absolute right-1.5 top-1.5 rounded-full bg-accent px-1.5 py-0.5 text-[10px] font-semibold text-white">
+                      ✓
+                    </span>
+                  ) : null}
+                </div>
+                <span className="block truncate px-2 py-1.5 text-xs font-medium text-foreground">
+                  {item.label}
+                </span>
+              </label>
+            );
+          })}
+        </div>
+      )}
+    </section>
+  );
+}
+
 function AppearanceTab({
   settings,
   updateSettings,
+  toggleBackgroundInSlideshow,
+  setAllBackgroundSlideshow,
 }: {
   settings: SiteSettings;
   updateSettings: (patch: Partial<SiteSettings>) => void;
+  toggleBackgroundInSlideshow: (url: string, enabled: boolean, allUrls: string[]) => void;
+  setAllBackgroundSlideshow: (enabled: boolean, allUrls: string[]) => void;
 }) {
   return (
     <div className="space-y-6">
@@ -183,9 +424,10 @@ function AppearanceTab({
         <SectionTitle>Шрифт</SectionTitle>
         <div className="grid max-h-64 gap-2 overflow-y-auto pr-1 sm:grid-cols-2">
           {SITE_FONT_OPTIONS.map((option) => (
-            <OptionButton
+            <FontOptionButton
               key={option.id}
               active={settings.fontFamily === option.id}
+              fontId={option.id}
               label={option.label}
               onClick={() => updateSettings({ fontFamily: option.id })}
             />
@@ -195,11 +437,12 @@ function AppearanceTab({
 
       <section className="space-y-3">
         <SectionTitle>Курсор</SectionTitle>
-        <div className="grid gap-2 sm:grid-cols-3">
+        <div className="grid grid-cols-2 gap-2 sm:grid-cols-4">
           {SITE_CURSOR_OPTIONS.map((option) => (
-            <OptionButton
+            <CursorOptionButton
               key={option.id}
               active={settings.cursorStyle === option.id}
+              style={option.id}
               label={option.label}
               onClick={() => updateSettings({ cursorStyle: option.id })}
             />
@@ -236,6 +479,12 @@ function AppearanceTab({
           ))}
         </div>
       </section>
+
+      <BackgroundSlideshowSection
+        settings={settings}
+        toggleBackgroundInSlideshow={toggleBackgroundInSlideshow}
+        setAllBackgroundSlideshow={setAllBackgroundSlideshow}
+      />
 
       <section className="space-y-3">
         <SectionTitle>Затемнение фона</SectionTitle>
@@ -447,6 +696,16 @@ function HomeTab({
   );
 }
 
+function DiscordTab({
+  settings,
+  updateSettings,
+}: {
+  settings: SiteSettings;
+  updateSettings: (patch: Partial<SiteSettings>) => void;
+}) {
+  return <DiscordRpcSettingsTab settings={settings} updateSettings={updateSettings} />;
+}
+
 function FutureTab() {
   const [items, setItems] = useState<AdminTodoDto[]>([]);
   const [loading, setLoading] = useState(true);
@@ -520,6 +779,8 @@ export function SiteSettingsModal() {
     toggleTranslationOnHome,
     setAllHomeTranslations,
     setPopularHomeTranslations,
+    toggleBackgroundInSlideshow,
+    setAllBackgroundSlideshow,
   } = useSiteSettings();
   const [tab, setTab] = useState<TabId>("home");
   const [mounted, setMounted] = useState(false);
@@ -611,7 +872,12 @@ export function SiteSettingsModal() {
 
           <div className="min-h-0 flex-1 overflow-y-auto px-4 py-4 sm:px-5 sm:py-5">
             {tab === "appearance" ? (
-              <AppearanceTab settings={settings} updateSettings={updateSettings} />
+              <AppearanceTab
+                settings={settings}
+                updateSettings={updateSettings}
+                toggleBackgroundInSlideshow={toggleBackgroundInSlideshow}
+                setAllBackgroundSlideshow={setAllBackgroundSlideshow}
+              />
             ) : null}
             {tab === "home" ? (
               <HomeTab
@@ -621,6 +887,9 @@ export function SiteSettingsModal() {
                 setAllHomeTranslations={setAllHomeTranslations}
                 setPopularHomeTranslations={setPopularHomeTranslations}
               />
+            ) : null}
+            {tab === "discord" ? (
+              <DiscordTab settings={settings} updateSettings={updateSettings} />
             ) : null}
             {tab === "future" && isAdmin ? <FutureTab /> : null}
           </div>

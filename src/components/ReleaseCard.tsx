@@ -3,6 +3,7 @@
 import { useCallback, useEffect, useRef, useState, type CSSProperties, type PointerEvent } from "react";
 import { AnimeLink } from "@/components/AnimeLink";
 import { AnimePoster } from "@/components/AnimePoster";
+import { AnimeScoreBadge } from "@/components/AnimeScoreBadge";
 import { RelativeTime } from "@/components/RelativeTime";
 import { TranslationBadge } from "@/components/TranslationBadge";
 import { ListStatusBadge } from "@/components/favorites/ListStatusBadge";
@@ -195,6 +196,10 @@ export function ReleaseCard({
             <ListStatusBadge
               info={listInfo}
               className="pointer-events-none absolute left-1 top-1 z-20 max-w-[calc(100%-0.5rem)] md:left-1.5 md:top-1.5"
+            />
+            <AnimeScoreBadge
+              score={release.score}
+              className="absolute right-1 top-1 z-20 md:right-1.5 md:top-1.5"
             />
             <div className="pointer-events-none absolute bottom-0 right-0 z-20">
               <EpisodeNumberBadge episode={release.episodeNumber} status={release.status} />

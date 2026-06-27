@@ -3,12 +3,14 @@ import { redirect } from "next/navigation";
 import { FavoritesView } from "@/components/favorites/FavoritesView";
 import { getSession } from "@/lib/auth/session";
 import { getAllFavoritesData, parseFavoritesTab } from "@/lib/favorites-page";
+import { buildSitePageMetadata } from "@/lib/site-metadata";
 import { ShikimoriAuthError } from "@/lib/shikimori/auth-client";
 
-export const metadata: Metadata = {
-  title: "Избранное — Track Anime",
+export const metadata: Metadata = buildSitePageMetadata({
+  title: "Избранное",
   description: "Списки аниме и закладки из Shikimori",
-};
+  canonicalPath: "/favorites",
+});
 
 export const dynamic = "force-dynamic";
 

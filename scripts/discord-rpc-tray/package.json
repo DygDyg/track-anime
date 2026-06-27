@@ -1,0 +1,44 @@
+{
+  "name": "track-anime-discord-rpc",
+  "version": "1.0.0",
+  "description": "Track Anime Discord Rich Presence bridge",
+  "main": "main.mjs",
+  "type": "module",
+  "private": true,
+  "author": "dygdyg",
+  "dependencies": {
+    "discord-rpc": "^4.0.1"
+  },
+  "build": {
+    "appId": "ru.dygdyg.trackanime.discord-rpc",
+    "productName": "Track Anime Discord RPC",
+    "directories": {
+      "output": "dist",
+      "buildResources": "."
+    },
+    "files": [
+      "main.mjs",
+      "autostart.mjs",
+      "preload.cjs",
+      "console.html",
+      "icon.png",
+      "lib/**/*"
+    ],
+    "win": {
+      "target": [
+        {
+          "target": "portable",
+          "arch": ["x64"]
+        }
+      ],
+      "icon": "icon.png",
+      "signAndEditExecutable": false
+    },
+    "portable": {
+      "artifactName": "TrackAnimeDiscordRPC.exe"
+    },
+    "asar": true,
+    "npmRebuild": false,
+    "electronVersion": "35.7.5"
+  }
+}

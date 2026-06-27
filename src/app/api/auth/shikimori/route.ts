@@ -27,7 +27,7 @@ export async function GET(request: NextRequest) {
   const state = randomUUID();
   await saveOAuthState(state, redirectUri);
 
-  const response = NextResponse.redirect(buildShikimoriAuthorizeUrl(state, redirectUri));
+  const response = NextResponse.redirect(await buildShikimoriAuthorizeUrl(state, redirectUri));
   response.cookies.set(oauthStateCookieOptions(state));
   response.cookies.set(oauthRedirectCookieOptions(redirectUri));
 

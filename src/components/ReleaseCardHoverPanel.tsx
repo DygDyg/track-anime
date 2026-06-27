@@ -5,6 +5,7 @@ import { createPortal } from "react-dom";
 import { useEffect, useLayoutEffect, useRef, useState, type CSSProperties, type RefObject } from "react";
 import { AnimeLink } from "@/components/AnimeLink";
 import { AnimePoster } from "@/components/AnimePoster";
+import { AnimeScoreBadge } from "@/components/AnimeScoreBadge";
 import { ReleaseCardQuickActions } from "@/components/ReleaseCardQuickActions";
 import { TranslationBadge } from "@/components/TranslationBadge";
 import { labelStatus, statusBadgeClass } from "@/lib/anime-labels";
@@ -63,6 +64,7 @@ function ReleaseMetaRow({ release }: { release: ReleaseItem | ReleaseItemDto }) 
 
   return (
     <div className="flex flex-wrap items-center gap-1.5 text-xs">
+      {release.score ? <AnimeScoreBadge score={release.score} variant="inline" size="sm" /> : null}
       <span className="font-semibold tabular-nums text-foreground">{release.episodeNumber} серия</span>
       {statusLabel && statusClass ? (
         <>

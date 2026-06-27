@@ -82,7 +82,7 @@ export async function PUT(request: NextRequest, { params }: RouteParams) {
       positionSeconds,
     });
 
-    return NextResponse.json({ progress });
+    return NextResponse.json({ progress, cleared: progress === null });
   } catch (error) {
     console.error("[user/watch-history] upsert failed:", error);
     return NextResponse.json({ error: "Не удалось сохранить прогресс" }, { status: 500 });

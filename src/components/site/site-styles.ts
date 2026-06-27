@@ -1,0 +1,22 @@
+/** Классы из globals.css — сплошные цвета, без прозрачности (как в админке) */
+export const siteClass = {
+  panel: "site-panel p-4 sm:p-5",
+  navLink: "site-nav-link",
+  navLinkActive: "site-nav-link-active",
+  btnPrimary: "site-btn site-btn-primary",
+  btnSecondary: "site-btn site-btn-secondary",
+  btnSmOn: "site-btn-sm site-btn-sm-on",
+  btnSmOff: "site-btn-sm site-btn-sm-off",
+  link: "site-link",
+  textLink: "site-text-link",
+  label: "site-label",
+  input: "site-input",
+  empty: "site-empty",
+  dropdown: "site-dropdown",
+  dropdownOption: "site-dropdown-option",
+  dropdownOptionActive: "site-dropdown-option site-dropdown-option-active",
+  card: "site-card",
+  pageEyebrow: "text-xs font-semibold uppercase tracking-wide text-accent",
+  pageTitle: "text-2xl font-semibold text-foreground",
+  sectionTitle: "mb-4 text-lg font-semibold text-foreground",
+} as const;

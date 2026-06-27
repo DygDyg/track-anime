@@ -4,7 +4,8 @@ import { notFound } from "next/navigation";
 import { FavoritesView } from "@/components/favorites/FavoritesView";
 import { parseFavoritesTab } from "@/lib/favorites-page";
 import { getSession } from "@/lib/auth/session";
-import { parseShikimoriIdParam, userProfilePath } from "@/lib/public-user";
+import { parseShikimoriIdParam, userFavoritesPath, userProfilePath } from "@/lib/public-user";
+import { buildUserProfilePageMetadata } from "@/lib/site-metadata";
 import {
   getResolvedUserFavorites,
   resolveUserProfile,
@@ -21,18 +22,20 @@ export async function generateMetadata({ params }: Props): Promise<Metadata> {
   const { shikimoriId: raw } = await params;
   const shikimoriId = parseShikimoriIdParam(raw);
   if (!shikimoriId) {
-    return { title: "Пользователь не найден — Track Anime" };
+    return { title: "Пользователь не найден" };
   }
 
   const resolved = await resolveUserProfile(shikimoriId);
   if (!resolved) {
-    return { title: "Пользователь не найден — Track Anime" };
+    return { title: "Пользователь не найден" };
   }
 
-  return {
-    title: `Списки ${resolved.profile.nickname} — Track Anime`,
-    description: `Аниме-списки и закладки пользователя ${resolved.profile.nickname}`,
-  };
+  return buildUserProfilePageMetadata({
+    nickname: resolved.profile.nickname,
+    avatar: resolved.profile.avatar,
+    canonicalPath: userFavoritesPath(resolved.profile.shikimoriId),
+    pageKind: "favorites",
+  });
 }
 
 export default async function PublicUserFavoritesPage({ params, searchParams }: Props) {

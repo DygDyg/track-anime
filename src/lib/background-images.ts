@@ -62,6 +62,19 @@ export function listBackgroundImageUrls(): string[] {
   return listBackgroundImages().map((file) => fileToUrl(file, dir));
 }
 
+export function backgroundImageLabelFromUrl(url: string): string {
+  const fileName = decodeURIComponent(url.split("/").pop() ?? url);
+  const withoutExt = fileName.replace(/\.(webp|jpe?g|png|gif|avif)$/i, "");
+  return withoutExt.replace(/[-_]+/g, " ").trim() || fileName;
+}
+
+export function listBackgroundImageEntries(): Array<{ url: string; label: string }> {
+  return listBackgroundImageUrls().map((url) => ({
+    url,
+    label: backgroundImageLabelFromUrl(url),
+  }));
+}
+
 /** @deprecated Используйте listBackgroundImageUrls + клиентский SiteBackground */
 export function getRandomBackgroundImageUrl(): string | null {
   const urls = listBackgroundImageUrls();

@@ -13,6 +13,7 @@ type ShikimoriStatusCount = {
 };
 
 export type ShikimoriUserDetails = ShikimoriUserBrief & {
+  in_friends?: boolean | string | null;
   stats?: {
     full_statuses?: {
       anime?: ShikimoriStatusCount[];
@@ -43,6 +44,7 @@ export async function fetchShikimoriUserById(
     if (!data) return null;
     return {
       ...mapUserBrief(data),
+      in_friends: data.in_friends ?? null,
       stats: data.stats,
     };
   } catch (err) {

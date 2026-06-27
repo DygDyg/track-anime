@@ -1,10 +1,18 @@
+import type { Metadata } from "next";
 import { HistoryNewEpisodesSection, type HistoryNewEpisodeDto } from "@/components/HistoryNewEpisodesSection";
 import { ReleaseFeed } from "@/components/ReleaseFeed";
 import { getSession } from "@/lib/auth/session";
 import { getHistoryNewEpisodes } from "@/lib/history-new-episodes";
 import { getRecentReleasesPage, serializeRelease } from "@/lib/releases";
+import { buildSitePageMetadata, defaultSiteDescription } from "@/lib/site-metadata";
 
 export const revalidate = 300;
+
+export const metadata: Metadata = buildSitePageMetadata({
+  title: "Главная",
+  description: defaultSiteDescription,
+  canonicalPath: "/",
+});
 
 const PAGE_SIZE = 24;
 

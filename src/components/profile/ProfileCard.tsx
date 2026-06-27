@@ -1,9 +1,13 @@
 import Link from "next/link";
 import { RelativeTime } from "@/components/RelativeTime";
+import { ProfileAvatar } from "@/components/profile/ProfileAvatar";
+import { ProfileFriendButton } from "@/components/profile/ProfileFriendButton";
 import { ProfileFriendsSection } from "@/components/profile/ProfileFriendsSection";
 import { ProfileSiteSettingsNote } from "@/components/profile/ProfileSiteSettingsNote";
+import { shikimoriSiteUrl } from "@/lib/shikimori/endpoints";
 import type { AuthUser } from "@/lib/auth/session";
 import { userFavoritesPath, userProfilePath } from "@/lib/public-user";
+import type { ProfileFriendStatus } from "@/lib/profile-friend-status";
 import { LIST_STATUS_LABELS, LIST_STATUS_TABS } from "@/lib/shikimori/user-rates.types";
 import type { ProfileFriendsData } from "@/lib/user-friends";
 import type { UserProfileStatsDto } from "@/lib/user-profile-stats";
@@ -167,6 +171,7 @@ export function ProfileCard({
   friends,
   onTrackAnime = true,
   dataSource = "site",
+  friendStatus = null,
 }: {
   user: ProfileUser;
   stats: UserProfileStatsDto;
@@ -175,6 +180,7 @@ export function ProfileCard({
   friends: ProfileFriendsData;
   onTrackAnime?: boolean;
   dataSource?: "site" | "shikimori";
+  friendStatus?: ProfileFriendStatus | null;
 }) {
   const isOwn = variant === "own";
   const favoritesHref = isOwn ? "/favorites" : userFavoritesPath(user.shikimoriId);
@@ -188,19 +194,9 @@ export function ProfileCard({
 
   return (
     <div className="overflow-hidden rounded-2xl border border-border bg-card shadow-lg shadow-black/25">
-      <div className="border-b border-border bg-gradient-to-br from-accent/15 via-transparent to-transparent px-6 py-6 sm:px-8">
-        <div className="flex flex-col gap-5 sm:flex-row sm:items-center">
-          {user.avatar ? (
-            <img
-              src={user.avatar}
-              alt=""
-              className="h-20 w-20 shrink-0 rounded-2xl border-2 border-accent/30 object-cover shadow-md shadow-accent/10"
-            />
-          ) : (
-            <span className="inline-flex h-20 w-20 shrink-0 items-center justify-center rounded-2xl border-2 border-accent/30 bg-accent/20 text-2xl font-bold text-accent shadow-md shadow-accent/10">
-              {user.nickname.slice(0, 1).toUpperCase()}
-            </span>
-          )}
+      <div className="border-b border-border bg-gradient-to-br from-accent/20 via-accent/5 to-transparent px-6 pb-7 pt-8 sm:px-8 sm:pb-8">
+        <div className="flex flex-col items-center gap-6 text-center sm:flex-row sm:items-center sm:gap-8 sm:text-left">
+          <ProfileAvatar avatar={user.avatar} nickname={user.nickname} />
 
           <div className="min-w-0 flex-1">
             <div className="flex flex-wrap items-center gap-2">
@@ -297,7 +293,14 @@ export function ProfileCard({
           error={friends.error}
         />
 
-        <div className="flex flex-wrap gap-3">
+        <div className="flex flex-wrap items-center gap-3">
+          {!isOwn ? (
+            <ProfileFriendButton
+              targetShikimoriId={user.shikimoriId}
+              targetNickname={user.nickname}
+              initialStatus={friendStatus}
+            />
+          ) : null}
           <Link
             href={favoritesHref}
             className="rounded-lg bg-accent px-4 py-2.5 text-sm font-semibold text-white transition hover:bg-accent/90"
@@ -328,7 +331,7 @@ export function ProfileCard({
             </Link>
           )}
           <a
-            href={`https://shikimori.one/${user.nickname}`}
+            href={shikimoriSiteUrl(`/${user.nickname}`)}
             target="_blank"
             rel="noopener noreferrer"
             className="rounded-lg border border-border px-4 py-2.5 text-sm font-semibold text-foreground transition hover:border-accent/40 hover:bg-surface-dim"

@@ -19,10 +19,7 @@ export type HistoryNewEpisodeDto = ReleaseItemDto & {
   watchedEpisodeNumber: number;
 };
 
-function formatWatchedLabel(season: number, episode: number): string {
-  if (season > 1) {
-    return `Вы остановились на S${season}E${episode}`;
-  }
+function formatWatchedLabel(_season: number, episode: number): string {
   return `Вы остановились на серии ${episode}`;
 }
 

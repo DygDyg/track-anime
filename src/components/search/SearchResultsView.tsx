@@ -1,92 +1,111 @@
 import Link from "next/link";
-import { SearchResultCard } from "@/components/search/SearchResultCard";
-import { buildSearchHref, type SearchPage as SearchPageData } from "@/lib/search-shared";
+import { AdvancedSearchForm } from "@/components/search/AdvancedSearchForm";
+import { QuickSearchForm } from "@/components/search/QuickSearchForm";
+import { SearchResultsInfiniteGrid } from "@/components/search/SearchResultsInfiniteGrid";
+import { siteClass } from "@/components/site/site-styles";
+import {
+  advancedFiltersSummary,
+  hasAdvancedFilters,
+  parseGenreList,
+} from "@/lib/search-fields";
+import { type SearchPage as SearchPageData } from "@/lib/search-shared";
 
 type Props = {
   result: SearchPageData;
 };
 
-function PaginationLink({
-  page,
-  label,
-  result,
-  disabled,
-}: {
-  page: number;
-  label: string;
-  result: SearchPageData;
-  disabled?: boolean;
-}) {
-  if (disabled) {
-    return (
-      <span className="inline-flex min-h-10 items-center rounded-lg border border-border px-4 py-2 text-sm text-muted/50">
-        {label}
-      </span>
-    );
-  }
-
-  const href = buildSearchHref({
-    q: result.genre ? undefined : result.query || undefined,
-    genre: result.genre ?? undefined,
-    page,
-  });
-
+function SearchTabs({ activeTab }: { activeTab: "quick" | "advanced" }) {
   return (
-    <Link
-      href={href}
-      className="inline-flex min-h-10 items-center rounded-lg border border-border bg-card px-4 py-2 text-sm text-foreground transition hover:border-accent/40 hover:text-accent"
-    >
-      {label}
-    </Link>
+    <div className="mb-6 flex flex-wrap gap-2" role="tablist" aria-label="Режим поиска">
+      <Link
+        href="/search"
+        role="tab"
+        aria-selected={activeTab === "quick"}
+        className={activeTab === "quick" ? siteClass.btnSmOn : siteClass.btnSmOff}
+      >
+        Быстрый
+      </Link>
+      <Link
+        href="/search?tab=advanced"
+        role="tab"
+        aria-selected={activeTab === "advanced"}
+        className={activeTab === "advanced" ? siteClass.btnSmOn : siteClass.btnSmOff}
+      >
+        По полям
+      </Link>
+    </div>
   );
 }
 
+function resultTitle(result: SearchPageData): string {
+  if (result.tab === "advanced") {
+    if (result.advancedFilters && hasAdvancedFilters(result.advancedFilters)) {
+      return `Поиск: ${advancedFiltersSummary(result.advancedFilters)}`;
+    }
+    return "Поиск по полям";
+  }
+
+  if (result.genre) {
+    const genres = parseGenreList(result.genre);
+    if (genres.length > 0) return `Жанры: ${genres.join(", ")}`;
+  }
+  if (result.query) return `Поиск: ${result.query}`;
+  return "Поиск аниме";
+}
+
 export function SearchResultsView({ result }: Props) {
-  const totalPages = Math.max(1, Math.ceil(result.total / result.pageSize));
-  const title = result.genre
-    ? `Жанр: ${result.genre}`
-    : result.query
-      ? `Поиск: ${result.query}`
-      : "Поиск аниме";
+  const tab = result.tab ?? "quick";
+  const title = resultTitle(result);
+  const hasSearchCriteria =
+    tab === "advanced"
+      ? Boolean(result.advancedFilters && hasAdvancedFilters(result.advancedFilters))
+      : Boolean(result.query || parseGenreList(result.genre).length > 0);
 
   return (
-    <div className="mx-auto max-w-6xl px-3 py-5 sm:px-6 sm:py-8 lg:px-8">
+    <div className="mx-auto max-w-6xl px-4 py-6 sm:px-6 sm:py-10">
       <div className="mb-6 space-y-2">
-        <h1 className="text-2xl font-bold text-foreground">{title}</h1>
-        {result.items.length > 0 ? (
-          <p className="text-sm text-muted">
-            Найдено: {result.total.toLocaleString("ru-RU")} · страница {result.page} из {totalPages}
-          </p>
-        ) : null}
+        <p className={siteClass.pageEyebrow}>Track Anime</p>
+        <h1 className={siteClass.pageTitle}>{title}</h1>
       </div>
 
-      {result.items.length === 0 ? (
-        <div className="rounded-xl border border-dashed border-border bg-card/50 p-8 text-center">
-          <p className="text-muted">Ничего не найдено</p>
-        </div>
-      ) : (
-        <>
-          <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 xl:grid-cols-6">
-            {result.items.map((item) => (
-              <SearchResultCard key={item.shikimoriId} item={item} />
-            ))}
-          </div>
+      <SearchTabs activeTab={tab} />
 
-          {totalPages > 1 ? (
-            <div className="mt-8 flex flex-wrap items-center justify-center gap-2">
-              <PaginationLink page={result.page - 1} label="← Назад" result={result} disabled={result.page <= 1} />
-              <span className="px-2 text-sm text-muted">
-                {result.page} / {totalPages}
-              </span>
-              <PaginationLink
-                page={result.page + 1}
-                label="Дальше →"
-                result={result}
-                disabled={!result.hasMore && result.page >= totalPages}
-              />
-            </div>
-          ) : null}
-        </>
+      <section role="tabpanel" className={`${siteClass.panel} mb-6 overflow-visible`}>
+        <h2 className={siteClass.sectionTitle}>{tab === "advanced" ? "Фильтры" : "Запрос"}</h2>
+        {tab === "advanced" ? (
+          <AdvancedSearchForm initialFilters={result.advancedFilters} />
+        ) : (
+          <QuickSearchForm initialQuery={result.query} initialGenre={result.genre ?? ""} />
+        )}
+      </section>
+
+      {!hasSearchCriteria ? (
+        <section className={siteClass.empty}>
+          <p>
+            {tab === "advanced"
+              ? "Заполните одно или несколько полей и нажмите «Найти»"
+              : "Введите название или жанр и нажмите «Найти»"}
+          </p>
+        </section>
+      ) : result.items.length === 0 ? (
+        <section className={siteClass.empty}>
+          <p>Ничего не найдено</p>
+        </section>
+      ) : (
+        <section className={`${siteClass.panel} space-y-6`}>
+          <h2 className={siteClass.sectionTitle}>Результаты</h2>
+          <SearchResultsInfiniteGrid
+            initialItems={result.items}
+            initialPage={result.page}
+            initialHasMore={result.hasMore}
+            initialTotal={result.total}
+            tab={tab}
+            query={result.query}
+            genre={result.genre}
+            advancedFilters={result.advancedFilters}
+            pageSize={result.pageSize}
+          />
+        </section>
       )}
     </div>
   );

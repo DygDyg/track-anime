@@ -287,22 +287,20 @@ tail -f /opt/track-anime/logs/kodik-sync.log
 
 ## 8. Деплой на production (Windows → сервер)
 
-С Windows из каталога проекта:
+**Полная документация:** [DEPLOY.md](./DEPLOY.md)
+
+Из корня проекта:
 
 ```powershell
-cd D:\GitHub\ta_new
+cd E:\GitHub\ta_new
 .\scripts\deploy.ps1
+# или
+npm run deploy
 ```
 
 Скрипт упаковывает исходники (`tar`), заливает на сервер (`scp`) и запускает `scripts/server-deploy.sh`: `npm ci` → Prisma → `npm run build` → restart. **Сборка выполняется на сервере** — отдельный WSL не нужен.
 
-Вручную (то же самое):
-
-```powershell
-tar -czf $env:TEMP\ta_deploy.tar.gz --exclude=node_modules --exclude=.next --exclude=.env --exclude="*.tar.gz" .
-scp -i $env:USERPROFILE\.ssh\id_rsa $env:TEMP\ta_deploy.tar.gz root@195.26.230.35:/tmp/ta_deploy.tar.gz
-ssh -i $env:USERPROFILE\.ssh\id_rsa root@195.26.230.35 "bash /var/www/ta_new/scripts/server-deploy.sh"
-```
+Параметры и ручные команды — в [DEPLOY.md](./DEPLOY.md).
 
 ### Сравнение с вариантом «сборка в WSL» (не используем)
 

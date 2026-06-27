@@ -13,6 +13,8 @@ const ERROR_MESSAGES: Record<string, string> = {
   invalid_state:
     "Сессия входа истекла или браузер заблокировал cookies. Отключите блокировку для ta.dygdyg.ru и попробуйте снова.",
   oauth_failed: "Не удалось завершить вход. Проверьте Redirect URI и имя приложения на Shikimori.",
+  invalid_scope:
+    "Shikimori отклонил запрашиваемые права (scope). В настройках OAuth-приложения на Shikimori включите нужные scope или уберите лишние из SHIKIMORI_OAUTH_SCOPE на сервере.",
   access_denied: "Вы отменили вход на Shikimori.",
 };
 
@@ -68,7 +70,7 @@ function LoginPageInner() {
       <div className="w-full max-w-md rounded-2xl border border-border bg-card p-6 shadow-2xl shadow-black/50">
         <h1 className="text-lg font-semibold text-foreground sm:text-xl">Вход через Shikimori</h1>
         <p className="mt-2 text-sm leading-relaxed text-muted">
-          Вы будете перенаправлены на shikimori.io. Если у вас уже есть аккаунт — нажмите{" "}
+          Вы будете перенаправлены на Shikimori. Если у вас уже есть аккаунт — нажмите{" "}
           <strong className="font-medium text-foreground">«Войти»</strong>, а не «Зарегистрироваться».
         </p>
 

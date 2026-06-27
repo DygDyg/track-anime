@@ -2,6 +2,7 @@
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useAuth } from "@/components/auth/AuthProvider";
+import { useSiteSettings } from "@/components/SiteSettingsProvider";
 import {
   KodikPlayer,
   type KodikPlayerHandle,
@@ -10,12 +11,15 @@ import {
 import type { KodikTranslationDto } from "@/lib/anime-page";
 import { formatEpisodeProgress, labelTranslationType } from "@/lib/anime-labels";
 import { resolveTranslationStudioId } from "@/lib/translation-colors";
-import { formatWatchPosition, type WatchProgressDto } from "@/lib/watch-history";
+import { formatWatchPosition, formatEpisodeOfTotal, type WatchProgressDto } from "@/lib/watch-history";
+import { useDiscordConfig } from "@/hooks/useDiscordConfig";
+import { useDiscordPresence } from "@/hooks/useDiscordPresence";
 
 type Props = {
   shikimoriId: number;
   animeTitle: string;
   translations: KodikTranslationDto[];
+  episodesTotal?: number | null;
 };
 
 const SAVE_INTERVAL_MS = 30_000;
@@ -27,8 +31,24 @@ type ProgressPayload = {
   positionSeconds: number;
 };
 
-export function AnimeWatchPanel({ shikimoriId, animeTitle, translations }: Props) {
+export function AnimeWatchPanel({ shikimoriId, animeTitle, translations, episodesTotal }: Props) {
   const { user } = useAuth();
+  const { settings } = useSiteSettings();
+  const { applicationId, largeImageKey, configured: discordConfigured } = useDiscordConfig();
+  const discordPresenceEnabled = settings.discordPresenceEnabled && discordConfigured;
+  const discordPageUrl =
+    typeof window !== "undefined" ? `${window.location.origin}/anime/${shikimoriId}#player` : "";
+  const { syncProgress, markPaused, markPlaying, clear: clearDiscordPresence } = useDiscordPresence({
+    enabled: discordPresenceEnabled,
+    mode: "watch",
+    animeTitle,
+    applicationId,
+    largeImageKey,
+    showSitePage: settings.discordPresenceShowSitePage,
+    sitePageLabel: settings.discordPresenceShowSitePage ? "Просмотр" : null,
+    openButtonEnabled: settings.discordPresenceOpenButtonEnabled,
+    pageUrl: discordPageUrl,
+  });
   const playable = useMemo(
     () => translations.filter((tr) => tr.playerLink),
     [translations],
@@ -175,7 +195,12 @@ export function AnimeWatchPanel({ shikimoriId, animeTitle, translations }: Props
 
         if (!res.ok) return;
 
-        const data = (await res.json()) as { progress?: WatchProgressDto };
+        const data = (await res.json()) as { progress?: WatchProgressDto | null; cleared?: boolean };
+        if (data.cleared || data.progress === null) {
+          lastSavedFingerprintRef.current = fingerprint;
+          setContinueProgress(null);
+          return;
+        }
         if (data.progress) {
           lastSavedFingerprintRef.current = fingerprint;
           setContinueProgress(data.progress);
@@ -199,11 +224,16 @@ export function AnimeWatchPanel({ shikimoriId, animeTitle, translations }: Props
     [saveProgressNow],
   );
 
-  const trackProgress = useCallback((payload: ProgressPayload) => {
-    liveProgressRef.current = payload;
-    if (payload.positionSeconds < MIN_SAVE_POSITION_SECONDS) return;
-    latestProgressRef.current = payload;
-  }, []);
+  const trackProgress = useCallback(
+    (payload: ProgressPayload) => {
+      liveProgressRef.current = payload;
+      syncProgress({ ...payload, paused: false });
+      markPlaying();
+      if (payload.positionSeconds < MIN_SAVE_POSITION_SECONDS) return;
+      latestProgressRef.current = payload;
+    },
+    [markPlaying, syncProgress],
+  );
 
   const handlePlayerTranslationChange = useCallback(
     (translation: { id: number; title: string }) => {
@@ -231,11 +261,22 @@ export function AnimeWatchPanel({ shikimoriId, animeTitle, translations }: Props
 
   const handlePause = useCallback(
     (payload: ProgressPayload) => {
-      trackProgress(payload);
+      liveProgressRef.current = payload;
+      syncProgress({ ...payload, paused: true });
+      markPaused();
+      if (payload.positionSeconds >= MIN_SAVE_POSITION_SECONDS) {
+        latestProgressRef.current = payload;
+      }
       void saveProgressNow(payload, selectedIdRef.current);
     },
-    [saveProgressNow, trackProgress],
+    [markPaused, saveProgressNow, syncProgress],
   );
+
+  useEffect(() => {
+    return () => {
+      clearDiscordPresence();
+    };
+  }, [clearDiscordPresence, shikimoriId]);
 
   useEffect(() => {
     if (!user) return;
@@ -380,7 +421,8 @@ export function AnimeWatchPanel({ shikimoriId, animeTitle, translations }: Props
               {continueTranslation?.translationTitle
                 ? `${continueTranslation.translationTitle} · `
                 : ""}
-              серия {continueProgress.episodeNumber} · {formatWatchPosition(continueProgress.positionSeconds)}
+              {formatEpisodeOfTotal(continueProgress.episodeNumber, episodesTotal ?? null)} ·{" "}
+              {formatWatchPosition(continueProgress.positionSeconds)}
             </span>
           </button>
         ) : null}

@@ -8,14 +8,6 @@ import {
 } from "@/lib/anime-labels";
 import { buildSearchHref } from "@/lib/search-shared";
 
-function formatEpisodesValue(episodes: number | null, episodesAired: number | null): string | null {
-  if (episodes == null && episodesAired == null) return null;
-  if (episodes == null || episodes <= 0) {
-    return episodesAired != null ? String(episodesAired) : null;
-  }
-  return `${episodesAired ?? "?"} / ${episodes}`;
-}
-
 function MetadataRow({ label, value }: { label: string; value: React.ReactNode | null }) {
   if (value == null || value === "") return null;
 
@@ -48,7 +40,6 @@ function GenreValue({ genres }: { genres: AnimePageDto["genres"] }) {
 }
 
 export function AnimeMetadataList({ anime }: { anime: AnimePageDto }) {
-  const episodesValue = formatEpisodesValue(anime.episodes, anime.episodesAired);
   const durationValue = formatDurationRu(anime.duration);
   const studioValue = anime.studios.map((studio) => studio.name).join(", ") || null;
   const dubberValue = anime.dubbers.length > 0 ? anime.dubbers.join(", ") : null;
@@ -58,7 +49,6 @@ export function AnimeMetadataList({ anime }: { anime: AnimePageDto }) {
 
   return (
     <div className="mt-4 space-y-1">
-      <MetadataRow label="Серии" value={episodesValue} />
       <MetadataRow label="Длительность" value={durationValue} />
       <MetadataRow label="Студии" value={studioValue} />
       <MetadataRow label="Дабберы" value={dubberValue} />

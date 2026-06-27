@@ -1,11 +1,19 @@
+import type { Metadata } from "next";
 import { redirect } from "next/navigation";
 import { ProfileCard } from "@/components/profile/ProfileCard";
 import { getSession } from "@/lib/auth/session";
 import { prisma } from "@/lib/prisma";
+import { buildSitePageMetadata } from "@/lib/site-metadata";
 import { getProfileFriends } from "@/lib/user-friends";
 import { getResolvedProfileStats } from "@/lib/user-profile-resolver";
 
 export const dynamic = "force-dynamic";
+
+export const metadata: Metadata = buildSitePageMetadata({
+  title: "Профиль",
+  description: "Личный кабинет — списки аниме, статистика и настройки",
+  canonicalPath: "/profile",
+});
 
 export default async function ProfilePage() {
   const session = await getSession();

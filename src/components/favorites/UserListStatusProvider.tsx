@@ -24,7 +24,7 @@ type UserListStatusContextValue = {
 const UserListStatusContext = createContext<UserListStatusContextValue | null>(null);
 
 export function UserListStatusProvider({ children }: { children: ReactNode }) {
-  const { user, loading: authLoading } = useAuth();
+  const { user, loading: authLoading, login } = useAuth();
   const [lists, setLists] = useState<Record<string, UserAnimeListInfo>>({});
   const [loading, setLoading] = useState(false);
 
@@ -85,6 +85,10 @@ export function UserListStatusProvider({ children }: { children: ReactNode }) {
       };
 
       if (!res.ok) {
+        if (res.status === 401) {
+          login();
+          return null;
+        }
         throw new Error(data.error ?? "Не удалось обновить список");
       }
 
@@ -101,7 +105,7 @@ export function UserListStatusProvider({ children }: { children: ReactNode }) {
 
       return listInfo;
     },
-    [],
+    [login],
   );
 
   const value = useMemo(

@@ -1,0 +1,132 @@
+<!doctype html>
+<html lang="ru">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Track Anime — Discord RPC</title>
+    <style>
+      :root {
+        color-scheme: dark;
+        --bg: #0f1117;
+        --panel: #171a22;
+        --text: #e8eaef;
+        --muted: #8b93a7;
+        --info: #9ecbff;
+        --warn: #ffd166;
+        --error: #ff7b7b;
+        --border: #2a3140;
+      }
+
+      * {
+        box-sizing: border-box;
+      }
+
+      body {
+        margin: 0;
+        font-family: Consolas, "Cascadia Mono", "Segoe UI Mono", monospace;
+        background: var(--bg);
+        color: var(--text);
+        min-height: 100vh;
+        display: flex;
+        flex-direction: column;
+      }
+
+      header {
+        padding: 12px 16px;
+        border-bottom: 1px solid var(--border);
+        background: var(--panel);
+      }
+
+      header {
+        padding: 12px 16px;
+        border-bottom: 1px solid var(--border);
+        background: var(--panel);
+        display: flex;
+        align-items: center;
+        gap: 12px;
+      }
+
+      header img {
+        width: 40px;
+        height: 40px;
+        border-radius: 8px;
+        flex-shrink: 0;
+      }
+
+      header .meta h1 {
+        margin: 0;
+        font-size: 14px;
+        font-weight: 600;
+      }
+
+      header .meta p {
+        margin: 4px 0 0;
+        font-size: 12px;
+        color: var(--muted);
+      }
+
+      #log {
+        flex: 1;
+        margin: 0;
+        padding: 12px 16px 24px;
+        overflow: auto;
+        white-space: pre-wrap;
+        word-break: break-word;
+        line-height: 1.45;
+        font-size: 12px;
+      }
+
+      .line {
+        margin: 0 0 4px;
+      }
+
+      .line.info {
+        color: var(--text);
+      }
+
+      .line.warn {
+        color: var(--warn);
+      }
+
+      .line.error {
+        color: var(--error);
+      }
+
+      .line .time {
+        color: var(--muted);
+        margin-right: 8px;
+      }
+    </style>
+  </head>
+  <body>
+    <header>
+      <img src="icon.png" alt="" width="40" height="40" />
+      <div class="meta">
+        <h1>Track Anime — Discord RPC</h1>
+        <p>Локальный мост Rich Presence. Окно можно закрыть — сервер останется в трее.</p>
+      </div>
+    </header>
+    <div id="log"></div>
+    <script>
+      const logEl = document.getElementById("log");
+
+      function formatTime(ts) {
+        return new Date(ts).toLocaleTimeString("ru-RU", { hour12: false });
+      }
+
+      function appendEntry(entry) {
+        const row = document.createElement("div");
+        row.className = `line ${entry.level || "info"}`;
+        row.innerHTML = `<span class="time">${formatTime(entry.time)}</span>${entry.line}`;
+        logEl.appendChild(row);
+        logEl.scrollTop = logEl.scrollHeight;
+      }
+
+      window.rpcTray.getHistory().then((entries) => {
+        for (const entry of entries) appendEntry(entry);
+      });
+
+      window.rpcTray.onLog((entry) => appendEntry(entry));
+    </script>
+  </body>
+</html>

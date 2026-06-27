@@ -1,19 +1,22 @@
+import { getShikimoriUserAgent } from "@/lib/auth/shikimori-user-agent";
+import { getShikimoriEndpoints, shikimoriAssetUrl } from "@/lib/shikimori/endpoints";
 import { shikimoriRateLimit, shikimoriRetryAfterMs } from "@/lib/shikimori/rate-limiter";
 
-const API_BASE = "https://shikimori.one/api";
 const USER_AGENT = "TrackAnime";
 const MAX_RETRIES = 5;
 
 const inflightRequests = new Map<string, Promise<unknown>>();
 
 async function shikimoriFetchOnce<T>(path: string, init?: RequestInit): Promise<T | null> {
+  const { apiBase } = await getShikimoriEndpoints();
+
   for (let attempt = 0; attempt <= MAX_RETRIES; attempt += 1) {
     await shikimoriRateLimit();
 
-    const res = await fetch(`${API_BASE}${path}`, {
+    const res = await fetch(`${apiBase}${path}`, {
       ...init,
       headers: {
-        "User-Agent": USER_AGENT,
+        "User-Agent": getShikimoriUserAgent() || USER_AGENT,
         Accept: "application/json",
         ...init?.headers,
       },
@@ -58,8 +61,4 @@ export function isShikimoriMissingImage(path: string | null | undefined): boolea
   return /\/assets\/globals\/missing_/i.test(path);
 }
 
-export function shikimoriAssetUrl(path: string | null | undefined): string | null {
-  if (!path || isShikimoriMissingImage(path)) return null;
-  if (path.startsWith("http")) return path;
-  return `https://shikimori.io${path}`;
-}
+export { shikimoriAssetUrl };

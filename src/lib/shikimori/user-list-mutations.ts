@@ -7,12 +7,6 @@ import {
 import type { ShikimoriListStatus } from "@/lib/shikimori/user-rates.types";
 import type { UserAnimeListInfo } from "@/lib/user-anime-list-status";
 
-type ShikimoriFavoriteRecord = {
-  id: number;
-  linked_id: number;
-  linked_type: string;
-};
-
 function parseShikimoriDate(value: string | null | undefined): Date | null {
   if (!value) return null;
   const ms = Date.parse(value);
@@ -139,10 +133,9 @@ function buildCreateRateBody(
   };
 }
 
-function buildUpdateRateBody(shikimoriUserId: number, listStatus: ShikimoriListStatus) {
+function buildUpdateRateBody(listStatus: ShikimoriListStatus) {
   return {
     user_rate: {
-      user_id: String(shikimoriUserId),
       status: listStatus,
     },
   };
@@ -164,13 +157,12 @@ async function createUserRateOnShikimori(
 async function updateUserRateOnShikimori(
   userId: string,
   rateId: number,
-  shikimoriUserId: number,
   listStatus: ShikimoriListStatus,
 ): Promise<ShikimoriUserRate> {
   return shikimoriAuthFetch<ShikimoriUserRate>(userId, `/v2/user_rates/${rateId}`, {
     method: "PATCH",
     headers: { "Content-Type": "application/json" },
-    body: JSON.stringify(buildUpdateRateBody(shikimoriUserId, listStatus)),
+    body: JSON.stringify(buildUpdateRateBody(listStatus)),
   });
 }
 
@@ -183,21 +175,10 @@ async function upsertUserRateOnShikimori(
   const rateId = await resolveAnimeRateId(userId, shikimoriUserId, shikimoriAnimeId);
 
   if (rateId) {
-    return updateUserRateOnShikimori(userId, rateId, shikimoriUserId, listStatus);
+    return updateUserRateOnShikimori(userId, rateId, listStatus);
   }
 
   return createUserRateOnShikimori(userId, shikimoriUserId, shikimoriAnimeId, listStatus);
-}
-
-async function findFavoriteRecordId(userId: string, shikimoriId: number): Promise<number | null> {
-  const records = await shikimoriAuthFetch<ShikimoriFavoriteRecord[]>(
-    userId,
-    `/favorites?linked_type=Anime&linked_id=${shikimoriId}`,
-  );
-  const match = Array.isArray(records)
-    ? records.find((item) => item.linked_type === "Anime" && item.linked_id === shikimoriId)
-    : null;
-  return match?.id ?? null;
 }
 
 export async function setUserAnimeListStatus(
@@ -218,7 +199,7 @@ export async function setUserAnimeListStatus(
     const remoteRate = await fetchRemoteAnimeRate(userId, shikimoriUserId, shikimoriId);
 
     rate = remoteRate
-      ? await updateUserRateOnShikimori(userId, remoteRate.id, shikimoriUserId, listStatus)
+      ? await updateUserRateOnShikimori(userId, remoteRate.id, listStatus)
       : await createUserRateOnShikimori(userId, shikimoriUserId, shikimoriId, listStatus);
   }
 
@@ -281,22 +262,14 @@ export async function setUserAnimeBookmark(
   bookmark: boolean,
 ): Promise<UserAnimeListInfo | null> {
   if (bookmark) {
-    await shikimoriAuthFetch<void>(userId, "/favorites", {
+    await shikimoriAuthFetch<void>(userId, `/favorites/Anime/${shikimoriId}`, {
       method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({
-        linked_type: "Anime",
-        linked_id: shikimoriId,
-      }),
     });
     await setBookmarkLocally(userId, shikimoriId, true);
   } else {
-    const favoriteId = await findFavoriteRecordId(userId, shikimoriId);
-    if (favoriteId) {
-      await shikimoriAuthFetch<void>(userId, `/favorites/${favoriteId}`, {
-        method: "DELETE",
-      });
-    }
+    await shikimoriAuthFetch<void>(userId, `/favorites/Anime/${shikimoriId}`, {
+      method: "DELETE",
+    });
     await setBookmarkLocally(userId, shikimoriId, false);
   }
 

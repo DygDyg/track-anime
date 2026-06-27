@@ -9,18 +9,19 @@ export const SITE_FONT_IDS = [
   "roboto-condensed",
   "pangolin",
   "morpheus",
-  "propaniac",
-  "tolkien",
 ] as const;
 
 export type SiteFontFamily = (typeof SITE_FONT_IDS)[number];
-export type SiteCursorStyle = "default" | "large" | "accent";
+export type SiteCursorStyle = "default" | "large" | "accent" | "retro";
 export type SiteCardSize = "compact" | "normal" | "large";
 export type SiteAccentPreset = "blue" | "purple" | "green" | "rose" | "amber";
 export type SiteBackgroundDim = "none" | "light" | "medium" | "heavy";
 
 /** null = показывать все озвучки; массив = только выбранные */
 export type HomeTranslationFilter = null | string[];
+
+/** null = все фоны в слайдшоу; массив = только выбранные URL; [] = без фона */
+export type BackgroundSlideshowFilter = null | string[];
 
 export const HOVER_TRAILER_DELAY_MIN_SEC = 1;
 export const HOVER_TRAILER_DELAY_MAX_SEC = 15;
@@ -32,6 +33,7 @@ export type SiteSettings = {
   cardSize: SiteCardSize;
   accentPreset: SiteAccentPreset;
   backgroundDim: SiteBackgroundDim;
+  backgroundSlideshowFilter: BackgroundSlideshowFilter;
   reduceMotion: boolean;
   preferPosterOverScreenshot: boolean;
   showRelativeTime: boolean;
@@ -40,6 +42,12 @@ export type SiteSettings = {
   hoverTrailerDelaySec: number;
   /** Блок «Новое в вашей истории» на главной свёрнут по умолчанию */
   homeHistoryCollapsedByDefault: boolean;
+  /** Отправлять текущий просмотр в Discord через локальный мост */
+  discordPresenceEnabled: boolean;
+  /** Показывать в Discord текущий раздел сайта (Главная, Календарь и т.д.) */
+  discordPresenceShowSitePage: boolean;
+  /** Кнопка «Открыть» в Discord с ссылкой на страницу */
+  discordPresenceOpenButtonEnabled: boolean;
 };
 
 export const SITE_SETTINGS_STORAGE_KEY = "track-anime-site-settings";
@@ -51,6 +59,7 @@ export const DEFAULT_SITE_SETTINGS: SiteSettings = {
   cardSize: "normal",
   accentPreset: "blue",
   backgroundDim: "medium",
+  backgroundSlideshowFilter: null,
   reduceMotion: false,
   preferPosterOverScreenshot: false,
   showRelativeTime: true,
@@ -58,6 +67,9 @@ export const DEFAULT_SITE_SETTINGS: SiteSettings = {
   hoverTrailerEnabled: true,
   hoverTrailerDelaySec: HOVER_TRAILER_DELAY_DEFAULT_SEC,
   homeHistoryCollapsedByDefault: false,
+  discordPresenceEnabled: false,
+  discordPresenceShowSitePage: false,
+  discordPresenceOpenButtonEnabled: true,
 };
 
 export const SITE_FONT_OPTIONS: { id: SiteFontFamily; label: string }[] = [
@@ -69,14 +81,13 @@ export const SITE_FONT_OPTIONS: { id: SiteFontFamily; label: string }[] = [
   { id: "roboto-condensed", label: "Roboto Condensed" },
   { id: "pangolin", label: "Pangolin" },
   { id: "morpheus", label: "Morpheus" },
-  { id: "propaniac", label: "Propaniac" },
-  { id: "tolkien", label: "Tolkien" },
 ];
 
 export const SITE_CURSOR_OPTIONS: { id: SiteCursorStyle; label: string }[] = [
   { id: "default", label: "Стандартный" },
   { id: "large", label: "Крупный" },
   { id: "accent", label: "Акцентный" },
+  { id: "retro", label: "Ретро" },
 ];
 
 export const SITE_CARD_SIZE_OPTIONS: { id: SiteCardSize; label: string; hint: string }[] = [
@@ -119,6 +130,12 @@ function parseFontFamily(value: unknown): SiteFontFamily {
   return DEFAULT_SITE_SETTINGS.fontFamily;
 }
 
+function parseBackgroundSlideshowFilter(value: unknown): BackgroundSlideshowFilter {
+  if (value === null) return null;
+  if (!Array.isArray(value)) return null;
+  return value.filter((item): item is string => typeof item === "string" && item.length > 0);
+}
+
 function parseHoverTrailerDelaySec(value: unknown): number {
   const parsed = typeof value === "number" ? value : Number(value);
   if (!Number.isFinite(parsed)) return DEFAULT_SITE_SETTINGS.hoverTrailerDelaySec;
@@ -139,7 +156,10 @@ export function normalizeSiteSettings(raw: unknown): SiteSettings {
   return {
     fontFamily: parseFontFamily(raw.fontFamily),
     cursorStyle:
-      cursorStyle === "large" || cursorStyle === "accent" || cursorStyle === "default"
+      cursorStyle === "large" ||
+      cursorStyle === "accent" ||
+      cursorStyle === "retro" ||
+      cursorStyle === "default"
         ? cursorStyle
         : DEFAULT_SITE_SETTINGS.cursorStyle,
     cardSize:
@@ -161,6 +181,7 @@ export function normalizeSiteSettings(raw: unknown): SiteSettings {
       backgroundDim === "medium"
         ? backgroundDim
         : DEFAULT_SITE_SETTINGS.backgroundDim,
+    backgroundSlideshowFilter: parseBackgroundSlideshowFilter(raw.backgroundSlideshowFilter),
     reduceMotion: raw.reduceMotion === true,
     preferPosterOverScreenshot: raw.preferPosterOverScreenshot === true,
     showRelativeTime: raw.showRelativeTime !== false,
@@ -168,6 +189,9 @@ export function normalizeSiteSettings(raw: unknown): SiteSettings {
     hoverTrailerEnabled: raw.hoverTrailerEnabled !== false,
     hoverTrailerDelaySec: parseHoverTrailerDelaySec(raw.hoverTrailerDelaySec),
     homeHistoryCollapsedByDefault: raw.homeHistoryCollapsedByDefault === true,
+    discordPresenceEnabled: raw.discordPresenceEnabled === true,
+    discordPresenceShowSitePage: raw.discordPresenceShowSitePage === true,
+    discordPresenceOpenButtonEnabled: raw.discordPresenceOpenButtonEnabled !== false,
   };
 }
 
@@ -219,6 +243,25 @@ export function homeTranslationFilterSummary(
   return `Выбрано ${filter.length} из ${totalCount}`;
 }
 
+export function resolveSlideshowBackgroundUrls(
+  allUrls: string[],
+  filter: BackgroundSlideshowFilter,
+): string[] {
+  if (filter === null) return allUrls;
+  const allowed = new Set(filter);
+  return allUrls.filter((url) => allowed.has(url));
+}
+
+export function backgroundSlideshowFilterSummary(
+  filter: BackgroundSlideshowFilter,
+  totalCount: number,
+): string {
+  if (totalCount === 0) return "Нет доступных фонов";
+  if (filter === null) return `Все фоны (${totalCount})`;
+  if (filter.length === 0) return "Слайдшоу отключено";
+  return `Выбрано ${filter.length} из ${totalCount}`;
+}
+
 /** Выбрать только популярные озвучки из полного списка; null = все популярные покрывают каталог */
 export function buildPopularHomeTranslationFilter(allNames: string[]): HomeTranslationFilter {
   if (allNames.length === 0) return null;
@@ -248,4 +291,4 @@ export function writeHomeHistoryCollapsed(collapsed: boolean): void {
   }
 }
 
-export const siteSettingsInitScript = `(function(){try{var k="${SITE_SETTINGS_STORAGE_KEY}";var d=JSON.parse(localStorage.getItem(k)||"{}");var el=document.documentElement;var f=d.fontFamily||"inter";var c=d.cursorStyle||"default";var s=d.cardSize||"normal";var a=d.accentPreset||"blue";var b=d.backgroundDim||"medium";var allowed=${JSON.stringify(SITE_FONT_IDS)};if(allowed.indexOf(f)===-1)f="inter";el.setAttribute("data-font",f);el.setAttribute("data-cursor",c);el.setAttribute("data-card-size",s);el.setAttribute("data-accent",a);el.setAttribute("data-bg-dim",b);if(d.reduceMotion===true)el.setAttribute("data-reduce-motion","true");}catch(e){}})();`;
+export const siteSettingsInitScript = `(function(){try{var k="${SITE_SETTINGS_STORAGE_KEY}";var d=JSON.parse(localStorage.getItem(k)||"{}");var el=document.documentElement;var f=d.fontFamily||"inter";var c=d.cursorStyle||"default";var s=d.cardSize||"normal";var a=d.accentPreset||"blue";var b=d.backgroundDim||"medium";var allowed=${JSON.stringify(SITE_FONT_IDS)};var cursors=${JSON.stringify(SITE_CURSOR_OPTIONS.map((item) => item.id))};if(allowed.indexOf(f)===-1)f="inter";if(cursors.indexOf(c)===-1)c="default";el.setAttribute("data-font",f);el.setAttribute("data-cursor",c);el.setAttribute("data-card-size",s);el.setAttribute("data-accent",a);el.setAttribute("data-bg-dim",b);if(d.reduceMotion===true)el.setAttribute("data-reduce-motion","true");}catch(e){}})();`;

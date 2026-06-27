@@ -1,5 +1,4 @@
 import {
-  authConfig,
   formatShikimoriScopeForAuthorize,
   getShikimoriClientId,
   getShikimoriClientSecret,
@@ -7,6 +6,7 @@ import {
   getShikimoriScope,
 } from "@/lib/auth/config";
 import { getShikimoriUserAgent } from "@/lib/auth/shikimori-user-agent";
+import { getShikimoriEndpoints } from "@/lib/shikimori/endpoints";
 
 export type ShikimoriWhoami = {
   id: number;
@@ -23,8 +23,9 @@ export type ShikimoriTokenResponse = {
   scope?: string;
 };
 
-export function buildShikimoriAuthorizeUrl(state: string, redirectUri?: string): string {
+export async function buildShikimoriAuthorizeUrl(state: string, redirectUri?: string): Promise<string> {
   const redirect = redirectUri ?? getShikimoriRedirectUri();
+  const { oauthAuthorizeUrl } = await getShikimoriEndpoints();
   const params = new URLSearchParams({
     client_id: getShikimoriClientId(),
     redirect_uri: redirect,
@@ -32,7 +33,7 @@ export function buildShikimoriAuthorizeUrl(state: string, redirectUri?: string):
     scope: formatShikimoriScopeForAuthorize(getShikimoriScope()),
     state,
   });
-  return `${authConfig.shikimoriAuthorizeUrl}?${params.toString()}`;
+  return `${oauthAuthorizeUrl}?${params.toString()}`;
 }
 
 function buildTokenForm(fields: Record<string, string>): FormData {
@@ -44,7 +45,8 @@ function buildTokenForm(fields: Record<string, string>): FormData {
 }
 
 async function shikimoriTokenRequest(body: FormData): Promise<ShikimoriTokenResponse> {
-  const res = await fetch(authConfig.shikimoriTokenUrl, {
+  const { oauthTokenUrl } = await getShikimoriEndpoints();
+  const res = await fetch(oauthTokenUrl, {
     method: "POST",
     headers: {
       "User-Agent": getShikimoriUserAgent(),
@@ -99,7 +101,8 @@ export async function refreshShikimoriToken(refreshToken: string): Promise<Shiki
 }
 
 export async function fetchShikimoriWhoami(accessToken: string): Promise<ShikimoriWhoami> {
-  const res = await fetch(authConfig.shikimoriWhoamiUrl, {
+  const { whoamiUrl } = await getShikimoriEndpoints();
+  const res = await fetch(whoamiUrl, {
     headers: {
       "User-Agent": getShikimoriUserAgent(),
       Accept: "application/json",

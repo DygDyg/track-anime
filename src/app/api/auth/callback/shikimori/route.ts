@@ -51,8 +51,17 @@ export async function GET(request: NextRequest) {
   const { searchParams } = request.nextUrl;
   const error = searchParams.get("error");
   if (error) {
+    const errorCode =
+      error === "access_denied"
+        ? "access_denied"
+        : error === "invalid_scope"
+          ? "invalid_scope"
+          : "oauth_failed";
     const response = finishLoginError(baseUrl, {
-      error: error === "access_denied" ? "access_denied" : "oauth_failed",
+      error: errorCode,
+      ...(searchParams.get("error_description")
+        ? { details: searchParams.get("error_description")!.slice(0, 240) }
+        : {}),
     });
     clearOAuthCookies(response);
     return response;

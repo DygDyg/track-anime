@@ -2,12 +2,14 @@ import type { Metadata } from "next";
 import { redirect } from "next/navigation";
 import { HistoryView } from "@/components/history/HistoryView";
 import { getSession } from "@/lib/auth/session";
+import { buildSitePageMetadata } from "@/lib/site-metadata";
 import { getWatchHistory } from "@/lib/watch-history";
 
-export const metadata: Metadata = {
-  title: "История — Track Anime",
+export const metadata: Metadata = buildSitePageMetadata({
+  title: "История",
   description: "Продолжить просмотр с сохранённой позиции",
-};
+  canonicalPath: "/history",
+});
 
 export const dynamic = "force-dynamic";
 

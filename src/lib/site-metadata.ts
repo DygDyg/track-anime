@@ -1,5 +1,6 @@
 import type { Metadata } from "next";
 import { labelKind, labelKindShort } from "@/lib/anime-labels";
+import { shikimoriAvatarUrlLarge } from "@/lib/auth/shikimori-avatar";
 import { resolvePosterUrl } from "@/lib/poster";
 import { SITE_LOGO_ALT, SITE_LOGO_PATH, SITE_NAME, versionedAsset } from "@/lib/site-brand";
 import { stripShikimoriBbcode } from "@/lib/shikimori-bbcode";
@@ -136,6 +137,110 @@ export function buildAnimePageMetadata(input: {
 }
 
 export const defaultSiteDescription = "Трекер аниме — новые серии, списки, просмотр";
+
+type OgImage = { url: string; width: number; height: number; alt: string };
+
+function buildDefaultOgImages(): OgImage[] {
+  const logoUrl = toAbsoluteUrl(versionedAsset(SITE_LOGO_PATH));
+  if (!logoUrl) return [];
+
+  return [
+    {
+      url: logoUrl,
+      width: 512,
+      height: 512,
+      alt: SITE_LOGO_ALT,
+    },
+  ];
+}
+
+function buildSocialMetadata(input: {
+  title: string;
+  description: string;
+  canonicalPath: string;
+  images?: OgImage[];
+  openGraphType?: "website" | "profile";
+  twitterCard?: "summary" | "summary_large_image";
+}): Metadata {
+  const images = input.images?.length ? input.images : buildDefaultOgImages();
+  const imageUrls = images.map((image) => image.url);
+  const description = limitMetaDescription(input.description);
+  const twitterCard =
+    input.twitterCard ??
+    (images[0] && images[0].width <= 200 && images[0].width === images[0].height
+      ? "summary"
+      : "summary_large_image");
+
+  return {
+    title: input.title,
+    description,
+    alternates: { canonical: input.canonicalPath },
+    openGraph: {
+      type: input.openGraphType ?? "website",
+      title: input.title,
+      description,
+      url: input.canonicalPath,
+      siteName: SITE_NAME,
+      locale: "ru_RU",
+      images,
+    },
+    twitter: {
+      card: twitterCard,
+      title: `${input.title} — ${SITE_NAME}`,
+      description,
+      images: imageUrls.length > 0 ? imageUrls : undefined,
+    },
+  };
+}
+
+/** OG/Twitter для обычных страниц сайта (логотип в превью). */
+export function buildSitePageMetadata(input: {
+  title: string;
+  description: string;
+  canonicalPath: string;
+}): Metadata {
+  return buildSocialMetadata({
+    title: input.title,
+    description: input.description,
+    canonicalPath: input.canonicalPath,
+  });
+}
+
+/** OG/Twitter для публичного профиля пользователя (аватар в превью). */
+export function buildUserProfilePageMetadata(input: {
+  nickname: string;
+  avatar: string | null;
+  canonicalPath: string;
+  pageKind?: "profile" | "favorites";
+}): Metadata {
+  const title =
+    input.pageKind === "favorites" ? `Списки ${input.nickname}` : input.nickname;
+  const description =
+    input.pageKind === "favorites"
+      ? `Аниме-списки и закладки пользователя ${input.nickname} на ${SITE_NAME}`
+      : `Профиль ${input.nickname} на ${SITE_NAME} — списки аниме, статистика и друзья`;
+
+  const avatarUrl = shikimoriAvatarUrlLarge(input.avatar);
+  const images: OgImage[] = avatarUrl
+    ? [
+        {
+          url: avatarUrl,
+          width: 160,
+          height: 160,
+          alt: `Аватар ${input.nickname}`,
+        },
+      ]
+    : buildDefaultOgImages();
+
+  return buildSocialMetadata({
+    title,
+    description,
+    canonicalPath: input.canonicalPath,
+    images,
+    openGraphType: "profile",
+    twitterCard: avatarUrl ? "summary" : "summary_large_image",
+  });
+}
 
 export function buildDefaultOpenGraph(): NonNullable<Metadata["openGraph"]> {
   return {

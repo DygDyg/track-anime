@@ -50,9 +50,16 @@ export async function loadShikimoriAnimeFromCache(
   return anime;
 }
 
+function yearFromShikimoriDate(iso: string | null | undefined): number | null {
+  if (!iso) return null;
+  const year = Number(iso.slice(0, 4));
+  return Number.isFinite(year) ? year : null;
+}
+
 export async function persistShikimoriAnimeCache(anime: ShikimoriAnime): Promise<void> {
   const syncedAt = new Date().toISOString();
   const title = anime.russian || anime.name;
+  const year = yearFromShikimoriDate(anime.aired_on ?? anime.released_on);
 
   await prisma.kodikMaterial.upsert({
     where: { kodikId: shikimoriStubKodikId(anime.id) },
@@ -62,6 +69,7 @@ export async function persistShikimoriAnimeCache(anime: ShikimoriAnime): Promise
       type: anime.kind ?? "anime",
       title,
       titleOrig: anime.name,
+      year,
       translationId: 0,
       translationTitle: "Shikimori",
       translationType: SHIKIMORI_CACHE_TRANSLATION_TYPE,
@@ -71,18 +79,27 @@ export async function persistShikimoriAnimeCache(anime: ShikimoriAnime): Promise
         [ANIME_FULL_KEY]: anime,
         [ANIME_FULL_SYNCED_AT_KEY]: syncedAt,
         anime_title: title,
+        anime_kind: anime.kind ?? null,
+        anime_status: anime.status ?? null,
+        shikimori_episodes: anime.episodes ?? null,
+        year,
       },
     },
     update: {
       title,
       titleOrig: anime.name,
       type: anime.kind ?? "anime",
+      year,
       kodikUpdatedAt: new Date(),
       materialData: {
         source: "shikimori",
         [ANIME_FULL_KEY]: anime,
         [ANIME_FULL_SYNCED_AT_KEY]: syncedAt,
         anime_title: title,
+        anime_kind: anime.kind ?? null,
+        anime_status: anime.status ?? null,
+        shikimori_episodes: anime.episodes ?? null,
+        year,
       },
     },
   });

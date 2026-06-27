@@ -1,7 +1,25 @@
 import type { NextConfig } from "next";
+import { withSerwist } from "@serwist/turbopack";
 
 const nextConfig: NextConfig = {
   allowedDevOrigins: ["track-anime.dygdyg.ru", "dygdyg.ru"],
+  async headers() {
+    return [
+      {
+        source: "/downloads/TrackAnimeDiscordRPC.exe",
+        headers: [
+          {
+            key: "Content-Disposition",
+            value: 'attachment; filename="TrackAnimeDiscordRPC.exe"',
+          },
+          {
+            key: "Cache-Control",
+            value: "public, max-age=3600",
+          },
+        ],
+      },
+    ];
+  },
   images: {
     localPatterns: [
       {
@@ -21,4 +39,4 @@ const nextConfig: NextConfig = {
   },
 };
 
-export default nextConfig;
+export default withSerwist(nextConfig);

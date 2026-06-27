@@ -10,9 +10,7 @@ export const authConfig = {
   oauthRedirectCookie: OAUTH_REDIRECT_COOKIE,
   sessionMaxAgeSec: SESSION_MAX_AGE_SEC,
   oauthStateMaxAgeSec: OAUTH_STATE_MAX_AGE_SEC,
-  shikimoriAuthorizeUrl: "https://shikimori.io/oauth/authorize",
-  shikimoriTokenUrl: "https://shikimori.io/oauth/token",
-  shikimoriWhoamiUrl: "https://shikimori.io/api/users/whoami",
+  /** Только scope, включённые в OAuth-приложении Shikimori. Друзья — через SHIKIMORI_OAUTH_SCOPE. */
   defaultScope: "user_rates",
 } as const;
 

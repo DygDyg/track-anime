@@ -1,55 +1,88 @@
 import type { Metadata } from "next";
 import { SearchResultsView } from "@/components/search/SearchResultsView";
+import { buildSitePageMetadata } from "@/lib/site-metadata";
 import {
-  SEARCH_MIN_QUERY_LENGTH,
+  advancedFiltersSummary,
+  hasAdvancedFilters,
+  parseAdvancedFiltersFromParams,
+  parseSearchTab,
+} from "@/lib/search-fields";
+import {
   SEARCH_PAGE_SIZE,
-  searchAnimes,
-  searchAnimesByGenre,
+  searchAnimesAdvanced,
+  searchAnimesQuick,
 } from "@/lib/search";
+import { parseGenreList } from "@/lib/search-fields";
 
 export const revalidate = 60;
 
 type Props = {
-  searchParams: Promise<{ q?: string; genre?: string; page?: string }>;
+  searchParams: Promise<Record<string, string | undefined>>;
 };
 
 export async function generateMetadata({ searchParams }: Props): Promise<Metadata> {
-  const { q, genre } = await searchParams;
-  const trimmedGenre = genre?.trim();
-  const trimmedQuery = q?.trim();
+  const params = await searchParams;
+  const tab = parseSearchTab(params.tab);
+
+  if (tab === "advanced") {
+    const filters = parseAdvancedFiltersFromParams(params);
+    if (hasAdvancedFilters(filters)) {
+      const summary = advancedFiltersSummary(filters);
+      return buildSitePageMetadata({
+        title: `${summary} — поиск`,
+        description: `Результаты расширенного поиска: ${summary}`,
+        canonicalPath: `/search?${new URLSearchParams(params as Record<string, string>).toString()}`,
+      });
+    }
+
+    return buildSitePageMetadata({
+      title: "Поиск по полям",
+      description: "Расширенный поиск аниме по названию, жанру, году, студии и другим полям",
+      canonicalPath: "/search?tab=advanced",
+    });
+  }
+
+  const trimmedGenre = params.genre?.trim();
+  const trimmedQuery = params.q?.trim();
 
   if (trimmedGenre) {
-    return {
-      title: `${trimmedGenre} — поиск — Track Anime`,
+    return buildSitePageMetadata({
+      title: `${trimmedGenre} — поиск`,
       description: `Аниме в жанре ${trimmedGenre}`,
-    };
+      canonicalPath: `/search?genre=${encodeURIComponent(trimmedGenre)}`,
+    });
   }
 
   if (trimmedQuery) {
-    return {
-      title: `${trimmedQuery} — поиск — Track Anime`,
+    return buildSitePageMetadata({
+      title: `${trimmedQuery} — поиск`,
       description: `Результаты поиска по запросу «${trimmedQuery}»`,
-    };
+      canonicalPath: `/search?q=${encodeURIComponent(trimmedQuery)}`,
+    });
   }
 
-  return {
-    title: "Поиск — Track Anime",
+  return buildSitePageMetadata({
+    title: "Поиск",
     description: "Поиск аниме по названию и жанрам",
-  };
+    canonicalPath: "/search",
+  });
 }
 
 export default async function SearchPage({ searchParams }: Props) {
-  const { q, genre, page: pageParam } = await searchParams;
-  const page = Math.max(1, Number(pageParam) || 1);
-  const trimmedGenre = genre?.trim() ?? "";
-  const trimmedQuery = q?.trim() ?? "";
+  const params = await searchParams;
+  const page = Math.max(1, Number(params.page) || 1);
+  const tab = parseSearchTab(params.tab);
+  const trimmedGenre = params.genre?.trim() ?? "";
+  const trimmedQuery = params.q?.trim() ?? "";
+  const advancedFilters = parseAdvancedFiltersFromParams(params);
 
   let result;
 
-  if (trimmedGenre.length >= SEARCH_MIN_QUERY_LENGTH) {
-    result = await searchAnimesByGenre(trimmedGenre, page, SEARCH_PAGE_SIZE);
-  } else if (trimmedQuery.length >= SEARCH_MIN_QUERY_LENGTH) {
-    result = await searchAnimes(trimmedQuery, page, SEARCH_PAGE_SIZE);
+  if (tab === "advanced") {
+    result = await searchAnimesAdvanced(advancedFilters, page, SEARCH_PAGE_SIZE);
+  } else if (trimmedQuery || parseGenreList(trimmedGenre).length > 0) {
+    result = await searchAnimesQuick(trimmedQuery, trimmedGenre, page, SEARCH_PAGE_SIZE);
+    result = { ...result, tab: "quick" as const };
   } else {
     result = {
       items: [],
@@ -59,6 +92,7 @@ export default async function SearchPage({ searchParams }: Props) {
       hasMore: false,
       query: trimmedQuery,
       genre: trimmedGenre || null,
+      tab,
     };
   }
 

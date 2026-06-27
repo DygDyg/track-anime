@@ -2,6 +2,7 @@ import Link from "next/link";
 import { Fragment, type ReactNode } from "react";
 import { AnimeLink } from "@/components/AnimeLink";
 import { parseShikimoriEntityAttr, parseShikimoriEntityId } from "@/lib/shikimori-bbcode";
+import { shikimoriSiteUrl } from "@/lib/shikimori/endpoints";
 
 const ALLOWED_SIMPLE_TAGS = new Set(["b", "i", "u", "s"]);
 const ENTITY_TAGS = new Set(["character", "anime", "manga"]);
@@ -115,7 +116,7 @@ function wrapTag(
       return (
         <a
           key={key}
-          href={`https://shikimori.one/characters/${id}`}
+          href={shikimoriSiteUrl(`/characters/${id}`)}
           target="_blank"
           rel="noopener noreferrer"
           className="text-accent underline-offset-2 hover:underline"
@@ -141,7 +142,7 @@ function wrapTag(
       return (
         <a
           key={key}
-          href={`https://shikimori.one/mangas/${id}`}
+          href={shikimoriSiteUrl(`/mangas/${id}`)}
           target="_blank"
           rel="noopener noreferrer"
           className="text-accent underline-offset-2 hover:underline"

@@ -23,7 +23,17 @@
     "kodik:import:episodes": "tsx scripts/kodik-import-full.ts --episodes-only",
     "kodik:sync": "tsx scripts/kodik-sync-recent.ts",
     "kodik:sync:scheduled": "tsx scripts/kodik-sync-scheduled.ts",
-    "kodik:backfill-dates": "tsx scripts/kodik-backfill-release-dates.ts"
+    "kodik:backfill-dates": "tsx scripts/kodik-backfill-release-dates.ts",
+    "import:sqlite-history": "node scripts/import-sqlite-watch-history.mjs --create-users",
+    "import:sqlite-history:merge": "node scripts/import-sqlite-watch-history.mjs --skip-existing",
+    "users:backfill-profiles": "tsx scripts/backfill-user-profiles.ts",
+    "discord:bridge": "node scripts/discord-rpc-bridge.mjs",
+    "discord:tray": "electron scripts/discord-rpc-tray/main.mjs",
+    "discord:tray:build": "electron-builder --project scripts/discord-rpc-tray --win portable",
+    "discord:tray:publish": "npm run discord:tray:build && node scripts/publish-discord-tray-exe.mjs",
+    "deploy": "powershell -NoProfile -ExecutionPolicy Bypass -File scripts/deploy.ps1",
+    "deploy:release": "powershell -NoProfile -ExecutionPolicy Bypass -File scripts/deploy.ps1 -ForceTrayRebuild",
+    "deploy:rpc": "powershell -NoProfile -ExecutionPolicy Bypass -File scripts/deploy-rpc.ps1"
   },
   "dependencies": {
     "@prisma/client": "^6.9.0",
@@ -34,14 +44,21 @@
     "sharp": "^0.34.5"
   },
   "devDependencies": {
+    "@serwist/turbopack": "^9.5.11",
+    "@swc/helpers": "^0.5.23",
     "@types/node": "^22.15.0",
     "@types/react": "^19.2.17",
     "@types/react-dom": "^19.2.3",
     "autoprefixer": "^10.5.0",
+    "discord-rpc": "^4.0.1",
+    "electron": "^35.7.5",
+    "electron-builder": "^25.1.8",
+    "esbuild": "^0.28.1",
     "eslint": "^9.39.4",
     "eslint-config-next": "^16.2.9",
     "postcss": "^8.5.15",
     "prisma": "^6.9.0",
+    "serwist": "^9.5.11",
     "tailwindcss": "^3.4.19",
     "tsx": "^4.19.4",
     "typescript": "^5.8.3"

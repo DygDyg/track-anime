@@ -1,9 +1,12 @@
 import { ReleaseCard } from "@/components/ReleaseCard";
+import { CalendarScrollToToday } from "@/components/calendar/CalendarScrollToToday";
 import type { CalendarDay } from "@/lib/calendar";
 import { calendarItemToReleaseDto } from "@/lib/calendar";
 
 const RELEASE_GRID_CLASS =
   "flex flex-col gap-2 overflow-visible px-3 sm:px-6 md:grid md:grid-cols-[repeat(auto-fill,minmax(150px,1fr))] md:items-stretch md:gap-x-8 md:gap-y-4 md:px-12 md:overflow-visible lg:grid-cols-[repeat(auto-fill,minmax(165px,1fr))] lg:gap-x-10 lg:px-16 xl:px-24";
+
+const DAY_SECTION_CLASS = "scroll-mt-20 overflow-visible";
 
 function CalendarDaySection({
   day,
@@ -12,10 +15,28 @@ function CalendarDaySection({
   day: CalendarDay;
   isToday: boolean;
 }) {
-  if (day.items.length === 0) return null;
+  const sectionId = `calendar-day-${day.dayOfWeek}`;
+
+  if (day.items.length === 0 && !isToday) return null;
+
+  if (day.items.length === 0) {
+    return (
+      <section id={sectionId} className={DAY_SECTION_CLASS}>
+        <header className="mb-3 flex flex-wrap items-baseline gap-x-3 gap-y-1 px-3 text-accent sm:px-6 md:px-12 lg:px-16 xl:px-24">
+          <h2 className="text-lg font-semibold tracking-tight sm:text-xl">
+            {day.label}
+            <span className="ml-2 rounded-full border border-accent/30 bg-accent/10 px-2 py-0.5 text-[10px] font-medium uppercase tracking-wide text-accent">
+              Сегодня
+            </span>
+          </h2>
+          <p className="text-sm text-muted">Нет выходов</p>
+        </header>
+      </section>
+    );
+  }
 
   return (
-    <section className="overflow-visible">
+    <section id={sectionId} className={DAY_SECTION_CLASS}>
       <header
         className={[
           "mb-3 flex flex-wrap items-baseline gap-x-3 gap-y-1 px-3 sm:px-6 md:px-12 lg:px-16 xl:px-24",
@@ -53,6 +74,7 @@ export function CalendarView({
 }) {
   return (
     <>
+      <CalendarScrollToToday todayDayOfWeek={todayDayOfWeek} />
       <header className="mb-6 px-3 sm:px-6 md:px-12 lg:px-16 xl:px-24">
         <h1 className="text-2xl font-bold tracking-tight sm:text-3xl">Календарь</h1>
         <p className="mt-2 text-xs text-muted">Всего тайтлов: {totalCount}</p>

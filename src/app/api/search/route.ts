@@ -1,29 +1,36 @@
 import { type NextRequest, NextResponse } from "next/server";
+import { parseAdvancedFiltersFromParams, parseSearchTab } from "@/lib/search-fields";
 import {
   SEARCH_PAGE_SIZE,
-  searchAnimes,
-  searchAnimesByGenre,
+  searchAnimesAdvanced,
+  searchAnimesQuick,
   serializeSearchResult,
 } from "@/lib/search";
 
 export async function GET(request: NextRequest) {
-  const genre = request.nextUrl.searchParams.get("genre")?.trim() ?? "";
-  const q = request.nextUrl.searchParams.get("q") ?? "";
-  const page = Math.max(1, Number(request.nextUrl.searchParams.get("page")) || 1);
+  const params = request.nextUrl.searchParams;
+  const tab = parseSearchTab(params.get("tab"));
+  const genre = params.get("genre")?.trim() ?? "";
+  const q = params.get("q") ?? "";
+  const page = Math.max(1, Number(params.get("page")) || 1);
   const pageSize = Math.min(
     48,
-    Math.max(1, Number(request.nextUrl.searchParams.get("pageSize")) || SEARCH_PAGE_SIZE),
+    Math.max(1, Number(params.get("pageSize")) || SEARCH_PAGE_SIZE),
   );
-  const includeTotal = request.nextUrl.searchParams.get("includeTotal") !== "0";
+  const includeTotal = params.get("includeTotal") !== "0";
 
-  const result = genre
-    ? await searchAnimesByGenre(genre, page, pageSize, { includeTotal })
-    : await searchAnimes(q, page, pageSize, { includeTotal });
+  const result =
+    tab === "advanced"
+      ? await searchAnimesAdvanced(parseAdvancedFiltersFromParams(params), page, pageSize, {
+          includeTotal,
+        })
+      : await searchAnimesQuick(q, genre, page, pageSize, { includeTotal });
 
   return NextResponse.json(
     {
       query: result.query,
       genre: result.genre,
+      tab: result.tab ?? "quick",
       page: result.page,
       pageSize: result.pageSize,
       total: result.total,

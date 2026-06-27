@@ -3,6 +3,7 @@
 import { AnimeLink } from "@/components/AnimeLink";
 import { useState, type MouseEvent } from "react";
 import { AnimePoster } from "@/components/AnimePoster";
+import { AnimeScoreBadge } from "@/components/AnimeScoreBadge";
 import { RelativeTime } from "@/components/RelativeTime";
 import { formatEpisodeOfTotal, formatWatchPosition, type WatchHistoryItemDto } from "@/lib/watch-history";
 
@@ -87,6 +88,7 @@ function HistoryCard({
             alt={item.animeTitle}
             className="aspect-[3/4] h-full w-full object-cover"
           />
+          <AnimeScoreBadge score={item.score} className="absolute right-1 top-1" size="sm" />
         </div>
 
         <div className="flex min-w-0 flex-1 flex-col gap-2">
@@ -96,7 +98,6 @@ function HistoryCard({
             </p>
             <p className="mt-1 text-xs text-muted">
               {item.translationTitle} · {formatEpisodeOfTotal(item.episodeNumber, item.episodesTotal)}
-              {item.seasonNumber > 1 ? ` · S${item.seasonNumber}` : ""}
             </p>
             <HistoryAddedAt createdAt={item.createdAt} />
           </div>

@@ -1,4 +1,4 @@
-/** Классы из src/app/admin/admin.css — сплошные цвета, без прозрачности */
+/** Классы из globals.css — сплошные цвета, без прозрачности */
 export const adminClass = {
   panel: "admin-panel p-4",
   sidebar: "admin-sidebar",
@@ -23,4 +23,5 @@ export const adminClass = {
   tableRow: "admin-table-row",
   statLabel: "admin-stat-label",
   statValue: "admin-stat-value",
+  input: "site-input",
 } as const;

@@ -1,13 +1,15 @@
 import type { Metadata } from "next";
 import { CalendarView } from "@/components/calendar/CalendarView";
 import { getMoscowDayOfWeek, getOngoingCalendar } from "@/lib/calendar";
+import { buildSitePageMetadata } from "@/lib/site-metadata";
 
 export const revalidate = 300;
 
-export const metadata: Metadata = {
-  title: "Календарь — Track Anime",
+export const metadata: Metadata = buildSitePageMetadata({
+  title: "Календарь",
   description: "Расписание выхода онгоингов по дням недели",
-};
+  canonicalPath: "/calendar",
+});
 
 export default async function CalendarPage() {
   const days = await getOngoingCalendar();

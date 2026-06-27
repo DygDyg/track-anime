@@ -28,6 +28,29 @@ model CoverCacheSettings {
   updatedAt         DateTime @updatedAt
 }
 
+/// Хост Shikimori (API, OAuth, ссылки на сайт)
+model ShikimoriSettings {
+  id        String   @id @default("default")
+  host      String   @default("shikimori.io")
+  updatedAt DateTime @updatedAt
+}
+
+/// Discord Rich Presence (Application ID из Developer Portal)
+model DiscordSettings {
+  id                String   @id @default("default")
+  applicationId     String?
+  largeImageKey     String   @default("logo")
+  bridgeDownloadUrl String?
+  updatedAt         DateTime @updatedAt
+}
+
+/// Порог автоудаления из истории просмотра (последняя серия сезона)
+model WatchHistorySettings {
+  id                          String   @id @default("default")
+  completeEpisodeThresholdPct Int      @default(50)
+  updatedAt                   DateTime @updatedAt
+}
+
 /// История запусков sync (ручных и автоматических)
 model KodikSyncRun {
   id               String    @id @default(cuid())

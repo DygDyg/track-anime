@@ -6,6 +6,7 @@ import {
   labelStatus,
 } from "@/lib/anime-labels";
 import { stripShikimoriBbcode } from "@/lib/shikimori-bbcode";
+import { shikimoriSiteUrl } from "@/lib/shikimori/endpoints";
 
 export type AnimeShareCopyFormat = "plain" | "discord" | "telegram";
 
@@ -116,7 +117,7 @@ export function buildPlainShareText(anime: AnimePageDto, origin: string): string
 
 export function buildDiscordShareText(anime: AnimePageDto, origin: string): string {
   const pageUrl = getAnimePageUrl(origin, anime.shikimoriId);
-  const shikimoriUrl = anime.shikimoriUrl ?? `https://shikimori.one/animes/${anime.shikimoriId}`;
+  const shikimoriUrl = anime.shikimoriUrl ?? shikimoriSiteUrl(`/animes/${anime.shikimoriId}`);
   const relativeTime = discordRelativeTime(anime);
 
   return `
@@ -143,7 +144,7 @@ ${anime.posterUrl ? `[Обложка](${anime.posterUrl})` : ""}
 
 export function buildTelegramShareText(anime: AnimePageDto, origin: string): string {
   const pageUrl = getAnimePageUrl(origin, anime.shikimoriId);
-  const shikimoriUrl = anime.shikimoriUrl ?? `https://shikimori.one/animes/${anime.shikimoriId}`;
+  const shikimoriUrl = anime.shikimoriUrl ?? shikimoriSiteUrl(`/animes/${anime.shikimoriId}`);
   const description = plainDescription(anime);
 
   return `

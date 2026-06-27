@@ -45,18 +45,6 @@ const morpheus = localFont({
   display: "swap",
 });
 
-const propaniac = localFont({
-  src: [{ path: "../assets/fonts/Propaniac.woff2", weight: "400", style: "normal" }],
-  variable: "--font-propaniac",
-  display: "swap",
-});
-
-const tolkien = localFont({
-  src: [{ path: "../assets/fonts/tolkiencyr-webfont.woff2", weight: "400", style: "normal" }],
-  variable: "--font-tolkien",
-  display: "swap",
-});
-
 export const siteFontVariables = [
   inter.variable,
   interTight.variable,
@@ -65,8 +53,6 @@ export const siteFontVariables = [
   robotoCondensed.variable,
   pangolin.variable,
   morpheus.variable,
-  propaniac.variable,
-  tolkien.variable,
 ].join(" ");
 
 export const siteFontBodyClassName = siteFontVariables;

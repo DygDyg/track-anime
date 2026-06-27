@@ -48,6 +48,8 @@ export function statusBadgeClass(status: string | null): string | null {
       return "border-yellow-300/60 bg-yellow-200/45 text-yellow-950 dark:bg-yellow-300/20 dark:text-yellow-50";
     case "anons":
       return "border-violet-400/55 bg-violet-400/25 text-violet-950 dark:bg-violet-500/25 dark:text-violet-100";
+    case "latest":
+      return "border-sky-400/55 bg-sky-300/35 text-sky-950 dark:bg-sky-400/25 dark:text-sky-50";
     default:
       return null;
   }
@@ -119,11 +121,10 @@ export function formatReleaseSeasonBadge(
 }
 
 export function formatEpisodeProgress(
-  season: number | null,
+  _season: number | null,
   episode: number | null,
 ): string | null {
   if (!episode) return null;
-  if (season && season > 1) return `S${season} E${episode}`;
   return `${episode} серия`;
 }
 

@@ -5,6 +5,7 @@ import { useRouter } from "next/navigation";
 import { useCallback, useEffect, useMemo, useRef, useState, useTransition } from "react";
 import { AnimeLink } from "@/components/AnimeLink";
 import { AnimePoster } from "@/components/AnimePoster";
+import { AnimeScoreBadge } from "@/components/AnimeScoreBadge";
 import { ListStatusBadge, ViewerListStatusBadge, useViewerListStatusAccent } from "@/components/favorites/ListStatusBadge";
 import { useUserListStatusMap } from "@/components/favorites/UserListStatusProvider";
 import { useAuth } from "@/components/auth/AuthProvider";
@@ -150,6 +151,10 @@ function FavoriteAnimeCard({
             className="absolute bottom-1.5 right-1.5 z-10"
           />
         ) : null}
+        <AnimeScoreBadge
+          score={item.userScore ?? item.score}
+          className="absolute right-1.5 top-1.5"
+        />
       </div>
 
       <div className="flex flex-1 flex-col gap-1 p-3">
@@ -160,10 +165,6 @@ function FavoriteAnimeCard({
           <p className="line-clamp-1 text-xs text-muted">{item.titleOriginal}</p>
         ) : null}
         <div className="mt-auto flex flex-wrap gap-1.5 text-[11px] text-muted">
-          {item.userScore ? <span className="font-medium text-accent">★ {item.userScore}</span> : null}
-          {!item.userScore && item.score ? (
-            <span className="font-medium text-accent">★ {item.score}</span>
-          ) : null}
           {item.watchedEpisodes ? <span>{item.watchedEpisodes} эп.</span> : null}
           {kindLabel ? <span>{kindLabel}</span> : null}
           {statusLabel ? <span>{statusLabel}</span> : null}

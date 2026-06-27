@@ -212,6 +212,7 @@ export function AnimePageView({ anime }: { anime: AnimePageDto }) {
             shikimoriId={anime.shikimoriId}
             animeTitle={anime.title}
             translations={anime.translations}
+            episodesTotal={anime.episodes}
           />
 
           <RelatedAnimeSection shikimoriId={anime.shikimoriId} />
