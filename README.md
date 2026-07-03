@@ -4,7 +4,7 @@
 
 # Track Anime
 
-**╨Т╨╡╨▒-╨┐╤А╨╕╨╗╨╛╨╢╨╡╨╜╨╕╨╡ ╨┤╨╗╤П ╨┐╤А╨╛╤Б╨╝╨╛╤В╤А╨░ ╨░╨╜╨╕╨╝╨╡** ╤Б ╨╕╨╜╤В╨╡╨│╤А╨░╤Ж╨╕╨╡╨╣ [Shikimori](https://shikimori.one) ╨╕ [Kodik](https://kodik.info).
+**Веб-приложение для просмотра аниме** с интеграцией [Shikimori](https://shikimori.one) и [Kodik](https://kodik.info).
 
 [![Live demo](https://img.shields.io/badge/demo-ta.dygdyg.ru-6366f1?style=for-the-badge)](https://ta.dygdyg.ru/)
 [![Next.js](https://img.shields.io/badge/Next.js-16-000?style=flat-square&logo=next.js&logoColor=white)](https://nextjs.org/)
@@ -14,21 +14,21 @@
 [![Prisma](https://img.shields.io/badge/Prisma-6-2D3748?style=flat-square&logo=prisma&logoColor=white)](https://www.prisma.io/)
 [![Tailwind CSS](https://img.shields.io/badge/Tailwind-3-06B6D4?style=flat-square&logo=tailwindcss&logoColor=white)](https://tailwindcss.com/)
 
-╨Т╤Е╨╛╨┤ ╤З╨╡╤А╨╡╨╖ Shikimori ┬╖ ╨▓╤Б╤В╤А╨╛╨╡╨╜╨╜╤Л╨╣ Kodik-╨┐╨╗╨╡╨╡╤А ┬╖ ╤Б╨┐╨╕╤Б╨║╨╕ ╨╕ ╨┐╤А╨╛╨│╤А╨╡╤Б╤Б ╨┐╤А╨╛╤Б╨╝╨╛╤В╤А╨░ ┬╖ PWA
+Вход через Shikimori · встроенный Kodik-плеер · списки и прогресс просмотра · PWA
 
-[╨Ю╤В╨║╤А╤Л╤В╤М ╤Б╨░╨╣╤В](https://ta.dygdyg.ru/) ┬╖ [╨С╤Л╤Б╤В╤А╤Л╨╣ ╤Б╤В╨░╤А╤В](#╨▒╤Л╤Б╤В╤А╤Л╨╣-╤Б╤В╨░╤А╤В) ┬╖ [╨Ф╨╛╨║╤Г╨╝╨╡╨╜╤В╨░╤Ж╨╕╤П](#╨┤╨╛╨║╤Г╨╝╨╡╨╜╤В╨░╤Ж╨╕╤П)
+[Открыть сайт](https://ta.dygdyg.ru/) · [Быстрый старт](#быстрый-старт) · [Документация](#документация)
 
 </div>
 
 ---
 
-## ╨Ю ╨┐╤А╨╛╨╡╨║╤В╨╡
+## О проекте
 
-Track Anime тАФ self-hosted ╨┐╨╗╨░╤В╤Д╨╛╤А╨╝╨░ ╨┤╨╗╤П ╨┐╤А╨╛╤Б╨╝╨╛╤В╤А╨░ ╨░╨╜╨╕╨╝╨╡. ╨Я╨╛╨╗╤М╨╖╨╛╨▓╨░╤В╨╡╨╗╨╕ ╨░╨▓╤В╨╛╤А╨╕╨╖╤Г╤О╤В╤Б╤П ╤З╨╡╤А╨╡╨╖ Shikimori OAuth, ╨▓╤Л╨▒╨╕╤А╨░╤О╤В ╨╛╨╖╨▓╤Г╤З╨║╤Г ╨╕╨╖ ╨║╨░╤В╨░╨╗╨╛╨│╨░ Kodik, ╤Б╨╝╨╛╤В╤А╤П╤В ╤Б╨╡╤А╨╕╨╕ ╨▓╨╛ ╨▓╤Б╤В╤А╨╛╨╡╨╜╨╜╨╛╨╝ ╨┐╨╗╨╡╨╡╤А╨╡ ╨╕ ╤Б╨╕╨╜╤Е╤А╨╛╨╜╨╕╨╖╨╕╤А╤Г╤О╤В ╤Б╨┐╨╕╤Б╨║╨╕. ╨Ф╨░╨╜╨╜╤Л╨╡ ╤Е╤А╨░╨╜╤П╤В╤Б╤П ╨▓ PostgreSQL; ╨▓╨╜╨╡╤И╨╜╨╕╨╡ API ╨▓╤Л╨╖╤Л╨▓╨░╤О╤В╤Б╤П ╤В╨╛╨╗╤М╨║╨╛ ╤Б ╤Б╨╡╤А╨▓╨╡╤А╨░.
+Track Anime — self-hosted платформа для просмотра аниме. Пользователи авторизуются через Shikimori OAuth, выбирают озвучку из каталога Kodik, смотрят серии во встроенном плеере и синхронизируют списки. Данные хранятся в PostgreSQL; внешние API вызываются только с сервера.
 
 ```mermaid
 flowchart LR
-  Browser["╨С╤А╨░╤Г╨╖╨╡╤А / PWA"]
+  Browser["Браузер / PWA"]
   Next["Next.js App Router"]
   DB[("PostgreSQL")]
   Shiki["Shikimori API"]
@@ -43,47 +43,47 @@ flowchart LR
 
 ---
 
-## ╨Т╨╛╨╖╨╝╨╛╨╢╨╜╨╛╤Б╤В╨╕
+## Возможности
 
 | | |
 |---|---|
-| ЁЯУ║ **╨Ы╨╡╨╜╤В╨░ ╤А╨╡╨╗╨╕╨╖╨╛╨▓** | ╨Э╨╛╨▓╤Л╨╡ ╤Б╨╡╤А╨╕╨╕ ╤Б ╨▒╨╡╤Б╨║╨╛╨╜╨╡╤З╨╜╨╛╨╣ ╨┐╤А╨╛╨║╤А╤Г╤В╨║╨╛╨╣ |
-| ЁЯОм **╨б╤В╤А╨░╨╜╨╕╤Ж╨░ ╨░╨╜╨╕╨╝╨╡** | ╨Ь╨╡╤В╨░╨┤╨░╨╜╨╜╤Л╨╡ Shikimori, ╨▓╤Л╨▒╨╛╤А ╨╛╨╖╨▓╤Г╤З╨║╨╕, Kodik-╨┐╨╗╨╡╨╡╤А ╤Б ╤Б╨╛╤Е╤А╨░╨╜╨╡╨╜╨╕╨╡╨╝ ╨┐╨╛╨╖╨╕╤Ж╨╕╨╕ |
-| ЁЯФН **╨Я╨╛╨╕╤Б╨║** | ╨С╤Л╤Б╤В╤А╤Л╨╣ ╨╕ ╤А╨░╤Б╤И╨╕╤А╨╡╨╜╨╜╤Л╨╣ тАФ ╨┐╨╛╨╗╤П, ╨╢╨░╨╜╤А╤Л, ╨│╨╛╨┤, ╨╝╨╕╨╜. ╤А╨╡╨╣╤В╨╕╨╜╨│ Shikimori |
-| тнР **╨Ш╨╖╨▒╤А╨░╨╜╨╜╨╛╨╡** | ╨Ы╨╛╨║╨░╨╗╤М╨╜╤Л╨╣ ╨║╤Н╤И ╤Б╨┐╨╕╤Б╨║╨╛╨▓ Shikimori (╤Б╨╝╨╛╤В╤А╤О, ╨▓ ╨┐╨╗╨░╨╜╨░╤Е ╨╕ ╨┤╤А.) |
-| ЁЯУЬ **╨Ш╤Б╤В╨╛╤А╨╕╤П** | ╨б╨╡╨╖╨╛╨╜, ╤Б╨╡╤А╨╕╤П, ╨┐╤А╨╛╨│╤А╨╡╤Б╤Б ╨▓ ╤Б╨╡╨║╤Г╨╜╨┤╨░╤Е |
-| ЁЯУЕ **╨Ъ╨░╨╗╨╡╨╜╨┤╨░╤А╤М** | ╨а╨░╤Б╨┐╨╕╤Б╨░╨╜╨╕╨╡ ╨▓╤Л╤Е╨╛╨┤╨░ ╤Б╨╡╤А╨╕╨╣ ongoing-╨░╨╜╨╕╨╝╨╡ |
-| ЁЯСд **╨Я╤А╨╛╤Д╨╕╨╗╨╕** | ╨Я╤Г╨▒╨╗╨╕╤З╨╜╤Л╨╡ ╤Б╤В╤А╨░╨╜╨╕╤Ж╤Л ╨┐╨╛╨╗╤М╨╖╨╛╨▓╨░╤В╨╡╨╗╨╡╨╣ ╨┐╨╛ Shikimori ID |
-| ЁЯУ▒ **PWA** | ╨г╤Б╤В╨░╨╜╨╛╨▓╨║╨░ ╨║╨░╨║ ╨┐╤А╨╕╨╗╨╛╨╢╨╡╨╜╨╕╨╡, ╨╛╤Д╨╗╨░╨╣╨╜-╤Б╤В╤А╨░╨╜╨╕╤Ж╨░ |
-| ЁЯОо **Discord RPC** | ╨б╤В╨░╤В╤Г╤Б ┬л╤Б╨╝╨╛╤В╤А╤О┬╗ ╤З╨╡╤А╨╡╨╖ ╨╗╨╛╨║╨░╨╗╤М╨╜╤Л╨╣ tray-╨┐╤А╨╕╨╗╨╛╨╢╨╡╨╜╨╕╨╡ |
-| тЪЩя╕П **╨Р╨┤╨╝╨╕╨╜╨║╨░** | ╨Ш╨╝╨┐╨╛╤А╤В Kodik, sync, ╨╜╨░╤Б╤В╤А╨╛╨╣╨║╨╕, DB explorer |
+| 📺 **Лента релизов** | Новые серии с бесконечной прокруткой |
+| 🎬 **Страница аниме** | Метаданные Shikimori, выбор озвучки, Kodik-плеер с сохранением позиции |
+| 🔍 **Поиск** | Быстрый и расширенный — поля, жанры, год, мин. рейтинг Shikimori |
+| ⭐ **Избранное** | Локальный кэш списков Shikimori (смотрю, в планах и др.) |
+| 📜 **История** | Сезон, серия, прогресс в секундах |
+| 📅 **Календарь** | Расписание выхода серий ongoing-аниме |
+| 👤 **Профили** | Публичные страницы пользователей по Shikimori ID |
+| 📱 **PWA** | Установка как приложение, офлайн-страница |
+| 🎮 **Discord RPC** | Статус «смотрю» через локальный tray-приложение |
+| ⚙️ **Админка** | Импорт Kodik, sync, настройки, DB explorer |
 
 ---
 
-## ╨б╤В╨╡╨║
+## Стек
 
-| ╨б╨╗╨╛╨╣ | ╨в╨╡╤Е╨╜╨╛╨╗╨╛╨│╨╕╨╕ |
+| Слой | Технологии |
 |------|------------|
 | **Frontend** | Next.js 16 (App Router), React 19, Tailwind CSS, Serwist (PWA) |
 | **Backend** | Next.js API Routes, TypeScript |
-| **╨С╨░╨╖╨░ ╨┤╨░╨╜╨╜╤Л╤Е** | PostgreSQL 16, Prisma 6 |
-| **╨Р╤Г╤В╨╡╨╜╤В╨╕╤Д╨╕╨║╨░╤Ж╨╕╤П** | Shikimori OAuth2 (custom, ╨▒╨╡╨╖ NextAuth) |
-| **╨Т╨╕╨┤╨╡╨╛** | Kodik iframe + postMessage API |
+| **База данных** | PostgreSQL 16, Prisma 6 |
+| **Аутентификация** | Shikimori OAuth2 (custom, без NextAuth) |
+| **Видео** | Kodik iframe + postMessage API |
 
-> **╨Я╤А╨╕╨╜╤Ж╨╕╨┐:** ╨▒╤А╨░╤Г╨╖╨╡╤А ╨╜╨╡ ╨╛╨▒╤А╨░╤Й╨░╨╡╤В╤Б╤П ╨╜╨░╨┐╤А╤П╨╝╤Г╤О ╨║ Shikimori/Kodik тАФ ╤В╨╛╨╗╤М╨║╨╛ ╤З╨╡╤А╨╡╨╖ ╤Б╨╡╤А╨▓╨╡╤А╨╜╤Л╨╡ ╨╝╨╛╨┤╤Г╨╗╨╕. ╨Ъ╨╗╤О╤З ╨┤╨░╨╜╨╜╤Л╤Е: `shikimoriId` тЖТ `/anime/[shikimoriId]`.
+> **Принцип:** браузер не обращается напрямую к Shikimori/Kodik — только через серверные модули. Ключ данных: `shikimoriId` → `/anime/[shikimoriId]`.
 
 ---
 
-## ╨С╤Л╤Б╤В╤А╤Л╨╣ ╤Б╤В╨░╤А╤В
+## Быстрый старт
 
-### ╨в╤А╨╡╨▒╨╛╨▓╨░╨╜╨╕╤П
+### Требования
 
 - **Node.js** 20+
-- **Docker** (╨┤╨╗╤П PostgreSQL) ╨╕╨╗╨╕ ╤Б╨▓╨╛╨╣ ╤Н╨║╨╖╨╡╨╝╨┐╨╗╤П╤А Postgres
-- **Kodik API token** тАФ [bd.kodikres.com](https://bd.kodikres.com)
-- **Shikimori OAuth app** тАФ [shikimori.one/oauth/applications](https://shikimori.one/oauth/applications)
+- **Docker** (для PostgreSQL) или свой экземпляр Postgres
+- **Kodik API token** — [bd.kodikres.com](https://bd.kodikres.com)
+- **Shikimori OAuth app** — [shikimori.one/oauth/applications](https://shikimori.one/oauth/applications)
 
-### 1. ╨Ъ╨╗╨╛╨╜╨╕╤А╨╛╨▓╨░╨╜╨╕╨╡ ╨╕ ╨╖╨░╨▓╨╕╤Б╨╕╨╝╨╛╤Б╤В╨╕
+### 1. Клонирование и зависимости
 
 ```bash
 git clone https://github.com/DygDyg/track-anime.git
@@ -92,34 +92,34 @@ npm ci
 cp .env.example .env
 ```
 
-╨Ч╨░╨┐╨╛╨╗╨╜╨╕╤В╨╡ ╨▓ `.env` ╨║╨░╨║ ╨╝╨╕╨╜╨╕╨╝╤Г╨╝: `DATABASE_URL`, `KODIK_API_TOKEN`, `SHIKIMORI_CLIENT_ID`, `SHIKIMORI_CLIENT_SECRET`, `AUTH_URL`.
+Заполните в `.env` как минимум: `DATABASE_URL`, `KODIK_API_TOKEN`, `SHIKIMORI_CLIENT_ID`, `SHIKIMORI_CLIENT_SECRET`, `AUTH_URL`.
 
-### 2. ╨С╨░╨╖╨░ ╨┤╨░╨╜╨╜╤Л╤Е
-
-```bash
-npm run docker:up      # PostgreSQL ╨▓ Docker
-npm run db:push        # ╨┐╤А╨╕╨╝╨╡╨╜╨╕╤В╤М ╤Б╤Е╨╡╨╝╤Г Prisma
-```
-
-### 3. ╨Ш╨╝╨┐╨╛╤А╤В ╨║╨░╤В╨░╨╗╨╛╨│╨░ Kodik
+### 2. База данных
 
 ```bash
-npm run kodik:import           # ╨┐╨╛╨╗╨╜╤Л╨╣ ╨╕╨╝╨┐╨╛╤А╤В
-npm run kodik:import:resume    # ╨┐╤А╨╛╨┤╨╛╨╗╨╢╨╕╤В╤М ╨┐╤А╨╡╤А╨▓╨░╨╜╨╜╤Л╨╣
-npm run kodik:sync             # ╨╕╨╜╨║╤А╨╡╨╝╨╡╨╜╤В╨░╨╗╤М╨╜╤Л╨╣ sync
+npm run docker:up      # PostgreSQL в Docker
+npm run db:push        # применить схему Prisma
 ```
 
-> ╨С╨╡╨╖ ╨╕╨╝╨┐╨╛╤А╤В╨░/sync ╨╗╨╡╨╜╤В╨░ ╨╜╨░ ╨│╨╗╨░╨▓╨╜╨╛╨╣ ╨▒╤Г╨┤╨╡╤В ╨┐╤Г╤Б╤В╨╛╨╣ тАФ ╨┤╨░╨╜╨╜╤Л╨╡ ╨▒╨╡╤А╤Г╤В╤Б╤П ╨╕╨╖ ╤В╨░╨▒╨╗╨╕╤Ж╤Л `KodikEpisodeRelease`.
+### 3. Импорт каталога Kodik
 
-### 4. ╨Ч╨░╨┐╤Г╤Б╨║
+```bash
+npm run kodik:import           # полный импорт
+npm run kodik:import:resume    # продолжить прерванный
+npm run kodik:sync             # инкрементальный sync
+```
+
+> Без импорта/sync лента на главной будет пустой — данные берутся из таблицы `KodikEpisodeRelease`.
+
+### 4. Запуск
 
 ```bash
 npm run dev
 ```
 
-╨б╨░╨╣╤В: **http://localhost:3000**
+Сайт: **http://localhost:3000**
 
-Redirect URI ╨▓ ╨╜╨░╤Б╤В╤А╨╛╨╣╨║╨░╤Е Shikimori OAuth ╨┤╨╗╤П dev:
+Redirect URI в настройках Shikimori OAuth для dev:
 
 ```
 http://localhost:3000/api/auth/callback/shikimori
@@ -127,79 +127,79 @@ http://localhost:3000/api/auth/callback/shikimori
 
 ---
 
-## ╨Ю╤Б╨╜╨╛╨▓╨╜╤Л╨╡ ╨║╨╛╨╝╨░╨╜╨┤╤Л
+## Основные команды
 
-| ╨Ъ╨╛╨╝╨░╨╜╨┤╨░ | ╨Ю╨┐╨╕╤Б╨░╨╜╨╕╨╡ |
+| Команда | Описание |
 |---------|----------|
-| `npm run dev` | Dev-╤Б╨╡╤А╨▓╨╡╤А Next.js (`0.0.0.0`, ╤Г╨┤╨╛╨▒╨╜╨╛ ╤Б ╤В╨╡╨╗╨╡╤Д╨╛╨╜╨░ ╨▓ LAN) |
-| `npm run build` | Production-╤Б╨▒╨╛╤А╨║╨░ |
-| `npm run start` | ╨Ч╨░╨┐╤Г╤Б╨║ production |
+| `npm run dev` | Dev-сервер Next.js (`0.0.0.0`, удобно с телефона в LAN) |
+| `npm run build` | Production-сборка |
+| `npm run start` | Запуск production |
 | `npm run db:studio` | Prisma Studio |
-| `npm run kodik:sync` | Sync ╨╜╨╛╨▓╤Л╤Е ╨╝╨░╤В╨╡╤А╨╕╨░╨╗╨╛╨▓ Kodik |
-| `npm run kodik:sync:scheduled` | Sync ╨┤╨╗╤П cron |
-| `npm run deploy` | ╨Ф╨╡╨┐╨╗╨╛╨╣ ╨╜╨░ production (Windows) |
+| `npm run kodik:sync` | Sync новых материалов Kodik |
+| `npm run kodik:sync:scheduled` | Sync для cron |
+| `npm run deploy` | Деплой на production (Windows) |
 
-╨Я╨╛╨╗╨╜╤Л╨╣ ╤Б╨┐╨╕╤Б╨╛╨║ ╤Б╨║╤А╨╕╨┐╤В╨╛╨▓ тАФ ╨▓ [`package.json`](package.json).
+Полный список скриптов — в [`package.json`](package.json).
 
 ---
 
-## ╨Я╨╡╤А╨╡╨╝╨╡╨╜╨╜╤Л╨╡ ╨╛╨║╤А╤Г╨╢╨╡╨╜╨╕╤П
+## Переменные окружения
 
-| ╨Я╨╡╤А╨╡╨╝╨╡╨╜╨╜╨░╤П | ╨Э╨░╨╖╨╜╨░╤З╨╡╨╜╨╕╨╡ |
+| Переменная | Назначение |
 |------------|------------|
 | `DATABASE_URL` | PostgreSQL connection string |
-| `KODIK_API_TOKEN` | ╨в╨╛╨║╨╡╨╜ Kodik API |
+| `KODIK_API_TOKEN` | Токен Kodik API |
 | `SHIKIMORI_CLIENT_ID` | OAuth client ID |
 | `SHIKIMORI_CLIENT_SECRET` | OAuth client secret |
-| `AUTH_URL` | ╨С╨░╨╖╨╛╨▓╤Л╨╣ URL ╤Б╨░╨╣╤В╨░ (╨┤╨╗╤П OAuth redirect) |
-| `ADMIN_SHIKIMORI_IDS` | Shikimori ID ╨░╨┤╨╝╨╕╨╜╨╛╨▓ ╤З╨╡╤А╨╡╨╖ ╨╖╨░╨┐╤П╤В╤Г╤О |
+| `AUTH_URL` | Базовый URL сайта (для OAuth redirect) |
+| `ADMIN_SHIKIMORI_IDS` | Shikimori ID админов через запятую |
 
-╨Я╨╛╨┤╤А╨╛╨▒╨╜╤Л╨╡ ╨║╨╛╨╝╨╝╨╡╨╜╤В╨░╤А╨╕╨╕ ╨╕ ╨╛╨┐╤Ж╨╕╨╛╨╜╨░╨╗╤М╨╜╤Л╨╡ ╨┐╨╡╤А╨╡╨╝╨╡╨╜╨╜╤Л╨╡ тАФ ╨▓ [`.env.example`](.env.example).
+Подробные комментарии и опциональные переменные — в [`.env.example`](.env.example).
 
 ---
 
-## ╨б╤В╤А╤Г╨║╤В╤Г╤А╨░ ╨┐╤А╨╛╨╡╨║╤В╨░
+## Структура проекта
 
 ```
 src/
-тФЬтФАтФА app/           # ╤Б╤В╤А╨░╨╜╨╕╤Ж╤Л ╨╕ API routes (App Router)
-тФЬтФАтФА components/    # React-╨║╨╛╨╝╨┐╨╛╨╜╨╡╨╜╤В╤Л
-тФЬтФАтФА lib/           # ╤Б╨╡╤А╨▓╨╡╤А╨╜╨░╤П ╨╗╨╛╨│╨╕╨║╨░: auth, search, sync, posters
-тФЬтФАтФА kodik/         # HTTP-╨║╨╗╨╕╨╡╨╜╤В Kodik API
-тФФтФАтФА hooks/         # React-╤Е╤Г╨║╨╕
+├── app/           # страницы и API routes (App Router)
+├── components/    # React-компоненты
+├── lib/           # серверная логика: auth, search, sync, posters
+├── kodik/         # HTTP-клиент Kodik API
+└── hooks/         # React-хуки
 
-prisma/            # ╤Б╤Е╨╡╨╝╨░ ╨С╨Ф
-scripts/           # ╨╕╨╝╨┐╨╛╤А╤В, sync, deploy, Discord tray
-docs/              # ╤Б╨┐╤А╨░╨▓╨╛╤З╨╜╨╕╨║╨╕ API (Kodik, Shikimori)
+prisma/            # схема БД
+scripts/           # импорт, sync, deploy, Discord tray
+docs/              # справочники API (Kodik, Shikimori)
 ```
 
 ---
 
-## ╨Ф╨╡╨┐╨╗╨╛╨╣
+## Деплой
 
-Production-╤Б╨╡╤А╨▓╨╡╤А ╨╕ ╨┐╨╛╨┤╤А╨╛╨▒╨╜╨╛╤Б╤В╨╕ тАФ ╨▓ [`docs/DEPLOY.md`](docs/DEPLOY.md).
+Production-сервер и подробности — в [`docs/DEPLOY.md`](docs/DEPLOY.md).
 
 ```powershell
-npm run deploy              # ╨╛╨▒╤Л╤З╨╜╤Л╨╣ ╨┤╨╡╨┐╨╗╨╛╨╣
-npm run deploy:release      # ╨┤╨╡╨┐╨╗╨╛╨╣ + ╨┐╨╡╤А╨╡╤Б╨▒╨╛╤А╨║╨░ Discord RPC exe
+npm run deploy              # обычный деплой
+npm run deploy:release      # деплой + пересборка Discord RPC exe
 ```
 
 ---
 
-## ╨Ф╨╛╨║╤Г╨╝╨╡╨╜╤В╨░╤Ж╨╕╤П
+## Документация
 
-| ╨д╨░╨╣╨╗ | ╨б╨╛╨┤╨╡╤А╨╢╨░╨╜╨╕╨╡ |
+| Файл | Содержание |
 |------|------------|
-| [`PROJECT_OVERVIEW.md`](PROJECT_OVERVIEW.md) | ╨Ю╨▒╨╖╨╛╤А ╨┐╤А╨╛╨╡╨║╤В╨░ |
-| [`ARCHITECTURE.md`](ARCHITECTURE.md) | ╨Р╤А╤Е╨╕╤В╨╡╨║╤В╤Г╤А╨░ ╨╕ ╨┐╨╛╤В╨╛╨║╨╕ ╨┤╨░╨╜╨╜╤Л╤Е |
-| [`CODEBASE_MAP.md`](CODEBASE_MAP.md) | ╨Ъ╨░╤А╤В╨░ ╨║╨╛╨┤╨╛╨▓╨╛╨╣ ╨▒╨░╨╖╤Л |
-| [`docs/SERVER.md`](docs/SERVER.md) | Production-╤Б╨╡╤А╨▓╨╡╤А |
-| [`docs/DEPLOY.md`](docs/DEPLOY.md) | ╨Ф╨╡╨┐╨╗╨╛╨╣ ╤Б Windows |
-| [`docs/kodik-api/`](docs/kodik-api/) | ╨б╨┐╤А╨░╨▓╨╛╤З╨╜╨╕╨║ Kodik API |
-| [`docs/shikimori-api/`](docs/shikimori-api/) | ╨б╨┐╤А╨░╨▓╨╛╤З╨╜╨╕╨║ Shikimori API |
+| [`PROJECT_OVERVIEW.md`](PROJECT_OVERVIEW.md) | Обзор проекта |
+| [`ARCHITECTURE.md`](ARCHITECTURE.md) | Архитектура и потоки данных |
+| [`CODEBASE_MAP.md`](CODEBASE_MAP.md) | Карта кодовой базы |
+| [`docs/SERVER.md`](docs/SERVER.md) | Production-сервер |
+| [`docs/DEPLOY.md`](docs/DEPLOY.md) | Деплой с Windows |
+| [`docs/kodik-api/`](docs/kodik-api/) | Справочник Kodik API |
+| [`docs/shikimori-api/`](docs/shikimori-api/) | Справочник Shikimori API |
 
 ---
 
-## ╨Ы╨╕╤Ж╨╡╨╜╨╖╨╕╤П
+## Лицензия
 
 Private repository. All rights reserved.
