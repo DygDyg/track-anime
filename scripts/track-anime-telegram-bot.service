@@ -1,0 +1,17 @@
+[Unit]
+Description=Track Anime Telegram notification bot
+After=network.target postgresql.service
+Wants=network.target
+
+[Service]
+Type=simple
+WorkingDirectory=/var/www/ta_new
+EnvironmentFile=/var/www/ta_new/.env
+ExecStart=/usr/bin/npx tsx scripts/telegram-notification-bot.ts
+Restart=on-failure
+RestartSec=10
+User=www-data
+Group=www-data
+
+[Install]
+WantedBy=multi-user.target
