@@ -13,7 +13,9 @@ export function ScrollRestoration() {
 
     const query = searchParams.toString();
     const path = query ? `${pathname}?${query}` : pathname;
-    const nav = consumeNavReturn(path);
+    const nav = consumeNavReturn(path, {
+      samePathname: pathname === "/favorites" || pathname.startsWith("/user/"),
+    });
     if (!nav) return;
 
     restoreScrollY(nav.scrollY);

@@ -1,5 +1,6 @@
 import type { Metadata } from "next";
 import Link from "next/link";
+import { Suspense } from "react";
 import { notFound } from "next/navigation";
 import { FavoritesView } from "@/components/favorites/FavoritesView";
 import { parseFavoritesTab } from "@/lib/favorites-page";
@@ -77,20 +78,22 @@ export default async function PublicUserFavoritesPage({ params, searchParams }: 
   }
 
   return (
-    <FavoritesView
-      tabs={data.tabs}
-      counts={data.counts}
-      mangaBookmarkCount={data.mangaBookmarkCount}
-      initialTab={initialTab}
-      nickname={profile.nickname}
-      sync={data.sync}
-      shouldBackgroundSync={false}
-      basePath={basePath}
-      readOnly
-      dataSource={favoritesResult.source}
-      backHref={userProfilePath(profile.shikimoriId)}
-      pageTitle={`Списки ${profile.nickname}`}
-      showViewerListStatus={!viewingSelf}
-    />
+    <Suspense fallback={null}>
+      <FavoritesView
+        tabs={data.tabs}
+        counts={data.counts}
+        mangaBookmarkCount={data.mangaBookmarkCount}
+        initialTab={initialTab}
+        nickname={profile.nickname}
+        sync={data.sync}
+        shouldBackgroundSync={false}
+        basePath={basePath}
+        readOnly
+        dataSource={favoritesResult.source}
+        backHref={userProfilePath(profile.shikimoriId)}
+        pageTitle={`Списки ${profile.nickname}`}
+        showViewerListStatus={!viewingSelf}
+      />
+    </Suspense>
   );
 }

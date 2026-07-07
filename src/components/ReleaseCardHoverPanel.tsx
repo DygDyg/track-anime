@@ -6,15 +6,23 @@ import { useEffect, useLayoutEffect, useRef, useState, type CSSProperties, type 
 import { AnimeLink } from "@/components/AnimeLink";
 import { AnimePoster } from "@/components/AnimePoster";
 import { AnimeScoreBadge } from "@/components/AnimeScoreBadge";
+import { FavoriteRewatchBadge } from "@/components/favorites/FavoriteRewatchBadge";
+import { useUserListStatus } from "@/components/favorites/UserListStatusProvider";
 import { ReleaseCardQuickActions } from "@/components/ReleaseCardQuickActions";
 import { TranslationBadge } from "@/components/TranslationBadge";
+import { LoadingSpinner } from "@/components/ui/LoadingSpinner";
 import { labelStatus, statusBadgeClass } from "@/lib/anime-labels";
-import type { ReleaseItem, ReleaseItemDto } from "@/lib/releases";
+import {
+  computeHoverPanelOffsetX,
+  computeHoverPortalStyle,
+  HOVER_PORTAL_ESTIMATED_HEIGHT,
+} from "@/lib/hover-portal-position";
+import type { HoverPanelReleaseInput } from "@/lib/hover-panel-release";
 import { buildSearchHref } from "@/lib/search-shared";
 import {
   sendYoutubePlayerCommand,
   startYoutubePlayerListening,
-  subscribeYoutubePlayerPlaying,
+  subscribeYoutubePlayerEvents,
   youtubeTrailerEmbedUrl,
 } from "@/lib/shikimori/trailer";
 
@@ -58,14 +66,43 @@ function stripDescription(text: string | null): string | null {
   return plain || null;
 }
 
-function ReleaseMetaRow({ release }: { release: ReleaseItem | ReleaseItemDto }) {
+function ReleaseRewatchBadge({
+  shikimoriId,
+  readOnly = false,
+}: {
+  shikimoriId: number;
+  readOnly?: boolean;
+}) {
+  const listInfo = useUserListStatus(shikimoriId);
+
+  return (
+    <FavoriteRewatchBadge
+      shikimoriId={shikimoriId}
+      listStatus={listInfo?.listStatus ?? null}
+      rewatches={listInfo?.rewatches ?? 0}
+      readOnly={readOnly}
+      className="text-[11px]"
+    />
+  );
+}
+
+function ReleaseMetaRow({ release }: { release: HoverPanelReleaseInput }) {
   const statusLabel = labelStatus(release.status);
   const statusClass = statusBadgeClass(release.status);
+  const catalogEpisodes = "catalogEpisodes" in release ? release.catalogEpisodes : null;
+  const episodeLabel =
+    release.episodeNumber > 0
+      ? `${release.episodeNumber} серия`
+      : catalogEpisodes
+        ? `${catalogEpisodes} эп.`
+        : null;
 
   return (
     <div className="flex flex-wrap items-center gap-1.5 text-xs">
       {release.score ? <AnimeScoreBadge score={release.score} variant="inline" size="sm" /> : null}
-      <span className="font-semibold tabular-nums text-foreground">{release.episodeNumber} серия</span>
+      {episodeLabel ? (
+        <span className="font-semibold tabular-nums text-foreground">{episodeLabel}</span>
+      ) : null}
       {statusLabel && statusClass ? (
         <>
           <span className="text-muted/70">·</span>
@@ -99,17 +136,8 @@ function ReleaseGenresRow({ genres }: { genres: string[] }) {
   );
 }
 
-export function computeHoverPanelOffsetX(rect: DOMRect, panelWidth = PANEL_WIDTH_PX): number {
-  const margin = 12;
-  const cardCenter = rect.left + rect.width / 2;
-  const idealLeft = cardCenter - panelWidth / 2;
-  const idealRight = cardCenter + panelWidth / 2;
-  if (idealLeft < margin) return margin - idealLeft;
-  if (idealRight > window.innerWidth - margin) return window.innerWidth - margin - idealRight;
-  return 0;
-}
-
 export { PANEL_WIDTH_PX };
+export { computeHoverPanelOffsetX } from "@/lib/hover-portal-position";
 
 function TrailerSpeakerIcon({ muted, className = "h-5 w-5" }: { muted: boolean; className?: string }) {
   if (muted) {
@@ -134,7 +162,7 @@ function TrailerPreviewImage({
   className,
 }: {
   previewUrl: string | null;
-  release: ReleaseItem | ReleaseItemDto;
+  release: HoverPanelReleaseInput;
   className?: string;
 }) {
   if (previewUrl) {
@@ -151,6 +179,7 @@ function TrailerPreviewImage({
     <div className="flex h-full w-full items-center justify-center p-6">
       <AnimePoster
         src={release.posterUrl}
+        fallbackSrc={release.screenshotUrl}
         shikimoriId={release.shikimoriId}
         alt={release.animeTitle}
         className="max-h-full max-w-[40%] rounded-md object-contain shadow-lg"
@@ -160,7 +189,7 @@ function TrailerPreviewImage({
 }
 
 type Props = {
-  release: ReleaseItem | ReleaseItemDto;
+  release: HoverPanelReleaseInput;
   visible: boolean;
   previewUrl: string | null;
   animeHref: string | null;
@@ -171,6 +200,9 @@ type Props = {
   anchorRef?: RefObject<HTMLElement | null>;
   panelOffsetX?: number;
   panelRef?: RefObject<HTMLDivElement | null>;
+  onDeleteFromHistory?: () => void | Promise<void>;
+  deletingFromHistory?: boolean;
+  readOnly?: boolean;
 };
 
 export function ReleaseCardHoverPanel({
@@ -184,6 +216,9 @@ export function ReleaseCardHoverPanel({
   anchorRef,
   panelOffsetX = 0,
   panelRef,
+  onDeleteFromHistory,
+  deletingFromHistory = false,
+  readOnly = false,
 }: Props) {
   const description = stripDescription(release.description);
   const watchHref = animeHref ? `${animeHref}#player` : release.playerLink ?? "#";
@@ -192,6 +227,7 @@ export function ReleaseCardHoverPanel({
   const overlayFallbackTimerRef = useRef<number | undefined>(undefined);
   const listenRetryTimersRef = useRef<number[]>([]);
   const [trailerYoutubeId, setTrailerYoutubeId] = useState<string | null>(null);
+  const [trailerFetching, setTrailerFetching] = useState(false);
   const [showTrailer, setShowTrailer] = useState(false);
   const [trailerProgress, setTrailerProgress] = useState(0);
   const [trailerMuted, setTrailerMuted] = useState(true);
@@ -212,25 +248,27 @@ export function ReleaseCardHoverPanel({
     const updatePosition = () => {
       const anchor = anchorRef.current;
       if (!anchor) return;
-      const rect = anchor.getBoundingClientRect();
-      setPortalStyle({
-        position: "fixed",
-        left: rect.left + rect.width / 2,
-        top: rect.top,
-        width: PANEL_WIDTH_PX,
-        zIndex: 200,
-        transform: `translate(calc(-50% + ${panelOffsetX}px), ${visible ? "0px" : "6px"})`,
-      });
+      const panelHeight = panelRef?.current?.offsetHeight ?? HOVER_PORTAL_ESTIMATED_HEIGHT;
+      setPortalStyle(
+        computeHoverPortalStyle(
+          anchor.getBoundingClientRect(),
+          PANEL_WIDTH_PX,
+          panelOffsetX,
+          panelHeight,
+        ),
+      );
     };
 
     updatePosition();
+    const raf = window.requestAnimationFrame(updatePosition);
     window.addEventListener("scroll", updatePosition, true);
     window.addEventListener("resize", updatePosition);
     return () => {
+      window.cancelAnimationFrame(raf);
       window.removeEventListener("scroll", updatePosition, true);
       window.removeEventListener("resize", updatePosition);
     };
-  }, [portal, visible, anchorRef, panelOffsetX]);
+  }, [portal, visible, anchorRef, panelOffsetX, panelRef, release.animeTitle]);
 
   const trailerDelayMs = trailerDelaySec * 1000;
 
@@ -290,14 +328,20 @@ export function ReleaseCardHoverPanel({
     setTrailerProgress(0);
     setTrailerMuted(true);
     setTrailerVideoStarted(false);
+    setTrailerFetching(true);
 
-    void fetchTrailerYoutubeId(shikimoriId).then((youtubeId) => {
-      if (cancelled) return;
-      setTrailerYoutubeId(youtubeId);
-    });
+    void fetchTrailerYoutubeId(shikimoriId)
+      .then((youtubeId) => {
+        if (cancelled) return;
+        setTrailerYoutubeId(youtubeId);
+      })
+      .finally(() => {
+        if (!cancelled) setTrailerFetching(false);
+      });
 
     return () => {
       cancelled = true;
+      setTrailerFetching(false);
       setShowTrailer(false);
       setTrailerYoutubeId(null);
       setTrailerProgress(0);
@@ -347,7 +391,15 @@ export function ReleaseCardHoverPanel({
       markTrailerVideoStarted();
     };
 
-    const unsubscribe = subscribeYoutubePlayerPlaying(markStarted);
+    const unsubscribe = subscribeYoutubePlayerEvents({
+      onPlaying: markStarted,
+      onEnded: () => {
+        const iframe = trailerIframeRef.current;
+        if (!iframe || cancelled) return;
+        sendYoutubePlayerCommand(iframe, "seekTo", [0, true]);
+        sendYoutubePlayerCommand(iframe, "playVideo");
+      },
+    });
 
     return () => {
       cancelled = true;
@@ -388,18 +440,17 @@ export function ReleaseCardHoverPanel({
           ref={trailerIframeRef}
           id={trailerIframeId}
           src={youtubeTrailerEmbedUrl(trailerYoutubeId!, { muted: true, origin: embedOrigin || undefined })}
-          title={`Трейлер «${release.animeTitle}»`}
-          className="release-card-hover-trailer absolute inset-0 h-full w-full border-0"
-          allow="autoplay; encrypted-media"
-          tabIndex={-1}
+          title="YouTube video player"
+          className="release-card-hover-trailer cursor-pointer border-0"
+          allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture; web-share"
           onLoad={(event) => handleIframeLoad(event.currentTarget)}
         />
       </div>
 
       {!trailerVideoStarted ? (
         <div
-          className="release-card-trailer-overlay absolute inset-0 z-[2] overflow-hidden bg-surface-dim"
-          aria-hidden={false}
+          className="release-card-trailer-overlay pointer-events-none absolute inset-0 z-[2] overflow-hidden bg-surface-dim"
+          aria-hidden
         >
           <TrailerPreviewImage
             previewUrl={previewUrl}
@@ -424,23 +475,19 @@ export function ReleaseCardHoverPanel({
       : "absolute inset-0 leading-none";
 
   const panelClassName = portal
-    ? [
-        "release-card-hover-panel release-card-hover-panel--portal hidden transition duration-200 ease-out md:block",
-        visible ? "is-visible pointer-events-auto opacity-100" : "pointer-events-none opacity-0",
-      ].join(" ")
-    : [
-        "release-card-hover-panel absolute left-1/2 top-0 z-50 hidden w-[320px] transition duration-200 ease-out md:block",
-        visible ? "is-visible pointer-events-auto opacity-100" : "pointer-events-none opacity-0",
-      ].join(" ");
+    ? "release-card-hover-panel release-card-hover-panel--portal hidden md:block"
+    : "release-card-hover-panel absolute left-1/2 top-0 z-50 hidden w-[320px] md:block";
+
+  const panelVisibilityClass = visible ? "is-visible" : "";
 
   const panelNode = (
     <div
       ref={panelRef}
-      className={panelClassName}
+      className={[panelClassName, panelVisibilityClass].filter(Boolean).join(" ")}
       style={portal ? portalStyle : ({ "--hover-panel-x": `${panelOffsetX}px` } as CSSProperties)}
       aria-hidden={!visible}
     >
-      <div className="flex flex-col overflow-hidden rounded-xl border border-border bg-card shadow-2xl shadow-black/70 ring-1 ring-white/5">
+      <div className="flex flex-col overflow-hidden rounded-xl border border-border bg-card shadow-2xl shadow-black/70 ring-1 ring-white/5 max-h-[inherit]">
         <div className="relative aspect-video w-full shrink-0 overflow-hidden bg-surface-dim">
           {playingTrailer ? (
             <div className={previewWrapperClass}>{previewInner}</div>
@@ -456,16 +503,18 @@ export function ReleaseCardHoverPanel({
             <div className={previewWrapperClass}>{previewInner}</div>
           )}
 
-          {playingTrailer ? (
-            <div
-              className="release-card-hover-trailer-shield absolute inset-0 z-[15] cursor-default"
-              aria-hidden
-            />
-          ) : null}
-
           <div className="pointer-events-none absolute bottom-2 left-2 z-[16]">
-            <TranslationBadge name={release.translationName} />
+            {release.translationName ? <TranslationBadge name={release.translationName} /> : null}
           </div>
+
+          {trailerFetching && trailerEnabled && !playingTrailer ? (
+            <div
+              className="pointer-events-none absolute right-2 top-2 z-[16] flex h-7 w-7 items-center justify-center rounded-full bg-black/55 text-white shadow-sm"
+              aria-hidden
+            >
+              <LoadingSpinner size="xs" />
+            </div>
+          ) : null}
 
           {playingTrailer ? (
             <button
@@ -480,21 +529,21 @@ export function ReleaseCardHoverPanel({
               </span>
             </button>
           ) : null}
+
+          {showTrailerProgress ? (
+            <div
+              className="release-card-trailer-progress pointer-events-none absolute inset-x-0 bottom-0 z-[17] h-0.5 bg-foreground/10"
+              aria-hidden
+            >
+              <div
+                className="release-card-trailer-progress-fill h-full bg-accent"
+                style={{ width: `${trailerProgress}%` }}
+              />
+            </div>
+          ) : null}
         </div>
 
-        {showTrailerProgress ? (
-          <div
-            className="release-card-trailer-progress h-0.5 w-full shrink-0 bg-foreground/10"
-            aria-hidden
-          >
-            <div
-              className="release-card-trailer-progress-fill h-full bg-accent"
-              style={{ width: `${trailerProgress}%` }}
-            />
-          </div>
-        ) : null}
-
-        <div className="relative -mt-px space-y-2 bg-card p-3">
+        <div className="relative space-y-2 bg-card p-3">
           {animeHref ? (
             <AnimeLink href={animeHref} className="block text-sm font-semibold leading-snug text-foreground hover:text-accent">
               {release.animeTitle}
@@ -503,7 +552,12 @@ export function ReleaseCardHoverPanel({
             <p className="text-sm font-semibold leading-snug text-foreground">{release.animeTitle}</p>
           )}
 
-          <ReleaseMetaRow release={release} />
+          <div className="flex flex-wrap items-center gap-1.5">
+            <ReleaseMetaRow release={release} />
+            {release.shikimoriId ? (
+              <ReleaseRewatchBadge shikimoriId={release.shikimoriId} readOnly={readOnly} />
+            ) : null}
+          </div>
           <ReleaseGenresRow genres={release.genres} />
 
           {description ? (
@@ -515,7 +569,7 @@ export function ReleaseCardHoverPanel({
           {animeHref ? (
             <AnimeLink
               href={watchHref}
-              className="flex w-full items-center justify-center gap-2 rounded-full bg-foreground/10 px-4 py-2.5 text-sm font-semibold text-foreground transition hover:bg-accent hover:text-white"
+              className="flex w-full items-center justify-center gap-2 rounded-full border border-border bg-surface-dim px-4 py-2.5 text-sm font-medium text-muted transition hover:border-accent hover:bg-accent hover:text-white"
             >
               <svg viewBox="0 0 20 20" className="h-4 w-4" fill="currentColor" aria-hidden>
                 <path d="M7 5.5v9l7-4.5-7-4.5z" />
@@ -527,11 +581,34 @@ export function ReleaseCardHoverPanel({
               href={watchHref}
               target="_blank"
               rel="noopener noreferrer"
-              className="flex w-full items-center justify-center gap-2 rounded-full bg-foreground/10 px-4 py-2.5 text-sm font-semibold text-foreground transition hover:bg-accent hover:text-white"
+              className="flex w-full items-center justify-center gap-2 rounded-full border border-border bg-surface-dim px-4 py-2.5 text-sm font-medium text-muted transition hover:border-accent hover:bg-accent hover:text-white"
             >
               Смотреть онлайн
             </a>
           )}
+
+          {onDeleteFromHistory ? (
+            <button
+              type="button"
+              onClick={(event) => {
+                event.preventDefault();
+                event.stopPropagation();
+                void onDeleteFromHistory();
+              }}
+              disabled={deletingFromHistory}
+              aria-busy={deletingFromHistory}
+              className="flex w-full items-center justify-center gap-2 rounded-full border border-red-500/30 bg-surface-dim px-4 py-2.5 text-sm font-medium text-red-400 transition hover:border-red-500 hover:bg-red-500 hover:text-white disabled:cursor-wait disabled:opacity-60"
+            >
+              {deletingFromHistory ? (
+                <LoadingSpinner size="xs" />
+              ) : (
+                <svg viewBox="0 0 24 24" className="h-4 w-4 shrink-0" fill="none" stroke="currentColor" strokeWidth="2" aria-hidden>
+                  <path d="M3 6h18M8 6V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2m3 0v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6h14M10 11v6M14 11v6" strokeLinecap="round" strokeLinejoin="round" />
+                </svg>
+              )}
+              {deletingFromHistory ? "Удаление…" : "Удалить из истории"}
+            </button>
+          ) : null}
 
           {release.shikimoriId ? (
             <ReleaseCardQuickActions shikimoriId={release.shikimoriId} />
@@ -542,7 +619,7 @@ export function ReleaseCardHoverPanel({
   );
 
   if (portal) {
-    if (!portalMounted) return null;
+    if (!portalMounted || !visible) return null;
     return createPortal(panelNode, document.body);
   }
 

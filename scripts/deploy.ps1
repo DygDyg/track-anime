@@ -21,6 +21,9 @@ $ErrorActionPreference = "Stop"
 
 $ProjectRoot = (Resolve-Path (Join-Path $PSScriptRoot "..")).Path
 $TarPath = Join-Path $env:TEMP ("ta_deploy_{0:yyyyMMddHHmmss}.tar.gz" -f (Get-Date))
+$ProgressIdPack = 1
+$ProgressIdUpload = 2
+$ProgressIdServer = 3
 
 function Write-Step {
     param(
@@ -34,6 +37,352 @@ function Assert-LastExit {
     param([string]$Step)
     if ($LASTEXITCODE -ne 0) {
         throw "$Step failed (exit $LASTEXITCODE)"
+    }
+}
+
+function Write-DeployProgress {
+    param(
+        [int]$Id,
+        [string]$Activity,
+        [string]$Status,
+        [int]$PercentComplete = -1
+    )
+    if ($PercentComplete -ge 0) {
+        Write-Progress -Id $Id -Activity $Activity -Status $Status -PercentComplete $PercentComplete
+    } else {
+        Write-Progress -Id $Id -Activity $Activity -Status $Status -PercentComplete 0
+    }
+}
+
+function Complete-DeployProgress {
+    param([int[]]$Ids)
+    foreach ($id in $Ids) {
+        Write-Progress -Id $id -Activity " " -Completed
+    }
+}
+
+function Format-Megabytes {
+    param([long]$Bytes)
+    return [math]::Round($Bytes / 1MB, 1)
+}
+
+function Get-SshBaseOptions {
+    param([string]$Key)
+    return @(
+        "-i", $Key,
+        "-o", "BatchMode=yes",
+        "-o", "ConnectTimeout=25",
+        "-o", "ConnectionAttempts=1",
+        "-o", "ServerAliveInterval=15",
+        "-o", "ServerAliveCountMax=8"
+    )
+}
+
+function Invoke-SshQuiet {
+    param(
+        [string]$Key,
+        [string]$RemoteHost,
+        [string]$Command
+    )
+
+    $prevEap = $ErrorActionPreference
+    $ErrorActionPreference = "SilentlyContinue"
+    try {
+        $output = & ssh @(Get-SshBaseOptions -Key $Key) $RemoteHost $Command 2>$null
+        return @{
+            ExitCode = $LASTEXITCODE
+            Output   = $output
+        }
+    } finally {
+        $ErrorActionPreference = $prevEap
+    }
+}
+
+function Invoke-SshWithRetry {
+    param(
+        [string]$Key,
+        [string]$RemoteHost,
+        [string]$Command,
+        [int]$MaxAttempts = 5,
+        [string]$Step = "SSH"
+    )
+
+    $lastExit = 255
+    $lastOutput = $null
+    for ($attempt = 1; $attempt -le $MaxAttempts; $attempt++) {
+        $result = Invoke-SshQuiet -Key $Key -RemoteHost $RemoteHost -Command $Command
+        $lastExit = $result.ExitCode
+        $lastOutput = $result.Output
+        if ($lastExit -eq 0) {
+            return $result
+        }
+        if ($attempt -lt $MaxAttempts) {
+            $waitSec = [math]::Min(8, $attempt * 2)
+            Write-Step "$Step failed (exit $lastExit), retry $attempt/$MaxAttempts in ${waitSec}s..." -Color Yellow
+            Start-Sleep -Seconds $waitSec
+        }
+    }
+
+    throw "$Step failed after $MaxAttempts attempts (exit $lastExit)"
+}
+
+function Invoke-ScpWithRetry {
+    param(
+        [string]$Key,
+        [string]$ArchivePath,
+        [string]$Target,
+        [int]$MaxAttempts = 3,
+        [string]$Step = "scp upload"
+    )
+
+    $scpOpts = @(
+        "-i", $Key,
+        "-o", "ConnectTimeout=30",
+        "-o", "ConnectionAttempts=1",
+        "-o", "ServerAliveInterval=15",
+        "-o", "ServerAliveCountMax=8"
+    )
+
+    $lastExit = 255
+    for ($attempt = 1; $attempt -le $MaxAttempts; $attempt++) {
+        $prevEap = $ErrorActionPreference
+        $ErrorActionPreference = "SilentlyContinue"
+        try {
+            & scp @scpOpts $ArchivePath $Target 2>$null
+            $lastExit = $LASTEXITCODE
+        } finally {
+            $ErrorActionPreference = $prevEap
+        }
+        if ($lastExit -eq 0) {
+            return
+        }
+        if ($attempt -lt $MaxAttempts) {
+            $waitSec = [math]::Min(10, $attempt * 3)
+            Write-Step "$Step failed (exit $lastExit), retry $attempt/$MaxAttempts in ${waitSec}s..." -Color Yellow
+            Start-Sleep -Seconds $waitSec
+        }
+    }
+
+    throw "$Step failed after $MaxAttempts attempts (exit $lastExit)"
+}
+
+function Test-DeployExcludedFile {
+    param([string]$Name)
+    return (
+        $Name -eq ".env" -or
+        $Name -eq ".build-number" -or
+        $Name -eq "tsconfig.tsbuildinfo" -or
+        $Name -like "*.tar.gz" -or
+        $Name -like "*.mp4" -or
+        $Name -like "*.db"
+    )
+}
+
+function Get-DeploySourceBytes {
+    param([string]$Root)
+
+    $excludedTop = [System.Collections.Generic.HashSet[string]]::new(
+        [string[]]@("node_modules", ".next", ".git", "tmp", ".cursor", ".kilo"),
+        [StringComparer]::OrdinalIgnoreCase
+    )
+    $total = [int64]0
+    $stack = [System.Collections.Stack]::new()
+    $stack.Push($Root)
+
+    while ($stack.Count -gt 0) {
+        $dir = [string]$stack.Pop()
+        try {
+            foreach ($item in Get-ChildItem -LiteralPath $dir -Force -ErrorAction Stop) {
+                if ($item.PSIsContainer) {
+                    if ($dir -eq $Root -and $excludedTop.Contains($item.Name)) {
+                        continue
+                    }
+                    $stack.Push($item.FullName)
+                    continue
+                }
+                if (Test-DeployExcludedFile -Name $item.Name) {
+                    continue
+                }
+                $total += $item.Length
+            }
+        } catch {
+            # skip unreadable paths
+        }
+    }
+
+    return $total
+}
+
+function Invoke-PackWithProgress {
+    param(
+        [string]$ArchivePath,
+        [string[]]$TarExcludes
+    )
+
+    Write-DeployProgress -Id $ProgressIdPack -Activity "Pack" -Status "Estimating size..." -PercentComplete 0
+
+    $sourceBytes = Get-DeploySourceBytes -Root $ProjectRoot
+    $estimatedCompressed = [math]::Max(32MB, [int64][math]::Round($sourceBytes * 0.38))
+    $sourceMb = Format-Megabytes $sourceBytes
+    $estimateMb = Format-Megabytes $estimatedCompressed
+
+    Write-DeployProgress -Id $ProgressIdPack -Activity "Pack" -Status "~$estimateMb MB (from $sourceMb MB)" -PercentComplete 1
+
+    if (Test-Path $ArchivePath) {
+        Remove-Item $ArchivePath -Force
+    }
+
+    $packPs = [powershell]::Create()
+    [void]$packPs.AddScript({
+        param($Root, $Archive, [string[]]$Excludes)
+        Set-Location $Root
+        & tar -czf $Archive @Excludes .
+        if ($LASTEXITCODE -ne 0) {
+            throw "tar exit $LASTEXITCODE"
+        }
+    }).AddArgument($ProjectRoot).AddArgument($ArchivePath).AddArgument($tarExcludes)
+
+    $packAsync = $packPs.BeginInvoke()
+
+    while (-not $packAsync.IsCompleted) {
+        $current = [int64]0
+        if (Test-Path $ArchivePath) {
+            $current = (Get-Item -LiteralPath $ArchivePath).Length
+        }
+        $pct = if ($estimatedCompressed -gt 0) {
+            [math]::Min(99, [math]::Round(100 * $current / $estimatedCompressed))
+        } else {
+            0
+        }
+        $currentMb = Format-Megabytes $current
+        Write-DeployProgress -Id $ProgressIdPack -Activity "Pack" -Status "$currentMb / ~$estimateMb MB" -PercentComplete $pct
+        Start-Sleep -Milliseconds 350
+    }
+
+    try {
+        $packPs.EndInvoke($packAsync)
+        if ($packPs.HadErrors) {
+            $detail = ($packPs.Streams.Error | ForEach-Object { $_.ToString() }) -join "; "
+            throw "tar pack failed ($detail)"
+        }
+    } catch {
+        Complete-DeployProgress -Ids @($ProgressIdPack)
+        throw
+    } finally {
+        $packPs.Dispose()
+    }
+
+    $finalBytes = (Get-Item -LiteralPath $ArchivePath).Length
+    $finalMb = Format-Megabytes $finalBytes
+    Write-DeployProgress -Id $ProgressIdPack -Activity "Pack" -Status "$finalMb MB done" -PercentComplete 100
+    Start-Sleep -Milliseconds 200
+    Write-Progress -Id $ProgressIdPack -Activity "Pack" -Completed
+
+    return $finalBytes
+}
+
+function Invoke-UploadWithProgress {
+    param(
+        [string]$ArchivePath,
+        [string]$RemoteHost,
+        [string]$Key,
+        [long]$LocalBytes
+    )
+
+    $localMb = Format-Megabytes $LocalBytes
+    Write-DeployProgress -Id $ProgressIdUpload -Activity "Upload" -Status "0 / $localMb MB" -PercentComplete 0
+
+    $remotePath = "/tmp/ta_deploy.tar.gz"
+    $uploadPs = [powershell]::Create()
+    [void]$uploadPs.AddScript({
+        param($Key, $Archive, $Target)
+        $scpOpts = @(
+            "-i", $Key,
+            "-o", "ConnectTimeout=30",
+            "-o", "ConnectionAttempts=1",
+            "-o", "ServerAliveInterval=15",
+            "-o", "ServerAliveCountMax=8"
+        )
+        & scp @scpOpts $Archive $Target
+        if ($LASTEXITCODE -ne 0) {
+            throw "scp exit $LASTEXITCODE"
+        }
+    }).AddArgument($Key).AddArgument($ArchivePath).AddArgument("${RemoteHost}:${remotePath}")
+
+    $uploadAsync = $uploadPs.BeginInvoke()
+    $remoteCmd = "if [ -f '$remotePath' ]; then wc -c < '$remotePath'; else echo 0; fi"
+    $uploadPollSec = 5
+
+    while (-not $uploadAsync.IsCompleted) {
+        $remoteBytes = [int64]0
+        $poll = Invoke-SshQuiet -Key $Key -RemoteHost $RemoteHost -Command $remoteCmd
+        if ($poll.ExitCode -eq 0 -and $poll.Output) {
+            $remoteBytes = [int64]$poll.Output.Trim()
+        }
+
+        $pct = if ($LocalBytes -gt 0) {
+            [math]::Min(99, [math]::Round(100 * $remoteBytes / $LocalBytes))
+        } else {
+            0
+        }
+        $remoteMb = Format-Megabytes $remoteBytes
+        Write-DeployProgress -Id $ProgressIdUpload -Activity "Upload" -Status "$remoteMb / $localMb MB" -PercentComplete $pct
+        Start-Sleep -Seconds $uploadPollSec
+    }
+
+    try {
+        $uploadPs.EndInvoke($uploadAsync)
+        if ($uploadPs.HadErrors) {
+            $detail = ($uploadPs.Streams.Error | ForEach-Object { $_.ToString() }) -join "; "
+            throw "scp upload failed ($detail)"
+        }
+    } catch {
+        Complete-DeployProgress -Ids @($ProgressIdUpload)
+        Write-Step "scp job failed, retrying full upload..." -Color Yellow
+        Invoke-ScpWithRetry -Key $Key -ArchivePath $ArchivePath -Target "${RemoteHost}:${remotePath}"
+    } finally {
+        $uploadPs.Dispose()
+    }
+
+    $remoteSize = (Invoke-SshWithRetry -Key $Key -RemoteHost $RemoteHost -Command $remoteCmd -Step "verify upload size").Output.Trim()
+    $remoteSizeBytes = [int64]$remoteSize
+    if ($remoteSizeBytes -lt $LocalBytes) {
+        throw "upload incomplete on server ($((Format-Megabytes $remoteSizeBytes)) MB / $localMb MB)"
+    }
+
+    Write-DeployProgress -Id $ProgressIdUpload -Activity "Upload" -Status "$localMb MB uploaded" -PercentComplete 100
+    Start-Sleep -Milliseconds 200
+    Write-Progress -Id $ProgressIdUpload -Activity "Upload" -Completed
+}
+
+function Write-ServerDeployLogDelta {
+    param([string]$Delta)
+
+    if (-not $Delta) {
+        return
+    }
+
+    $remaining = $Delta
+    while ($remaining.Length -gt 0) {
+        $nl = $remaining.IndexOf("`n")
+        if ($nl -lt 0) {
+            $line = $remaining
+            $remaining = ""
+        } else {
+            $line = $remaining.Substring(0, $nl).TrimEnd("`r")
+            $remaining = $remaining.Substring($nl + 1)
+        }
+
+        if ($line -match '^\[deploy:progress\]\s+(\d+)/(\d+)\s+(.+)$') {
+            $step = [int]$Matches[1]
+            $total = [int]$Matches[2]
+            $label = $Matches[3]
+            $pct = if ($total -gt 0) { [math]::Round(100 * $step / $total) } else { 0 }
+            Write-DeployProgress -Id $ProgressIdServer -Activity "Server" -Status "$step/$total $label" -PercentComplete $pct
+            continue
+        }
+
+        Write-Host $line
     }
 }
 
@@ -63,17 +412,17 @@ $tarExcludes = @(
     "--exclude=.env",
     "--exclude=.build-number",
     "--exclude=tmp",
+    "--exclude=.cursor",
+    "--exclude=.kilo",
     "--exclude=*.tar.gz",
     "--exclude=*.mp4",
+    "--exclude=*.db",
     "--exclude=tsconfig.tsbuildinfo"
 )
 
 Write-Step "pack..."
-if (Test-Path $TarPath) { Remove-Item $TarPath -Force }
-& tar -czf $TarPath @tarExcludes .
-Assert-LastExit "tar pack"
-
-$tarSizeMb = [math]::Round((Get-Item $TarPath).Length / 1MB, 1)
+$tarBytes = Invoke-PackWithProgress -ArchivePath $TarPath -TarExcludes $tarExcludes
+$tarSizeMb = Format-Megabytes $tarBytes
 Write-Step "archive: $TarPath ($tarSizeMb MB)"
 
 if ($DryRun) {
@@ -82,14 +431,136 @@ if ($DryRun) {
 }
 
 Write-Step "upload..."
-& scp -i $SshKey $TarPath "${Remote}:/tmp/ta_deploy.tar.gz"
-Assert-LastExit "scp upload"
+Invoke-UploadWithProgress -ArchivePath $TarPath -RemoteHost $Remote -Key $SshKey -LocalBytes $tarBytes
 
-Write-Step "server-deploy.sh..."
-$remoteCmd = 'cd ' + $ServerAppDir + ' && sed -i ''s/\r$//'' scripts/*.sh && bash scripts/server-deploy.sh'
+function Invoke-RemoteDeploy {
+    param(
+        [string]$RemoteHost,
+        [string]$Key,
+        [string]$AppDir
+    )
 
-& ssh -i $SshKey $Remote $remoteCmd
-Assert-LastExit "server deploy"
+    $logFile = "/tmp/ta_deploy.log"
+    $screenSession = "ta_deploy"
+    # Скрипты bg/deploy ещё не на сервере до полного extract — вытаскиваем из свежего tar.
+    $sedCrLf = 'sed -i ''s/\r$//'''
+    $startCmd = "cd $AppDir && tar -xzf /tmp/ta_deploy.tar.gz ./scripts/server-deploy.sh ./scripts/server-deploy-bg.sh && $sedCrLf scripts/server-deploy.sh scripts/server-deploy-bg.sh && bash scripts/server-deploy-bg.sh '$AppDir' '$logFile'"
+
+    Write-Step "server-deploy (screen on server)..."
+    Write-DeployProgress -Id $ProgressIdServer -Activity "Server" -Status "Starting..." -PercentComplete 0
+
+    $startResult = Invoke-SshQuiet -Key $Key -RemoteHost $RemoteHost -Command $startCmd
+    if ($startResult.ExitCode -eq 0) {
+        if ($startResult.Output) {
+            Write-Host $startResult.Output
+        }
+    } elseif ($startResult.ExitCode -eq 2) {
+        Write-Step "deploy already running in screen" -Color Yellow
+        if ($startResult.Output) {
+            Write-Host $startResult.Output
+        }
+    } else {
+        try {
+            $startResult = Invoke-SshWithRetry -Key $Key -RemoteHost $RemoteHost -Command $startCmd -Step "start background deploy"
+            if ($startResult.Output) {
+                Write-Host $startResult.Output
+            }
+        } catch {
+            Write-Step "could not confirm deploy start via SSH - will poll server log" -Color Yellow
+            Write-Step "deploy may still be running in screen on server" -Color Yellow
+        }
+    }
+
+    Write-Step "screen: $screenSession | log: $logFile (survives SSH drop)"
+    Write-Host ""
+
+    $logOffset = 0
+    $sshDropped = $false
+    $pollSec = 4
+    $unknownPolls = 0
+    $maxUnknownPolls = 30
+
+    while ($true) {
+        try {
+            $sizePoll = Invoke-SshWithRetry -Key $Key -RemoteHost $RemoteHost -Command "wc -c < '$logFile' 2>/dev/null || echo 0" -MaxAttempts 3 -Step "read deploy log size"
+            $size = [int64]($sizePoll.Output.Trim())
+
+            if ($size -gt $logOffset) {
+                $deltaPoll = Invoke-SshWithRetry -Key $Key -RemoteHost $RemoteHost -Command "tail -c +$($logOffset + 1) '$logFile'" -MaxAttempts 3 -Step "read deploy log chunk"
+                Write-ServerDeployLogDelta -Delta $deltaPoll.Output
+                $logOffset = $size
+            }
+
+            $statusCmd = @'
+if screen -list 2>/dev/null | grep -qE '[[:space:]][0-9]+\.SESSION[[:space:]]'; then echo running; elif [ -f /tmp/ta_deploy.exit ]; then echo done:$(cat /tmp/ta_deploy.exit); else echo unknown; fi
+'@.Replace('SESSION', $screenSession)
+            $statusPoll = Invoke-SshWithRetry -Key $Key -RemoteHost $RemoteHost -Command $statusCmd -MaxAttempts 3 -Step "read deploy status"
+            $state = $statusPoll.Output.Trim()
+
+            if ($sshDropped) {
+                Write-Step "SSH reconnected" -Color Green
+                $sshDropped = $false
+            }
+
+            if ($state -eq "running") {
+                $unknownPolls = 0
+                Start-Sleep -Seconds $pollSec
+                continue
+            }
+
+            if ($state -like "done:*") {
+                $deployExit = [int]$state.Split(":")[1]
+                if ($deployExit -ne 0) {
+                    Complete-DeployProgress -Ids @($ProgressIdServer)
+                    throw "server deploy failed (exit $deployExit)"
+                }
+                Write-DeployProgress -Id $ProgressIdServer -Activity "Server" -Status "Done" -PercentComplete 100
+                Start-Sleep -Milliseconds 200
+                Write-Progress -Id $ProgressIdServer -Activity "Server" -Completed
+                return
+            }
+
+            $unknownPolls++
+            if ($unknownPolls -ge $maxUnknownPolls) {
+                Complete-DeployProgress -Ids @($ProgressIdServer)
+                throw "server deploy status unknown after $($maxUnknownPolls * $pollSec)s (no screen session / exit file)"
+            }
+            Start-Sleep -Seconds $pollSec
+        } catch {
+            if ($_.Exception.Message -match "server deploy failed|server deploy status unknown") {
+                throw
+            }
+            if (-not $sshDropped) {
+                Write-Host ""
+                Write-Step "SSH disconnected - deploy continues in screen on server" -Color Yellow
+                Write-Step "Attach: ssh -t $RemoteHost screen -r $screenSession" -Color Yellow
+                Write-Step "Tail log: ssh $RemoteHost tail -f $logFile" -Color Yellow
+                $sshDropped = $true
+            }
+            Start-Sleep -Seconds $pollSec
+        }
+    }
+}
+
+Invoke-RemoteDeploy -RemoteHost $Remote -Key $SshKey -AppDir $ServerAppDir
 
 Remove-Item $TarPath -Force -ErrorAction SilentlyContinue
+
+Write-Host ""
+Write-Host "============================================================" -ForegroundColor Green
+Write-Host "  DEPLOY FINISHED - ALL CHECKS PASSED" -ForegroundColor Green
+Write-Host "============================================================" -ForegroundColor Green
+Write-Host "  Remote:       $Remote"
+Write-Host "  App dir:      $ServerAppDir"
+Write-Host "  Archive:      $tarSizeMb MB uploaded"
+Write-Host ""
+Write-Host "  Server steps completed:" -ForegroundColor Green
+Write-Host "    [OK] Code extracted and dependencies installed"
+Write-Host "    [OK] Database schema synced (Prisma)"
+Write-Host "    [OK] Next.js build"
+Write-Host "    [OK] track-anime service restarted and active"
+Write-Host "    [OK] Site responds HTTP 200"
+Write-Host ""
+Write-Host "  Site: https://track-anime.dygdyg.ru/" -ForegroundColor Green
+Write-Host "============================================================" -ForegroundColor Green
 Write-Step "done" -Color Green

@@ -15,6 +15,8 @@
   --body-gradient: #1a2240;
   --site-header-height: 3.5rem;
   --pwa-nav-height: 3.5rem;
+  --pwa-search-input-bar-height: 3.25rem;
+  --mobile-keyboard-inset: 0px;
   --site-accent-hover: #7d96ff;
 }
 
@@ -68,16 +70,78 @@ main {
   padding-bottom: env(safe-area-inset-bottom, 0);
 }
 
-html.pwa-standalone main {
+html.has-bottom-nav main {
   padding-bottom: calc(var(--pwa-nav-height) + env(safe-area-inset-bottom, 0px));
 }
 
 .pwa-bottom-nav {
+  border-top: 1px solid var(--border);
   padding-bottom: env(safe-area-inset-bottom, 0px);
+  overflow: visible;
 }
 
-html.pwa-standalone .pwa-bottom-nav > div {
+.pwa-bottom-nav-fab-slot {
+  position: absolute;
+  left: 50%;
+  bottom: 1rem;
+  z-index: 58;
+  width: calc(var(--pwa-nav-height) * 1.1);
+  height: calc(var(--pwa-nav-height) * 1.1);
+  transform: translateX(-50%);
+}
+
+.pwa-bottom-nav-fab {
+  /* transform только на .pwa-bottom-nav-fab-slot */
+}
+
+.avatar-decoration-overlay {
+  position: absolute;
+  inset: 0;
+  z-index: 2;
+  width: 100%;
+  height: 100%;
+  pointer-events: none;
+  object-fit: contain;
+  transform: scale(var(--avatar-decoration-scale, 1.08));
+  transform-origin: center center;
+}
+
+.avatar-decoration-host {
+  position: relative;
+  isolation: isolate;
+}
+
+.mobile-top-search-input-bar {
+  top: calc(var(--site-header-height) + env(safe-area-inset-top, 0px));
+}
+
+.mobile-top-search-results-wrap {
+  top: calc(
+    var(--site-header-height) + env(safe-area-inset-top, 0px) + var(--pwa-search-input-bar-height) + 0.5rem
+  );
+  bottom: calc(var(--pwa-nav-height) * 1.1 + env(safe-area-inset-bottom, 0px));
+  transition: bottom 0.2s ease-out;
+}
+
+html.mobile-bottom-search-open.mobile-keyboard-open .mobile-top-search-results-wrap {
+  bottom: calc(var(--mobile-keyboard-inset, 0px) + 0.5rem);
+}
+
+html.mobile-bottom-search-open.mobile-keyboard-open .pwa-bottom-nav {
+  visibility: hidden;
+  pointer-events: none;
+}
+
+.mobile-top-search-results {
+  scroll-behavior: smooth;
+}
+
+html.has-bottom-nav .pwa-bottom-nav > div {
   min-height: var(--pwa-nav-height);
+}
+
+html.has-bottom-nav #mobile-nav {
+  padding-bottom: calc(var(--pwa-nav-height) + max(0.75rem, env(safe-area-inset-bottom, 0px)));
 }
 
 @media (min-width: 640px) {
@@ -131,6 +195,7 @@ a {
   max-width: 100vw;
   transform: translateX(-50%);
   pointer-events: none;
+  border-bottom: 1px solid var(--border);
 }
 
 [data-theme="light"] .site-header-bg {
@@ -378,6 +443,12 @@ html[data-reduce-motion="true"] .site-search-spinner {
   transition: border-color 0.15s ease;
 }
 
+textarea.site-input {
+  height: auto;
+  padding: 0.5rem 0.75rem;
+  resize: vertical;
+}
+
 .site-input:focus {
   border-color: var(--accent);
 }
@@ -613,6 +684,10 @@ html[data-reduce-motion="true"] .site-search-spinner {
 
 .favorites-search-input {
   background: var(--card);
+}
+
+.anime-poster-thumb {
+  image-rendering: auto;
 }
 
 @keyframes favorites-tab-in {
@@ -882,30 +957,38 @@ html[data-reduce-motion="true"] *::after {
 /* Hover-карточка релиза (desktop, как у Яндекс.Видео) */
 @media (min-width: 768px) and (hover: hover) {
   .release-card-hover-panel {
-    transform: translateX(calc(-50% + var(--hover-panel-x, 0px))) translateY(6px);
+    opacity: 0;
+    visibility: hidden;
+    pointer-events: none;
+    transform: translateX(calc(-50% + var(--hover-panel-x, 0px))) translateY(6px) scale(0.97);
     transform-origin: top center;
-  }
-
-  .release-card-hover-panel:not(.is-visible) {
-    display: none;
+    transition:
+      opacity 160ms ease-out,
+      transform 160ms ease-out,
+      visibility 160ms ease-out;
   }
 
   .release-card-hover-panel.is-visible {
-    transform: translateX(calc(-50% + var(--hover-panel-x, 0px))) translateY(0);
+    opacity: 1;
+    visibility: visible;
+    pointer-events: auto;
+    transform: translateX(calc(-50% + var(--hover-panel-x, 0px))) translateY(0) scale(1);
+  }
+
+  .release-card-hover-trailer-wrap {
+    overflow: hidden;
   }
 
   .release-card-hover-trailer {
+    position: absolute;
+    top: 50%;
+    left: 50%;
+    width: 250%;
+    height: 250%;
+    max-width: none;
+    transform: translate(-50%, -50%);
     animation: release-card-trailer-in 0.35s ease-out;
-    pointer-events: none !important;
-    transform: scale(1.14);
-    transform-origin: center center;
-  }
-
-  .release-card-hover-trailer-shield {
-    pointer-events: auto;
-    touch-action: none;
-    user-select: none;
-    cursor: default;
+    border: 0;
   }
 }
 
@@ -931,6 +1014,29 @@ html[data-reduce-motion="true"] .release-card-hover-panel {
   transition: none !important;
 }
 
+.comment-scroll-target {
+  box-shadow: 0 0 0 2px color-mix(in srgb, var(--accent) 55%, transparent);
+}
+
+@keyframes copy-toast-in {
+  from {
+    opacity: 0;
+    transform: translate(-50%, 12px);
+  }
+  to {
+    opacity: 1;
+    transform: translate(-50%, 0);
+  }
+}
+
+.copy-toast {
+  animation: copy-toast-in 0.22s ease-out;
+}
+
+html[data-reduce-motion="true"] .copy-toast {
+  animation: none;
+}
+
 @media (min-width: 768px) {
   .feed-grid {
     grid-template-columns: repeat(auto-fill, minmax(var(--feed-col-min), 1fr));
@@ -951,13 +1057,188 @@ html[data-card-size="compact"] .release-card-title {
   font-size: 0.8125rem;
 }
 
-/* Блок «Новое в вашей истории» — в стиле шапки сайта */
+/* Панели ленты (история, календарь) — непрозрачные углы под обводкой */
 .home-history-section {
-  overflow: visible;
+  overflow: hidden;
+  isolation: isolate;
+  background-color: var(--card);
+}
+
+@media (max-width: 639px) {
+  .anime-page-mobile-fullbleed {
+    width: 100vw;
+    max-width: 100vw;
+    margin-left: calc(50% - 50vw);
+    margin-right: calc(50% - 50vw);
+  }
+}
+
+.anime-age-rating-badge {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 1.625rem;
+  min-width: 2.5rem;
+  border-width: 2px;
+  border-style: solid;
+  border-radius: 0.3rem;
+  padding: 0.125rem 0.4375rem;
+  font-size: 0.625rem;
+  font-weight: 800;
+  letter-spacing: 0.04em;
+  line-height: 1;
+  text-transform: uppercase;
+}
+
+.anime-rating-tooltip::after {
+  content: "";
+  position: absolute;
+  top: 100%;
+  left: 50%;
+  margin-left: -0.3rem;
+  border: 0.3rem solid transparent;
+  border-top-color: var(--border);
+}
+
+@media (min-width: 640px) {
+  .anime-trailer-shell--expanded {
+    width: var(--trailer-expand-width);
+    max-width: var(--trailer-expand-width);
+    margin-left: var(--trailer-expand-offset);
+    z-index: 20;
+  }
+
+  .anime-trailer-shell--compact-active {
+    width: var(--trailer-compact-width);
+    max-width: var(--trailer-compact-width);
+    margin-left: 0;
+  }
+}
+
+@media (min-width: 768px) {
+  .anime-player-expanded-host {
+    display: flex;
+    justify-content: center;
+    width: 100dvw;
+    max-width: 100dvw;
+    margin-left: calc(50% - 50dvw);
+    margin-right: calc(50% - 50dvw);
+    scroll-margin-top: calc(var(--site-header-height) + env(safe-area-inset-top, 0px));
+  }
+
+  .anime-player-shell-viewport {
+    width: fit-content;
+    max-width: 100%;
+    margin-inline: auto;
+  }
+
+  .anime-player-viewport-frame {
+    --anime-player-max-h: calc(
+      100dvh - var(--site-header-height) - env(safe-area-inset-top, 0px)
+    );
+    --anime-player-max-w: calc(
+      100dvw - env(safe-area-inset-left, 0px) - env(safe-area-inset-right, 0px)
+    );
+    width: min(var(--anime-player-max-w), calc(var(--anime-player-max-h) * 16 / 9));
+    height: min(var(--anime-player-max-h), calc(var(--anime-player-max-w) * 9 / 16));
+    max-width: var(--anime-player-max-w);
+    max-height: var(--anime-player-max-h);
+    aspect-ratio: 16 / 9;
+    margin-inline: auto;
+  }
+}
+
+/* Beta chromeless Kodik: внешний кадр 16:9; внутренний — центр по высоте, дальше — через CSS-переменные */
+.kodik-player-beta-frame {
+  --kodik-beta-inner-aspect: 16 / 9;
+  --kodik-beta-inner-height: 120%;
+  overflow: hidden;
+}
+
+.kodik-player-beta-inner {
+  position: absolute;
+  left: 0;
+  width: 100%;
+  height: var(--kodik-beta-inner-height);
+  top: 50%;
+  transform: translateY(-50%);
+  aspect-ratio: var(--kodik-beta-inner-aspect);
+}
+
+.kodik-player-beta-iframe {
+  position: absolute;
+  inset: 0;
+  height: 100%;
+  width: 100%;
+  border: 0;
+}
+
+.kodik-player-beta-viewport {
   isolation: isolate;
 }
 
+.kodik-player-beta-ui-top {
+  background: linear-gradient(to bottom, rgba(0, 0, 0, 0.72) 0%, rgba(0, 0, 0, 0.35) 70%, transparent 100%);
+}
+
+.kodik-player-beta-ui-bottom {
+  background: linear-gradient(to top, rgba(0, 0, 0, 0.82) 0%, rgba(0, 0, 0, 0.45) 65%, transparent 100%);
+}
+
+.kodik-player-beta-episodes--overlay {
+  mask-image: linear-gradient(to bottom, #000 85%, transparent 100%);
+}
+
+.kodik-player-beta-controls--overlay {
+  background: transparent;
+}
+
+.kodik-player-beta-stage:fullscreen {
+  display: flex;
+  flex-direction: column;
+  overflow-y: auto;
+  background: #000;
+  border: none;
+  border-radius: 0;
+}
+
+.kodik-player-beta-stage:fullscreen .kodik-player-beta-translations {
+  flex: 1 1 auto;
+  min-height: min(40dvh, 24rem);
+  overflow-y: auto;
+}
+
+.kodik-player-beta-range.site-range {
+  --range-track: rgba(255, 255, 255, 0.22);
+  background: linear-gradient(
+    to right,
+    var(--accent) 0%,
+    var(--accent) var(--range-fill, 0%),
+    var(--range-track) var(--range-fill, 0%),
+    var(--range-track) 100%
+  );
+}
+
+.kodik-player-beta-range.site-range::-moz-range-track {
+  height: 0.25rem;
+  border-radius: 9999px;
+  background: var(--range-track);
+}
+
+.kodik-player-beta-range.site-range::-moz-range-progress {
+  height: 0.25rem;
+  border-radius: 9999px;
+  background: var(--accent);
+}
+
+.kodik-player-beta-controls .site-range {
+  accent-color: var(--accent);
+}
+
 .release-card-hover-panel--portal {
+  position: fixed;
+  z-index: 200;
+  width: 320px;
   filter: drop-shadow(0 24px 48px rgba(0, 0, 0, 0.45));
 }
 
@@ -980,10 +1261,152 @@ html[data-card-size="compact"] .release-card-title {
   text-shadow: inherit;
 }
 
+.home-history-watch-block {
+  width: 100%;
+  border-radius: 0.5rem;
+  background: color-mix(in srgb, var(--accent) 14%, transparent);
+  padding: 0.4375rem 0.625rem 0.5rem;
+}
+
+.home-history-watch-block__hint {
+  margin-bottom: 0.375rem;
+  font-size: 0.75rem;
+  font-weight: 600;
+  line-height: 1.35;
+  color: var(--accent);
+}
+
+.home-history-watch-block .episode-progress {
+  background-color: color-mix(in srgb, var(--foreground) 8%, transparent);
+}
+
+[data-theme="light"] .home-history-watch-block .episode-progress {
+  background-color: rgba(255, 255, 255, 0.55);
+}
+
 @media (min-width: 640px) {
   .home-history-stop-badge {
     margin-bottom: 0.375rem;
     padding: 0.375rem 0.75rem;
     font-size: 0.8125rem;
   }
+
+  .home-history-watch-block {
+    padding: 0.5rem 0.75rem 0.5625rem;
+  }
+
+  .home-history-watch-block__hint {
+    margin-bottom: 0.4375rem;
+    font-size: 0.8125rem;
+  }
+}
+
+/* Компактные уведомления на /history — чекбоксы в строку, если влезают */
+.notifications-compact-toggles {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-start;
+  column-gap: 1.25rem;
+  row-gap: 0.125rem;
+}
+
+.notifications-compact-toggles .notifications-toggle-row {
+  flex: 1 1 auto;
+  min-width: min(100%, 9.5rem);
+  max-width: 100%;
+}
+
+/* TV / пульт: заметное кольцо фокуса */
+html[data-tv-nav="true"] :focus-visible,
+[data-tv-card]:focus-visible {
+  outline: 3px solid var(--accent);
+  outline-offset: 3px;
+  box-shadow:
+    0 0 0 6px color-mix(in srgb, var(--accent) 28%, transparent),
+    0 0 0 1px color-mix(in srgb, var(--foreground) 12%, transparent);
+}
+
+html[data-tv-nav="true"] [data-tv-card]:focus-visible {
+  border-color: color-mix(in srgb, var(--accent) 55%, var(--border));
+  box-shadow:
+    0 0 0 3px color-mix(in srgb, var(--accent) 35%, transparent),
+    0 12px 28px color-mix(in srgb, var(--accent) 18%, transparent);
+}
+
+/* BBCode [spoiler] — inline-закраска в палитре сайта */
+.bbcode-spoiler {
+  --bbcode-spoiler-bg: color-mix(in srgb, var(--accent) 18%, var(--surface-dim));
+  --bbcode-spoiler-bg-hover: color-mix(in srgb, var(--accent) 30%, var(--surface-dim));
+  cursor: pointer;
+  border-radius: 4px;
+  transition: background-color 0.15s ease, color 0.15s ease;
+}
+
+.bbcode-spoiler--closed {
+  background-color: var(--bbcode-spoiler-bg);
+  box-decoration-break: clone;
+  -webkit-box-decoration-break: clone;
+}
+
+.bbcode-spoiler--closed:hover {
+  background-color: var(--bbcode-spoiler-bg-hover);
+}
+
+.bbcode-spoiler--closed,
+.bbcode-spoiler--closed * {
+  color: transparent !important;
+  user-select: none;
+}
+
+.bbcode-spoiler--open {
+  background-color: transparent;
+}
+
+.bbcode-spoiler:focus-visible {
+  outline: 2px solid color-mix(in srgb, var(--accent) 70%, transparent);
+  outline-offset: 1px;
+}
+
+/* BBCode [spoiler_block=заголовок] — блочный спойлер */
+.bbcode-spoiler-block__title {
+  background: color-mix(in srgb, var(--accent) 14%, var(--surface-dim));
+}
+
+.bbcode-spoiler-block__title:focus-visible {
+  outline: 2px solid color-mix(in srgb, var(--accent) 70%, transparent);
+  outline-offset: -2px;
+}
+
+.bbcode-spoiler-block__content {
+  background: color-mix(in srgb, var(--foreground) 3%, var(--background));
+  border-left: 2px solid color-mix(in srgb, var(--accent) 45%, var(--border));
+}
+
+/* Текст комментариев — не вылезает за карточку */
+.anime-comment-body {
+  max-width: 100%;
+  overflow-x: hidden;
+  overflow-wrap: anywhere;
+  word-break: break-word;
+}
+
+.anime-comment-body img,
+.anime-comment-body video,
+.anime-comment-body iframe,
+.anime-comment-body table,
+.anime-comment-body pre,
+.anime-comment-body blockquote,
+.anime-comment-body .bbcode-spoiler-block {
+  max-width: 100%;
+}
+
+.anime-comment-body .bbcode-spoiler {
+  display: inline;
+  max-width: 100%;
+  overflow-wrap: anywhere;
+  word-break: break-word;
+}
+
+.anime-cards-scroll-row {
+  scrollbar-color: color-mix(in srgb, var(--muted) 45%, transparent) transparent;
 }

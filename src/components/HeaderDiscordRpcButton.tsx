@@ -5,7 +5,7 @@ import { headerControl } from "@/components/header/header-styles";
 import { useSiteSettings } from "@/components/SiteSettingsProvider";
 import { useDiscordConfig } from "@/hooks/useDiscordConfig";
 import { pingDiscordBridge } from "@/lib/discord-presence";
-
+import { LoadingSpinner } from "@/components/ui/LoadingSpinner";
 function DiscordIcon({ className = "h-5 w-5" }: { className?: string }) {
   return (
     <svg viewBox="0 0 24 24" className={className} fill="currentColor" aria-hidden>
@@ -62,15 +62,16 @@ const BRIDGE_CHECK_INTERVAL_MS = 15_000;
 
 export function HeaderDiscordRpcButton() {
   const { configured, loading } = useDiscordConfig();
-  const { settings, updateSettings } = useSiteSettings();
+  const { settings, updateSettings, remoteSaving } = useSiteSettings();
   const [bridgeOnline, setBridgeOnline] = useState(false);
+  const [toggling, setToggling] = useState(false);
 
   const checkBridge = useCallback(async () => {
     setBridgeOnline(await pingDiscordBridge());
   }, []);
 
   useEffect(() => {
-    if (loading || !configured) {
+    if (loading || !configured || !settings.discordPresenceEnabled) {
       setBridgeOnline(false);
       return;
     }
@@ -83,25 +84,34 @@ export function HeaderDiscordRpcButton() {
       window.clearInterval(intervalId);
       window.removeEventListener("focus", checkBridge);
     };
-  }, [checkBridge, configured, loading]);
+  }, [checkBridge, configured, loading, settings.discordPresenceEnabled]);
 
   if (loading || !configured || !bridgeOnline) return null;
 
   const enabled = settings.discordPresenceEnabled;
+  const busy = toggling || remoteSaving;
 
   return (
     <button
       type="button"
-      onClick={() => updateSettings({ discordPresenceEnabled: !enabled })}
+      disabled={busy}
+      aria-busy={busy || undefined}
+      onClick={() => {
+        if (busy) return;
+        setToggling(true);
+        updateSettings({ discordPresenceEnabled: !enabled });
+        window.setTimeout(() => setToggling(false), 400);
+      }}
       className={[
         headerControl.icon,
         enabled ? "text-accent hover:text-accent" : "text-muted hover:text-foreground",
+        busy ? "cursor-wait opacity-70" : "",
       ].join(" ")}
       aria-label={enabled ? "Отключить Discord Rich Presence" : "Включить Discord Rich Presence"}
       aria-pressed={enabled}
-      title={enabled ? "Discord RPC: включено" : "Discord RPC: выключено"}
+      title={busy ? "Сохранение…" : enabled ? "Discord RPC: включено" : "Discord RPC: выключено"}
     >
-      <DiscordRpcIcon enabled={enabled} />
+      {busy ? <LoadingSpinner size="sm" /> : <DiscordRpcIcon enabled={enabled} />}
     </button>
   );
 }

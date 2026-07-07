@@ -1,16 +1,11 @@
 import { NextRequest, NextResponse } from "next/server";
 import { getSession } from "@/lib/auth/session";
 import {
-  addShikimoriFriend,
-  fetchViewerFriendStatus,
-  isFriendMutationAuthError,
-  isFriendScopeError,
-  removeShikimoriFriend,
-} from "@/lib/shikimori/friend-mutations";
-import {
-  normalizeProfileFriendStatus,
-  type ProfileFriendStatus,
-} from "@/lib/profile-friend-status";
+  addSiteFriend,
+  getLocalFriendStatus,
+  removeSiteFriend,
+} from "@/lib/site-friends";
+import type { ProfileFriendStatus } from "@/lib/profile-friend-status";
 
 export const dynamic = "force-dynamic";
 
@@ -24,18 +19,8 @@ function parseTargetId(raw: string): number | null {
   return id;
 }
 
-function friendPayload(status: ProfileFriendStatus, notice?: string | null) {
-  return { status, notice: notice ?? null };
-}
-
-async function readStatus(
-  viewerUserId: string,
-  targetShikimoriId: number,
-  viewingSelf: boolean,
-): Promise<ProfileFriendStatus> {
-  if (viewingSelf) return "self";
-  const raw = await fetchViewerFriendStatus(viewerUserId, targetShikimoriId);
-  return normalizeProfileFriendStatus(raw);
+function friendPayload(status: ProfileFriendStatus) {
+  return { status };
 }
 
 export async function GET(_request: NextRequest, { params }: RouteParams) {
@@ -50,18 +35,13 @@ export async function GET(_request: NextRequest, { params }: RouteParams) {
     return NextResponse.json({ error: "Некорректный ID пользователя" }, { status: 400 });
   }
 
-  const viewingSelf = session.user.shikimoriId === targetShikimoriId;
+  const status = await getLocalFriendStatus(
+    session.user.id,
+    targetShikimoriId,
+    session.user.shikimoriId,
+  );
 
-  try {
-    const status = await readStatus(session.user.id, targetShikimoriId, viewingSelf);
-    return NextResponse.json(friendPayload(status));
-  } catch (error) {
-    if (isFriendMutationAuthError(error)) {
-      return NextResponse.json({ error: error.message }, { status: 401 });
-    }
-    const message = error instanceof Error ? error.message : "Не удалось загрузить статус";
-    return NextResponse.json({ error: message }, { status: 500 });
-  }
+  return NextResponse.json(friendPayload(status));
 }
 
 export async function POST(_request: NextRequest, { params }: RouteParams) {
@@ -81,24 +61,11 @@ export async function POST(_request: NextRequest, { params }: RouteParams) {
   }
 
   try {
-    const result = await addShikimoriFriend(session.user.id, targetShikimoriId);
-    const status = await readStatus(session.user.id, targetShikimoriId, false);
-    return NextResponse.json(friendPayload(status, result?.notice));
+    const result = await addSiteFriend(session.user.id, targetShikimoriId);
+    return NextResponse.json(friendPayload(result.status));
   } catch (error) {
-    if (isFriendMutationAuthError(error)) {
-      return NextResponse.json({ error: error.message }, { status: 401 });
-    }
-    if (isFriendScopeError(error)) {
-      return NextResponse.json(
-        {
-          error:
-            "Нет доступа к друзьям Shikimori — выйдите и войдите снова, чтобы обновить разрешения OAuth",
-        },
-        { status: 403 },
-      );
-    }
     const message = error instanceof Error ? error.message : "Не удалось добавить в друзья";
-    return NextResponse.json({ error: message }, { status: 500 });
+    return NextResponse.json({ error: message }, { status: 400 });
   }
 }
 
@@ -118,24 +85,6 @@ export async function DELETE(_request: NextRequest, { params }: RouteParams) {
     return NextResponse.json({ error: "Нельзя удалить себя из друзей" }, { status: 400 });
   }
 
-  try {
-    const result = await removeShikimoriFriend(session.user.id, targetShikimoriId);
-    const status = await readStatus(session.user.id, targetShikimoriId, false);
-    return NextResponse.json(friendPayload(status, result?.notice));
-  } catch (error) {
-    if (isFriendMutationAuthError(error)) {
-      return NextResponse.json({ error: error.message }, { status: 401 });
-    }
-    if (isFriendScopeError(error)) {
-      return NextResponse.json(
-        {
-          error:
-            "Нет доступа к друзьям Shikimori — выйдите и войдите снова, чтобы обновить разрешения OAuth",
-        },
-        { status: 403 },
-      );
-    }
-    const message = error instanceof Error ? error.message : "Не удалось удалить из друзей";
-    return NextResponse.json({ error: message }, { status: 500 });
-  }
+  const result = await removeSiteFriend(session.user.id, targetShikimoriId);
+  return NextResponse.json(friendPayload(result.status));
 }

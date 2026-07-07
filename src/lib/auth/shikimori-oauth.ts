@@ -1,5 +1,5 @@
 import {
-  formatShikimoriScopeForAuthorize,
+  buildShikimoriAuthorizeScopeQuery,
   getShikimoriClientId,
   getShikimoriClientSecret,
   getShikimoriRedirectUri,
@@ -30,10 +30,10 @@ export async function buildShikimoriAuthorizeUrl(state: string, redirectUri?: st
     client_id: getShikimoriClientId(),
     redirect_uri: redirect,
     response_type: "code",
-    scope: formatShikimoriScopeForAuthorize(getShikimoriScope()),
     state,
   });
-  return `${oauthAuthorizeUrl}?${params.toString()}`;
+  const scopeQuery = buildShikimoriAuthorizeScopeQuery(getShikimoriScope());
+  return `${oauthAuthorizeUrl}?${params.toString()}&scope=${scopeQuery}`;
 }
 
 function buildTokenForm(fields: Record<string, string>): FormData {
@@ -98,6 +98,43 @@ export async function refreshShikimoriToken(refreshToken: string): Promise<Shiki
       refresh_token: refreshToken,
     }),
   );
+}
+
+/** RFC 7009 — отзыв refresh/access token, чтобы Shikimori снова показал экран разрешений. */
+export async function revokeShikimoriToken(
+  token: string,
+  tokenTypeHint: "refresh_token" | "access_token" = "refresh_token",
+): Promise<void> {
+  const { oauthRevokeUrl } = await getShikimoriEndpoints();
+  const credentials = Buffer.from(
+    `${getShikimoriClientId()}:${getShikimoriClientSecret()}`,
+  ).toString("base64");
+
+  const res = await fetch(oauthRevokeUrl, {
+    method: "POST",
+    headers: {
+      "User-Agent": getShikimoriUserAgent(),
+      Authorization: `Basic ${credentials}`,
+      "Content-Type": "application/x-www-form-urlencoded",
+    },
+    body: new URLSearchParams({
+      token,
+      token_type_hint: tokenTypeHint,
+    }),
+  });
+
+  if (!res.ok) {
+    const text = await res.text().catch(() => "");
+    throw new Error(`Shikimori revoke error ${res.status}: ${text.slice(0, 200)}`);
+  }
+}
+
+export async function revokeShikimoriAccountTokens(account: {
+  accessToken: string;
+  refreshToken: string;
+}): Promise<void> {
+  await revokeShikimoriToken(account.accessToken, "access_token");
+  await revokeShikimoriToken(account.refreshToken, "refresh_token");
 }
 
 export async function fetchShikimoriWhoami(accessToken: string): Promise<ShikimoriWhoami> {

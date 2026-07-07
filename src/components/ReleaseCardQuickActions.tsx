@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, type ReactNode } from "react";
+import { type ReactNode } from "react";
 import { useAuth } from "@/components/auth/AuthProvider";
 import {
   FAVORITES_TAB_THEMES,
@@ -12,6 +12,7 @@ import {
 } from "@/components/favorites/UserListStatusProvider";
 import { LIST_STATUS_LABELS } from "@/lib/shikimori/user-rates";
 import type { ShikimoriListStatus } from "@/lib/shikimori/user-rates.types";
+import { LoadingSpinner } from "@/components/ui/LoadingSpinner";
 
 const QUICK_LIST_ACTIONS: ShikimoriListStatus[] = ["watching", "planned", "completed"];
 
@@ -75,25 +76,37 @@ function ActionButton({
       onClick={onClick}
       className={[quickActionClass(theme, active), disabled ? "cursor-wait opacity-70" : ""].join(" ")}
     >
-      {children}
+      {disabled ? <LoadingSpinner size="xs" /> : children}
     </button>
   );
 }
 
 export function ReleaseCardQuickActions({ shikimoriId }: { shikimoriId: number }) {
-  const { user, login } = useAuth();
+  const { user, login, authNavigating } = useAuth();
   const listInfo = useUserListStatus(shikimoriId);
-  const { updateList } = useUserListStatusActions();
-  const [pending, setPending] = useState(false);
+  const { updateList, isUpdating } = useUserListStatusActions();
+  const pending = isUpdating(shikimoriId);
 
   if (!user) {
     return (
       <button
         type="button"
         onClick={login}
-        className="w-full rounded-lg border border-border bg-background/80 px-3 py-2 text-xs text-muted transition hover:border-accent/40 hover:text-foreground"
+        disabled={authNavigating}
+        aria-busy={authNavigating || undefined}
+        className={[
+          "w-full rounded-lg border border-border bg-background/80 px-3 py-2 text-xs text-muted transition hover:border-accent/40 hover:text-foreground",
+          authNavigating ? "cursor-wait opacity-70" : "",
+        ].join(" ")}
       >
-        Войдите, чтобы добавить в списки
+        {authNavigating ? (
+          <span className="inline-flex items-center justify-center gap-1.5">
+            <LoadingSpinner size="xs" />
+            Вход…
+          </span>
+        ) : (
+          "Войдите, чтобы добавить в списки"
+        )}
       </button>
     );
   }
@@ -101,11 +114,10 @@ export function ReleaseCardQuickActions({ shikimoriId }: { shikimoriId: number }
   const run = async (status: ShikimoriListStatus) => {
     if (pending) return;
     const isActive = listInfo?.listStatus === status;
-    setPending(true);
     try {
       await updateList(shikimoriId, { listStatus: isActive ? null : status });
-    } finally {
-      setPending(false);
+    } catch {
+      /* isUpdating сбрасывается в провайдере */
     }
   };
 

@@ -1,3 +1,4 @@
+import { effectiveRewatches } from "@/lib/anime-rewatches";
 import {
   animeBriefPosterUrl,
   animeBriefTitle,
@@ -35,7 +36,12 @@ export type FavoriteAnimeItem = {
   listStatus: string | null;
   userScore: number | null;
   watchedEpisodes: number | null;
+  rewatches: number;
+  addedAt: string | null;
+  listUpdatedAt: string | null;
 };
+
+export type FavoritesSortMode = "updated" | "added";
 
 export type FavoritesPageData = {
   tab: ListStatusTab;
@@ -97,6 +103,9 @@ function mapBookmark(item: ShikimoriFavoriteAnimeBrief, brief?: AnimeBrief): Fav
     listStatus: null,
     userScore: null,
     watchedEpisodes: null,
+    rewatches: 0,
+    addedAt: null,
+    listUpdatedAt: null,
   };
 }
 
@@ -115,6 +124,9 @@ function mapRate(rate: ShikimoriUserRate, brief?: AnimeBrief): FavoriteAnimeItem
     listStatus: rate.status,
     userScore: rate.score > 0 ? rate.score : null,
     watchedEpisodes: rate.episodes > 0 ? rate.episodes : null,
+    rewatches: effectiveRewatches(rate.rewatches, rate.status),
+    addedAt: rate.created_at ?? null,
+    listUpdatedAt: rate.updated_at ?? null,
   };
 }
 
@@ -276,16 +288,26 @@ export function parseFavoritesTab(value: string | undefined): ListStatusTab {
   return "watching";
 }
 
-function parseRateTimestamp(value: string | null | undefined): number | null {
-  if (!value) return null;
-  const ms = Date.parse(value);
-  return Number.isFinite(ms) ? ms : null;
+export function parseFavoritesSort(value: string | undefined): FavoritesSortMode {
+  return value === "added" ? "added" : "updated";
 }
 
-function sortRatesByUpdatedDesc(rates: ShikimoriUserRate[]): ShikimoriUserRate[] {
-  return [...rates].sort((a, b) => {
-    const aMs = parseRateTimestamp(a.updated_at) ?? parseRateTimestamp(a.created_at) ?? 0;
-    const bMs = parseRateTimestamp(b.updated_at) ?? parseRateTimestamp(b.created_at) ?? 0;
+function parseFavoriteTimestamp(value: string | null | undefined): number {
+  if (!value) return 0;
+  const ms = Date.parse(value);
+  return Number.isFinite(ms) ? ms : 0;
+}
+
+export function sortFavoriteItems(items: FavoriteAnimeItem[], mode: FavoritesSortMode): FavoriteAnimeItem[] {
+  return [...items].sort((a, b) => {
+    const aMs =
+      mode === "added"
+        ? parseFavoriteTimestamp(a.addedAt) || parseFavoriteTimestamp(a.listUpdatedAt)
+        : parseFavoriteTimestamp(a.listUpdatedAt) || parseFavoriteTimestamp(a.addedAt);
+    const bMs =
+      mode === "added"
+        ? parseFavoriteTimestamp(b.addedAt) || parseFavoriteTimestamp(b.listUpdatedAt)
+        : parseFavoriteTimestamp(b.listUpdatedAt) || parseFavoriteTimestamp(b.addedAt);
     return bMs - aMs;
   });
 }
@@ -295,8 +317,9 @@ function buildTabsFromRates(
   bookmarks: FavoriteAnimeItem[],
   briefsById: Map<number, AnimeBrief>,
 ): Record<ListStatusTab, FavoriteAnimeItem[]> {
-  const rateItems = sortRatesByUpdatedDesc(rates).map((rate) =>
-    mapRate(rate, briefsById.get(rate.target_id)),
+  const rateItems = sortFavoriteItems(
+    rates.map((rate) => mapRate(rate, briefsById.get(rate.target_id))),
+    "updated",
   );
   const tabs = {
     bookmarks,

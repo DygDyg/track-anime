@@ -1,8 +1,10 @@
 import { type NextRequest, NextResponse } from "next/server";
 import { parseAdvancedFiltersFromParams, parseSearchTab } from "@/lib/search-fields";
+import { parseExcludeShikimoriIds } from "@/lib/search-shared";
 import {
   SEARCH_PAGE_SIZE,
   searchAnimesAdvanced,
+  searchAnimesByDescription,
   searchAnimesQuick,
   serializeSearchResult,
 } from "@/lib/search";
@@ -18,9 +20,12 @@ export async function GET(request: NextRequest) {
     Math.max(1, Number(params.get("pageSize")) || SEARCH_PAGE_SIZE),
   );
   const includeTotal = params.get("includeTotal") !== "0";
+  const descriptionOnly = params.get("descriptionOnly") === "1";
+  const excludeShikimoriIds = parseExcludeShikimoriIds(params.get("excludeIds"));
 
-  const result =
-    tab === "advanced"
+  const result = descriptionOnly
+    ? await searchAnimesByDescription(q, page, pageSize, excludeShikimoriIds, { includeTotal })
+    : tab === "advanced"
       ? await searchAnimesAdvanced(parseAdvancedFiltersFromParams(params), page, pageSize, {
           includeTotal,
         })
@@ -29,6 +34,7 @@ export async function GET(request: NextRequest) {
   return NextResponse.json(
     {
       query: result.query,
+      layoutCorrectedQuery: result.layoutCorrectedQuery ?? null,
       genre: result.genre,
       tab: result.tab ?? "quick",
       page: result.page,

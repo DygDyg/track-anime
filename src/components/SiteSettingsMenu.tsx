@@ -2,6 +2,7 @@
 
 import { headerControl } from "@/components/header/header-styles";
 import { useSiteSettings } from "@/components/SiteSettingsProvider";
+import { useNotificationDiscovery } from "@/hooks/useNotificationDiscovery";
 
 function GearIcon() {
   return (
@@ -22,20 +23,27 @@ function GearIcon() {
 
 export function SiteSettingsButton({ className = "" }: { className?: string }) {
   const { openSettings } = useSiteSettings();
+  const { shouldShowGearDot } = useNotificationDiscovery();
 
   return (
     <button
       type="button"
-      onClick={openSettings}
+      onClick={() => openSettings()}
       className={[
         headerControl.icon,
-        "text-muted hover:text-foreground",
+        "relative text-muted hover:text-foreground",
         className,
       ].join(" ")}
-      aria-label="Настройки сайта"
-      title="Настройки"
+      aria-label={shouldShowGearDot ? "Настройки сайта — есть уведомления о новых сериях" : "Настройки сайта"}
+      title={shouldShowGearDot ? "Настройки — уведомления о новых сериях" : "Настройки"}
     >
       <GearIcon />
+      {shouldShowGearDot ? (
+        <span
+          aria-hidden
+          className="absolute right-0.5 top-0.5 h-2 w-2 rounded-full bg-accent ring-2 ring-background"
+        />
+      ) : null}
     </button>
   );
 }

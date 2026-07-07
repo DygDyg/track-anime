@@ -1,23 +1,27 @@
 "use client";
 
-import { useCallback, useState } from "react";
+import { useCallback, useEffect, useState, type MouseEvent } from "react";
+import { createPortal } from "react-dom";
+import { useSiteSettings } from "@/components/SiteSettingsProvider";
 import type { AnimePageDto } from "@/lib/anime-page";
 import {
   buildAnimeShareText,
   buildVkShareUrl,
   type AnimeShareCopyFormat,
 } from "@/lib/anime-share-copy";
+import { playCopySound } from "@/lib/copy-feedback";
+import { LoadingSpinner } from "@/components/ui/LoadingSpinner";
 
-type ShareAction =
-  | { type: "copy"; format: AnimeShareCopyFormat; label: string }
-  | { type: "vk"; label: string };
+type ShareAction = { type: "copy"; format: AnimeShareCopyFormat; label: string };
 
 const ACTIONS: ShareAction[] = [
   { type: "copy", format: "plain", label: "Копировать" },
-  { type: "vk", label: "VK" },
+  { type: "copy", format: "vk", label: "VK" },
   { type: "copy", format: "discord", label: "Discord" },
   { type: "copy", format: "telegram", label: "Telegram" },
 ];
+
+const TOAST_MS = 2600;
 
 function CopyIcon() {
   return (
@@ -39,7 +43,7 @@ function VkIcon() {
 function DiscordIcon() {
   return (
     <svg viewBox="0 0 24 24" className="h-5 w-5" fill="currentColor" aria-hidden>
-      <path d="M20.317 4.37a19.791 19.791 0 0 0-4.885-1.515.074.074 0 0 0-.079.037 12.3 12.3 0 0 0-.608 1.25 18.27 18.27 0 0 0-5.487 0 12.64 12.64 0 0 0-.617-1.25.077.077 0 0 0-.079-.037A19.736 19.736 0 0 0 3.677 4.37a.07.07 0 0 0-.032.027C.533 9.046-.32 13.58.099 18.057a.082.082 0 0 0 .031.057 19.9 19.9 0 0 0 5.993 3.03.078.078 0 0 0 .084-.028 14.09 14.09 0 0 0 1.226-1.994.076.076 0 0 0-.041-.106 13.107 13.107 0 0 1-1.872-.892.077.077 0 0 1-.008-.128 10.2 10.2 0 0 0 .372-.292.074.074 0 0 1 .077-.01c3.928 1.793 8.18 1.793 12.062 0a.074.074 0 0 1 .078.01c.12.098.246.198.373.292a.077.077 0 0 1-.006.127 12.299 12.299 0 0 1-1.873.892.077.077 0 0 0-.041.107c.36.698.772 1.362 1.225 1.993a.076.076 0 0 0 .084.028 19.839 19.839 0 0 0 6.002-3.03.077.077 0 0 0 .032-.054c.5-5.177-.838-9.864-3.549-13.66a.061.061 0 0 0-.031-.03zM8.02 15.33c-1.183 0-2.157-1.085-2.157-2.419 0-1.333.956-2.419 2.157-2.419 1.21 0 2.176 1.096 2.157 2.419 0 1.334-.956 2.419-2.157 2.419zm7.975 0c-1.183 0-2.157-1.085-2.157-2.419 0-1.333.955-2.419 2.157-2.419 1.21 0 2.176 1.096 2.157 2.419 0 1.334-.946 2.419-2.157 2.419z" />
+      <path d="M20.317 4.37a19.791 19.791 0 0 0-4.885-1.515.074.074 0 0 0-.079.037 12.3 12.3 0 0 0-.608 1.25 18.7 18.7 0 0 0-5.487 0 12.64 12.64 0 0 0-.617-1.25.077.077 0 0 0-.079-.037A19.736 19.736 0 0 0 3.677 4.37a.07.07 0 0 0-.032.027C.533 9.046-.32 13.58.099 18.057a.082.082 0 0 0 .031.057 19.9 19.9 0 0 0 5.993 3.03.078.078 0 0 0 .084-.028 14.09 14.09 0 0 0 1.226-1.994.076.076 0 0 0-.041-.106 13.107 13.107 0 0 1-1.872-.892.077.077 0 0 1-.008-.128 10.2 10.2 0 0 0 .372-.292.074.074 0 0 1 .077-.01c3.928 1.793 8.18 1.793 12.062 0a.074.074 0 0 1 .078.01c.12.098.246.198.373.292a.077.077 0 0 1-.006.127 12.299 12.299 0 0 1-1.873.892.077.077 0 0 0-.041.107c.36.698.772 1.362 1.225 1.993a.076.076 0 0 0 .084.028 19.839 19.839 0 0 0 6.002-3.03.077.077 0 0 0 .032-.054c.5-5.177-.838-9.864-3.549-13.66a.061.061 0 0 0-.031-.03zM8.02 15.33c-1.183 0-2.157-1.085-2.157-2.419 0-1.333.956-2.419 2.157-2.419 1.21 0 2.176 1.096 2.157 2.419 0 1.334-.956 2.419-2.157 2.419zm7.975 0c-1.183 0-2.157-1.085-2.157-2.419 0-1.333.955-2.419 2.157-2.419 1.21 0 2.176 1.096 2.157 2.419 0 1.334-.946 2.419-2.157 2.419z" />
     </svg>
   );
 }
@@ -53,7 +57,7 @@ function TelegramIcon() {
 }
 
 function ActionIcon({ action }: { action: ShareAction }) {
-  if (action.type === "vk") return <VkIcon />;
+  if (action.format === "vk") return <VkIcon />;
   if (action.format === "discord") return <DiscordIcon />;
   if (action.format === "telegram") return <TelegramIcon />;
   return <CopyIcon />;
@@ -76,63 +80,112 @@ async function copyText(text: string): Promise<void> {
   document.body.removeChild(textarea);
 }
 
-export function AnimeShareButtons({ anime }: { anime: AnimePageDto }) {
-  const [message, setMessage] = useState<string | null>(null);
+function CopyToast({ message }: { message: string }) {
+  return createPortal(
+    <div
+      role="status"
+      aria-live="polite"
+      className="copy-toast pointer-events-none fixed bottom-6 left-1/2 z-[120] -translate-x-1/2"
+    >
+      <div className="flex items-center gap-2 rounded-full border border-border bg-card/95 px-4 py-2.5 text-sm font-medium text-foreground shadow-xl shadow-black/40 backdrop-blur-sm">
+        <svg viewBox="0 0 24 24" className="h-4 w-4 shrink-0 text-accent" fill="none" stroke="currentColor" strokeWidth="2.2" aria-hidden>
+          <path d="M20 6L9 17l-5-5" strokeLinecap="round" strokeLinejoin="round" />
+        </svg>
+        {message}
+      </div>
+    </div>,
+    document.body,
+  );
+}
 
-  const showMessage = useCallback((text: string) => {
-    setMessage(text);
-    window.setTimeout(() => setMessage(null), 3200);
+export function AnimeShareButtons({ anime }: { anime: AnimePageDto }) {
+  const { settings } = useSiteSettings();
+  const [toast, setToast] = useState<string | null>(null);
+  const [copyingFormat, setCopyingFormat] = useState<AnimeShareCopyFormat | null>(null);
+  const [mounted, setMounted] = useState(false);
+
+  useEffect(() => {
+    setMounted(true);
   }, []);
 
+  useEffect(() => {
+    if (!toast) return;
+    const timer = window.setTimeout(() => setToast(null), TOAST_MS);
+    return () => window.clearTimeout(timer);
+  }, [toast]);
+
+  const showCopyFeedback = useCallback(
+    (format: AnimeShareCopyFormat) => {
+      const formatLabel =
+        format === "plain"
+          ? "обычном"
+          : format === "discord"
+            ? "Discord"
+            : format === "telegram"
+              ? "Telegram"
+              : "VK";
+      setToast(`Скопировано в буфер обмена (${formatLabel} формат)`);
+      if (!settings.reduceMotion) {
+        playCopySound();
+      }
+    },
+    [settings.reduceMotion],
+  );
+
   const handleAction = useCallback(
-    async (action: ShareAction) => {
+    async (action: ShareAction, event: MouseEvent<HTMLButtonElement>) => {
       const origin = window.location.origin;
 
-      if (action.type === "vk") {
+      if (action.format === "vk" && (event.ctrlKey || event.metaKey)) {
         window.open(buildVkShareUrl(anime, origin), "_blank", "noopener,noreferrer");
         return;
       }
 
       try {
+        setCopyingFormat(action.format);
         const text = buildAnimeShareText(anime, origin, action.format);
         await copyText(text);
-        const formatLabel =
-          action.format === "plain"
-            ? "обычном"
-            : action.format === "discord"
-              ? "Discord"
-              : "Telegram";
-        showMessage(`Скопировано в формате ${formatLabel}`);
+        showCopyFeedback(action.format);
       } catch {
-        showMessage("Не удалось скопировать");
+        setToast("Не удалось скопировать");
+      } finally {
+        setCopyingFormat(null);
       }
     },
-    [anime, showMessage],
+    [anime, showCopyFeedback],
   );
 
+  const actionTitle = (action: ShareAction) => {
+    if (action.format === "plain") return "Скопировать описание";
+    if (action.format === "vk") return "Скопировать для VK (Ctrl+клик — поделиться ссылкой)";
+    if (action.format === "discord") return "Скопировать для Discord";
+    return "Скопировать для Telegram";
+  };
+
   return (
-    <div className="mt-2 w-full">
-      <div className="grid grid-cols-4 gap-1.5">
-        {ACTIONS.map((action) => (
-          <button
-            key={action.label}
-            type="button"
-            title={
-              action.type === "vk"
-                ? "Поделиться во VK"
-                : action.format === "plain"
-                  ? "Скопировать описание"
-                  : `Скопировать для ${action.format === "discord" ? "Discord" : "Telegram"}`
-            }
-            aria-label={action.label}
-            onClick={() => void handleAction(action)}
-            className="flex aspect-square items-center justify-center rounded-lg border border-border bg-background/80 text-foreground transition hover:border-accent/45 hover:bg-accent/10 hover:text-accent"
-          >
-            <ActionIcon action={action} />
-          </button>
-        ))}
+    <>
+      <div className="mt-2 w-full">
+        <div className="grid grid-cols-4 gap-1.5">
+          {ACTIONS.map((action) => (
+            <button
+              key={action.label}
+              type="button"
+              title={actionTitle(action)}
+              aria-label={action.label}
+              disabled={copyingFormat != null}
+              aria-busy={copyingFormat === action.format || undefined}
+              onClick={(event) => void handleAction(action, event)}
+              className={[
+                "flex aspect-square items-center justify-center rounded-lg border border-border bg-background/80 text-foreground transition hover:border-accent/45 hover:bg-accent/10 hover:text-accent",
+                copyingFormat != null ? "cursor-wait opacity-70" : "",
+              ].join(" ")}
+            >
+              {copyingFormat === action.format ? <LoadingSpinner size="sm" /> : <ActionIcon action={action} />}
+            </button>
+          ))}
+        </div>
       </div>
-      {message ? <p className="mt-1.5 text-center text-[11px] text-muted">{message}</p> : null}
-    </div>
+      {mounted && toast ? <CopyToast message={toast} /> : null}
+    </>
   );
 }

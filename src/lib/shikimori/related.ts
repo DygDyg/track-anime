@@ -21,6 +21,7 @@ export type ShikimoriRelatedAnimeBrief = {
   title: string;
   titleOriginal: string | null;
   posterUrl: string | null;
+  screenshotUrl: string | null;
   relation: string;
   relationLabel: string;
   kind: string | null;
@@ -55,6 +56,7 @@ export async function getShikimoriRelatedAnimes(
         shikimoriAssetUrl(item.image?.preview) ??
         shikimoriAssetUrl(item.image?.x96) ??
         shikimoriAssetUrl(item.image?.original),
+      screenshotUrl: null,
       relation: entry.relation,
       relationLabel: entry.relation_russian,
       kind: item.kind,

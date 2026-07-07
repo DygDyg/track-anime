@@ -1,5 +1,6 @@
 import { isBootstrapAdmin } from "@/lib/auth/config";
 import { shikimoriAvatarUrl } from "@/lib/auth/shikimori-avatar";
+import { normalizeSiteSettings } from "@/lib/site-settings";
 import { prisma } from "@/lib/prisma";
 
 export type PublicUserProfile = {
@@ -9,6 +10,8 @@ export type PublicUserProfile = {
   avatar: string | null;
   isAdmin: boolean;
   createdAt: Date;
+  avatarDecorationId: string | null;
+  avatarDecorationScale: number;
 };
 
 export function parseShikimoriIdParam(value: string): number | null {
@@ -41,14 +44,22 @@ export async function getPublicUserByShikimoriId(
       avatar: true,
       isAdmin: true,
       createdAt: true,
+      siteSettings: true,
     },
   });
 
   if (!user) return null;
 
+  const siteSettings = normalizeSiteSettings(user.siteSettings);
+
   return {
-    ...user,
+    id: user.id,
+    shikimoriId: user.shikimoriId,
+    nickname: user.nickname,
     avatar: shikimoriAvatarUrl(user.avatar),
     isAdmin: user.isAdmin || isBootstrapAdmin(user.shikimoriId),
+    createdAt: user.createdAt,
+    avatarDecorationId: siteSettings.avatarDecorationId,
+    avatarDecorationScale: siteSettings.avatarDecorationScale,
   };
 }

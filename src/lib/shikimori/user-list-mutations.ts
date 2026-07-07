@@ -1,3 +1,4 @@
+import { effectiveRewatches, showsRewatchCount } from "@/lib/anime-rewatches";
 import { prisma } from "@/lib/prisma";
 import { ShikimoriAuthError, shikimoriAuthFetch } from "@/lib/shikimori/auth-client";
 import {
@@ -6,6 +7,11 @@ import {
 } from "@/lib/shikimori/user-rates";
 import type { ShikimoriListStatus } from "@/lib/shikimori/user-rates.types";
 import type { UserAnimeListInfo } from "@/lib/user-anime-list-status";
+
+type UserRatePatch = {
+  listStatus?: ShikimoriListStatus;
+  rewatches?: number;
+};
 
 function parseShikimoriDate(value: string | null | undefined): Date | null {
   if (!value) return null;
@@ -25,6 +31,7 @@ async function persistRateLocally(userId: string, rate: ShikimoriUserRate): Prom
       listStatus: rate.status,
       userScore: rate.score,
       watchedEpisodes: rate.episodes,
+      rewatches: rate.rewatches,
       addedAt: parseShikimoriDate(rate.created_at),
       listUpdatedAt: parseShikimoriDate(rate.updated_at),
     },
@@ -33,6 +40,7 @@ async function persistRateLocally(userId: string, rate: ShikimoriUserRate): Prom
       listStatus: rate.status,
       userScore: rate.score,
       watchedEpisodes: rate.episodes,
+      rewatches: rate.rewatches,
       addedAt: parseShikimoriDate(rate.created_at),
       listUpdatedAt: parseShikimoriDate(rate.updated_at),
     },
@@ -67,6 +75,13 @@ async function findExistingRateId(userId: string, shikimoriId: number): Promise<
   });
   const rateId = entry?.shikimoriRateId;
   return rateId != null && rateId > 0 ? rateId : null;
+}
+
+async function findLocalEntry(userId: string, shikimoriId: number) {
+  return prisma.userAnimeListEntry.findUnique({
+    where: { userId_shikimoriId: { userId, shikimoriId } },
+    select: { listStatus: true, rewatches: true },
+  });
 }
 
 function assertShikimoriUserId(shikimoriUserId: number): void {
@@ -121,48 +136,49 @@ async function resolveAnimeRateId(
 function buildCreateRateBody(
   shikimoriUserId: number,
   shikimoriAnimeId: number,
-  listStatus: ShikimoriListStatus,
+  patch: UserRatePatch,
 ) {
-  return {
-    user_rate: {
-      user_id: String(shikimoriUserId),
-      target_id: String(shikimoriAnimeId),
-      target_type: "Anime",
-      status: listStatus,
-    },
+  const user_rate: Record<string, string> = {
+    user_id: String(shikimoriUserId),
+    target_id: String(shikimoriAnimeId),
+    target_type: "Anime",
   };
+
+  if (patch.listStatus) user_rate.status = patch.listStatus;
+  if (patch.rewatches != null) user_rate.rewatches = String(patch.rewatches);
+
+  return { user_rate };
 }
 
-function buildUpdateRateBody(listStatus: ShikimoriListStatus) {
-  return {
-    user_rate: {
-      status: listStatus,
-    },
-  };
+function buildUpdateRateBody(patch: UserRatePatch) {
+  const user_rate: Record<string, string> = {};
+  if (patch.listStatus) user_rate.status = patch.listStatus;
+  if (patch.rewatches != null) user_rate.rewatches = String(patch.rewatches);
+  return { user_rate };
 }
 
 async function createUserRateOnShikimori(
   userId: string,
   shikimoriUserId: number,
   shikimoriAnimeId: number,
-  listStatus: ShikimoriListStatus,
+  patch: UserRatePatch,
 ): Promise<ShikimoriUserRate> {
   return shikimoriAuthFetch<ShikimoriUserRate>(userId, "/v2/user_rates", {
     method: "POST",
     headers: { "Content-Type": "application/json" },
-    body: JSON.stringify(buildCreateRateBody(shikimoriUserId, shikimoriAnimeId, listStatus)),
+    body: JSON.stringify(buildCreateRateBody(shikimoriUserId, shikimoriAnimeId, patch)),
   });
 }
 
 async function updateUserRateOnShikimori(
   userId: string,
   rateId: number,
-  listStatus: ShikimoriListStatus,
+  patch: UserRatePatch,
 ): Promise<ShikimoriUserRate> {
   return shikimoriAuthFetch<ShikimoriUserRate>(userId, `/v2/user_rates/${rateId}`, {
     method: "PATCH",
     headers: { "Content-Type": "application/json" },
-    body: JSON.stringify(buildUpdateRateBody(listStatus)),
+    body: JSON.stringify(buildUpdateRateBody(patch)),
   });
 }
 
@@ -170,15 +186,74 @@ async function upsertUserRateOnShikimori(
   userId: string,
   shikimoriUserId: number,
   shikimoriAnimeId: number,
-  listStatus: ShikimoriListStatus,
+  patch: UserRatePatch,
 ): Promise<ShikimoriUserRate> {
   const rateId = await resolveAnimeRateId(userId, shikimoriUserId, shikimoriAnimeId);
 
   if (rateId) {
-    return updateUserRateOnShikimori(userId, rateId, listStatus);
+    return updateUserRateOnShikimori(userId, rateId, patch);
   }
 
-  return createUserRateOnShikimori(userId, shikimoriUserId, shikimoriAnimeId, listStatus);
+  if (!patch.listStatus) {
+    throw new Error("Нельзя создать запись без статуса списка");
+  }
+
+  return createUserRateOnShikimori(userId, shikimoriUserId, shikimoriAnimeId, patch);
+}
+
+async function mutateUserRateOnShikimori(
+  userId: string,
+  shikimoriUserId: number,
+  shikimoriId: number,
+  patch: UserRatePatch,
+): Promise<ShikimoriUserRate> {
+  try {
+    return await upsertUserRateOnShikimori(userId, shikimoriUserId, shikimoriId, patch);
+  } catch (error) {
+    if (!isRateMutationError(error)) throw error;
+
+    await clearLocalRateId(userId, shikimoriId);
+    const remoteRate = await fetchRemoteAnimeRate(userId, shikimoriUserId, shikimoriId);
+
+    if (remoteRate) {
+      return updateUserRateOnShikimori(userId, remoteRate.id, patch);
+    }
+
+    if (!patch.listStatus) {
+      throw error;
+    }
+
+    return createUserRateOnShikimori(userId, shikimoriUserId, shikimoriId, patch);
+  }
+}
+
+async function buildListInfo(userId: string, shikimoriId: number, rate?: ShikimoriUserRate | null) {
+  const [entry, bookmark] = await Promise.all([
+    rate
+      ? Promise.resolve({
+          listStatus: rate.status,
+          rewatches: rate.rewatches,
+        })
+      : findLocalEntry(userId, shikimoriId),
+    prisma.userAnimeBookmark.findUnique({
+      where: { userId_shikimoriId: { userId, shikimoriId } },
+      select: { shikimoriId: true },
+    }),
+  ]);
+
+  if (!entry && !bookmark) return null;
+
+  const listStatus = entry?.listStatus ?? null;
+  return {
+    listStatus,
+    isBookmark: Boolean(bookmark),
+    rewatches: entry ? effectiveRewatches(entry.rewatches, listStatus) : null,
+  } satisfies UserAnimeListInfo;
+}
+
+function completedRewatchesDefault(listStatus: ShikimoriListStatus, current: number | null | undefined): number | undefined {
+  if (listStatus !== "completed" && listStatus !== "rewatching") return undefined;
+  return Math.max(current ?? 0, 1);
 }
 
 export async function setUserAnimeListStatus(
@@ -189,20 +264,13 @@ export async function setUserAnimeListStatus(
 ): Promise<UserAnimeListInfo> {
   assertShikimoriUserId(shikimoriUserId);
 
-  let rate: ShikimoriUserRate;
-  try {
-    rate = await upsertUserRateOnShikimori(userId, shikimoriUserId, shikimoriId, listStatus);
-  } catch (error) {
-    if (!isRateMutationError(error)) throw error;
+  const local = await findLocalEntry(userId, shikimoriId);
+  const rewatches = completedRewatchesDefault(listStatus, local?.rewatches);
 
-    await clearLocalRateId(userId, shikimoriId);
-    const remoteRate = await fetchRemoteAnimeRate(userId, shikimoriUserId, shikimoriId);
+  const patch: UserRatePatch = { listStatus };
+  if (rewatches != null) patch.rewatches = rewatches;
 
-    rate = remoteRate
-      ? await updateUserRateOnShikimori(userId, remoteRate.id, listStatus)
-      : await createUserRateOnShikimori(userId, shikimoriUserId, shikimoriId, listStatus);
-  }
-
+  const rate = await mutateUserRateOnShikimori(userId, shikimoriUserId, shikimoriId, patch);
   if (!rate) {
     throw new Error("Shikimori did not return user rate");
   }
@@ -210,15 +278,69 @@ export async function setUserAnimeListStatus(
   await persistRateLocally(userId, rate);
   invalidateUserAnimeRatesCache(userId, shikimoriUserId);
 
-  const bookmark = await prisma.userAnimeBookmark.findUnique({
-    where: { userId_shikimoriId: { userId, shikimoriId } },
-    select: { shikimoriId: true },
+  const listInfo = await buildListInfo(userId, shikimoriId, rate);
+  if (!listInfo) {
+    throw new Error("Не удалось обновить локальный список");
+  }
+
+  return listInfo;
+}
+
+export async function incrementUserAnimeRewatch(
+  userId: string,
+  shikimoriUserId: number,
+  shikimoriId: number,
+): Promise<UserAnimeListInfo> {
+  assertShikimoriUserId(shikimoriUserId);
+
+  const local = await findLocalEntry(userId, shikimoriId);
+  if (!local || local.listStatus !== "completed") {
+    throw new Error("Пересмотр доступен только для просмотренных аниме");
+  }
+
+  const next = effectiveRewatches(local.rewatches, local.listStatus) + 1;
+  const rate = await mutateUserRateOnShikimori(userId, shikimoriUserId, shikimoriId, {
+    listStatus: "completed",
+    rewatches: next,
   });
 
-  return {
-    listStatus: rate.status,
-    isBookmark: Boolean(bookmark),
-  };
+  await persistRateLocally(userId, rate);
+  invalidateUserAnimeRatesCache(userId, shikimoriUserId);
+
+  const listInfo = await buildListInfo(userId, shikimoriId, rate);
+  if (!listInfo) {
+    throw new Error("Не удалось обновить локальный список");
+  }
+
+  return listInfo;
+}
+
+export async function setUserAnimeRewatches(
+  userId: string,
+  _shikimoriUserId: number,
+  shikimoriId: number,
+  rewatches: number,
+): Promise<UserAnimeListInfo> {
+  const local = await findLocalEntry(userId, shikimoriId);
+  if (!local?.listStatus) {
+    throw new Error("Аниме должно быть в списке");
+  }
+
+  if (!showsRewatchCount(local.listStatus) && rewatches > 0) {
+    throw new Error("Счётчик пересмотров доступен только для просмотренных аниме");
+  }
+
+  await prisma.userAnimeListEntry.update({
+    where: { userId_shikimoriId: { userId, shikimoriId } },
+    data: { rewatches },
+  });
+
+  const listInfo = await buildListInfo(userId, shikimoriId);
+  if (!listInfo) {
+    throw new Error("Не удалось обновить локальный список");
+  }
+
+  return listInfo;
 }
 
 export async function removeUserAnimeListStatus(
@@ -242,17 +364,7 @@ export async function removeUserAnimeListStatus(
   await removeRateLocally(userId, shikimoriId);
   invalidateUserAnimeRatesCache(userId, shikimoriUserId);
 
-  const bookmark = await prisma.userAnimeBookmark.findUnique({
-    where: { userId_shikimoriId: { userId, shikimoriId } },
-    select: { shikimoriId: true },
-  });
-
-  if (!bookmark) return null;
-
-  return {
-    listStatus: null,
-    isBookmark: true,
-  };
+  return buildListInfo(userId, shikimoriId);
 }
 
 export async function setUserAnimeBookmark(
@@ -274,18 +386,7 @@ export async function setUserAnimeBookmark(
   }
 
   invalidateUserAnimeRatesCache(userId, shikimoriUserId);
-
-  const entry = await prisma.userAnimeListEntry.findUnique({
-    where: { userId_shikimoriId: { userId, shikimoriId } },
-    select: { listStatus: true },
-  });
-
-  if (!entry && !bookmark) return null;
-
-  return {
-    listStatus: entry?.listStatus ?? null,
-    isBookmark: bookmark,
-  };
+  return buildListInfo(userId, shikimoriId);
 }
 
 export async function removeUserAnimeFromAllLists(

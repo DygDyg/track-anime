@@ -87,7 +87,7 @@ curl -X POST "https://shikimori.one/api/graphql" \
 | Календарь | `/api/calendar` | animes + nextEpisodeAt |
 | Постеры (новые) | Старые URL | **poster { mainUrl }** |
 | Карточка аниме | `/api/animes/:id` | Гибкий query |
-| Простота + Cursor AI | **REST проще** | Больше гибкости |
+| Простота для AI-ассистента | **REST проще** | Больше гибкости |
 
 ## Рекомендация для track-anime
 

@@ -28,6 +28,9 @@ export default async function HomePage() {
     ...serializeRelease(item),
     watchedSeasonNumber: item.watchedSeasonNumber,
     watchedEpisodeNumber: item.watchedEpisodeNumber,
+    watchedPositionSeconds: item.watchedPositionSeconds,
+    watchedEpisodeDurationSeconds: item.watchedEpisodeDurationSeconds,
+    watchedProgressPercent: item.watchedProgressPercent,
   }));
   const historyIds = historyItems.map((item) => item.id);
 

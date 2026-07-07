@@ -124,7 +124,10 @@ export function SyncSettingsPanel({
   return (
     <div className="space-y-6">
       <section className={adminClass.panel}>
-        <h2 className="text-lg font-semibold text-foreground">Автопроверка Kodik</h2>
+        <h2 className="text-lg font-semibold text-foreground">
+          Автопроверка Kodik
+          {saving ? <span className="ml-2 text-sm font-normal text-muted">Сохранение…</span> : null}
+        </h2>
         <p className="mt-2 text-sm text-muted">
           Cron на сервере запускает проверку каждую минуту; фактический интервал задаётся здесь.
           За один проход обрабатывается до {settings.syncPages * 100} материалов (страницы /list по

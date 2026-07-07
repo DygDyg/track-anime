@@ -138,6 +138,30 @@ export function clearOAuthRedirectCookieOptions() {
   };
 }
 
+export function oauthReturnCookieOptions(returnPath: string) {
+  return {
+    name: authConfig.oauthReturnCookie,
+    value: returnPath,
+    httpOnly: true,
+    sameSite: "lax" as const,
+    secure: process.env.NODE_ENV === "production",
+    path: "/",
+    maxAge: authConfig.oauthStateMaxAgeSec,
+  };
+}
+
+export function clearOAuthReturnCookieOptions() {
+  return {
+    name: authConfig.oauthReturnCookie,
+    value: "",
+    httpOnly: true,
+    sameSite: "lax" as const,
+    secure: process.env.NODE_ENV === "production",
+    path: "/",
+    maxAge: 0,
+  };
+}
+
 export async function upsertShikimoriUser(input: {
   shikimoriId: number;
   nickname: string;

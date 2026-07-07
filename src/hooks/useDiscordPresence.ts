@@ -49,6 +49,7 @@ export function useDiscordPresence({
   const watchRef = useRef<WatchPresence | null>(null);
   const browseRef = useRef<BrowsePresence | null>(null);
   const lastSentRef = useRef("");
+  const wasEnabledRef = useRef(false);
   const [tabVisible, setTabVisible] = useState(
     () => typeof document === "undefined" || !document.hidden,
   );
@@ -169,14 +170,18 @@ export function useDiscordPresence({
     void pushPresence(true);
   }, [pushPresence]);
 
-  const clear = useCallback(() => {
-    watchRef.current = null;
-    browseRef.current = null;
-    lastSentRef.current = "";
-    if (applicationId) {
-      void clearDiscordPresence({ applicationId, largeImageKey });
-    }
-  }, [applicationId, largeImageKey]);
+  const clear = useCallback(
+    (sendToBridge = true) => {
+      watchRef.current = null;
+      browseRef.current = null;
+      lastSentRef.current = "";
+      if (sendToBridge && applicationId && wasEnabledRef.current) {
+        wasEnabledRef.current = false;
+        void clearDiscordPresence({ applicationId, largeImageKey });
+      }
+    },
+    [applicationId, largeImageKey],
+  );
 
   useEffect(() => {
     const onVisibility = () => {
@@ -188,7 +193,14 @@ export function useDiscordPresence({
   }, []);
 
   useEffect(() => {
-    if (!enabled || !applicationId) return;
+    if (!enabled || !applicationId) {
+      if (!enabled && wasEnabledRef.current) {
+        clear();
+      }
+      return;
+    }
+
+    wasEnabledRef.current = true;
 
     if (!tabVisible) {
       lastSentRef.current = "";
@@ -201,15 +213,10 @@ export function useDiscordPresence({
     } else if (watchRef.current) {
       void pushPresence(true);
     }
-  }, [applicationId, enabled, largeImageKey, mode, pushPresence, tabVisible]);
+  }, [applicationId, clear, enabled, largeImageKey, mode, pushPresence, tabVisible]);
 
   useEffect(() => {
-    if (!enabled || !applicationId) {
-      clear();
-      return;
-    }
-
-    if (!tabVisible) {
+    if (!enabled || !applicationId || !tabVisible) {
       return;
     }
 
@@ -220,7 +227,7 @@ export function useDiscordPresence({
     return () => {
       window.clearInterval(intervalId);
     };
-  }, [applicationId, clear, enabled, pushPresence, tabVisible]);
+  }, [applicationId, enabled, pushPresence, tabVisible]);
 
   return {
     syncProgress,

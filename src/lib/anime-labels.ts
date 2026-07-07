@@ -74,6 +74,40 @@ export function labelRating(rating: string | null): string | null {
   return RATING_LABELS[rating] ?? rating.toUpperCase();
 }
 
+const RATING_DESCRIPTIONS: Record<string, string> = {
+  none: "Без возрастных ограничений.",
+  g: "Нет возрастных ограничений — подходит для любой аудитории.",
+  pg: "Рекомендуется присутствие родителей.",
+  pg_13: "Детям до 13 лет просмотр не желателен.",
+  r: "Несовершеннолетним до 17 лет просмотр запрещён.",
+  r_plus: "Несовершеннолетним до 17 лет просмотр запрещён. Возможны откровенные сцены.",
+  rx: "Хентай. Только для совершеннолетних.",
+};
+
+export function ratingDescription(rating: string | null): string | null {
+  if (!rating) return null;
+  return RATING_DESCRIPTIONS[rating] ?? null;
+}
+
+export function ageRatingBadgeClass(rating: string | null): string | null {
+  switch (rating) {
+    case "g":
+      return "border-emerald-500/70 bg-emerald-500/15 text-emerald-700 dark:text-emerald-300";
+    case "pg":
+      return "border-lime-500/70 bg-lime-500/15 text-lime-800 dark:text-lime-300";
+    case "pg_13":
+      return "border-amber-500/75 bg-amber-500/15 text-amber-800 dark:text-amber-300";
+    case "r":
+      return "border-orange-600/75 bg-orange-600/15 text-orange-800 dark:text-orange-300";
+    case "r_plus":
+      return "border-red-600/75 bg-red-600/15 text-red-700 dark:text-red-300";
+    case "rx":
+      return "border-rose-700/80 bg-rose-900/25 text-rose-200";
+    default:
+      return "border-border bg-background text-foreground";
+  }
+}
+
 export function labelTranslationType(type: string): string {
   return TRANSLATION_TYPE_LABELS[type] ?? type;
 }

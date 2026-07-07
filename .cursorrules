@@ -1,7 +1,14 @@
 # Track Anime — Cursor Rules
 
-See `AI_RULES.md` for full AI development rules.
-See `AI_CONTEXT.md` for project quick reference.
+Cursor compatibility entrypoint.
+
+Primary shared rules:
+
+- `AI_RULES.md` — full AI development rules for Codex and Cursor
+- `AI_CONTEXT.md` — project quick reference
+- `AGENTS.md` — Codex entrypoint with the same project invariants
+
+Multi-topic requests: use `.cursor/rules/multi-task-dispatcher.mdc` + skill `ta-dispatcher` if present. If those files are absent, use `AI_CONTEXT.md` request routing and inspect the listed files manually.
 
 ## Project Development Rules
 

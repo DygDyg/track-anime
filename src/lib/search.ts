@@ -23,11 +23,13 @@ import {
   SEARCH_YEAR_MAX,
   SEARCH_YEAR_MIN,
 } from "@/lib/search-fields";
+import { getAlternateKeyboardLayoutQuery } from "@/lib/keyboard-layout";
 
 /** Сколько уникальных аниме обрабатываем до тяжёлой агрегации meta. */
 const SEARCH_CANDIDATE_POOL_MIN = 120;
 const SEARCH_CANDIDATE_POOL_MAX = 500;
 const SEARCH_CANDIDATE_POOL_DEEP_MAX = 2000;
+const DESCRIPTION_MATCH_RANK = 4;
 
 export {
   SEARCH_MIN_QUERY_LENGTH,
@@ -87,6 +89,7 @@ function buildSearchPage(
   totalOverride?: number,
   tab: SearchPage["tab"] = "quick",
   advancedFilters: AdvancedSearchFilters = {},
+  layoutCorrectedQuery?: string | null,
 ): SearchPage {
   const total =
     totalOverride ?? (includeTotal ? (rows.length > 0 ? Number(rows[0]!.total ?? 0) : 0) : rows.length);
@@ -101,6 +104,7 @@ function buildSearchPage(
     genre,
     tab,
     advancedFilters,
+    layoutCorrectedQuery: layoutCorrectedQuery ?? null,
   };
 }
 
@@ -300,6 +304,35 @@ const MATERIAL_SCORE_EXPR = Prisma.sql`
   )
 `;
 
+function buildDescriptionMatchFilterSql(query: string | undefined): Prisma.Sql | null {
+  const trimmed = query?.trim();
+  if (!trimmed) return null;
+
+  const pattern = `%${escapeIlikePattern(trimmed)}%`;
+  return Prisma.sql`
+    AND (
+      COALESCE(m."materialData"->>'anime_description', '') ILIKE ${pattern}
+      OR COALESCE(m."materialData"->>'description', '') ILIKE ${pattern}
+      OR COALESCE(m."materialData"->'anime_full'->>'description', '') ILIKE ${pattern}
+    )
+  `;
+}
+
+function buildDescriptionSupplementFilterSql(
+  query: string,
+  excludeShikimoriIds: number[],
+): Prisma.Sql {
+  const descriptionFilter = buildDescriptionMatchFilterSql(query);
+  if (!descriptionFilter) return Prisma.empty;
+
+  if (excludeShikimoriIds.length === 0) return descriptionFilter;
+
+  return Prisma.sql`
+    ${descriptionFilter}
+    AND m."shikimoriId" NOT IN (${Prisma.join(excludeShikimoriIds)})
+  `;
+}
+
 function buildAdvancedFilterSql(filters: AdvancedSearchFilters): Prisma.Sql | null {
   const parts: Prisma.Sql[] = [];
 
@@ -322,16 +355,8 @@ function buildAdvancedFilterSql(filters: AdvancedSearchFilters): Prisma.Sql | nu
     `);
   }
 
-  if (filters.description?.trim()) {
-    const pattern = `%${escapeIlikePattern(filters.description.trim())}%`;
-    parts.push(Prisma.sql`
-      AND (
-        COALESCE(m."materialData"->>'anime_description', '') ILIKE ${pattern}
-        OR COALESCE(m."materialData"->>'description', '') ILIKE ${pattern}
-        OR COALESCE(m."materialData"->'anime_full'->>'description', '') ILIKE ${pattern}
-      )
-    `);
-  }
+  const descriptionFilter = buildDescriptionMatchFilterSql(filters.description);
+  if (descriptionFilter) parts.push(descriptionFilter);
 
   if (parseGenreList(filters.genre).length > 0) {
     for (const genre of parseGenreList(filters.genre)) {
@@ -496,6 +521,38 @@ export async function searchAnimes(
   return buildSearchPage(rows, safePage, safePageSize, includeTotal, offset, trimmed, null, total);
 }
 
+export async function searchAnimesByDescription(
+  query: string,
+  page = 1,
+  pageSize = SEARCH_PAGE_SIZE,
+  excludeShikimoriIds: number[] = [],
+  options?: { includeTotal?: boolean },
+): Promise<SearchPage> {
+  const includeTotal = options?.includeTotal ?? true;
+  const trimmed = query.trim();
+  const safePage = Number.isFinite(page) && page > 0 ? Math.floor(page) : 1;
+  const safePageSize =
+    Number.isFinite(pageSize) && pageSize > 0 ? Math.min(Math.floor(pageSize), 48) : SEARCH_PAGE_SIZE;
+
+  if (trimmed.length < SEARCH_MIN_QUERY_LENGTH) {
+    return emptySearchPage(safePage, safePageSize, trimmed);
+  }
+
+  const filterSql = buildDescriptionSupplementFilterSql(trimmed, excludeShikimoriIds);
+  const offset = (safePage - 1) * safePageSize;
+
+  const rowsPromise = fetchSearchRows(
+    filterSql,
+    Prisma.sql`${DESCRIPTION_MATCH_RANK}`,
+    safePageSize,
+    offset,
+  );
+  const totalPromise = includeTotal ? countSearchMatches(filterSql) : Promise.resolve(undefined);
+  const [rows, total] = await Promise.all([rowsPromise, totalPromise]);
+
+  return buildSearchPage(rows, safePage, safePageSize, includeTotal, offset, trimmed, null, total);
+}
+
 export async function searchAnimesQuick(
   query: string,
   genresParam: string,
@@ -503,8 +560,50 @@ export async function searchAnimesQuick(
   pageSize = SEARCH_PAGE_SIZE,
   options?: { includeTotal?: boolean },
 ): Promise<SearchPage> {
-  const includeTotal = options?.includeTotal ?? true;
   const trimmed = query.trim();
+  const result = await searchAnimesQuickCore(trimmed, genresParam, page, pageSize, options, trimmed);
+
+  const genres = parseGenreList(genresParam);
+  const hasQuery = trimmed.length >= SEARCH_MIN_QUERY_LENGTH;
+  const hasGenres = genres.length > 0;
+
+  if (result.items.length > 0 || !hasQuery || hasGenres) {
+    return result;
+  }
+
+  const alternateQuery = getAlternateKeyboardLayoutQuery(trimmed);
+  if (!alternateQuery) {
+    return result;
+  }
+
+  const corrected = await searchAnimesQuickCore(
+    alternateQuery,
+    genresParam,
+    page,
+    pageSize,
+    options,
+    trimmed,
+    alternateQuery,
+  );
+
+  if (corrected.items.length === 0) {
+    return result;
+  }
+
+  return corrected;
+}
+
+async function searchAnimesQuickCore(
+  searchQuery: string,
+  genresParam: string,
+  page = 1,
+  pageSize = SEARCH_PAGE_SIZE,
+  options?: { includeTotal?: boolean },
+  displayQuery = searchQuery,
+  layoutCorrectedQuery?: string | null,
+): Promise<SearchPage> {
+  const includeTotal = options?.includeTotal ?? true;
+  const trimmed = searchQuery.trim();
   const genres = parseGenreList(genresParam);
   const serializedGenres = serializeGenreList(genres);
   const hasQuery = trimmed.length >= SEARCH_MIN_QUERY_LENGTH;
@@ -514,7 +613,7 @@ export async function searchAnimesQuick(
     Number.isFinite(pageSize) && pageSize > 0 ? Math.min(Math.floor(pageSize), 48) : SEARCH_PAGE_SIZE;
 
   if (!hasQuery && !hasGenres) {
-    return emptySearchPage(safePage, safePageSize, trimmed, serializedGenres || null);
+    return emptySearchPage(safePage, safePageSize, displayQuery, serializedGenres || null);
   }
 
   const parts: Prisma.Sql[] = [];
@@ -577,9 +676,12 @@ export async function searchAnimesQuick(
     safePageSize,
     includeTotal,
     offset,
-    trimmed,
+    displayQuery,
     serializedGenres || null,
     total,
+    "quick",
+    {},
+    layoutCorrectedQuery,
   );
 }
 

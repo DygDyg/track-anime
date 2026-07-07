@@ -4,24 +4,27 @@ import Link from "next/link";
 import { Suspense, useEffect, useState } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import { useAuth } from "@/components/auth/AuthProvider";
+import { AsyncButton } from "@/components/ui/AsyncButton";
 
 const ERROR_MESSAGES: Record<string, string> = {
   config: "OAuth Shikimori не настроен. Добавьте ключи в .env.",
   redirect_https:
-    "Shikimori не принимает HTTP для доменов. Добавьте в приложение Shikimori только http://localhost:3000/api/auth/callback/shikimori или HTTPS-адрес (например https://ta.dygdyg.ru/api/auth/callback/shikimori).",
+    "Shikimori не принимает HTTP для доменов. Добавьте в приложение Shikimori http://localhost:3000/api/auth/callback/shikimori (dev) и HTTPS callback текущего домена (прод).",
   missing_code: "Shikimori не вернул код авторизации.",
   invalid_state:
-    "Сессия входа истекла или браузер заблокировал cookies. Отключите блокировку для ta.dygdyg.ru и попробуйте снова.",
+    "Сессия входа истекла или браузер заблокировал cookies. Отключите блокировку cookies для этого сайта и попробуйте снова.",
   oauth_failed: "Не удалось завершить вход. Проверьте Redirect URI и имя приложения на Shikimori.",
   invalid_scope:
-    "Shikimori отклонил запрашиваемые права (scope). В настройках OAuth-приложения на Shikimori включите нужные scope или уберите лишние из SHIKIMORI_OAUTH_SCOPE на сервере.",
+    "Shikimori отклонил запрошенные права (scope). Проверьте SHIKIMORI_OAUTH_SCOPE на сервере: можно запрашивать только scope, которые активны (не серые) в настройках OAuth-приложения на Shikimori. Scope friends и другие расширенные права выдаёт только администратор Shikimori.",
+  friends_scope_missing:
+    "Shikimori не выдал право «друзья» (friends). В настройках OAuth-приложения Track Anime на Shikimori включите scope friends и повторите вход.",
   access_denied: "Вы отменили вход на Shikimori.",
 };
 
 function LoginPageInner() {
   const router = useRouter();
   const searchParams = useSearchParams();
-  const { user, loading, login } = useAuth();
+  const { user, loading, login, authNavigating } = useAuth();
   const [oauthHint, setOauthHint] = useState<string | null>(null);
   const [redirectUri, setRedirectUri] = useState<string | null>(null);
 
@@ -99,16 +102,18 @@ function LoginPageInner() {
           </p>
         ) : null}
 
-        <button
+        <AsyncButton
           type="button"
           onClick={login}
-          className="mt-6 flex w-full items-center justify-center gap-2 rounded-lg bg-accent px-4 py-3 text-sm font-medium text-white transition hover:bg-accent/90"
+          loading={authNavigating}
+          loadingLabel="Переход на Shikimori…"
+          className="mt-6 flex w-full items-center justify-center gap-2 rounded-lg bg-accent px-4 py-3 text-sm font-medium text-white transition hover:bg-accent/90 disabled:opacity-90"
         >
           <span className="inline-flex h-6 w-6 items-center justify-center rounded bg-white/15 text-xs font-bold">
             S
           </span>
           Войти через Shikimori
-        </button>
+        </AsyncButton>
 
         <p className="mt-4 text-center text-xs text-muted">
           <Link href="/" className="text-accent hover:underline">

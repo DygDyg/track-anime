@@ -1,11 +1,14 @@
 import { NextRequest, NextResponse } from "next/server";
+import { normalizeRewatchesInput } from "@/lib/anime-rewatches";
 import { getSession } from "@/lib/auth/session";
 import {
+  incrementUserAnimeRewatch,
   isListMutationAuthError,
   removeUserAnimeFromAllLists,
   removeUserAnimeListStatus,
   setUserAnimeBookmark,
   setUserAnimeListStatus,
+  setUserAnimeRewatches,
 } from "@/lib/shikimori/user-list-mutations";
 import { LIST_STATUS_TABS, type ShikimoriListStatus } from "@/lib/shikimori/user-rates.types";
 import { getUserAnimeListStatus } from "@/lib/user-anime-list-status";
@@ -26,6 +29,14 @@ function isListStatus(value: string): value is ShikimoriListStatus {
   return (LIST_STATUS_TABS as readonly string[]).includes(value);
 }
 
+type UpdateBody = {
+  listStatus?: string | null;
+  bookmark?: boolean;
+  removeAll?: boolean;
+  rewatch?: boolean;
+  rewatches?: number;
+};
+
 export async function PUT(request: NextRequest, { params }: RouteParams) {
   const session = await getSession();
   if (!session) {
@@ -38,18 +49,20 @@ export async function PUT(request: NextRequest, { params }: RouteParams) {
     return NextResponse.json({ error: "Некорректный ID аниме" }, { status: 400 });
   }
 
-  let body: { listStatus?: string | null; bookmark?: boolean; removeAll?: boolean };
+  let body: UpdateBody;
   try {
-    body = (await request.json()) as {
-      listStatus?: string | null;
-      bookmark?: boolean;
-      removeAll?: boolean;
-    };
+    body = (await request.json()) as UpdateBody;
   } catch {
     return NextResponse.json({ error: "Некорректное тело запроса" }, { status: 400 });
   }
 
-  if (body.listStatus === undefined && body.bookmark === undefined && !body.removeAll) {
+  if (
+    body.listStatus === undefined &&
+    body.bookmark === undefined &&
+    !body.removeAll &&
+    !body.rewatch &&
+    body.rewatches === undefined
+  ) {
     return NextResponse.json({ error: "Нечего обновлять" }, { status: 400 });
   }
 
@@ -61,6 +74,29 @@ export async function PUT(request: NextRequest, { params }: RouteParams) {
         session.user.id,
         session.user.shikimoriId,
         shikimoriId,
+      );
+      return NextResponse.json({ listInfo });
+    }
+
+    if (body.rewatch) {
+      listInfo = await incrementUserAnimeRewatch(
+        session.user.id,
+        session.user.shikimoriId,
+        shikimoriId,
+      );
+      return NextResponse.json({ listInfo });
+    }
+
+    if (body.rewatches !== undefined) {
+      const normalized = normalizeRewatchesInput(body.rewatches);
+      if (normalized == null) {
+        return NextResponse.json({ error: "Укажите число от 1 до 999" }, { status: 400 });
+      }
+      listInfo = await setUserAnimeRewatches(
+        session.user.id,
+        session.user.shikimoriId,
+        shikimoriId,
+        normalized,
       );
       return NextResponse.json({ listInfo });
     }

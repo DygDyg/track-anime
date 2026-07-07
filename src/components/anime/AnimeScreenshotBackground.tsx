@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useMemo, useRef, useState } from "react";
+import { EXTERNAL_IMG_ATTRS } from "@/lib/external-image";
 import { resolvePosterUrl } from "@/lib/poster";
 
 type Props = {
@@ -9,7 +10,7 @@ type Props = {
   title: string;
 };
 
-const ROTATE_MS = 8000;
+const ROTATE_MS = 30_000;
 const CROSSFADE_MS = 1000;
 
 const preloaded = new Set<string>();
@@ -25,6 +26,7 @@ function preloadImage(url: string): Promise<void> {
     };
     img.onload = finish;
     img.onerror = finish;
+    img.referrerPolicy = "no-referrer";
     img.src = url;
   });
 }
@@ -128,6 +130,7 @@ export function AnimeScreenshotBackground({ urls, fallbackUrl, title }: Props) {
           src={baseUrl}
           alt=""
           decoding="async"
+          {...EXTERNAL_IMG_ATTRS}
           className="absolute inset-0 h-full w-full scale-105 object-cover object-center blur-md brightness-[0.35]"
         />
       ) : null}
@@ -141,6 +144,7 @@ export function AnimeScreenshotBackground({ urls, fallbackUrl, title }: Props) {
                 src={url}
                 alt={screenshotAlt}
                 decoding="async"
+                {...EXTERNAL_IMG_ATTRS}
                 className={[
                   "absolute inset-0 h-full w-full scale-105 object-cover object-center will-change-[opacity] transition-opacity ease-in-out",
                   activeSlot === slot ? "opacity-100" : "opacity-0",

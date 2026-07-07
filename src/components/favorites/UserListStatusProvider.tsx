@@ -12,13 +12,19 @@ import {
 import { useAuth } from "@/components/auth/AuthProvider";
 import type { UserAnimeListInfo } from "@/lib/user-anime-list-status";
 
+type UserListUpdatePayload = {
+  listStatus?: string | null;
+  bookmark?: boolean;
+  removeAll?: boolean;
+  rewatch?: boolean;
+  rewatches?: number;
+};
+
 type UserListStatusContextValue = {
   getStatus: (shikimoriId: number) => UserAnimeListInfo | null;
   loading: boolean;
-  updateList: (
-    shikimoriId: number,
-    payload: { listStatus?: string | null; bookmark?: boolean; removeAll?: boolean },
-  ) => Promise<UserAnimeListInfo | null>;
+  isUpdating: (shikimoriId: number) => boolean;
+  updateList: (shikimoriId: number, payload: UserListUpdatePayload) => Promise<UserAnimeListInfo | null>;
 };
 
 const UserListStatusContext = createContext<UserListStatusContextValue | null>(null);
@@ -27,6 +33,7 @@ export function UserListStatusProvider({ children }: { children: ReactNode }) {
   const { user, loading: authLoading, login } = useAuth();
   const [lists, setLists] = useState<Record<string, UserAnimeListInfo>>({});
   const [loading, setLoading] = useState(false);
+  const [updatingIds, setUpdatingIds] = useState<Set<number>>(() => new Set());
 
   const fetchLists = useCallback(async () => {
     const res = await fetch("/api/user/anime-lists", { cache: "no-store" });
@@ -69,52 +76,65 @@ export function UserListStatusProvider({ children }: { children: ReactNode }) {
   );
 
   const updateList = useCallback(
-    async (
-      shikimoriId: number,
-      payload: { listStatus?: string | null; bookmark?: boolean; removeAll?: boolean },
-    ): Promise<UserAnimeListInfo | null> => {
-      const res = await fetch(`/api/user/anime-lists/${shikimoriId}`, {
-        method: "PUT",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(payload),
-      });
+    async (shikimoriId: number, payload: UserListUpdatePayload): Promise<UserAnimeListInfo | null> => {
+      setUpdatingIds((prev) => new Set(prev).add(shikimoriId));
 
-      const data = (await res.json().catch(() => ({}))) as {
-        listInfo?: UserAnimeListInfo | null;
-        error?: string;
-      };
+      try {
+        const res = await fetch(`/api/user/anime-lists/${shikimoriId}`, {
+          method: "PUT",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify(payload),
+        });
 
-      if (!res.ok) {
-        if (res.status === 401) {
-          login();
-          return null;
+        const data = (await res.json().catch(() => ({}))) as {
+          listInfo?: UserAnimeListInfo | null;
+          error?: string;
+        };
+
+        if (!res.ok) {
+          if (res.status === 401) {
+            login();
+            return null;
+          }
+          throw new Error(data.error ?? "Не удалось обновить список");
         }
-        throw new Error(data.error ?? "Не удалось обновить список");
-      }
 
-      const listInfo = data.listInfo ?? null;
-      setLists((prev) => {
-        const key = String(shikimoriId);
-        if (!listInfo || (!listInfo.listStatus && !listInfo.isBookmark)) {
-          const next = { ...prev };
-          delete next[key];
+        const listInfo = data.listInfo ?? null;
+        setLists((prev) => {
+          const key = String(shikimoriId);
+          if (!listInfo || (!listInfo.listStatus && !listInfo.isBookmark)) {
+            const next = { ...prev };
+            delete next[key];
+            return next;
+          }
+          return { ...prev, [key]: listInfo };
+        });
+
+        return listInfo;
+      } finally {
+        setUpdatingIds((prev) => {
+          const next = new Set(prev);
+          next.delete(shikimoriId);
           return next;
-        }
-        return { ...prev, [key]: listInfo };
-      });
-
-      return listInfo;
+        });
+      }
     },
     [login],
+  );
+
+  const isUpdating = useCallback(
+    (shikimoriId: number) => updatingIds.has(shikimoriId),
+    [updatingIds],
   );
 
   const value = useMemo(
     () => ({
       getStatus,
       loading,
+      isUpdating,
       updateList,
     }),
-    [getStatus, loading, updateList],
+    [getStatus, loading, isUpdating, updateList],
   );
 
   return <UserListStatusContext.Provider value={value}>{children}</UserListStatusContext.Provider>;

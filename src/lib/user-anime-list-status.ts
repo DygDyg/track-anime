@@ -1,9 +1,11 @@
+import { effectiveRewatches } from "@/lib/anime-rewatches";
 import { prisma } from "@/lib/prisma";
 import { LIST_STATUS_LABELS } from "@/lib/shikimori/user-rates";
 
 export type UserAnimeListInfo = {
   listStatus: string | null;
   isBookmark: boolean;
+  rewatches: number | null;
 };
 
 export function shouldShowListBadge(info: UserAnimeListInfo | null | undefined): boolean {
@@ -27,11 +29,13 @@ function mergeListInfo(
   if (existing) {
     if (patch.listStatus != null) existing.listStatus = patch.listStatus;
     if (patch.isBookmark) existing.isBookmark = true;
+    if (patch.rewatches != null) existing.rewatches = patch.rewatches;
     return;
   }
   map.set(shikimoriId, {
     listStatus: patch.listStatus ?? null,
     isBookmark: patch.isBookmark ?? false,
+    rewatches: patch.rewatches ?? null,
   });
 }
 
@@ -42,7 +46,7 @@ export async function getUserAnimeListStatus(
   const [entry, bookmark] = await Promise.all([
     prisma.userAnimeListEntry.findUnique({
       where: { userId_shikimoriId: { userId, shikimoriId } },
-      select: { listStatus: true },
+      select: { listStatus: true, rewatches: true },
     }),
     prisma.userAnimeBookmark.findUnique({
       where: { userId_shikimoriId: { userId, shikimoriId } },
@@ -52,9 +56,11 @@ export async function getUserAnimeListStatus(
 
   if (!entry && !bookmark) return null;
 
+  const listStatus = entry?.listStatus ?? null;
   return {
-    listStatus: entry?.listStatus ?? null,
+    listStatus,
     isBookmark: Boolean(bookmark),
+    rewatches: entry ? effectiveRewatches(entry.rewatches, listStatus) : null,
   };
 }
 
@@ -62,7 +68,7 @@ export async function getUserAnimeListStatusMap(userId: string): Promise<Map<num
   const [entries, bookmarks] = await Promise.all([
     prisma.userAnimeListEntry.findMany({
       where: { userId },
-      select: { shikimoriId: true, listStatus: true },
+      select: { shikimoriId: true, listStatus: true, rewatches: true },
     }),
     prisma.userAnimeBookmark.findMany({
       where: { userId },
@@ -73,7 +79,10 @@ export async function getUserAnimeListStatusMap(userId: string): Promise<Map<num
   const map = new Map<number, UserAnimeListInfo>();
 
   for (const entry of entries) {
-    mergeListInfo(map, entry.shikimoriId, { listStatus: entry.listStatus });
+    mergeListInfo(map, entry.shikimoriId, {
+      listStatus: entry.listStatus,
+      rewatches: effectiveRewatches(entry.rewatches, entry.listStatus),
+    });
   }
   for (const bookmark of bookmarks) {
     mergeListInfo(map, bookmark.shikimoriId, { isBookmark: true });

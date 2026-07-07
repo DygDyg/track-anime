@@ -17,6 +17,18 @@ export const LIST_STATUS_LABELS: Record<string, string> = {
   all: "Все",
 };
 
+/** Короткие подписи вкладок для узких экранов. */
+export const LIST_STATUS_LABELS_MOBILE: Record<string, string> = {
+  watching: "Смотрю",
+  planned: "В планах",
+  completed: "Просмотр.",
+  on_hold: "Отлож.",
+  dropped: "Брошено",
+  rewatching: "Пересм.",
+  bookmarks: "Закладки",
+  all: "Все",
+};
+
 export const LIST_STATUS_TABS = [
   "watching",
   "planned",

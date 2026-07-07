@@ -35,10 +35,14 @@ export async function getShikimoriAnime(id: number): Promise<ShikimoriAnime | nu
   const cached = await loadShikimoriAnimeFromCache(id);
   if (cached) return cached;
 
-  const anime = await fetchShikimoriAnimeFromApi(id);
-  if (anime) {
-    await persistShikimoriAnimeCache(anime).catch(() => undefined);
-    return anime;
+  try {
+    const anime = await fetchShikimoriAnimeFromApi(id);
+    if (anime) {
+      await persistShikimoriAnimeCache(anime).catch(() => undefined);
+      return anime;
+    }
+  } catch (error) {
+    console.error("[shikimori/animes] API fetch failed:", id, error);
   }
 
   return loadStaleShikimoriAnimeFromCache(id);

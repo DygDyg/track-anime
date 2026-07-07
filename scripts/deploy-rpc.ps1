@@ -35,6 +35,106 @@ function Assert-LastExit {
     }
 }
 
+function Get-SshBaseOptions {
+    param([string]$Key)
+    return @(
+        "-i", $Key,
+        "-o", "BatchMode=yes",
+        "-o", "ConnectTimeout=25",
+        "-o", "ConnectionAttempts=1",
+        "-o", "ServerAliveInterval=15",
+        "-o", "ServerAliveCountMax=8"
+    )
+}
+
+function Invoke-SshQuiet {
+    param(
+        [string]$Key,
+        [string]$RemoteHost,
+        [string]$Command
+    )
+
+    $prevEap = $ErrorActionPreference
+    $ErrorActionPreference = "SilentlyContinue"
+    try {
+        $output = & ssh @(Get-SshBaseOptions -Key $Key) $RemoteHost $Command 2>$null
+        return @{
+            ExitCode = $LASTEXITCODE
+            Output   = $output
+        }
+    } finally {
+        $ErrorActionPreference = $prevEap
+    }
+}
+
+function Invoke-SshWithRetry {
+    param(
+        [string]$Key,
+        [string]$RemoteHost,
+        [string]$Command,
+        [int]$MaxAttempts = 5,
+        [string]$Step = "SSH"
+    )
+
+    $lastExit = 255
+    $lastOutput = $null
+    for ($attempt = 1; $attempt -le $MaxAttempts; $attempt++) {
+        $result = Invoke-SshQuiet -Key $Key -RemoteHost $RemoteHost -Command $Command
+        $lastExit = $result.ExitCode
+        $lastOutput = $result.Output
+        if ($lastExit -eq 0) {
+            return $result
+        }
+        if ($attempt -lt $MaxAttempts) {
+            $waitSec = [math]::Min(8, $attempt * 2)
+            Write-Step "$Step failed (exit $lastExit), retry $attempt/$MaxAttempts in ${waitSec}s..." -Color Yellow
+            Start-Sleep -Seconds $waitSec
+        }
+    }
+
+    throw "$Step failed after $MaxAttempts attempts (exit $lastExit)"
+}
+
+function Invoke-ScpWithRetry {
+    param(
+        [string]$Key,
+        [string]$ArchivePath,
+        [string]$Target,
+        [int]$MaxAttempts = 3,
+        [string]$Step = "scp upload"
+    )
+
+    $scpOpts = @(
+        "-i", $Key,
+        "-o", "ConnectTimeout=30",
+        "-o", "ConnectionAttempts=1",
+        "-o", "ServerAliveInterval=15",
+        "-o", "ServerAliveCountMax=8"
+    )
+
+    $lastExit = 255
+    for ($attempt = 1; $attempt -le $MaxAttempts; $attempt++) {
+        $prevEap = $ErrorActionPreference
+        $ErrorActionPreference = "SilentlyContinue"
+        try {
+            & scp @scpOpts $ArchivePath $Target 2>$null
+            $lastExit = $LASTEXITCODE
+        } finally {
+            $ErrorActionPreference = $prevEap
+        }
+        if ($lastExit -eq 0) {
+            return
+        }
+        if ($attempt -lt $MaxAttempts) {
+            $waitSec = [math]::Min(10, $attempt * 3)
+            Write-Step "$Step failed (exit $lastExit), retry $attempt/$MaxAttempts in ${waitSec}s..." -Color Yellow
+            Start-Sleep -Seconds $waitSec
+        }
+    }
+
+    throw "$Step failed after $MaxAttempts attempts (exit $lastExit)"
+}
+
 if (-not (Test-Path $SshKey)) {
     throw "SSH key not found: $SshKey"
 }
@@ -54,13 +154,14 @@ if (-not $SkipBuild) {
 $sizeMb = [math]::Round((Get-Item $LocalExe).Length / 1MB, 1)
 Write-Step "upload: $LocalExe ($sizeMb MB)"
 
-& scp -i $SshKey $LocalExe "${Remote}:${RemoteExe}"
-Assert-LastExit "scp upload"
+Invoke-ScpWithRetry -Key $SshKey -ArchivePath $LocalExe -Target "${Remote}:${RemoteExe}" -Step "scp rpc upload"
 
 Write-Step "verify remote file..."
 $remoteCmd = "ls -lh '$RemoteExe'"
-& ssh -i $SshKey $Remote $remoteCmd
-Assert-LastExit "remote ls"
+$result = Invoke-SshWithRetry -Key $SshKey -RemoteHost $Remote -Command $remoteCmd -Step "remote ls"
+if ($result.Output) {
+    Write-Host $result.Output
+}
 
 Write-Step "verify download url..."
 $httpCode = curl.exe -s -o NUL -w "%{http_code}" $DownloadUrl

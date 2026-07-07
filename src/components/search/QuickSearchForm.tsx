@@ -2,9 +2,10 @@
 
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { useState, type FormEvent } from "react";
+import { useState, useTransition, type FormEvent } from "react";
 import { SearchGenreMultiSelect } from "@/components/search/SearchGenreMultiSelect";
 import { siteClass } from "@/components/site/site-styles";
+import { AsyncButton } from "@/components/ui/AsyncButton";
 import { buildAdvancedSearchHref, parseGenreList, serializeGenreList } from "@/lib/search-fields";
 import { SEARCH_MIN_QUERY_LENGTH, buildSearchHref } from "@/lib/search-shared";
 
@@ -15,6 +16,7 @@ type Props = {
 
 export function QuickSearchForm({ initialQuery = "", initialGenre = "" }: Props) {
   const router = useRouter();
+  const [isPending, startTransition] = useTransition();
   const [query, setQuery] = useState(initialQuery);
   const [genre, setGenre] = useState(serializeGenreList(parseGenreList(initialGenre)));
 
@@ -27,12 +29,14 @@ export function QuickSearchForm({ initialQuery = "", initialGenre = "" }: Props)
 
     if (!hasQuery && !hasGenres) return;
 
-    router.push(
-      buildSearchHref({
-        q: hasQuery ? trimmedQuery : undefined,
-        genre: hasGenres ? serializedGenres : undefined,
-      }),
-    );
+    startTransition(() => {
+      router.push(
+        buildSearchHref({
+          q: hasQuery ? trimmedQuery : undefined,
+          genre: hasGenres ? serializedGenres : undefined,
+        }),
+      );
+    });
   };
 
   const hasValues = Boolean(query.trim() || parseGenreList(genre).length > 0);
@@ -55,9 +59,9 @@ export function QuickSearchForm({ initialQuery = "", initialGenre = "" }: Props)
       <SearchGenreMultiSelect value={genre} onChange={setGenre} />
 
       <div className="flex flex-wrap gap-2">
-        <button type="submit" className={siteClass.btnSmOn}>
+        <AsyncButton type="submit" loading={isPending} loadingLabel="Поиск…" className={siteClass.btnSmOn}>
           Найти
-        </button>
+        </AsyncButton>
         {hasValues ? (
           <Link href="/search" className={siteClass.btnSmOff}>
             Сбросить

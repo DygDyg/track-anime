@@ -25,6 +25,7 @@ export function isIosSafari(): boolean {
 
 export function usePwaInstall() {
   const [deferredPrompt, setDeferredPrompt] = useState<BeforeInstallPromptEvent | null>(null);
+  const [installing, setInstalling] = useState(false);
 
   useEffect(() => {
     if (typeof window === "undefined" || isStandaloneMode()) return;
@@ -41,16 +42,22 @@ export function usePwaInstall() {
   }, []);
 
   const install = useCallback(async () => {
-    if (!deferredPrompt) return false;
+    if (!deferredPrompt || installing) return false;
 
-    await deferredPrompt.prompt();
-    const choice = await deferredPrompt.userChoice;
-    setDeferredPrompt(null);
-    return choice.outcome === "accepted";
-  }, [deferredPrompt]);
+    setInstalling(true);
+    try {
+      await deferredPrompt.prompt();
+      const choice = await deferredPrompt.userChoice;
+      setDeferredPrompt(null);
+      return choice.outcome === "accepted";
+    } finally {
+      setInstalling(false);
+    }
+  }, [deferredPrompt, installing]);
 
   return {
     canInstall: deferredPrompt != null,
+    installing,
     install,
   };
 }

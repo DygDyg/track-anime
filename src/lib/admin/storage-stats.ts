@@ -111,17 +111,15 @@ async function getSiteStorageStats(): Promise<AdminStorageStats["site"]> {
   const bgDir = getBackgroundImagesDir();
   const bgRel = bgDir ? path.relative(root, bgDir) || "bg" : "bg";
 
-  const breakdownTargets = [
-    { label: "Сборка (.next)", relPath: ".next" },
-    { label: "Зависимости (node_modules)", relPath: "node_modules" },
-    { label: "Фоны (bg)", relPath: bgRel },
-    { label: "Public", relPath: "public" },
+  const breakdownTargets: Array<{ label: string; absPath: string; relPath: string }> = [
+    { label: "Сборка (.next)", absPath: path.join(root, ".next"), relPath: ".next" },
+    { label: "Зависимости (node_modules)", absPath: path.join(root, "node_modules"), relPath: "node_modules" },
+    { label: "Фоны (bg)", absPath: bgDir ?? path.join(root, "bg"), relPath: bgRel },
+    { label: "Public", absPath: path.join(root, "public"), relPath: "public" },
   ];
 
   const breakdown = await Promise.all(
-    breakdownTargets.map(({ label, relPath }) =>
-      measurePath(label, path.join(root, relPath), relPath),
-    ),
+    breakdownTargets.map(({ label, absPath, relPath }) => measurePath(label, absPath, relPath)),
   );
 
   const canUseDu = process.platform !== "win32";

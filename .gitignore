@@ -4,6 +4,7 @@ dist/
 .env
 .build-number
 *.log
+.telegram-bot.lock
 data/cover-cache/*
 !data/cover-cache/.gitkeep
 
@@ -12,3 +13,6 @@ public/sw.js
 public/sw.js.map
 public/swe-worker-*.js
 public/downloads/TrackAnimeDiscordRPC.exe
+
+# Backups
+backups/

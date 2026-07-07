@@ -124,6 +124,26 @@ Long-running operations (import, sync) track state in Prisma models (`KodikImpor
 - `postinstall`: `prisma generate`
 - Brand assets versioned via hash in `site-brand.generated.ts`
 
+## Documentation Conventions
+
+Every code change must include a documentation impact check.
+
+Update docs in the same task when behavior, architecture, public API, operations, or project workflow changes. Keep updates scoped to affected sections.
+
+| Change type | Documentation target |
+|-------------|----------------------|
+| New/changed page, API route, module, script, Prisma model | `CODEBASE_MAP.md`, relevant feature docs |
+| Architecture, data flow, auth/session/import/sync pipeline | `ARCHITECTURE.md` |
+| Business rule, user flow, edge case, invariant | `BUSINESS_LOGIC.md`, `AI_CONTEXT.md` |
+| Naming, file layout, local patterns | `CONVENTIONS.md` |
+| Env var, npm script, setup, deploy behavior | `.env.example`, `README.md`, `docs/SERVER.md`, `docs/DEPLOY.md` |
+| External API parameter/scope/rate-limit usage | `docs/kodik-api/`, `docs/shikimori-api/` |
+| AI instructions or critical paths | `AGENTS.md`, `.cursorrules`, `AI_RULES.md`, `AI_CONTEXT.md` |
+
+Do not rewrite full documentation files unless the task is explicitly a documentation rewrite. Prefer small factual diffs.
+
+If a code change does not affect documentation, mention `Docs: not needed` in the final response.
+
 ## Git / Deploy
 
 - Deploy scripts: `scripts/deploy.ps1` (Windows pack), `scripts/server-deploy.sh` (server)

@@ -18,7 +18,10 @@ export type KodikPlayerCommand =
   | { method: "play" }
   | { method: "pause" }
   | { method: "seek"; seconds: number }
-  | { method: "change_episode"; season?: number; episode: number };
+  | { method: "change_episode"; season?: number; episode: number }
+  | { method: "volume"; volume: number }
+  | { method: "mute" }
+  | { method: "unmute" };
 
 export function isKodikPlayerMessage(data: unknown): data is KodikPlayerEvent {
   if (!data || typeof data !== "object") return false;

@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useRef, useState, type CSSProperties, type PointerEvent } from "react";
+import { AnimeCardHoverShell } from "@/components/AnimeCardHoverShell";
 import { AnimeLink } from "@/components/AnimeLink";
 import { AnimePoster } from "@/components/AnimePoster";
 import { AnimeScoreBadge } from "@/components/AnimeScoreBadge";
@@ -10,13 +10,10 @@ import { ListStatusBadge } from "@/components/favorites/ListStatusBadge";
 import { useUserListStatus } from "@/components/favorites/UserListStatusProvider";
 import { listStatusCardAccentClass } from "@/components/favorites/favorites-tab-theme";
 import { useSiteSettings } from "@/components/SiteSettingsProvider";
+import { EXTERNAL_IMG_ATTRS } from "@/lib/external-image";
 import { shouldShowListBadge } from "@/lib/user-anime-list-status";
 import { episodeBadgeClass } from "@/lib/anime-labels";
 import type { ReleaseItem, ReleaseItemDto } from "@/lib/releases";
-import {
-  ReleaseCardHoverPanel,
-  computeHoverPanelOffsetX,
-} from "@/components/ReleaseCardHoverPanel";
 
 function EpisodeNumberBadge({
   episode,
@@ -38,19 +35,12 @@ function EpisodeNumberBadge({
 
 export function ReleaseCard({
   release,
-  historyHint,
   hoverPanelPortal = false,
 }: {
   release: ReleaseItem | ReleaseItemDto;
-  historyHint?: string | null;
   /** Hover-панель через portal — поверх overflow-контейнеров */
   hoverPanelPortal?: boolean;
 }) {
-  const cardRef = useRef<HTMLDivElement>(null);
-  const panelRef = useRef<HTMLDivElement>(null);
-  const hoveredRef = useRef(false);
-  const [hovered, setHovered] = useState(false);
-  const [panelOffsetX, setPanelOffsetX] = useState(0);
   const { settings } = useSiteSettings();
   const listInfo = useUserListStatus(release.shikimoriId);
   const listAccentClass = listInfo ? listStatusCardAccentClass(listInfo.listStatus) : null;
@@ -59,56 +49,10 @@ export function ReleaseCard({
   const watchHref = release.playerLink ?? "#";
   const animeHref = release.shikimoriId ? `/anime/${release.shikimoriId}` : null;
 
-  const updatePanelOffset = useCallback(() => {
-    const el = cardRef.current;
-    if (!el) return;
-    setPanelOffsetX(computeHoverPanelOffsetX(el.getBoundingClientRect()));
-  }, []);
-
-  const handlePointerEnter = () => {
-    hoveredRef.current = true;
-    setHovered(true);
-    updatePanelOffset();
-  };
-
-  const handlePointerLeave = (event: PointerEvent<HTMLDivElement>) => {
-    const next = event.relatedTarget;
-    if (next instanceof Node && cardRef.current?.contains(next)) return;
-    if (next instanceof Node && panelRef.current?.contains(next)) return;
-    hoveredRef.current = false;
-    setHovered(false);
-  };
-
   const previewUrl =
     settings.preferPosterOverScreenshot || !release.screenshotUrl
       ? release.posterUrl
       : release.screenshotUrl ?? release.posterUrl;
-
-  useEffect(() => {
-    const onViewportChange = () => {
-      if (!hoveredRef.current) return;
-      updatePanelOffset();
-    };
-
-    const onScrollClose = () => {
-      if (!hoveredRef.current) return;
-      if (hoverPanelPortal) {
-        updatePanelOffset();
-        return;
-      }
-      hoveredRef.current = false;
-      setHovered(false);
-    };
-
-    window.addEventListener("scroll", onViewportChange, { passive: true });
-    window.addEventListener("scroll", onScrollClose, { passive: true, capture: true });
-    window.addEventListener("resize", onViewportChange, { passive: true });
-    return () => {
-      window.removeEventListener("scroll", onViewportChange);
-      window.removeEventListener("scroll", onScrollClose, { capture: true });
-      window.removeEventListener("resize", onViewportChange);
-    };
-  }, [updatePanelOffset, hoverPanelPortal]);
 
   const showScreenshotBackground =
     Boolean(release.screenshotUrl) && !settings.preferPosterOverScreenshot;
@@ -116,6 +60,7 @@ export function ReleaseCard({
   const posterInner = (
     <AnimePoster
       src={release.posterUrl}
+      fallbackSrc={release.screenshotUrl}
       shikimoriId={release.shikimoriId}
       alt={release.animeTitle}
       className="h-full w-full object-cover transition duration-300 group-hover/card:scale-105"
@@ -145,30 +90,15 @@ export function ReleaseCard({
   );
 
   return (
-    <div
-      ref={cardRef}
-      className={[
-        "group/card relative h-full md:z-0",
-        hoverPanelPortal ? "md:hover:z-[70]" : "md:hover:z-40",
-      ].join(" ")}
-      style={{ "--hover-panel-x": `${panelOffsetX}px` } as CSSProperties}
-      onPointerEnter={handlePointerEnter}
-      onPointerLeave={handlePointerLeave}
+    <AnimeCardHoverShell
+      release={release}
+      previewUrl={previewUrl}
+      hoverPanelPortal={hoverPanelPortal}
     >
-      <ReleaseCardHoverPanel
-        release={release}
-        visible={hovered}
-        previewUrl={previewUrl}
-        animeHref={animeHref}
-        trailerEnabled={settings.hoverTrailerEnabled}
-        trailerDelaySec={settings.hoverTrailerDelaySec}
-        portal={hoverPanelPortal}
-        anchorRef={cardRef}
-        panelOffsetX={panelOffsetX}
-        panelRef={panelRef}
-      />
-
       <article
+        data-tv-card={animeHref ? true : undefined}
+        tabIndex={animeHref ? 0 : undefined}
+        aria-label={animeHref ? release.animeTitle : undefined}
         className={[
           "relative z-10 flex h-full gap-3 overflow-hidden rounded-lg border border-border p-2 transition group-hover/card:border-accent/40 group-hover/card:shadow-lg group-hover/card:shadow-accent/10 md:flex md:flex-col md:rounded-xl md:p-0",
           showScreenshotBackground ? "bg-surface-dim" : "bg-card",
@@ -184,6 +114,7 @@ export function ReleaseCard({
               aria-hidden
               loading="lazy"
               decoding="async"
+              {...EXTERNAL_IMG_ATTRS}
               className="absolute inset-0 h-full w-full scale-105 object-cover blur-[4px]"
             />
             <div className="card-screenshot-dim absolute inset-0" />
@@ -207,9 +138,6 @@ export function ReleaseCard({
           </div>
 
           <div className="flex min-w-0 flex-1 flex-col justify-center gap-1 py-0.5 md:min-h-0 md:flex-1 md:justify-start md:gap-0 md:p-3">
-            {historyHint ? (
-              <p className="home-history-stop-badge">{historyHint}</p>
-            ) : null}
             {title}
             <div className="md:mt-1.5 md:min-h-[1.125rem]">
               <TranslationBadge name={release.translationName} className="max-w-full" />
@@ -224,6 +152,6 @@ export function ReleaseCard({
           </div>
         </div>
       </article>
-    </div>
+    </AnimeCardHoverShell>
   );
 }

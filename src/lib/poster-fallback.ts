@@ -1,4 +1,5 @@
 import { resolveMaterialPosterUrl, type MaterialPosterSource } from "@/lib/material-poster";
+import { shouldUpgradeImageToHttps } from "@/lib/poster";
 import { prisma } from "@/lib/prisma";
 import { kodikSearch } from "@/kodik/client";
 import { isShikimoriMissingImage, shikimoriAssetUrl, shikimoriFetch } from "@/lib/shikimori/client";
@@ -23,6 +24,7 @@ function normalizePosterUrl(url: string | null | undefined): string | null {
   if (!url || isShikimoriMissingImage(url)) return null;
   const trimmed = url.trim();
   if (!trimmed) return null;
+  if (!shouldUpgradeImageToHttps(trimmed)) return trimmed;
   return trimmed.replace(/^http:\/\//i, "https://");
 }
 
@@ -117,6 +119,27 @@ async function candidatesFromShikimori(shikimoriId: number, seen: Set<string>, l
   for (const item of related) {
     pushCandidate(list, seen, item.posterUrl, "shikimori_related");
   }
+}
+
+/** Быстрый поиск только по локальной БД — без Kodik/Shikimori API. */
+export async function discoverPosterCandidatesQuick(
+  shikimoriId: number,
+  directUrl?: string | null,
+): Promise<PosterCandidate[]> {
+  const list: PosterCandidate[] = [];
+  const seen = new Set<string>();
+
+  pushCandidate(list, seen, directUrl, "url");
+  await candidatesFromDb(shikimoriId, seen, list);
+  return list;
+}
+
+export async function discoverPosterUrlQuick(
+  shikimoriId: number,
+  directUrl?: string | null,
+): Promise<PosterCandidate | null> {
+  const candidates = await discoverPosterCandidatesQuick(shikimoriId, directUrl);
+  return candidates[0] ?? null;
 }
 
 /** Источники постера по приоритету — для анонсов без картинки на Shikimori/Kodik. */

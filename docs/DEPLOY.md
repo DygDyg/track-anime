@@ -39,8 +39,16 @@ npm run deploy
 Скрипт:
 1. Упаковывает исходники в `tar.gz` (без `node_modules`, `.next`, `.env`)
 2. Загружает на сервер через `scp`
-3. На сервере: `npm ci` → Prisma → `npm run build` → restart `track-anime`
+3. На сервере в **screen** (`ta_deploy`): `npm ci` → Prisma → `npm run build` → restart `track-anime`
 4. Проверяет HTTP 200 на https://ta.dygdyg.ru/
+
+Деплой идёт в screen-сессии — если SSH оборвётся, сборка **не остановится**. Можно подключиться:
+
+```bash
+ssh -t root@195.26.230.35 screen -r ta_deploy
+# или
+ssh root@195.26.230.35 tail -f /tmp/ta_deploy.log
+```
 
 **Время:** ~50–60 секунд.
 

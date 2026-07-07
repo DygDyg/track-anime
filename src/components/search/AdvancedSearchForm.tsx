@@ -1,13 +1,14 @@
 "use client";
 
 import { useRouter } from "next/navigation";
-import { useMemo, useState, type FormEvent } from "react";
+import { useMemo, useState, useTransition, type FormEvent } from "react";
 import { SearchColoredSelect } from "@/components/search/SearchColoredSelect";
 import { SearchFieldCombobox } from "@/components/search/SearchFieldCombobox";
 import { SearchGenreMultiSelect } from "@/components/search/SearchGenreMultiSelect";
 import { SearchMinRating } from "@/components/search/SearchMinRating";
 import { SearchYearRange } from "@/components/search/SearchYearRange";
 import { siteClass } from "@/components/site/site-styles";
+import { AsyncButton } from "@/components/ui/AsyncButton";
 import {
   SEARCH_COMBOBOX_FIELD_OPTIONS,
   SEARCH_KIND_OPTIONS,
@@ -103,6 +104,7 @@ function SearchComboboxFilter({
 
 export function AdvancedSearchForm({ initialFilters }: Props) {
   const router = useRouter();
+  const [isPending, startTransition] = useTransition();
   const [filters, setFilters] = useState<AdvancedSearchFilters>(() => initFilters(initialFilters));
 
   const yearFrom = useMemo(
@@ -121,12 +123,16 @@ export function AdvancedSearchForm({ initialFilters }: Props) {
 
   const handleSubmit = (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault();
-    router.push(buildAdvancedSearchHref(filtersForSubmit(filters)));
+    startTransition(() => {
+      router.push(buildAdvancedSearchHref(filtersForSubmit(filters)));
+    });
   };
 
   const handleReset = () => {
     setFilters(initFilters());
-    router.push("/search?tab=advanced");
+    startTransition(() => {
+      router.push("/search?tab=advanced");
+    });
   };
 
   return (
@@ -203,12 +209,18 @@ export function AdvancedSearchForm({ initialFilters }: Props) {
       </div>
 
       <div className="flex flex-wrap gap-2">
-        <button type="submit" className={siteClass.btnSmOn}>
+        <AsyncButton type="submit" loading={isPending} loadingLabel="Поиск…" className={siteClass.btnSmOn}>
           Найти
-        </button>
-        <button type="button" onClick={handleReset} className={siteClass.btnSmOff}>
+        </AsyncButton>
+        <AsyncButton
+          type="button"
+          onClick={handleReset}
+          loading={isPending}
+          loadingLabel="Сброс…"
+          className={siteClass.btnSmOff}
+        >
           Сбросить
-        </button>
+        </AsyncButton>
       </div>
     </form>
   );

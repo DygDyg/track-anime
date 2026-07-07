@@ -4,13 +4,13 @@ import {
   buildKodikEpisodeTotalsByShikimori,
   isOnSeasonMaxEpisode,
   loadEpisodeSeasonStats,
-  resolveEpisodesTotal,
+  resolveAnnouncedEpisodesTotal,
   resolveSeasonBounds,
-  seasonStatsKey,
   type EpisodeSeasonStats,
   type KodikMaterialEpisodesHint,
 } from "@/lib/episode-totals";
 import { resolveMaterialPosterUrl, type MaterialPosterSource } from "@/lib/material-poster";
+import { pickScreenshotUrl } from "@/lib/screenshots";
 import { getWatchHistoryCompleteThresholdRatio } from "@/lib/admin/watch-history-settings";
 import { loadShikimoriAnimeCacheBatch } from "@/lib/shikimori/anime-cache";
 import type { ShikimoriAnime } from "@/lib/shikimori/types";
@@ -28,11 +28,13 @@ export type WatchProgressDto = {
 export type WatchHistoryItemDto = WatchProgressDto & {
   animeTitle: string;
   posterUrl: string | null;
+  screenshotUrl: string | null;
   translationTitle: string;
   episodeDurationSeconds: number;
   watchProgressPercent: number;
   episodesTotal: number | null;
   score: string | null;
+  status: string | null;
 };
 
 const DEFAULT_EPISODE_SECONDS = 24 * 60;
@@ -65,25 +67,90 @@ function isPastCompleteEpisodeThreshold(
   return positionSeconds > episodeDurationSeconds * thresholdRatio;
 }
 
-function resolveEpisodesTotalForRow(
+function readMaterialStatus(materialData: unknown): string | null {
+  if (!materialData || typeof materialData !== "object") return null;
+  const data = materialData as { anime_status?: unknown; all_status?: unknown };
+  if (typeof data.anime_status === "string") return data.anime_status;
+  if (typeof data.all_status === "string") return data.all_status;
+  return null;
+}
+
+function readPositiveNumberField(record: Record<string, unknown>, key: string): number | null {
+  const value = record[key];
+  return typeof value === "number" && value > 0 ? value : null;
+}
+
+function readEpisodesAiredFromMaterialData(materialData: unknown): number | null {
+  if (!materialData || typeof materialData !== "object") return null;
+  const record = materialData as Record<string, unknown>;
+
+  const direct = readPositiveNumberField(record, "episodes_aired");
+  if (direct != null) return direct;
+
+  const animeFull = record.anime_full;
+  if (animeFull && typeof animeFull === "object") {
+    return readPositiveNumberField(animeFull as Record<string, unknown>, "episodes_aired");
+  }
+
+  return null;
+}
+
+function hasReachedAnnouncedEpisodesTotal(
+  materialData: unknown,
+  shikimoriAnime: ShikimoriAnime | undefined,
+): boolean {
+  const total = resolveAnnouncedEpisodesTotal({
+    materialData,
+    shikimoriAnime,
+  });
+  if (total == null) return false;
+
+  const airedCandidates = [
+    readEpisodesAiredFromMaterialData(materialData),
+    shikimoriAnime?.episodes_aired ?? null,
+  ].filter((value): value is number => value != null && value > 0);
+
+  return airedCandidates.some((aired) => aired >= total);
+}
+
+/** Ongoing / anons — сериал ещё выходит, не убираем из истории. */
+function isAnimeStillAiring(
+  materialData: unknown,
+  shikimoriAnime: ShikimoriAnime | undefined,
+): boolean {
+  if (hasReachedAnnouncedEpisodesTotal(materialData, shikimoriAnime)) return false;
+
+  const shikimoriStatus = shikimoriAnime?.status?.trim().toLowerCase();
+  if (shikimoriStatus === "released") return false;
+  if (shikimoriStatus === "ongoing" || shikimoriStatus === "anons") return true;
+
+  const materialStatus = readMaterialStatus(materialData)?.toLowerCase();
+  if (materialStatus === "ongoing" || materialStatus === "anons") return true;
+
+  return false;
+}
+
+function resolveAnnouncedEpisodesTotalForRow(
   material: KodikMaterialEpisodesHint | undefined,
   shikimoriAnime: ShikimoriAnime | undefined,
-  shikimoriId: number,
-  kodikTotals: Map<number, number>,
-  episodeStats: EpisodeSeasonStats,
-  kodikId: string,
-  seasonNumber: number,
 ): number | null {
-  const kodikSeasonMaxEpisode =
-    episodeStats.maxEpisodeByMaterialSeason.get(seasonStatsKey(kodikId, seasonNumber)) ?? null;
-
-  return resolveEpisodesTotal({
+  return resolveAnnouncedEpisodesTotal({
     materialData: material?.materialData,
     shikimoriAnime,
     material,
-    kodikShikimoriMax: kodikTotals.get(shikimoriId),
-    kodikSeasonMaxEpisode,
   });
+}
+
+function resolveEpisodesTotalForRow(
+  material: KodikMaterialEpisodesHint | undefined,
+  shikimoriAnime: ShikimoriAnime | undefined,
+  _shikimoriId: number,
+  _kodikTotals: Map<number, number>,
+  _episodeStats: EpisodeSeasonStats,
+  _kodikId: string,
+  _seasonNumber: number,
+): number | null {
+  return resolveAnnouncedEpisodesTotalForRow(material, shikimoriAnime);
 }
 
 function isWatchProgressCompleteFromSeasonMeta(
@@ -110,7 +177,7 @@ async function resolveSeasonCompleteContext(
   seasonNumber: number,
   episodeNumber: number,
 ): Promise<SeasonCompleteContext | null> {
-  const [material, shikimoriAnime, stats, kodikTotals] = await Promise.all([
+  const [material, shikimoriAnime, stats] = await Promise.all([
     prisma.kodikMaterial.findUnique({
       where: { kodikId },
       select: {
@@ -124,36 +191,28 @@ async function resolveSeasonCompleteContext(
       (map) => map.get(shikimoriId),
     ),
     loadEpisodeSeasonStats([kodikId]),
-    prisma.kodikMaterial
-      .findMany({
-        where: { shikimoriId },
-        select: { shikimoriId: true, lastEpisode: true, episodesCount: true, materialData: true },
-      })
-      .then(buildKodikEpisodeTotalsByShikimori),
   ]);
 
-  const kodikSeasonMaxEpisode =
-    stats.maxEpisodeByMaterialSeason.get(seasonStatsKey(kodikId, seasonNumber)) ?? null;
-  const episodesTotal = resolveEpisodesTotal({
+  const announcedTotal = resolveAnnouncedEpisodesTotal({
     materialData: material?.materialData,
     shikimoriAnime,
     material: material ?? undefined,
-    kodikShikimoriMax: kodikTotals.get(shikimoriId),
-    kodikSeasonMaxEpisode,
   });
-  if (episodesTotal == null) return null;
+  if (isAnimeStillAiring(material?.materialData, shikimoriAnime)) return null;
+  if (announcedTotal == null) return null;
 
   const bounds = resolveSeasonBounds(
     kodikId,
     seasonNumber,
     material ?? undefined,
-    episodesTotal,
+    announcedTotal,
     stats,
   );
   if (!bounds || episodeNumber < bounds.seasonMaxEpisode) return null;
+  if (episodeNumber < announcedTotal) return null;
 
   return {
-    episodesTotal,
+    episodesTotal: announcedTotal,
     seasonMaxEpisode: bounds.seasonMaxEpisode,
     maxSeason: bounds.maxSeason,
     episodeDurationSeconds: resolveEpisodeDurationSeconds(material?.materialData, shikimoriAnime),
@@ -373,7 +432,7 @@ async function resolveReleasePosterMap(shikimoriIds: number[]): Promise<Map<numb
   return posters;
 }
 
-function watchProgressPercent(positionSeconds: number, episodeDurationSeconds: number): number {
+export function watchProgressPercent(positionSeconds: number, episodeDurationSeconds: number): number {
   if (episodeDurationSeconds <= 0) return 0;
   return Math.min(100, Math.round((positionSeconds / episodeDurationSeconds) * 100));
 }
@@ -390,7 +449,7 @@ export async function getWatchHistory(userId: string, limit = 100): Promise<Watc
   const shikimoriIds = [...new Set(rows.map((row) => row.shikimoriId))];
   const kodikIds = [...new Set(rows.map((row) => row.kodikId))];
 
-  const [materialsByKodikId, materialsByShikimoriId, shikimoriAnimeCache, releasePosters, episodeStats] =
+  const [materialsByKodikId, materialsByShikimoriId, shikimoriAnimeCache, releasePosters, episodeStats, episodes] =
     await Promise.all([
       prisma.kodikMaterial.findMany({
         where: { kodikId: { in: kodikIds } },
@@ -417,7 +476,29 @@ export async function getWatchHistory(userId: string, limit = 100): Promise<Watc
       loadShikimoriAnimeCacheBatch(shikimoriIds, { allowStale: true }),
       resolveReleasePosterMap(shikimoriIds),
       loadEpisodeSeasonStats(kodikIds),
+      prisma.kodikEpisode.findMany({
+        where: {
+          OR: rows.map((row) => ({
+            materialId: row.kodikId,
+            seasonNumber: row.seasonNumber,
+            episodeNumber: row.episodeNumber,
+          })),
+        },
+        select: {
+          materialId: true,
+          seasonNumber: true,
+          episodeNumber: true,
+          screenshots: true,
+        },
+      }),
     ]);
+
+  const episodeScreenshotByKey = new Map(
+    episodes.map((episode) => [
+      `${episode.materialId}:${episode.seasonNumber}:${episode.episodeNumber}`,
+      episode.screenshots,
+    ]),
+  );
 
   const materialById = new Map(materialsByKodikId.map((material) => [material.kodikId, material]));
   const kodikTotals = buildKodikEpisodeTotalsByShikimori(materialsByShikimoriId);
@@ -443,6 +524,7 @@ export async function getWatchHistory(userId: string, limit = 100): Promise<Watc
     const episodeDurationSeconds = meta.episodeDurationSeconds;
 
     if (
+      !isAnimeStillAiring(material?.materialData, shikimoriAnime) &&
       isWatchProgressCompleteFromSeasonMeta(
         row.seasonNumber,
         row.episodeNumber,
@@ -469,17 +551,28 @@ export async function getWatchHistory(userId: string, limit = 100): Promise<Watc
       releasePosters.get(row.shikimoriId) ??
       null;
 
+    const materialData = material?.materialData as { screenshots?: unknown; anime_status?: string } | undefined;
+    const episodeScreenshots = episodeScreenshotByKey.get(
+      `${row.kodikId}:${row.seasonNumber}:${row.episodeNumber}`,
+    );
+    const screenshotUrl = pickScreenshotUrl(
+      [materialData?.screenshots, episodeScreenshots],
+      String(row.shikimoriId),
+    );
+
     items.push({
       ...mapRow(row),
       animeTitle: material?.title ?? shikimoriAnime?.russian ?? shikimoriAnime?.name ?? `Аниме #${row.shikimoriId}`,
       translationTitle: material?.translationTitle ?? "Озвучка",
       posterUrl,
+      screenshotUrl,
       episodeDurationSeconds: meta.episodeDurationSeconds,
       episodesTotal: meta.episodesTotal,
       watchProgressPercent: watchProgressPercent(row.positionSeconds, meta.episodeDurationSeconds),
       score:
         normalizeAnimeScore(shikimoriAnime?.score) ??
         extractScoreFromMaterialData(material?.materialData),
+      status: shikimoriAnime?.status || materialData?.anime_status?.trim() || null,
     });
   }
 

@@ -94,6 +94,12 @@ export function SearchResultsView({ result }: Props) {
       ) : (
         <section className={`${siteClass.panel} space-y-6`}>
           <h2 className={siteClass.sectionTitle}>Результаты</h2>
+          {result.layoutCorrectedQuery ? (
+            <p className="text-sm text-foreground/80">
+              По запросу «{result.query}» ничего не найдено. Показаны результаты для «
+              {result.layoutCorrectedQuery}» (исправлена раскладка клавиатуры).
+            </p>
+          ) : null}
           <SearchResultsInfiniteGrid
             initialItems={result.items}
             initialPage={result.page}

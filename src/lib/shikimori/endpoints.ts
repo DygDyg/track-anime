@@ -12,6 +12,7 @@ export type ShikimoriEndpoints = {
   apiBase: string;
   oauthAuthorizeUrl: string;
   oauthTokenUrl: string;
+  oauthRevokeUrl: string;
   whoamiUrl: string;
   siteOrigin: string;
   updatedAt: string;
@@ -63,6 +64,7 @@ export function buildShikimoriEndpoints(
     apiBase: `${origin}/api`,
     oauthAuthorizeUrl: `${origin}/oauth/authorize`,
     oauthTokenUrl: `${origin}/oauth/token`,
+    oauthRevokeUrl: `${origin}/oauth/revoke`,
     whoamiUrl: `${origin}/api/users/whoami`,
     siteOrigin: origin,
     updatedAt,

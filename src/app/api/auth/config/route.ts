@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import {
   getShikimoriOAuthHint,
   getShikimoriRedirectUri,
+  getShikimoriScope,
   isAuthConfigured,
   isShikimoriAllowedRedirectUri,
 } from "@/lib/auth/config";
@@ -22,5 +23,6 @@ export async function GET(request: NextRequest) {
     shikimoriAllowed: isShikimoriAllowedRedirectUri(redirectUri),
     loginHint: getShikimoriOAuthHint(redirectUri, origin),
     appName: getShikimoriUserAgent(),
+    oauthScope: getShikimoriScope(),
   });
 }

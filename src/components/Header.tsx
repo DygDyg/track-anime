@@ -13,13 +13,17 @@ import { HeaderPwaInstallButton } from "@/components/HeaderPwaInstallButton";
 import { SiteSettingsButton } from "@/components/SiteSettingsMenu";
 import { ThemeToggle } from "@/components/ThemeToggle";
 import { headerControl } from "@/components/header/header-styles";
+import { PWA_NAV_ITEMS } from "@/lib/pwa-nav";
 import { SITE_LOGO_ALT, SITE_NAME, siteLogoSrc } from "@/lib/site-brand";
 
-const nav = [
-  { href: "/", label: "Главная" },
-  { href: "/calendar", label: "Календарь" },
-  { href: "/history", label: "История" },
-];
+function HeaderSearchIcon({ className = "h-5 w-5" }: { className?: string }) {
+  return (
+    <svg viewBox="0 0 24 24" className={className} fill="none" stroke="currentColor" strokeWidth="2" aria-hidden>
+      <circle cx="11" cy="11" r="7" />
+      <path d="M20 20l-3-3" strokeLinecap="round" />
+    </svg>
+  );
+}
 
 function UsersIcon() {
   return (
@@ -132,26 +136,28 @@ function NavLinks({
 }
 
 export function Header() {
-  const [menuOpen, setMenuOpen] = useState(false);
+  const [mobileSearchOpen, setMobileSearchOpen] = useState(false);
   const pathname = usePathname();
   const handleHomeClick = useNavigationClick("/");
+  const searchActive =
+    mobileSearchOpen || pathname === "/search" || pathname.startsWith("/search/");
 
   useEffect(() => {
-    setMenuOpen(false);
+    setMobileSearchOpen(false);
   }, [pathname]);
 
   useEffect(() => {
-    document.body.style.overflow = menuOpen ? "hidden" : "";
+    document.documentElement.classList.toggle("mobile-bottom-search-open", mobileSearchOpen);
     return () => {
-      document.body.style.overflow = "";
+      document.documentElement.classList.remove("mobile-bottom-search-open");
     };
-  }, [menuOpen]);
+  }, [mobileSearchOpen]);
 
   return (
     <header className="site-header fixed top-0 left-0 right-0 z-50 w-full max-w-[100vw] overflow-x-clip supports-[padding:max(0px)]:pt-[env(safe-area-inset-top)]">
       <div
         aria-hidden
-        className="site-header-bg site-header-bg-fullbleed border-b border-border/90 backdrop-blur-lg backdrop-saturate-150"
+        className="site-header-bg site-header-bg-fullbleed backdrop-blur-lg backdrop-saturate-150"
       />
       <div className="site-header-text relative flex h-14 items-center gap-2 px-3 sm:h-16 sm:gap-2.5 sm:px-6 lg:px-8">
         <Link
@@ -170,65 +176,51 @@ export function Header() {
           <span className="hidden truncate sm:inline">{SITE_NAME}</span>
         </Link>
 
-        <NavLinks className="hidden shrink-0 items-center gap-1.5 md:ml-2 md:flex" items={nav} />
+        <NavLinks
+          className="hidden shrink-0 items-center gap-1.5 md:ml-2 md:flex"
+          items={PWA_NAV_ITEMS}
+        />
 
-        <div className="ml-auto flex min-w-0 items-center gap-1.5 sm:gap-2">
+        <div className="ml-auto flex min-w-0 items-center gap-1 sm:gap-1.5 md:gap-2">
           <HeaderSearch className="hidden w-44 sm:block sm:w-52 md:w-60 lg:w-72" />
+
+          <HeaderDiscordRpcButton />
+          <HeaderPwaInstallButton />
 
           <HeaderUsersLink />
 
-          <HeaderDiscordRpcButton />
-
-          <HeaderPwaInstallButton />
-
-          <ThemeToggle className="hidden sm:inline-flex" />
+          <ThemeToggle />
 
           <SiteSettingsButton />
 
-          <HeaderAuth />
+          <div className="hidden md:contents">
+            <HeaderAuth />
+          </div>
 
           <button
             type="button"
-            className={`${headerControl.icon} md:hidden`}
-            aria-expanded={menuOpen}
-            aria-controls="mobile-nav"
-            aria-label={menuOpen ? "Закрыть меню" : "Открыть меню"}
-            onClick={() => setMenuOpen((open) => !open)}
+            className={[
+              headerControl.icon,
+              "md:hidden",
+              searchActive ? "text-accent hover:text-accent" : "text-muted hover:text-foreground",
+            ].join(" ")}
+            aria-label={mobileSearchOpen ? "Закрыть поиск" : "Поиск аниме"}
+            aria-expanded={mobileSearchOpen}
+            onClick={() => setMobileSearchOpen((open) => !open)}
           >
-            {menuOpen ? (
-              <svg viewBox="0 0 24 24" className="h-5 w-5" fill="none" stroke="currentColor" strokeWidth="2">
-                <path d="M6 6l12 12M18 6L6 18" strokeLinecap="round" />
-              </svg>
-            ) : (
-              <svg viewBox="0 0 24 24" className="h-5 w-5" fill="none" stroke="currentColor" strokeWidth="2">
-                <path d="M4 7h16M4 12h16M4 17h16" strokeLinecap="round" />
-              </svg>
-            )}
+            <HeaderSearchIcon />
           </button>
         </div>
       </div>
 
-      {menuOpen ? (
-        <div
-          id="mobile-nav"
-          className="site-header-text relative space-y-2 border-t border-border/90 bg-card/95 px-3 py-3 backdrop-blur-lg backdrop-saturate-150 md:hidden supports-[padding:max(0px)]:pb-[max(0.75rem,env(safe-area-inset-bottom))]"
-        >
-          <HeaderSearch onNavigate={() => setMenuOpen(false)} />
-          <NavLinks
-            className="flex flex-col gap-1.5"
-            mobile
-            items={nav}
-            onNavigate={() => setMenuOpen(false)}
-          />
-          <div className="flex items-center gap-2 border-t border-border/80 pt-2">
-            <ThemeToggle />
-            <span className="text-sm text-muted">Тема</span>
-          </div>
-          <div className="border-t border-border/80 pt-2">
-            <HeaderAuth compact />
-          </div>
-        </div>
-      ) : null}
+      <div className="md:hidden">
+        <HeaderSearch
+          variant="bottom"
+          sheetOpen={mobileSearchOpen}
+          autoFocus
+          onNavigate={() => setMobileSearchOpen(false)}
+        />
+      </div>
     </header>
   );
 }

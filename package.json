@@ -5,11 +5,13 @@
   "type": "module",
   "scripts": {
     "postinstall": "prisma generate",
-    "dev": "prisma generate && next dev",
-    "dev:custom": "prisma generate && next dev --experimental-https",
-    "dev:with-port": "prisma generate && next dev -p $PORT",
+    "dev": "node scripts/prisma-generate-safe.mjs && next dev --hostname 0.0.0.0",
+    "dev:localhost": "node scripts/prisma-generate-safe.mjs && next dev",
+    "dev:custom": "node scripts/prisma-generate-safe.mjs && next dev --experimental-https",
+    "dev:with-port": "node scripts/prisma-generate-safe.mjs && next dev -p $PORT",
     "build": "node scripts/sync-brand-assets.mjs && next build && node scripts/write-build-info.mjs",
     "brand:sync": "node scripts/sync-brand-assets.mjs",
+    "avatar-decorations:thumbs": "tsx scripts/generate-avatar-decoration-thumbs.ts",
     "start": "next start",
     "lint": "next lint",
     "db:generate": "prisma generate",
@@ -23,6 +25,9 @@
     "kodik:import:episodes": "tsx scripts/kodik-import-full.ts --episodes-only",
     "kodik:sync": "tsx scripts/kodik-sync-recent.ts",
     "kodik:sync:scheduled": "tsx scripts/kodik-sync-scheduled.ts",
+    "kodik:normalize-metadata": "tsx scripts/normalize-kodik-material-metadata.ts",
+    "kodik:normalize-metadata:write": "tsx scripts/normalize-kodik-material-metadata.ts --write --quiet",
+    "shikimori:sync-anons": "tsx scripts/shikimori-sync-anons.ts",
     "kodik:backfill-dates": "tsx scripts/kodik-backfill-release-dates.ts",
     "import:sqlite-history": "node scripts/import-sqlite-watch-history.mjs --create-users",
     "import:sqlite-history:merge": "node scripts/import-sqlite-watch-history.mjs --skip-existing",
@@ -33,7 +38,11 @@
     "discord:tray:publish": "npm run discord:tray:build && node scripts/publish-discord-tray-exe.mjs",
     "deploy": "powershell -NoProfile -ExecutionPolicy Bypass -File scripts/deploy.ps1",
     "deploy:release": "powershell -NoProfile -ExecutionPolicy Bypass -File scripts/deploy.ps1 -ForceTrayRebuild",
-    "deploy:rpc": "powershell -NoProfile -ExecutionPolicy Bypass -File scripts/deploy-rpc.ps1"
+    "deploy:rpc": "powershell -NoProfile -ExecutionPolicy Bypass -File scripts/deploy-rpc.ps1",
+    "notifications:generate-vapid": "tsx scripts/generate-vapid-keys.ts",
+    "notifications:telegram-bot": "tsx scripts/telegram-notification-bot.ts",
+    "notifications:vk-bot": "tsx scripts/vk-notification-bot.ts",
+    "notifications:worker": "tsx scripts/notification-worker.ts"
   },
   "dependencies": {
     "@prisma/client": "^6.9.0",
@@ -41,7 +50,9 @@
     "next": "^16.2.9",
     "react": "^19.2.7",
     "react-dom": "^19.2.7",
-    "sharp": "^0.34.5"
+    "server-only": "^0.0.1",
+    "sharp": "^0.34.5",
+    "web-push": "^3.6.7"
   },
   "devDependencies": {
     "@serwist/turbopack": "^9.5.11",
@@ -49,6 +60,7 @@
     "@types/node": "^22.15.0",
     "@types/react": "^19.2.17",
     "@types/react-dom": "^19.2.3",
+    "@types/web-push": "^3.6.4",
     "autoprefixer": "^10.5.0",
     "discord-rpc": "^4.0.1",
     "electron": "^35.7.5",

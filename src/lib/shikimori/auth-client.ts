@@ -33,6 +33,7 @@ export async function getUserAccessToken(userId: string, forceRefresh = false): 
         accessToken: tokens.access_token,
         refreshToken: tokens.refresh_token,
         expiresAt: tokenExpiresAt(tokens.expires_in),
+        ...(tokens.scope ? { scope: tokens.scope } : {}),
       },
     });
 

@@ -73,6 +73,8 @@ export type ShikimoriAnime = {
   description: string | null;
   description_html: string | null;
   franchise: string | null;
+  topic_id?: number | null;
+  thread_id?: number | null;
   genres: ShikimoriGenre[];
   studios: ShikimoriStudio[];
   screenshots: ShikimoriScreenshot[];
@@ -92,4 +94,26 @@ export type ShikimoriVideo = {
   name?: string;
   kind?: string;
   hosting?: string;
+};
+
+export type ShikimoriAnimeBrief = {
+  id: number;
+  name: string;
+  russian: string | null;
+  image: ShikimoriImage | null;
+  url: string;
+  kind: string;
+  score: string | null;
+  status: string;
+  episodes: number | null;
+  episodes_aired: number | null;
+  aired_on: string | null;
+  released_on: string | null;
+};
+
+export type ShikimoriCalendarEntry = {
+  next_episode: number;
+  next_episode_at: string | null;
+  duration: number | null;
+  anime: ShikimoriAnimeBrief;
 };

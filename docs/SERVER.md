@@ -266,22 +266,31 @@ npm run kodik:sync
 
 ### Автообновление (cron)
 
-Каждые 10 минут — как задумано в проекте:
+Cron запускает планировщик каждую минуту, а реальный интервал берётся из `KodikSyncSettings`
+(`intervalMinutes`, `syncPages`) и меняется через админку. По умолчанию sync включён, интервал
+10 минут, объём проверки — `KODIK_SYNC_PAGES` или значение из БД.
 
 ```bash
-mkdir -p /opt/track-anime/logs
-crontab -e
+cd /opt/track-anime
+bash scripts/install-kodik-sync-cron.sh
 ```
+
+Фактическая строка cron:
 
 ```cron
-*/10 * * * * cd /opt/track-anime && /usr/bin/npm run kodik:sync >> /opt/track-anime/logs/kodik-sync.log 2>&1
+* * * * * cd /opt/track-anime && /usr/bin/npm run kodik:sync:scheduled >> /opt/track-anime/logs/kodik-sync.log 2>&1
 ```
 
-Проверка лога:
+Проверка:
 
 ```bash
+crontab -l | grep kodik:sync:scheduled
 tail -f /opt/track-anime/logs/kodik-sync.log
+npm run kodik:sync:scheduled
 ```
+
+`npm run kodik:sync` остаётся ручным инкрементальным запуском без проверки расписания.
+Для проверки именно cron-пути используйте `npm run kodik:sync:scheduled`.
 
 ---
 
@@ -376,7 +385,8 @@ sudo systemctl restart track-anime
 | `npm run kodik:import` | Полный импорт Kodik |
 | `npm run kodik:import:resume` | Продолжить импорт после прерывания |
 | `npm run kodik:import:episodes` | Только фаза серий |
-| `npm run kodik:sync` | Инкрементальное обновление |
+| `npm run kodik:sync` | Ручное инкрементальное обновление |
+| `npm run kodik:sync:scheduled` | Cron-планировщик: проверяет настройки, запускает auto sync, Shikimori anons sync и worker уведомлений |
 
 ---
 
@@ -388,7 +398,9 @@ sudo systemctl restart track-anime
 | `KODIK_API_TOKEN не задан` | Файл `.env` в корне проекта, права на чтение у пользователя сервиса |
 | Ошибка подключения к БД | `docker ps`, совпадает ли пароль в `docker-compose.yml` и `DATABASE_URL` |
 | Сайт не открывается снаружи | `systemctl status track-anime`, nginx, firewall (`ufw allow 80,443`) |
-| Sync не идёт по cron | Абсолютный путь к `npm`, лог `logs/kodik-sync.log`, `which npm` |
+| Sync не идёт по cron | `crontab -l`, абсолютный путь к `npm`, лог `logs/kodik-sync.log`, `which npm`, ручной запуск `npm run kodik:sync:scheduled` |
+| `Cannot find package 'server-only'` в cron | Выполнить `npm ci`; пакет должен быть в `package.json`. Не добавляйте `import "server-only"` в модули, которые импортируются из CLI/cron (`tsx`) |
+| `server-only` бросает ошибку при `npm run kodik:sync:scheduled` | В CLI-достижимом графе импортов остался sentinel `import "server-only"`. Для Kodik sync критичный путь: `scripts/kodik-sync-scheduled.ts` → `save-material` → notification dispatcher/channel |
 
 Проверка API ленты:
 

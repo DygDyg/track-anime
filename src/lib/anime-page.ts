@@ -1,19 +1,24 @@
 import { isShikimoriStubMaterial } from "@/db/save-shikimori-material";
 import { cache } from "react";
-import { resolveEpisodesTotalForShikimoriMaterials } from "@/lib/episode-totals";
+import { resolveAnnouncedEpisodesTotalForShikimoriMaterials } from "@/lib/episode-totals";
 import { prisma } from "@/lib/prisma";
 import { extractKodikMaterialMeta } from "@/lib/kodik-material-meta";
 import { resolveMaterialPosterUrl, type MaterialPosterSource } from "@/lib/material-poster";
-import { parseScreenshotUrls } from "@/lib/screenshots";
+import { parseScreenshotUrls, uniqueScreenshotUrls } from "@/lib/screenshots";
 import { discoverPosterUrl, posterFromShikimoriAnime } from "@/lib/poster-fallback";
 import {
   getShikimoriAnime,
   getShikimoriAnimeCachedOnly,
   scheduleShikimoriAnimeRefresh,
 } from "@/lib/shikimori/animes";
+import {
+  loadStaleShikimoriAnimeFromCache,
+  parseShikimoriAnimeFromMaterialData,
+} from "@/lib/shikimori/anime-cache";
 import { isShikimoriMissingImage, shikimoriAssetUrl } from "@/lib/shikimori/client";
 import { getShikimoriEndpoints, shikimoriSiteUrl } from "@/lib/shikimori/endpoints";
-import type { ShikimoriAnime } from "@/lib/shikimori/types";
+import { pickYoutubeTrailerId } from "@/lib/shikimori/trailer";
+import type { ShikimoriAnime, ShikimoriStudio } from "@/lib/shikimori/types";
 
 export type KodikTranslationDto = {
   kodikId: string;
@@ -42,7 +47,7 @@ export type AnimePageDto = {
   releasedOn: string | null;
   description: string | null;
   genres: { id: number; name: string }[];
-  studios: { id: number; name: string }[];
+  studios: { id: number; name: string; imageUrl: string | null }[];
   synonyms: string[];
   shikimoriUrl: string | null;
   screenshots: string[];
@@ -50,6 +55,7 @@ export type AnimePageDto = {
   hasShikimori: boolean;
   scoreCount: number | null;
   dubbers: string[];
+  trailerYoutubeId: string | null;
 };
 
 function posterFromMaterialData(data: unknown): string | null {
@@ -93,33 +99,95 @@ function mapGenres(
   anime: ShikimoriAnime | null,
   kodikGenres: string[],
 ): AnimePageDto["genres"] {
-  if (anime?.genres?.length) {
-    return anime.genres.map((g) => ({
-      id: g.id,
-      name: g.russian || g.name,
-    }));
+  const merged: AnimePageDto["genres"] = [];
+  const seen = new Map<string, string>();
+
+  for (const g of anime?.genres ?? []) {
+    const name = (g.russian || g.name).trim();
+    if (!name) continue;
+    const key = name.toLocaleLowerCase("ru-RU");
+    if (seen.has(key)) continue;
+    seen.set(key, name);
+    merged.push({ id: g.id, name });
   }
 
-  return kodikGenres.map((name, index) => ({
-    id: -(index + 1),
-    name,
-  }));
+  let kodikId = -1;
+  for (const raw of kodikGenres) {
+    const name = raw.trim();
+    if (!name) continue;
+    const key = name.toLocaleLowerCase("ru-RU");
+    if (seen.has(key)) continue;
+    seen.set(key, name);
+    merged.push({ id: kodikId, name });
+    kodikId -= 1;
+  }
+
+  return merged;
 }
 
-function mapStudios(
+function studioImageUrl(image: string | null | undefined): string | null {
+  const url = shikimoriAssetUrl(image);
+  if (!url || isShikimoriMissingImage(url)) return null;
+  return url;
+}
+
+function mapStudioEntry(studio: ShikimoriStudio): AnimePageDto["studios"][number] {
+  return {
+    id: studio.id,
+    name: studio.name,
+    imageUrl: studioImageUrl(studio.image),
+  };
+}
+
+function studioMergeKey(studio: AnimePageDto["studios"][number]): string {
+  return studio.id > 0 ? `id:${studio.id}` : `name:${studio.name.toLocaleLowerCase("ru-RU")}`;
+}
+
+function mergeStudioLists(...lists: AnimePageDto["studios"][]): AnimePageDto["studios"] {
+  const byKey = new Map<string, AnimePageDto["studios"][number]>();
+
+  for (const list of lists) {
+    for (const studio of list) {
+      const key = studioMergeKey(studio);
+      const prev = byKey.get(key);
+      if (!prev) {
+        byKey.set(key, studio);
+        continue;
+      }
+      if (!prev.imageUrl && studio.imageUrl) {
+        byKey.set(key, studio);
+      }
+    }
+  }
+
+  return [...byKey.values()];
+}
+
+function studiosFromMaterialData(materials: Array<{ materialData: unknown }>): AnimePageDto["studios"] {
+  for (const material of materials) {
+    const cached = parseShikimoriAnimeFromMaterialData(material.materialData);
+    if (!cached?.studios?.length) continue;
+    return cached.studios.map(mapStudioEntry);
+  }
+  return [];
+}
+
+function resolveStudios(
   anime: ShikimoriAnime | null,
+  materials: Array<{ materialData: unknown }>,
   kodikStudios: string[],
 ): AnimePageDto["studios"] {
-  if (anime?.studios?.length) {
-    return anime.studios.map((s) => ({
-      id: s.id,
-      name: s.name,
-    }));
-  }
+  const merged = mergeStudioLists(
+    anime?.studios?.length ? anime.studios.map(mapStudioEntry) : [],
+    studiosFromMaterialData(materials),
+  );
+
+  if (merged.length > 0) return merged;
 
   return kodikStudios.map((name, index) => ({
     id: -(index + 1),
     name,
+    imageUrl: null,
   }));
 }
 
@@ -141,6 +209,7 @@ function mapAnimeToDto(
     episodesCount: number | null;
     materialData: unknown;
   }>,
+  allMaterials: Array<{ materialData: unknown }>,
 ): AnimePageDto {
   const title = anime?.russian || anime?.name || fallbackTitle || "Без названия";
   const posterUrl =
@@ -148,9 +217,8 @@ function mapAnimeToDto(
     (fallbackPoster && !isShikimoriMissingImage(fallbackPoster) ? fallbackPoster : null);
 
   const episodes =
-    resolveEpisodesTotalForShikimoriMaterials(shikimoriId, anime, metaMaterials) ??
-    anime?.episodes ??
-    null;
+    resolveAnnouncedEpisodesTotalForShikimoriMaterials(shikimoriId, anime, metaMaterials) ??
+    (anime?.episodes != null && anime.episodes > 0 ? anime.episodes : null);
 
   return {
     shikimoriId,
@@ -168,21 +236,20 @@ function mapAnimeToDto(
     releasedOn: anime?.released_on ?? null,
     description: normalizeDescription(anime?.description ?? null) ?? kodikMeta.description,
     genres: mapGenres(anime, kodikMeta.genres),
-    studios: mapStudios(anime, kodikMeta.studios),
+    studios: resolveStudios(anime, allMaterials, kodikMeta.studios),
     synonyms: anime?.synonyms?.slice(0, 6) ?? [],
     shikimoriUrl: anime ? shikimoriSiteUrl(anime.url) : null,
-    screenshots: [
-      ...new Set([
-        ...(anime?.screenshots ?? [])
-          .map((s) => shikimoriAssetUrl(s.original ?? s.preview))
-          .filter((url): url is string => Boolean(url)),
-        ...kodikScreenshots,
-      ]),
-    ],
+    screenshots: uniqueScreenshotUrls([
+      ...(anime?.screenshots ?? [])
+        .map((s) => shikimoriAssetUrl(s.original ?? s.preview))
+        .filter((url): url is string => Boolean(url)),
+      ...kodikScreenshots,
+    ]),
     translations,
     hasShikimori: Boolean(anime),
     scoreCount: sumScoreVotes(anime?.rates_scores_stats),
     dubbers: collectDubbers(anime, translations),
+    trailerYoutubeId: pickYoutubeTrailerId(anime?.videos),
   };
 }
 
@@ -219,6 +286,9 @@ export const getAnimePageData = cache(async (shikimoriId: number): Promise<Anime
   let anime: ShikimoriAnime | null = null;
   if (hasRealMaterials) {
     anime = await getShikimoriAnimeCachedOnly(shikimoriId);
+    if (!anime) {
+      anime = await loadStaleShikimoriAnimeFromCache(shikimoriId);
+    }
     scheduleShikimoriAnimeRefresh(shikimoriId);
   } else {
     anime = await getShikimoriAnime(shikimoriId);
@@ -248,9 +318,9 @@ export const getAnimePageData = cache(async (shikimoriId: number): Promise<Anime
       ? releasePoster.posterUrl
       : null);
   const fallbackTitle = metaMaterials[0]?.title ?? materials[0]?.title ?? null;
-  const kodikScreenshots = [
-    ...new Set(metaMaterials.flatMap((m) => screenshotsFromMaterialData(m.materialData))),
-  ];
+  const kodikScreenshots = uniqueScreenshotUrls(
+    metaMaterials.flatMap((m) => screenshotsFromMaterialData(m.materialData)),
+  );
   const kodikMeta = extractKodikMaterialMeta(metaMaterials.map((m) => m.materialData));
 
   let dto = mapAnimeToDto(
@@ -262,6 +332,7 @@ export const getAnimePageData = cache(async (shikimoriId: number): Promise<Anime
     kodikScreenshots,
     kodikMeta,
     metaMaterials,
+    materials,
   );
 
   if (!dto.posterUrl) {

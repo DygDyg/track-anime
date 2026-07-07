@@ -7,21 +7,62 @@ const MAX_RETRIES = 5;
 
 const inflightRequests = new Map<string, Promise<unknown>>();
 
+export class ShikimoriRateLimitError extends Error {
+  readonly path: string;
+
+  constructor(path: string) {
+    super(`Shikimori API 429: ${path}`);
+    this.name = "ShikimoriRateLimitError";
+    this.path = path;
+  }
+}
+
+export function isShikimoriRateLimitError(error: unknown): error is ShikimoriRateLimitError {
+  return error instanceof ShikimoriRateLimitError;
+}
+
+function isRetryableFetchError(error: unknown): boolean {
+  if (!(error instanceof Error)) return true;
+  const message = error.message.toLowerCase();
+  return (
+    message.includes("fetch failed") ||
+    message.includes("network") ||
+    message.includes("timeout") ||
+    message.includes("econnreset") ||
+    message.includes("enotfound") ||
+    message.includes("econnrefused") ||
+    message.includes("socket")
+  );
+}
+
+function retryDelayMs(attempt: number): number {
+  return Math.min(30_000, 1000 * 2 ** attempt);
+}
+
 async function shikimoriFetchOnce<T>(path: string, init?: RequestInit): Promise<T | null> {
   const { apiBase } = await getShikimoriEndpoints();
 
   for (let attempt = 0; attempt <= MAX_RETRIES; attempt += 1) {
     await shikimoriRateLimit();
 
-    const res = await fetch(`${apiBase}${path}`, {
-      ...init,
-      headers: {
-        "User-Agent": getShikimoriUserAgent() || USER_AGENT,
-        Accept: "application/json",
-        ...init?.headers,
-      },
-      next: { revalidate: 3600 },
-    });
+    let res: Response;
+    try {
+      res = await fetch(`${apiBase}${path}`, {
+        ...init,
+        headers: {
+          "User-Agent": getShikimoriUserAgent() || USER_AGENT,
+          Accept: "application/json",
+          ...init?.headers,
+        },
+        next: { revalidate: 3600 },
+      });
+    } catch (error) {
+      if (attempt < MAX_RETRIES && isRetryableFetchError(error)) {
+        await new Promise((resolve) => setTimeout(resolve, retryDelayMs(attempt)));
+        continue;
+      }
+      throw error;
+    }
 
     if (res.status === 404) return null;
 
@@ -38,7 +79,7 @@ async function shikimoriFetchOnce<T>(path: string, init?: RequestInit): Promise<
     return res.json() as Promise<T>;
   }
 
-  throw new Error(`Shikimori API 429: ${path}`);
+  throw new ShikimoriRateLimitError(path);
 }
 
 export async function shikimoriFetch<T>(path: string, init?: RequestInit): Promise<T | null> {

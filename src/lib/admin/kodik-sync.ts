@@ -1,5 +1,6 @@
 import { prisma } from "@/lib/prisma";
 import { saveKodikMaterial } from "@/db/save-material";
+import { normalizeKodikMaterialMetadata } from "@/lib/kodik-material-metadata-normalizer";
 import { buildListUrl, kodikListByUrl, kodikSearch } from "@/kodik/client";
 import {
   finishImportJobSession,
@@ -78,6 +79,7 @@ export async function runKodikIncrementalSync(
   let updatedMaterials = 0;
   let newReleases = 0;
   let checkedMaterials = 0;
+  const touchedShikimoriIds = new Set<number>();
 
   try {
     for (let page = 0; page < pages && url; page += 1) {
@@ -138,6 +140,12 @@ export async function runKodikIncrementalSync(
 
         updatedMaterials += 1;
         newReleases += result.newReleases;
+        if (toSave.shikimori_id != null && toSave.shikimori_id !== "") {
+          const shikimoriId = Number(toSave.shikimori_id);
+          if (Number.isInteger(shikimoriId) && shikimoriId > 0) {
+            touchedShikimoriIds.add(shikimoriId);
+          }
+        }
 
         await updateImportJobProgress({
           currentItem: material.id,
@@ -150,6 +158,13 @@ export async function runKodikIncrementalSync(
 
     const finishedAt = new Date();
     const durationMs = finishedAt.getTime() - startedAt;
+
+    if (touchedShikimoriIds.size > 0) {
+      await normalizeKodikMaterialMetadata(prisma, {
+        ids: [...touchedShikimoriIds],
+        quiet: true,
+      });
+    }
 
     await finishImportJobSession({
       phase: "sync",

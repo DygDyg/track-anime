@@ -13,13 +13,21 @@ import {
 
 /** Rich Presence для разделов сайта (не страница просмотра аниме). */
 export function DiscordSitePresence() {
+  const { settings } = useSiteSettings();
+  const { configured } = useDiscordConfig();
+
+  if (!settings.discordPresenceEnabled || !configured) return null;
+
+  return <DiscordSitePresenceActive />;
+}
+
+function DiscordSitePresenceActive() {
   const pathname = usePathname();
   const { settings } = useSiteSettings();
-  const { applicationId, largeImageKey, configured } = useDiscordConfig();
+  const { applicationId, largeImageKey } = useDiscordConfig();
 
   const showSitePage = settings.discordPresenceShowSitePage;
-  const enabled =
-    settings.discordPresenceEnabled && configured && showSitePage && !isAnimeWatchPath(pathname);
+  const enabled = showSitePage && !isAnimeWatchPath(pathname);
 
   const sitePageLabel = resolveDiscordSitePageLabel(pathname);
   const pageUrl = buildDiscordPageUrl(pathname);

@@ -1,4 +1,9 @@
+import { normalizeAvatarDecorationId } from "@/lib/avatar-decorations";
 import { filterPopularTranslationNames } from "@/lib/translation-colors";
+import {
+  parseTranslationIntroOffsets,
+  type TranslationIntroOffsets,
+} from "@/lib/translation-intro-offset";
 
 export const SITE_FONT_IDS = [
   "inter",
@@ -20,12 +25,17 @@ export type SiteBackgroundDim = "none" | "light" | "medium" | "heavy";
 /** null = показывать все озвучки; массив = только выбранные */
 export type HomeTranslationFilter = null | string[];
 
-/** null = все фоны в слайдшоу; массив = только выбранные URL; [] = без фона */
-export type BackgroundSlideshowFilter = null | string[];
+/** null = без фона; строка = URL выбранного изображения */
+export type SiteBackgroundImageUrl = string | null;
 
 export const HOVER_TRAILER_DELAY_MIN_SEC = 1;
 export const HOVER_TRAILER_DELAY_MAX_SEC = 15;
 export const HOVER_TRAILER_DELAY_DEFAULT_SEC = 2;
+
+export const AVATAR_DECORATION_SCALE_MIN = 1;
+export const AVATAR_DECORATION_SCALE_MAX = 2;
+export const AVATAR_DECORATION_SCALE_DEFAULT = 1.08;
+export const AVATAR_DECORATION_SCALE_STEP = 0.01;
 
 export type SiteSettings = {
   fontFamily: SiteFontFamily;
@@ -33,7 +43,7 @@ export type SiteSettings = {
   cardSize: SiteCardSize;
   accentPreset: SiteAccentPreset;
   backgroundDim: SiteBackgroundDim;
-  backgroundSlideshowFilter: BackgroundSlideshowFilter;
+  backgroundImageUrl: SiteBackgroundImageUrl;
   reduceMotion: boolean;
   preferPosterOverScreenshot: boolean;
   showRelativeTime: boolean;
@@ -48,6 +58,14 @@ export type SiteSettings = {
   discordPresenceShowSitePage: boolean;
   /** Кнопка «Открыть» в Discord с ссылкой на страницу */
   discordPresenceOpenButtonEnabled: boolean;
+  /** translationTitle → секунды пропуска интро; 0 или отсутствие = не задано */
+  translationIntroOffsets: TranslationIntroOffsets;
+  /** Украшение поверх аватарки; null = без украшения */
+  avatarDecorationId: string | null;
+  /** Масштаб украшения (1 = по размеру аватарки) */
+  avatarDecorationScale: number;
+  /** Beta: обрезка панелей Kodik, видео 16:9, iframe кликабелен */
+  betaChromelessPlayer: boolean;
 };
 
 export const SITE_SETTINGS_STORAGE_KEY = "track-anime-site-settings";
@@ -59,7 +77,7 @@ export const DEFAULT_SITE_SETTINGS: SiteSettings = {
   cardSize: "normal",
   accentPreset: "blue",
   backgroundDim: "medium",
-  backgroundSlideshowFilter: null,
+  backgroundImageUrl: null,
   reduceMotion: false,
   preferPosterOverScreenshot: false,
   showRelativeTime: true,
@@ -70,6 +88,10 @@ export const DEFAULT_SITE_SETTINGS: SiteSettings = {
   discordPresenceEnabled: false,
   discordPresenceShowSitePage: false,
   discordPresenceOpenButtonEnabled: true,
+  translationIntroOffsets: {},
+  avatarDecorationId: null,
+  avatarDecorationScale: AVATAR_DECORATION_SCALE_DEFAULT,
+  betaChromelessPlayer: false,
 };
 
 export const SITE_FONT_OPTIONS: { id: SiteFontFamily; label: string }[] = [
@@ -116,7 +138,6 @@ const SITE_FONT_ID_SET = new Set<string>(SITE_FONT_IDS);
 function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === "object" && value !== null;
 }
-
 function parseHomeTranslationFilter(value: unknown): HomeTranslationFilter {
   if (value === null) return null;
   if (!Array.isArray(value)) return null;
@@ -130,10 +151,21 @@ function parseFontFamily(value: unknown): SiteFontFamily {
   return DEFAULT_SITE_SETTINGS.fontFamily;
 }
 
-function parseBackgroundSlideshowFilter(value: unknown): BackgroundSlideshowFilter {
+function parseBackgroundSlideshowFilter(value: unknown): string[] | null {
   if (value === null) return null;
   if (!Array.isArray(value)) return null;
   return value.filter((item): item is string => typeof item === "string" && item.length > 0);
+}
+
+function parseBackgroundImageUrl(raw: Record<string, unknown>): SiteBackgroundImageUrl {
+  if (raw.backgroundImageUrl === null) return null;
+  if (typeof raw.backgroundImageUrl === "string") {
+    return raw.backgroundImageUrl.length > 0 ? raw.backgroundImageUrl : null;
+  }
+
+  const legacy = parseBackgroundSlideshowFilter(raw.backgroundSlideshowFilter);
+  if (legacy === null || legacy.length === 0) return null;
+  return legacy[0] ?? null;
 }
 
 function parseHoverTrailerDelaySec(value: unknown): number {
@@ -142,6 +174,17 @@ function parseHoverTrailerDelaySec(value: unknown): number {
   return Math.min(
     HOVER_TRAILER_DELAY_MAX_SEC,
     Math.max(HOVER_TRAILER_DELAY_MIN_SEC, Math.round(parsed)),
+  );
+}
+
+export function normalizeAvatarDecorationScale(value: unknown): number {
+  const parsed = typeof value === "number" ? value : Number(value);
+  if (!Number.isFinite(parsed)) return AVATAR_DECORATION_SCALE_DEFAULT;
+  const stepped =
+    Math.round(parsed / AVATAR_DECORATION_SCALE_STEP) * AVATAR_DECORATION_SCALE_STEP;
+  return Math.min(
+    AVATAR_DECORATION_SCALE_MAX,
+    Math.max(AVATAR_DECORATION_SCALE_MIN, Math.round(stepped * 100) / 100),
   );
 }
 
@@ -181,7 +224,7 @@ export function normalizeSiteSettings(raw: unknown): SiteSettings {
       backgroundDim === "medium"
         ? backgroundDim
         : DEFAULT_SITE_SETTINGS.backgroundDim,
-    backgroundSlideshowFilter: parseBackgroundSlideshowFilter(raw.backgroundSlideshowFilter),
+    backgroundImageUrl: parseBackgroundImageUrl(raw),
     reduceMotion: raw.reduceMotion === true,
     preferPosterOverScreenshot: raw.preferPosterOverScreenshot === true,
     showRelativeTime: raw.showRelativeTime !== false,
@@ -192,24 +235,38 @@ export function normalizeSiteSettings(raw: unknown): SiteSettings {
     discordPresenceEnabled: raw.discordPresenceEnabled === true,
     discordPresenceShowSitePage: raw.discordPresenceShowSitePage === true,
     discordPresenceOpenButtonEnabled: raw.discordPresenceOpenButtonEnabled !== false,
+    translationIntroOffsets: parseTranslationIntroOffsets(raw.translationIntroOffsets),
+    avatarDecorationId: normalizeAvatarDecorationId(raw.avatarDecorationId),
+    avatarDecorationScale: normalizeAvatarDecorationScale(raw.avatarDecorationScale),
+    betaChromelessPlayer: raw.betaChromelessPlayer === true,
   };
 }
 
-export function readStoredSiteSettings(): SiteSettings {
-  if (typeof window === "undefined") return { ...DEFAULT_SITE_SETTINGS };
+export function readStoredSiteSettings(fallback: SiteSettings = DEFAULT_SITE_SETTINGS): SiteSettings {
+  if (typeof window === "undefined") return { ...fallback };
   try {
     const raw = localStorage.getItem(SITE_SETTINGS_STORAGE_KEY);
-    if (!raw) return { ...DEFAULT_SITE_SETTINGS };
+    if (!raw) return { ...fallback };
     const parsed = JSON.parse(raw);
-    // Validate font family from localStorage
     if (parsed.fontFamily && !SITE_FONT_IDS.includes(parsed.fontFamily)) {
-      parsed.fontFamily = "inter"; // fallback to default
+      parsed.fontFamily = "inter";
     }
     return normalizeSiteSettings(parsed);
   } catch {
-    return { ...DEFAULT_SITE_SETTINGS };
+    return { ...fallback };
   }
 }
+export function hasStoredSiteSettings(): boolean {
+  if (typeof window === "undefined") return false;
+  return localStorage.getItem(SITE_SETTINGS_STORAGE_KEY) !== null;
+}
+
+export function buildSiteSettingsInitScript(defaults: SiteSettings): string {
+  const fallback = JSON.stringify(defaults);
+  return `(function(){try{var k="${SITE_SETTINGS_STORAGE_KEY}";var raw=localStorage.getItem(k);var d=raw?JSON.parse(raw):${fallback};var el=document.documentElement;var f=d.fontFamily||"inter";var c=d.cursorStyle||"default";var s=d.cardSize||"normal";var a=d.accentPreset||"blue";var b=d.backgroundDim||"medium";var allowed=${JSON.stringify(SITE_FONT_IDS)};var cursors=${JSON.stringify(SITE_CURSOR_OPTIONS.map((item) => item.id))};if(allowed.indexOf(f)===-1)f="inter";if(cursors.indexOf(c)===-1)c="default";el.setAttribute("data-font",f);el.setAttribute("data-cursor",c);el.setAttribute("data-card-size",s);el.setAttribute("data-accent",a);el.setAttribute("data-bg-dim",b);if(d.reduceMotion===true)el.setAttribute("data-reduce-motion","true");else el.removeAttribute("data-reduce-motion");}catch(e){}})();`;
+}
+
+export const siteSettingsInitScript = buildSiteSettingsInitScript(DEFAULT_SITE_SETTINGS);
 
 export function applySiteSettings(settings: SiteSettings): void {
   const root = document.documentElement;
@@ -243,23 +300,22 @@ export function homeTranslationFilterSummary(
   return `Выбрано ${filter.length} из ${totalCount}`;
 }
 
-export function resolveSlideshowBackgroundUrls(
+export function resolveBackgroundImageUrl(
   allUrls: string[],
-  filter: BackgroundSlideshowFilter,
-): string[] {
-  if (filter === null) return allUrls;
-  const allowed = new Set(filter);
-  return allUrls.filter((url) => allowed.has(url));
+  selectedUrl: SiteBackgroundImageUrl,
+): string | null {
+  if (!selectedUrl) return null;
+  if (allUrls.includes(selectedUrl)) return selectedUrl;
+  return null;
 }
 
-export function backgroundSlideshowFilterSummary(
-  filter: BackgroundSlideshowFilter,
+export function backgroundImageSummary(
+  selectedUrl: SiteBackgroundImageUrl,
   totalCount: number,
 ): string {
   if (totalCount === 0) return "Нет доступных фонов";
-  if (filter === null) return `Все фоны (${totalCount})`;
-  if (filter.length === 0) return "Слайдшоу отключено";
-  return `Выбрано ${filter.length} из ${totalCount}`;
+  if (!selectedUrl) return "Фон не выбран";
+  return "Выбран один фон";
 }
 
 /** Выбрать только популярные озвучки из полного списка; null = все популярные покрывают каталог */
@@ -290,5 +346,3 @@ export function writeHomeHistoryCollapsed(collapsed: boolean): void {
     /* ignore */
   }
 }
-
-export const siteSettingsInitScript = `(function(){try{var k="${SITE_SETTINGS_STORAGE_KEY}";var d=JSON.parse(localStorage.getItem(k)||"{}");var el=document.documentElement;var f=d.fontFamily||"inter";var c=d.cursorStyle||"default";var s=d.cardSize||"normal";var a=d.accentPreset||"blue";var b=d.backgroundDim||"medium";var allowed=${JSON.stringify(SITE_FONT_IDS)};var cursors=${JSON.stringify(SITE_CURSOR_OPTIONS.map((item) => item.id))};if(allowed.indexOf(f)===-1)f="inter";if(cursors.indexOf(c)===-1)c="default";el.setAttribute("data-font",f);el.setAttribute("data-cursor",c);el.setAttribute("data-card-size",s);el.setAttribute("data-accent",a);el.setAttribute("data-bg-dim",b);if(d.reduceMotion===true)el.setAttribute("data-reduce-motion","true");}catch(e){}})();`;

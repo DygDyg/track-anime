@@ -1,50 +1,33 @@
 import { extractScoreFromMaterialData } from "@/lib/anime-score";
 import { toDate } from "@/lib/dates";
-import { resolveEpisodesTotal } from "@/lib/episode-totals";
 import { resolveMaterialPosterUrl, type MaterialPosterSource } from "@/lib/material-poster";
+import {
+  historyNewCutoffDate,
+  historyNewEpisodeKey,
+  isCompletedSeriesBacklog,
+  isEpisodeNewer,
+  resolveHistoryNewFreshnessDate,
+  type HistoryNewMaterialRow,
+} from "@/lib/history-new-match";
 import { prisma } from "@/lib/prisma";
 import type { ReleaseItem } from "@/lib/releases";
 import { pickScreenshotUrl } from "@/lib/screenshots";
+import { watchProgressPercent } from "@/lib/watch-history";
 
 export type HistoryNewEpisodeItem = ReleaseItem & {
   watchedSeasonNumber: number;
   watchedEpisodeNumber: number;
+  watchedPositionSeconds: number;
+  watchedEpisodeDurationSeconds: number;
+  watchedProgressPercent: number;
 };
 
-const HISTORY_NEW_EPISODE_MAX_AGE_MS = 90 * 24 * 60 * 60 * 1000;
+const DEFAULT_EPISODE_SECONDS = 24 * 60;
 
-type MaterialRow = {
-  shikimoriId: number | null;
-  kodikId: string;
-  title: string;
-  lastSeason: number | null;
-  lastEpisode: number | null;
-  episodesCount: number | null;
-  kodikUpdatedAt: Date | null;
-  updatedAt: Date;
-  translationTitle: string;
-  playerLink: string | null;
-  materialData: unknown;
-};
-
-function readEpisodesTotal(material: MaterialRow): number | null {
-  return resolveEpisodesTotal({
-    materialData: material.materialData,
-    material,
-  });
-}
-
-function episodeRank(season: number, episode: number): number {
-  return season * 100_000 + episode;
-}
-
-function isEpisodeNewer(
-  watchedSeason: number,
-  watchedEpisode: number,
-  latestSeason: number,
-  latestEpisode: number,
-): boolean {
-  return episodeRank(latestSeason, latestEpisode) > episodeRank(watchedSeason, watchedEpisode);
+function episodeDurationFromMaterialData(data: unknown): number {
+  if (!data || typeof data !== "object") return DEFAULT_EPISODE_SECONDS;
+  const duration = (data as Record<string, unknown>).duration;
+  return typeof duration === "number" && duration > 0 ? duration * 60 : DEFAULT_EPISODE_SECONDS;
 }
 
 function stripHtml(text: string): string {
@@ -57,7 +40,7 @@ function parseGenres(value: unknown): string[] {
 }
 
 function mapMaterialToReleaseItem(
-  material: MaterialRow,
+  material: HistoryNewMaterialRow,
   seasonNumber: number,
   episodeNumber: number,
   playerLink: string | null,
@@ -96,105 +79,6 @@ function mapMaterialToReleaseItem(
   };
 }
 
-function episodeKey(materialId: string, seasonNumber: number, episodeNumber: number): string {
-  return `${materialId}:${seasonNumber}:${episodeNumber}`;
-}
-
-function parseSeriesEndDate(materialData: unknown): Date | null {
-  if (!materialData || typeof materialData !== "object") return null;
-
-  const data = materialData as { released_at?: unknown; aired_at?: unknown };
-  const raw = data.released_at ?? data.aired_at;
-  if (typeof raw !== "string" || !raw.trim()) return null;
-
-  const parsed = new Date(raw);
-  return Number.isNaN(parsed.getTime()) ? null : parsed;
-}
-
-function readMaterialStatus(materialData: unknown): string | null {
-  if (!materialData || typeof materialData !== "object") return null;
-  const data = materialData as { anime_status?: unknown; all_status?: unknown };
-  if (typeof data.anime_status === "string") return data.anime_status;
-  if (typeof data.all_status === "string") return data.all_status;
-  return null;
-}
-
-function isActiveMaterial(materialData: unknown): boolean {
-  const status = readMaterialStatus(materialData);
-  return status === "ongoing" || status === "anons";
-}
-
-/** Завершённый тайтл, последняя серия вышла давно — это бэклог, а не «новинка». */
-function isCompletedSeriesBacklog(
-  material: MaterialRow,
-  cutoff: Date,
-  latestEpisode: number,
-): boolean {
-  const materialData = material.materialData;
-  const status = readMaterialStatus(materialData);
-  if (status === "ongoing" || status === "anons") return false;
-
-  const endDate = parseSeriesEndDate(materialData);
-  if (endDate && endDate >= cutoff) return false;
-  if (endDate && endDate < cutoff) return true;
-
-  if (status !== "released") return false;
-
-  const episodesTotal = readEpisodesTotal(material);
-  const year = (materialData as { year?: unknown }).year;
-  if (
-    episodesTotal != null &&
-    latestEpisode >= episodesTotal &&
-    typeof year === "number" &&
-    year < cutoff.getFullYear() - 1
-  ) {
-    return true;
-  }
-
-  return false;
-}
-
-function resolveFreshnessDate(
-  material: MaterialRow,
-  latestEpisode: number,
-  releaseAt: Date | undefined,
-  firstSeenAt: Date | undefined,
-  cutoff: Date,
-): Date | null {
-  const materialData = material.materialData;
-  const trackedAt = releaseAt ?? firstSeenAt ?? null;
-  const endDate = parseSeriesEndDate(materialData);
-  const episodesTotal = readEpisodesTotal(material);
-
-  if (trackedAt && trackedAt >= cutoff) {
-    return trackedAt;
-  }
-
-  if (isActiveMaterial(materialData) && material.kodikUpdatedAt && material.kodikUpdatedAt >= cutoff) {
-    return material.kodikUpdatedAt;
-  }
-
-  if (
-    endDate &&
-    endDate >= cutoff &&
-    episodesTotal != null &&
-    latestEpisode >= episodesTotal
-  ) {
-    return endDate;
-  }
-
-  if (
-    material.kodikUpdatedAt &&
-    material.kodikUpdatedAt >= cutoff &&
-    endDate &&
-    endDate >= cutoff
-  ) {
-    return material.kodikUpdatedAt;
-  }
-
-  return null;
-}
-
 /** Тайтлы из истории: та же озвучка, новая серия не старше 3 месяцев. */
 export async function getHistoryNewEpisodes(userId: string, limit = 48): Promise<HistoryNewEpisodeItem[]> {
   const progressRows = await prisma.userWatchProgress.findMany({
@@ -204,6 +88,7 @@ export async function getHistoryNewEpisodes(userId: string, limit = 48): Promise
       seasonNumber: true,
       episodeNumber: true,
       kodikId: true,
+      positionSeconds: true,
     },
   });
 
@@ -236,9 +121,12 @@ export async function getHistoryNewEpisodes(userId: string, limit = 48): Promise
     shikimoriId: number;
     watchedSeasonNumber: number;
     watchedEpisodeNumber: number;
+    watchedPositionSeconds: number;
+    watchedEpisodeDurationSeconds: number;
+    watchedProgressPercent: number;
     latestSeason: number;
     latestEpisode: number;
-    displayMaterial: MaterialRow;
+    displayMaterial: HistoryNewMaterialRow;
   };
 
   const candidates: Candidate[] = [];
@@ -261,10 +149,16 @@ export async function getHistoryNewEpisodes(userId: string, limit = 48): Promise
       continue;
     }
 
+    const episodeDurationSeconds = episodeDurationFromMaterialData(userMaterial.materialData);
+    const progressPercent = watchProgressPercent(progress.positionSeconds, episodeDurationSeconds);
+
     candidates.push({
       shikimoriId: progress.shikimoriId,
       watchedSeasonNumber: progress.seasonNumber,
       watchedEpisodeNumber: progress.episodeNumber,
+      watchedPositionSeconds: progress.positionSeconds,
+      watchedEpisodeDurationSeconds: episodeDurationSeconds,
+      watchedProgressPercent: progressPercent,
       latestSeason,
       latestEpisode,
       displayMaterial: userMaterial,
@@ -310,29 +204,29 @@ export async function getHistoryNewEpisodes(userId: string, limit = 48): Promise
 
   const episodeByKey = new Map(
     episodes.map((episode) => [
-      episodeKey(episode.materialId, episode.seasonNumber, episode.episodeNumber),
+      historyNewEpisodeKey(episode.materialId, episode.seasonNumber, episode.episodeNumber),
       episode,
     ]),
   );
 
   const releaseByKey = new Map(
     releaseRows.map((release) => [
-      episodeKey(release.materialId, release.seasonNumber, release.episodeNumber),
+      historyNewEpisodeKey(release.materialId, release.seasonNumber, release.episodeNumber),
       release.releasedAt,
     ]),
   );
 
-  const cutoff = new Date(Date.now() - HISTORY_NEW_EPISODE_MAX_AGE_MS);
+  const cutoff = historyNewCutoffDate();
 
   const freshCandidates = candidates
     .map((candidate) => {
-      const key = episodeKey(
+      const key = historyNewEpisodeKey(
         candidate.displayMaterial.kodikId,
         candidate.latestSeason,
         candidate.latestEpisode,
       );
       const episode = episodeByKey.get(key);
-      const releasedAt = resolveFreshnessDate(
+      const releasedAt = resolveHistoryNewFreshnessDate(
         candidate.displayMaterial,
         candidate.latestEpisode,
         releaseByKey.get(key),
@@ -377,6 +271,9 @@ export async function getHistoryNewEpisodes(userId: string, limit = 48): Promise
       releasedAt: toDate(release.releasedAt),
       watchedSeasonNumber: candidate.watchedSeasonNumber,
       watchedEpisodeNumber: candidate.watchedEpisodeNumber,
+      watchedPositionSeconds: candidate.watchedPositionSeconds,
+      watchedEpisodeDurationSeconds: candidate.watchedEpisodeDurationSeconds,
+      watchedProgressPercent: candidate.watchedProgressPercent,
     };
   });
 }

@@ -1,11 +1,16 @@
 import { unstable_cache } from "next/cache";
+import { Prisma } from "@prisma/client";
+import { SHIKIMORI_CACHE_TRANSLATION_TYPE } from "@/db/save-shikimori-material";
 import { toDate, toIsoString } from "@/lib/dates";
 import { prisma } from "@/lib/prisma";
 import { resolveMaterialPosterUrl, type MaterialPosterSource } from "@/lib/material-poster";
 import { pickScreenshotUrl } from "@/lib/screenshots";
+import { SHIKIMORI_FULL_ANIME_KINDS } from "@/lib/shikimori/full-anime-kinds";
 import type { ReleaseItemDto } from "@/lib/releases";
 
-export type CalendarScheduleSource = "next_episode" | "first_dub";
+export type CalendarScheduleSource = "next_episode" | "premiere";
+
+export type CalendarTab = "ongoing" | "anons";
 
 export type CalendarItem = {
   shikimoriId: number;
@@ -23,10 +28,13 @@ export type CalendarItem = {
   dayOfWeek: number;
   status: string | null;
   score: string | null;
+  /** Для анонсов: false, если дата премьеры ещё неизвестна */
+  hasScheduleDate?: boolean;
 };
 
 export type CalendarItemDto = Omit<CalendarItem, "scheduleAt"> & {
   scheduleAt: string;
+  hasScheduleDate?: boolean;
 };
 
 export type CalendarDay = {
@@ -35,6 +43,16 @@ export type CalendarDay = {
   shortLabel: string;
   items: CalendarItemDto[];
 };
+
+export type CalendarMonth = {
+  year: number;
+  month: number;
+  label: string;
+  items: CalendarItemDto[];
+};
+
+export const CALENDAR_UNKNOWN_MONTH = 0;
+export const CALENDAR_UNKNOWN_YEAR = 0;
 
 const DAY_LABELS: { label: string; shortLabel: string }[] = [
   { label: "", shortLabel: "" },
@@ -135,7 +153,7 @@ export function calendarItemToReleaseDto(item: CalendarItemDto): ReleaseItemDto 
     translationName: item.translationName,
     playerLink: item.playerLink,
     shikimoriId: item.shikimoriId,
-    releasedAt: item.scheduleAt,
+    releasedAt: item.hasScheduleDate === false ? "" : item.scheduleAt,
     description: item.description,
     genres: item.genres,
     status: item.status,
@@ -147,6 +165,7 @@ export function serializeCalendarItem(item: CalendarItem): CalendarItemDto {
   return {
     ...item,
     scheduleAt: toIsoString(item.scheduleAt),
+    hasScheduleDate: item.hasScheduleDate,
   };
 }
 
@@ -167,6 +186,163 @@ export function getMoscowDayOfWeek(date = new Date()): number {
   };
 
   return map[weekday] ?? 1;
+}
+
+/** Полночь текущих суток по Москве (для сравнения дат анонсов). */
+export function getMoscowDayStart(date = new Date()): Date {
+  const parts = new Intl.DateTimeFormat("en-CA", {
+    timeZone: "Europe/Moscow",
+    year: "numeric",
+    month: "2-digit",
+    day: "2-digit",
+  }).formatToParts(date);
+
+  const year = parts.find((part) => part.type === "year")?.value ?? "1970";
+  const month = parts.find((part) => part.type === "month")?.value ?? "01";
+  const day = parts.find((part) => part.type === "day")?.value ?? "01";
+
+  return new Date(`${year}-${month}-${day}T00:00:00+03:00`);
+}
+
+export function isAnonsSchedulePast(item: CalendarItemDto, todayStartMsk: Date): boolean {
+  if (item.hasScheduleDate === false) return false;
+  return new Date(item.scheduleAt).getTime() < todayStartMsk.getTime();
+}
+
+export function isAnonsScheduleUnknown(item: CalendarItemDto): boolean {
+  return item.hasScheduleDate === false;
+}
+
+export type SplitAnonsScheduleResult = {
+  upcomingMonths: CalendarMonth[];
+  pastMonths: CalendarMonth[];
+  unknownItems: CalendarItemDto[];
+  pastCount: number;
+  unknownCount: number;
+  upcomingCount: number;
+};
+
+export function splitAnonsMonthsBySchedule(
+  months: CalendarMonth[],
+  now = new Date(),
+): SplitAnonsScheduleResult {
+  const todayStartMsk = getMoscowDayStart(now);
+  const upcomingBuckets = new Map<string, CalendarItemDto[]>();
+  const pastBuckets = new Map<string, CalendarItemDto[]>();
+  const unknownItems: CalendarItemDto[] = [];
+  let pastCount = 0;
+  let unknownCount = 0;
+  let upcomingCount = 0;
+
+  for (const month of months) {
+    for (const item of month.items) {
+      if (isAnonsScheduleUnknown(item)) {
+        unknownItems.push(item);
+        unknownCount += 1;
+        continue;
+      }
+
+      const bucketKey = `${month.year}-${month.month}`;
+      if (isAnonsSchedulePast(item, todayStartMsk)) {
+        const bucket = pastBuckets.get(bucketKey) ?? [];
+        bucket.push(item);
+        pastBuckets.set(bucketKey, bucket);
+        pastCount += 1;
+        continue;
+      }
+
+      const bucket = upcomingBuckets.get(bucketKey) ?? [];
+      bucket.push(item);
+      upcomingBuckets.set(bucketKey, bucket);
+      upcomingCount += 1;
+    }
+  }
+
+  unknownItems.sort((a, b) => a.animeTitle.localeCompare(b.animeTitle, "ru"));
+
+  const buildMonths = (buckets: Map<string, CalendarItemDto[]>, order: "asc" | "desc") =>
+    [...buckets.entries()]
+      .map(([key, items]) => {
+        const [yearRaw, monthRaw] = key.split("-");
+        const year = Number(yearRaw);
+        const month = Number(monthRaw);
+        return {
+          year,
+          month,
+          label: formatCalendarMonthLabel(year, month),
+          items,
+          sortKey: year === CALENDAR_UNKNOWN_YEAR ? Number.MAX_SAFE_INTEGER : year * 100 + month,
+        };
+      })
+      .sort((a, b) => {
+        const diff = a.sortKey - b.sortKey;
+        return (order === "asc" ? diff : -diff) || a.label.localeCompare(b.label, "ru");
+      })
+      .map(({ year, month, label, items }) => ({ year, month, label, items }));
+
+  return {
+    upcomingMonths: buildMonths(upcomingBuckets, "asc"),
+    pastMonths: buildMonths(pastBuckets, "desc"),
+    unknownItems,
+    pastCount,
+    unknownCount,
+    upcomingCount,
+  };
+}
+
+export function parseCalendarTab(raw?: string): CalendarTab {
+  return raw === "anons" ? "anons" : "ongoing";
+}
+
+export type CalendarPageData = {
+  ongoingDays: CalendarDay[];
+  anonsMonths: CalendarMonth[];
+};
+
+export function getMoscowYearMonth(date: Date): { year: number; month: number } {
+  const parts = new Intl.DateTimeFormat("en-CA", {
+    timeZone: "Europe/Moscow",
+    year: "numeric",
+    month: "2-digit",
+  }).formatToParts(date);
+
+  const year = Number(parts.find((part) => part.type === "year")?.value);
+  const month = Number(parts.find((part) => part.type === "month")?.value);
+
+  return {
+    year: Number.isFinite(year) ? year : CALENDAR_UNKNOWN_YEAR,
+    month: Number.isFinite(month) ? month : CALENDAR_UNKNOWN_MONTH,
+  };
+}
+
+export function formatCalendarMonthLabel(year: number, month: number): string {
+  if (year === CALENDAR_UNKNOWN_YEAR || month === CALENDAR_UNKNOWN_MONTH) {
+    return "Дата уточняется";
+  }
+
+  const labelDate = new Date(Date.UTC(year, month - 1, 1, 12, 0, 0));
+  return new Intl.DateTimeFormat("ru-RU", {
+    month: "long",
+    year: "numeric",
+    timeZone: "UTC",
+  }).format(labelDate);
+}
+
+export async function getCalendarPageData(): Promise<CalendarPageData> {
+  return unstable_cache(
+    async () => {
+      const [ongoingItems, anonsItems] = await Promise.all([
+        getOngoingCalendarItems(),
+        getAnonsCalendarItems(),
+      ]);
+      return {
+        ongoingDays: groupCalendarByDay(ongoingItems),
+        anonsMonths: groupCalendarByMonth(anonsItems),
+      };
+    },
+    ["calendar-page-v5"],
+    { revalidate: 300, tags: ["calendar"] },
+  )();
 }
 
 export async function getOngoingCalendarItems(): Promise<CalendarItem[]> {
@@ -202,17 +378,6 @@ export async function getOngoingCalendarItems(): Promise<CalendarItem[]> {
         r."seasonNumber" DESC,
         r."episodeNumber" DESC,
         r."releasedAt" DESC
-    ),
-    first_kodik AS (
-      SELECT
-        om."shikimoriId",
-        MIN(m."kodikUpdatedAt") AS "firstKodikAt"
-      FROM ongoing_meta om
-      INNER JOIN "KodikMaterial" m ON m."shikimoriId" = om."shikimoriId"
-        AND COALESCE(m."lastSeason", 1) = COALESCE(om."lastSeason", 1)
-        AND m."lastEpisode" = om."lastEpisode"
-      WHERE m."kodikUpdatedAt" IS NOT NULL
-      GROUP BY om."shikimoriId"
     ),
     first_dub_release AS (
       SELECT DISTINCT ON (om."shikimoriId")
@@ -258,25 +423,24 @@ export async function getOngoingCalendarItems(): Promise<CalendarItem[]> {
         mm.description,
         mm.genres,
         om.score,
-        COALESCE(om."nextEpisodeAt", fk."firstKodikAt") AS "scheduleAt",
-        CASE
-          WHEN om."nextEpisodeAt" IS NOT NULL THEN 'next_episode'::text
-          ELSE 'first_dub'::text
-        END AS "scheduleSource",
+        om."nextEpisodeAt" AS "scheduleAt",
+        'next_episode'::text AS "scheduleSource",
         'ongoing'::text AS status
       FROM ongoing_meta om
-      LEFT JOIN first_kodik fk ON fk."shikimoriId" = om."shikimoriId"
       LEFT JOIN release_poster rp ON rp."shikimoriId" = om."shikimoriId"
       LEFT JOIN first_dub_release fdr ON fdr."shikimoriId" = om."shikimoriId"
       LEFT JOIN material_meta mm ON mm."shikimoriId" = om."shikimoriId"
       WHERE om."lastEpisode" IS NOT NULL
-        AND COALESCE(om."nextEpisodeAt", fk."firstKodikAt") IS NOT NULL
+        AND om."nextEpisodeAt" IS NOT NULL
     )
     SELECT
       cr."shikimoriId",
       cr."animeTitle",
       cr."posterUrl",
       cr."posterFromMaterial",
+      cr."posterUrlFromMaterial",
+      cr."worldartPosterFromMaterial",
+      cr."worldartLinkFromMaterial",
       cr."seasonNumber",
       cr."episodeNumber",
       cr."translationName",
@@ -315,6 +479,142 @@ export async function getOngoingCalendarItems(): Promise<CalendarItem[]> {
   return rows.map(mapCalendarRow);
 }
 
+export async function getAnonsCalendarItems(): Promise<CalendarItem[]> {
+  const rows = await prisma.$queryRaw<
+    {
+      shikimoriId: number;
+      animeTitle: string;
+      posterUrl: string | null;
+      posterFromMaterial: string | null;
+      posterUrlFromMaterial: string | null;
+      worldartPosterFromMaterial: string | null;
+      worldartLinkFromMaterial: string | null;
+      animeScreenshots: unknown;
+      scheduleAt: Date | null;
+      scheduleSource: CalendarScheduleSource | null;
+      score: string | null;
+      playerLink: string | null;
+      translationName: string | null;
+      nextEpisode: number | null;
+    }[]
+  >`
+    WITH anons_entries AS (
+      SELECT
+        e."shikimoriId",
+        e."animeTitle",
+        e."posterUrl",
+        e."scheduleAt",
+        e."scheduleSource",
+        e.score,
+        e."nextEpisode"
+      FROM "ShikimoriAnonsEntry" e
+      WHERE e.kind IN (${Prisma.join(SHIKIMORI_FULL_ANIME_KINDS)})
+    ),
+    kodik_meta AS (
+      SELECT DISTINCT ON (m."shikimoriId")
+        m."shikimoriId",
+        NULLIF(m."materialData"->>'anime_poster_url', '') AS "posterFromMaterial",
+        NULLIF(m."materialData"->>'poster_url', '') AS "posterUrlFromMaterial",
+        NULLIF(m."materialData"->>'worldart_poster_url', '') AS "worldartPosterFromMaterial",
+        NULLIF(m."materialData"->>'worldart_link', '') AS "worldartLinkFromMaterial",
+        m."materialData"->'screenshots' AS "animeScreenshots",
+        m."playerLink",
+        m."translationTitle" AS "translationName"
+      FROM "KodikMaterial" m
+      INNER JOIN anons_entries ae ON ae."shikimoriId" = m."shikimoriId"
+      WHERE m."translationType" <> ${SHIKIMORI_CACHE_TRANSLATION_TYPE}
+      ORDER BY m."shikimoriId", m."kodikUpdatedAt" DESC NULLS LAST
+    )
+    SELECT
+      ae."shikimoriId",
+      ae."animeTitle",
+      ae."posterUrl",
+      km."posterFromMaterial",
+      km."posterUrlFromMaterial",
+      km."worldartPosterFromMaterial",
+      km."worldartLinkFromMaterial",
+      km."animeScreenshots",
+      ae."scheduleAt",
+      ae."scheduleSource",
+      ae.score,
+      km."playerLink",
+      km."translationName",
+      ae."nextEpisode"
+    FROM anons_entries ae
+    LEFT JOIN kodik_meta km ON km."shikimoriId" = ae."shikimoriId"
+    ORDER BY ae."scheduleAt" ASC NULLS LAST, ae."animeTitle" ASC
+  `;
+
+  return rows.map((row) => {
+    const scheduleAt = row.scheduleAt ? toDate(row.scheduleAt) : null;
+
+    return {
+      shikimoriId: row.shikimoriId,
+      animeTitle: row.animeTitle,
+      posterUrl:
+        row.posterUrl ??
+        posterFromMaterialParts({
+          posterFromMaterial: row.posterFromMaterial,
+          posterUrlFromMaterial: row.posterUrlFromMaterial,
+          worldartPosterFromMaterial: row.worldartPosterFromMaterial,
+          worldartLinkFromMaterial: row.worldartLinkFromMaterial,
+        }),
+      screenshotUrl: pickScreenshotUrl([row.animeScreenshots], String(row.shikimoriId)),
+      seasonNumber: 1,
+      episodeNumber: row.nextEpisode ?? 1,
+      translationName: row.translationName ?? "—",
+      playerLink: normalizePlayerLink(row.playerLink),
+      description: null,
+      genres: [],
+      scheduleAt: scheduleAt ?? new Date(0),
+      scheduleSource: row.scheduleSource ?? "premiere",
+      dayOfWeek: 0,
+      status: "anons",
+      score: row.score,
+      hasScheduleDate: scheduleAt != null,
+    };
+  });
+}
+
+export function groupCalendarByMonth(items: CalendarItem[]): CalendarMonth[] {
+  const grouped = new Map<string, CalendarItemDto[]>();
+
+  for (const item of items) {
+    const { year, month } =
+      item.hasScheduleDate === false
+        ? { year: CALENDAR_UNKNOWN_YEAR, month: CALENDAR_UNKNOWN_MONTH }
+        : getMoscowYearMonth(item.scheduleAt);
+
+    const key = `${year}-${month}`;
+    const bucket = grouped.get(key) ?? [];
+    bucket.push(serializeCalendarItem(item));
+    grouped.set(key, bucket);
+  }
+
+  const sections = [...grouped.entries()].map(([key, bucketItems]) => {
+    const [yearRaw, monthRaw] = key.split("-");
+    const year = Number(yearRaw);
+    const month = Number(monthRaw);
+
+    return {
+      year,
+      month,
+      label: formatCalendarMonthLabel(year, month),
+      items: bucketItems,
+      sortKey: year === CALENDAR_UNKNOWN_YEAR ? Number.MAX_SAFE_INTEGER : year * 100 + month,
+    };
+  });
+
+  sections.sort((a, b) => a.sortKey - b.sortKey || a.label.localeCompare(b.label, "ru"));
+
+  return sections.map(({ year, month, label, items: bucketItems }) => ({
+    year,
+    month,
+    label,
+    items: bucketItems,
+  }));
+}
+
 export function groupCalendarByDay(items: CalendarItem[]): CalendarDay[] {
   const grouped = new Map<number, CalendarItemDto[]>();
 
@@ -333,12 +633,6 @@ export function groupCalendarByDay(items: CalendarItem[]): CalendarDay[] {
 }
 
 export async function getOngoingCalendar(): Promise<CalendarDay[]> {
-  return unstable_cache(
-    async () => {
-      const items = await getOngoingCalendarItems();
-      return groupCalendarByDay(items);
-    },
-    ["ongoing-calendar"],
-    { revalidate: 300, tags: ["calendar"] },
-  )();
+  const data = await getCalendarPageData();
+  return data.ongoingDays;
 }

@@ -3,9 +3,15 @@
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { useEffect, useState } from "react";
+import { BottomNavProfileFab } from "@/components/BottomNavProfileFab";
 import { useNavigationClick } from "@/components/NavigationProgress";
 import { isStandaloneMode } from "@/hooks/usePwaInstall";
-import { isPwaNavActive, isPwaNavHiddenPath, PWA_NAV_ITEMS } from "@/lib/pwa-nav";
+import {
+  isPwaNavActive,
+  MOBILE_BOTTOM_NAV_MEDIA,
+  PWA_NAV_ITEMS,
+  shouldShowBottomNav,
+} from "@/lib/pwa-nav";
 
 function HomeIcon({ className = "h-5 w-5" }: { className?: string }) {
   return (
@@ -76,35 +82,68 @@ function PwaBottomNavLink({ href, label }: { href: string; label: string }) {
 
 export function PwaBottomNav() {
   const pathname = usePathname();
+  const [mobileViewport, setMobileViewport] = useState(false);
   const [standalone, setStandalone] = useState(false);
 
-  useEffect(() => {
-    setStandalone(isStandaloneMode());
+  const leftItems = PWA_NAV_ITEMS.slice(0, 2);
+  const rightItems = PWA_NAV_ITEMS.slice(2);
 
-    const media = window.matchMedia("(display-mode: standalone)");
-    const onChange = () => setStandalone(isStandaloneMode());
-    media.addEventListener("change", onChange);
-    return () => media.removeEventListener("change", onChange);
+  useEffect(() => {
+    const mobileMedia = window.matchMedia(MOBILE_BOTTOM_NAV_MEDIA);
+    const standaloneMedia = window.matchMedia("(display-mode: standalone)");
+
+    const sync = () => {
+      setMobileViewport(mobileMedia.matches);
+      setStandalone(isStandaloneMode());
+    };
+
+    sync();
+    mobileMedia.addEventListener("change", sync);
+    standaloneMedia.addEventListener("change", sync);
+    return () => {
+      mobileMedia.removeEventListener("change", sync);
+      standaloneMedia.removeEventListener("change", sync);
+    };
   }, []);
 
+  const visible = shouldShowBottomNav(pathname, { mobileViewport, standalone });
+
   useEffect(() => {
+    document.documentElement.classList.toggle("has-bottom-nav", visible);
     document.documentElement.classList.toggle("pwa-standalone", standalone);
     return () => {
+      document.documentElement.classList.remove("has-bottom-nav");
       document.documentElement.classList.remove("pwa-standalone");
     };
-  }, [standalone]);
+  }, [visible, standalone]);
 
-  if (!standalone || isPwaNavHiddenPath(pathname)) return null;
+  if (!visible) return null;
 
   return (
     <nav
       aria-label="Основная навигация"
-      className="pwa-bottom-nav fixed inset-x-0 bottom-0 z-50 border-t border-border/90 bg-card/95 backdrop-blur-lg backdrop-saturate-150"
+      className="pwa-bottom-nav fixed inset-x-0 bottom-0 z-50"
     >
-      <div className="mx-auto flex h-14 max-w-lg items-stretch px-1 sm:max-w-none sm:px-2">
-        {PWA_NAV_ITEMS.map((item) => (
-          <PwaBottomNavLink key={item.href} href={item.href} label={item.label} />
-        ))}
+      <div
+        aria-hidden
+        className="site-header-bg pointer-events-none absolute inset-0 backdrop-blur-lg backdrop-saturate-150"
+      />
+      <div className="relative mx-auto flex h-14 max-w-lg items-stretch px-1 sm:max-w-none sm:px-2">
+        <div className="flex min-w-0 flex-1 items-stretch">
+          {leftItems.map((item) => (
+            <PwaBottomNavLink key={item.href} href={item.href} label={item.label} />
+          ))}
+        </div>
+
+        <div className="relative flex min-w-[5rem] max-w-[7rem] shrink-0 flex-col items-center justify-end">
+          <BottomNavProfileFab />
+        </div>
+
+        <div className="flex min-w-0 flex-1 items-stretch">
+          {rightItems.map((item) => (
+            <PwaBottomNavLink key={item.href} href={item.href} label={item.label} />
+          ))}
+        </div>
       </div>
     </nav>
   );

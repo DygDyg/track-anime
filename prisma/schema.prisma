@@ -44,11 +44,52 @@ model DiscordSettings {
   updatedAt         DateTime @updatedAt
 }
 
+/// Настройки сайта по умолчанию для новых пользователей и «Сбросить всё»
+model SiteSettingsDefaults {
+  id        String   @id @default("default")
+  settings  Json
+  updatedAt DateTime @updatedAt
+}
+
 /// Порог автоудаления из истории просмотра (последняя серия сезона)
 model WatchHistorySettings {
   id                          String   @id @default("default")
   completeEpisodeThresholdPct Int      @default(50)
   updatedAt                   DateTime @updatedAt
+}
+
+/// Принудительное смещение интро по озвучкам (перекрывает настройки пользователей)
+model TranslationIntroSettings {
+  id            String   @id @default("default")
+  forcedOffsets Json     @default("{}")
+  updatedAt     DateTime @updatedAt
+}
+
+/// API уведомлений (Telegram, VK, Discord DM, Web Push VAPID)
+model NotificationSettings {
+  id                              String   @id @default("default")
+  telegramBotToken                String?  @db.Text
+  telegramBotUsername             String?
+  vkBotToken                      String?  @db.Text
+  vkGroupId                       String?
+  vkGroupScreenName               String?
+  vapidPublicKey                  String?  @db.Text
+  vapidPrivateKey                 String?  @db.Text
+  vapidSubject                    String?
+  discordNotificationClientId     String?
+  discordNotificationClientSecret String?  @db.Text
+  discordNotificationBotToken     String?  @db.Text
+  /// Сервер Discord, куда бот добавляет пользователя при привязке (нужен для DM)
+  discordNotificationGuildId      String?
+  /// Постоянная ссылка-приглашение на сервер (если пусто — создаётся ботом)
+  discordNotificationInviteUrl    String?
+  /// OAuth-ссылка на добавление бота на свой сервер пользователя
+  discordNotificationBotInviteUrl String?
+  discordTitleTemplate            String?  @db.Text
+  discordDescriptionTemplate      String?  @db.Text
+  telegramMessageTemplate         String?  @db.Text
+  vkMessageTemplate               String?  @db.Text
+  updatedAt                       DateTime @updatedAt
 }
 
 /// История запусков sync (ручных и автоматических)
@@ -190,6 +231,106 @@ model User {
   animeListEntries   UserAnimeListEntry[]
   animeBookmarks     UserAnimeBookmark[]
   watchProgress      UserWatchProgress[]
+  recentAnimeOpens   UserRecentAnimeOpen[]
+  siteFriendsOutgoing SiteFriend[] @relation("SiteFriendsOutgoing")
+  siteFriendsIncoming SiteFriend[] @relation("SiteFriendsIncoming")
+  notificationPreferences UserNotificationPreferences?
+  notificationLink        UserNotificationLink?
+  pushSubscriptions       PushSubscription[]
+}
+
+/// Настройки уведомлений пользователя
+model UserNotificationPreferences {
+  userId            String   @id
+  user              User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  historyNewEnabled Boolean  @default(false)
+  browserEnabled    Boolean  @default(false)
+  telegramEnabled   Boolean  @default(false)
+  vkEnabled         Boolean  @default(false)
+  discordEnabled    Boolean  @default(false)
+  /// Личный шаблон Discord (если включён — вместо шаблона сайта)
+  customDiscordTemplateEnabled   Boolean @default(false)
+  discordTitleTemplate           String? @db.Text
+  discordDescriptionTemplate     String? @db.Text
+  /// Личный шаблон Telegram
+  customTelegramTemplateEnabled  Boolean @default(false)
+  telegramMessageTemplate        String? @db.Text
+  /// Личный шаблон VK
+  customVkTemplateEnabled        Boolean @default(false)
+  vkMessageTemplate              String? @db.Text
+  updatedAt         DateTime @updatedAt
+}
+
+/// Привязка внешних каналов (Telegram chat id, VK user id, Discord user id)
+model UserNotificationLink {
+  userId             String    @id
+  user               User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  telegramChatId     String?   @unique
+  vkUserId           String?   @unique
+  discordUserId      String?   @unique
+  discordDmVerified  Boolean   @default(false)
+  linkToken          String?   @unique
+  linkTokenExpiresAt DateTime?
+  updatedAt          DateTime  @updatedAt
+}
+
+/// Web Push подписка браузера
+model PushSubscription {
+  id        String   @id @default(cuid())
+  userId    String
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  endpoint  String
+  p256dh    String
+  auth      String
+  createdAt DateTime @default(now())
+
+  @@unique([userId, endpoint])
+  @@index([userId])
+}
+
+/// Дедуп: уже отправленные уведомления «новое в истории»
+model HistoryNewNotification {
+  id            String   @id @default(cuid())
+  userId        String
+  materialId    String
+  seasonNumber  Int
+  episodeNumber Int
+  notifiedAt    DateTime @default(now())
+
+  @@unique([userId, materialId, seasonNumber, episodeNumber])
+  @@index([userId])
+}
+
+/// Очередь доставки (retry для внешних каналов)
+model NotificationDelivery {
+  id            String    @id @default(cuid())
+  userId        String
+  channel       String
+  materialId    String
+  seasonNumber  Int
+  episodeNumber Int
+  status        String    @default("pending")
+  attempts      Int       @default(0)
+  lastError     String?   @db.Text
+  createdAt     DateTime  @default(now())
+  sentAt        DateTime?
+
+  @@index([status, createdAt])
+  @@index([userId])
+}
+
+/// Локальная дружба на Track Anime (не синхронизируется с Shikimori)
+model SiteFriend {
+  id         String   @id @default(cuid())
+  fromUserId String
+  fromUser   User     @relation("SiteFriendsOutgoing", fields: [fromUserId], references: [id], onDelete: Cascade)
+  toUserId   String
+  toUser     User     @relation("SiteFriendsIncoming", fields: [toUserId], references: [id], onDelete: Cascade)
+  createdAt  DateTime @default(now())
+
+  @@unique([fromUserId, toUserId])
+  @@index([fromUserId])
+  @@index([toUserId])
 }
 
 /// Метаданные последней синхронизации списков с Shikimori
@@ -212,6 +353,7 @@ model UserAnimeListEntry {
   listStatus      String
   userScore       Int       @default(0)
   watchedEpisodes Int       @default(0)
+  rewatches       Int       @default(0)
   addedAt         DateTime?
   listUpdatedAt   DateTime?
   createdAt       DateTime  @default(now())
@@ -275,6 +417,21 @@ model UserWatchProgress {
   @@unique([userId, shikimoriId])
   @@index([userId, updatedAt(sort: Desc)])
   @@index([shikimoriId])
+  @@index([kodikId])
+}
+
+/// Недавно открытые страницы аниме
+model UserRecentAnimeOpen {
+  id          String   @id @default(cuid())
+  userId      String
+  user        User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  shikimoriId Int
+  title       String
+  openedAt    DateTime
+
+  @@unique([userId, shikimoriId])
+  @@index([userId, openedAt(sort: Desc)])
+  @@index([shikimoriId])
 }
 
 /// План разработки (админ to-do)
@@ -290,6 +447,32 @@ model AdminTodo {
 
   @@index([status])
   @@index([importance(sort: Desc)])
+}
+
+/// Анонсы Shikimori для вкладки «Анонсы» в календаре
+model ShikimoriAnonsEntry {
+  shikimoriId    Int       @id
+  animeTitle     String
+  posterUrl      String?
+  kind           String?
+  score          String?
+  scheduleAt     DateTime?
+  scheduleSource String?
+  nextEpisode    Int?
+  syncedAt       DateTime  @default(now())
+  updatedAt      DateTime  @updatedAt
+
+  @@index([scheduleAt])
+}
+
+/// Состояние синхронизации анонсов Shikimori
+model ShikimoriAnonsSyncState {
+  id          String    @id @default("default")
+  lastRunAt   DateTime?
+  lastStatus  String?
+  entryCount  Int       @default(0)
+  error       String?
+  updatedAt   DateTime  @updatedAt
 }
 
 /// OAuth state (fallback если cookies не сохранились между редиректами)

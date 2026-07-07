@@ -128,7 +128,10 @@ export function CoverCacheSettingsPanel({
       </section>
 
       <section className={adminClass.panel}>
-        <h2 className="text-lg font-semibold text-foreground">Настройки</h2>
+        <h2 className="text-lg font-semibold text-foreground">
+          Настройки
+          {saving ? <span className="ml-2 text-sm font-normal text-muted">Сохранение…</span> : null}
+        </h2>
 
         <div className="mt-4 flex flex-wrap items-center gap-3">
           <button

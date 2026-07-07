@@ -1,5 +1,5 @@
+import { AnimeAgeRatingBadge } from "@/components/anime/AnimeAgeRatingBadge";
 import { AnimePageBackButton } from "@/components/anime/AnimePageBackButton";
-import { AnimePoster } from "@/components/AnimePoster";
 import { AnimeScreenshotBackground } from "@/components/anime/AnimeScreenshotBackground";
 import { FormattedDescription } from "@/components/anime/FormattedDescription";
 import { AnimeMetadataList } from "@/components/anime/AnimeMetadataList";
@@ -7,8 +7,15 @@ import { AnimeShikimoriRating } from "@/components/anime/AnimeShikimoriRating";
 import { AnimeWatchPanel } from "@/components/anime/AnimeWatchPanel";
 import { AnimePageListBadge } from "@/components/anime/AnimePageListBadge";
 import { AnimeListActions } from "@/components/anime/AnimeListActions";
+import { AnimeRewatchAction } from "@/components/anime/AnimeRewatchAction";
+import { AnimePosterCover } from "@/components/anime/AnimePosterCover";
+import { AnimeScreenshotGallery } from "@/components/anime/AnimeScreenshotGallery";
 import { RelatedAnimeSection } from "@/components/anime/RelatedAnimeSection";
+import { SimilarAnimeSection } from "@/components/anime/SimilarAnimeSection";
+import { AnimeCommentsSection } from "@/components/anime/AnimeCommentsSection";
 import { AnimeShareButtons } from "@/components/anime/AnimeShareButtons";
+import { AnimeTrailerEmbed } from "@/components/anime/AnimeTrailerEmbed";
+import { RecentAnimeOpenRecorder } from "@/components/anime/RecentAnimeOpenRecorder";
 import type { AnimePageDto } from "@/lib/anime-page";
 import {
   formatReleaseSeasonBadge,
@@ -126,32 +133,39 @@ export function AnimePageView({ anime }: { anime: AnimePageDto }) {
 
   return (
     <div className="relative min-h-[calc(100dvh-3.5rem)] sm:min-h-[calc(100dvh-4rem)]">
+      <RecentAnimeOpenRecorder shikimoriId={anime.shikimoriId} title={anime.title} />
       <AnimeScreenshotBackground urls={anime.screenshots} fallbackUrl={anime.posterUrl} title={anime.title} />
       <div className="relative z-10 py-5 sm:py-8">
         <div className="mx-auto max-w-5xl space-y-6 px-3 sm:px-6 lg:px-8">
-          <ContentPanel className="p-4 sm:p-6">
-            <div className="flex flex-col gap-5 sm:flex-row sm:gap-8">
-              <div className="mx-auto w-[200px] shrink-0 sm:mx-0 sm:w-[220px] md:w-[240px]">
-                <div className="relative overflow-hidden rounded-xl border border-border bg-card shadow-md">
-                  <AnimePoster
-                    src={anime.posterUrl}
-                    shikimoriId={anime.shikimoriId}
-                    alt={anime.title}
-                    loading="eager"
-                    size="full"
-                    className="aspect-[3/4] w-full object-cover"
-                  />
-                  <AnimePageListBadge
-                    shikimoriId={anime.shikimoriId}
-                    size="md"
-                    className="absolute left-2 top-2 z-10 max-w-[calc(100%-1rem)]"
-                  />
+          <ContentPanel className="overflow-x-hidden p-0 sm:overflow-visible sm:p-6">
+            <div className="anime-page-hero-row relative flex flex-col gap-5 sm:flex-row sm:gap-8">
+              <aside className="flex w-full shrink-0 flex-col sm:w-[220px] md:w-[240px]">
+                <AnimePosterCover
+                  shikimoriId={anime.shikimoriId}
+                  posterUrl={anime.posterUrl}
+                  fallbackSrc={anime.screenshots[0] ?? null}
+                  title={anime.title}
+                />
+                <div className="px-4 sm:px-0">
+                  <AnimeShareButtons anime={anime} />
                 </div>
-                <AnimeShareButtons anime={anime} />
-                <AnimeShikimoriRating anime={anime} />
-              </div>
+                <div className="anime-page-mobile-fullbleed sm:mx-0">
+                  <AnimeShikimoriRating anime={anime} className="sm:rounded-xl" />
+                </div>
+                {anime.trailerYoutubeId ? (
+                  <div className="anime-page-mobile-fullbleed sm:mx-0">
+                    <AnimeTrailerEmbed
+                      shikimoriId={anime.shikimoriId}
+                      youtubeId={anime.trailerYoutubeId}
+                      posterUrl={anime.posterUrl}
+                      title={anime.title}
+                      className="sm:rounded-lg"
+                    />
+                  </div>
+                ) : null}
+              </aside>
 
-              <div className="min-w-0 flex-1">
+              <div className="min-w-0 flex-1 px-4 sm:px-0">
                 <AnimePageBackButton className="mb-3 inline-flex items-center gap-1.5 rounded-lg border border-border bg-background px-3 py-1.5 text-xs font-medium text-muted transition hover:border-accent/40 hover:text-foreground" />
 
                 <h1 className="text-xl font-bold leading-tight text-foreground sm:text-2xl md:text-3xl">
@@ -162,6 +176,12 @@ export function AnimePageView({ anime }: { anime: AnimePageDto }) {
                   <p className="mt-1 text-sm text-muted">{anime.titleOriginal}</p>
                 ) : null}
 
+                {anime.synonyms.length > 0 ? (
+                  <p className="mt-1.5 text-xs leading-relaxed text-muted">
+                    Также: {anime.synonyms.join(" · ")}
+                  </p>
+                ) : null}
+
                 <div className="mt-4 flex flex-wrap items-center gap-2">
                   <AnimePageListBadge shikimoriId={anime.shikimoriId} size="md" className="max-w-full" />
                   {releaseSeasonLabel ? <MetaBadge>{releaseSeasonLabel}</MetaBadge> : null}
@@ -170,17 +190,12 @@ export function AnimePageView({ anime }: { anime: AnimePageDto }) {
                       {statusLabel}
                     </MetaBadge>
                   ) : null}
+                  <AnimeAgeRatingBadge rating={anime.rating} />
                 </div>
 
                 <AnimeInfoStats anime={anime} />
 
                 <AnimeMetadataList anime={anime} />
-
-                {anime.synonyms.length > 0 ? (
-                  <p className="mt-2 text-xs leading-relaxed text-muted">
-                    Также: {anime.synonyms.join(" · ")}
-                  </p>
-                ) : null}
 
                 {anime.shikimoriUrl ? (
                   <a
@@ -193,7 +208,14 @@ export function AnimePageView({ anime }: { anime: AnimePageDto }) {
                   </a>
                 ) : null}
 
+                {anime.screenshots.length > 0 ? (
+                  <div className="mt-4 border-t border-border pt-4">
+                    <AnimeScreenshotGallery title={anime.title} screenshots={anime.screenshots} />
+                  </div>
+                ) : null}
+
                 <AnimeListActions shikimoriId={anime.shikimoriId} />
+                <AnimeRewatchAction shikimoriId={anime.shikimoriId} />
               </div>
             </div>
           </ContentPanel>
@@ -204,6 +226,7 @@ export function AnimePageView({ anime }: { anime: AnimePageDto }) {
               <FormattedDescription
                 text={anime.description}
                 paragraphClassName="text-sm leading-relaxed text-muted sm:text-base"
+                enableEntityHover
               />
             </ContentPanel>
           ) : null}
@@ -216,6 +239,10 @@ export function AnimePageView({ anime }: { anime: AnimePageDto }) {
           />
 
           <RelatedAnimeSection shikimoriId={anime.shikimoriId} />
+
+          <SimilarAnimeSection shikimoriId={anime.shikimoriId} />
+
+          <AnimeCommentsSection shikimoriId={anime.shikimoriId} />
         </div>
       </div>
     </div>

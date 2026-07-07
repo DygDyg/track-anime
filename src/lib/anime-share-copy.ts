@@ -8,7 +8,10 @@ import {
 import { stripShikimoriBbcode } from "@/lib/shikimori-bbcode";
 import { shikimoriSiteUrl } from "@/lib/shikimori/endpoints";
 
-export type AnimeShareCopyFormat = "plain" | "discord" | "telegram";
+export type AnimeShareCopyFormat = "plain" | "discord" | "telegram" | "vk";
+
+const VK_SECTION_RULE = "━━━━━━━━━━━━━━━━━━━━";
+const VK_DESCRIPTION_MAX_LEN = 280;
 
 function absoluteUrl(origin: string, path: string): string {
   return `${origin.replace(/\/$/, "")}${path.startsWith("/") ? path : `/${path}`}`;
@@ -87,6 +90,67 @@ function discordGenres(anime: AnimePageDto, origin: string): string {
 function plainDescription(anime: AnimePageDto): string {
   if (!anime.description) return "";
   return stripShikimoriBbcode(anime.description);
+}
+
+function truncateShareDescription(text: string, maxLen = VK_DESCRIPTION_MAX_LEN): string {
+  const trimmed = text.trim();
+  if (trimmed.length <= maxLen) return trimmed;
+
+  const cut = trimmed.slice(0, maxLen);
+  const lastSpace = cut.lastIndexOf(" ");
+  const base = lastSpace > maxLen * 0.55 ? cut.slice(0, lastSpace) : cut;
+  return `${base}…`;
+}
+
+function vkUrlLine(emoji: string, label: string, url: string): string {
+  return `${emoji} ${label}: ${url}`;
+}
+
+function vkStatsLines(anime: AnimePageDto): string[] {
+  return [
+    `🎬 Серии — ${episodesText(anime)}`,
+    `⏱ Длительность — ${durationText(anime)}`,
+    `🎨 Студия — ${studiosText(anime)}`,
+    `📅 Сезон — ${seasonText(anime)}`,
+    `🏷️ Жанры — ${genresText(anime)}`,
+    `📌 Статус — ${statusText(anime)}`,
+    `🎯 Возраст — ${ratingText(anime)}`,
+    `🌟 Shikimori — ${anime.score ?? "—"}`,
+  ];
+}
+
+function vkHashtagLabel(value: string): string | null {
+  const normalized = value
+    .trim()
+    .toLowerCase()
+    .replace(/\s+/g, "_")
+    .replace(/[^\p{L}\p{N}_]/gu, "");
+
+  if (!normalized) return null;
+  return normalized.slice(0, 48);
+}
+
+function vkHashtags(anime: AnimePageDto): string {
+  const tags: string[] = [];
+  const seen = new Set<string>();
+
+  const push = (raw: string | null | undefined) => {
+    const label = raw ? vkHashtagLabel(raw) : null;
+    if (!label || seen.has(label)) return;
+    seen.add(label);
+    tags.push(`#${label}`);
+  };
+
+  push(anime.title);
+  push("anime");
+  for (const studio of anime.studios.slice(0, 1)) {
+    push(studio.name);
+  }
+  if (anime.titleOriginal && anime.titleOriginal !== anime.title) {
+    push(anime.titleOriginal);
+  }
+
+  return tags.slice(0, 5).join(" ");
 }
 
 export function buildPlainShareText(anime: AnimePageDto, origin: string): string {
@@ -170,6 +234,33 @@ ${description ? `__${description}__` : ""}
 `.trim();
 }
 
+export function buildVkShareText(anime: AnimePageDto, origin: string): string {
+  const pageUrl = getAnimePageUrl(origin, anime.shikimoriId);
+  const shikimoriUrl = anime.shikimoriUrl ?? shikimoriSiteUrl(`/animes/${anime.shikimoriId}`);
+  const description = plainDescription(anime);
+  const hashtags = vkHashtags(anime);
+
+  const lines: string[] = [];
+
+  if (anime.posterUrl) {
+    lines.push(vkUrlLine("🖼", "Обложка", anime.posterUrl));
+  }
+
+  lines.push(`【 ${kindLabel(anime)} 】 ${anime.title}`, VK_SECTION_RULE, ...vkStatsLines(anime), VK_SECTION_RULE);
+  lines.push(vkUrlLine("▶", "Смотреть на Track Anime", pageUrl));
+  lines.push(vkUrlLine("📖", "Карточка на Shikimori", shikimoriUrl));
+
+  if (description) {
+    lines.push(truncateShareDescription(description));
+  }
+
+  if (hashtags) {
+    lines.push(hashtags);
+  }
+
+  return lines.join("\n").trim();
+}
+
 export function buildVkShareUrl(anime: AnimePageDto, origin: string): string {
   const url = new URL("https://vk.com/share.php");
   url.searchParams.set("url", getAnimePageUrl(origin, anime.shikimoriId));
@@ -192,6 +283,8 @@ export function buildAnimeShareText(
       return buildDiscordShareText(anime, origin);
     case "telegram":
       return buildTelegramShareText(anime, origin);
+    case "vk":
+      return buildVkShareText(anime, origin);
     default:
       return buildPlainShareText(anime, origin);
   }

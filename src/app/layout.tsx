@@ -12,10 +12,15 @@ import { DiscordSitePresence } from "@/components/DiscordSitePresence";
 import { SiteSettingsModal } from "@/components/settings/SiteSettingsModal";
 import { AuthProvider } from "@/components/auth/AuthProvider";
 import { UserListStatusProvider } from "@/components/favorites/UserListStatusProvider";
-import { getShikimoriEndpoints } from "@/lib/shikimori/endpoints";
+import { getSiteSettingsDefaults } from "@/lib/admin/site-settings-defaults";
 import { listBackgroundImageUrls } from "@/lib/background-images";
+import { getShikimoriEndpoints } from "@/lib/shikimori/endpoints";
 import { PwaBottomNav } from "@/components/PwaBottomNav";
 import { PwaProvider } from "@/components/PwaProvider";
+import { InAppNotificationsListener } from "@/components/InAppNotificationsListener";
+import { RecentAnimeOpensSync } from "@/components/anime/RecentAnimeOpensSync";
+import { NotificationUiLayer } from "@/components/NotificationUiLayer";
+import { TvNavigationProvider } from "@/components/TvNavigationProvider";
 import { PWA_THEME_COLOR } from "@/app/manifest";
 import { buildDefaultOpenGraph, defaultSiteDescription } from "@/lib/site-metadata";
 import { SITE_LOGO_PATH, SITE_NAME, versionedAsset } from "@/lib/site-brand";
@@ -62,6 +67,7 @@ export const viewport: Viewport = {
   width: "device-width",
   initialScale: 1,
   viewportFit: "cover",
+  interactiveWidget: "resizes-content",
   themeColor: [
     { media: "(prefers-color-scheme: dark)", color: PWA_THEME_COLOR },
     { media: "(prefers-color-scheme: light)", color: "#f3f5fa" },
@@ -70,7 +76,10 @@ export const viewport: Viewport = {
 
 export default async function RootLayout({ children }: { children: React.ReactNode }) {
   await getShikimoriEndpoints();
-  const backgroundUrls = listBackgroundImageUrls();
+  const [backgroundUrls, siteSettingsDefaults] = await Promise.all([
+    Promise.resolve(listBackgroundImageUrls()),
+    getSiteSettingsDefaults(),
+  ]);
 
   return (
     <html lang="ru" suppressHydrationWarning data-theme="dark">
@@ -82,17 +91,21 @@ export default async function RootLayout({ children }: { children: React.ReactNo
         suppressHydrationWarning
       >
         <ThemeInit />
-        <SiteSettingsInit />
+        <SiteSettingsInit defaults={siteSettingsDefaults} />
         <ThemeProvider>
           <PwaProvider>
             <AuthProvider>
-              <SiteSettingsProvider>
+              <RecentAnimeOpensSync />
+              <InAppNotificationsListener />
+              <NotificationUiLayer />
+              <SiteSettingsProvider defaults={siteSettingsDefaults}>
                 <UserListStatusProvider>
                   <SiteBackground urls={backgroundUrls} />
                   <NavigationProgressProvider>
                     <Suspense fallback={null}>
                       <ScrollRestoration />
                     </Suspense>
+                    <TvNavigationProvider />
                     <Header />
                     <DiscordSitePresence />
                     <main className="relative z-10">{children}</main>

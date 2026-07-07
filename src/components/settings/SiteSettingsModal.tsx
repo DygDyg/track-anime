@@ -1,19 +1,24 @@
 "use client";
 
 import Link from "next/link";
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useState, Suspense } from "react";
 import { createPortal } from "react-dom";
 import { TranslationBadge } from "@/components/TranslationBadge";
 import { useAuth } from "@/components/auth/AuthProvider";
+import { AvatarWithDecoration } from "@/components/profile/AvatarWithDecoration";
 import { useSiteSettings } from "@/components/SiteSettingsProvider";
 import { useThemeContext } from "@/components/ThemeProvider";
 import {
+  AVATAR_DECORATION_SCALE_MAX,
+  AVATAR_DECORATION_SCALE_MIN,
+  AVATAR_DECORATION_SCALE_STEP,
+  normalizeAvatarDecorationScale,
   SITE_ACCENT_OPTIONS,
   SITE_BG_DIM_OPTIONS,
   SITE_CARD_SIZE_OPTIONS,
   SITE_CURSOR_OPTIONS,
   SITE_FONT_OPTIONS,
-  backgroundSlideshowFilterSummary,
+  backgroundImageSummary,
   homeTranslationFilterSummary,
   HOVER_TRAILER_DELAY_MAX_SEC,
   HOVER_TRAILER_DELAY_MIN_SEC,
@@ -26,17 +31,25 @@ import {
   SITE_CURSOR_URLS,
   SITE_FONT_STACKS,
 } from "@/lib/site-appearance";
+import { AVATAR_DECORATION_OPTIONS, avatarDecorationUrl } from "@/lib/avatar-decorations";
 import { DiscordRpcSettingsTab } from "@/components/settings/DiscordRpcSettingsTab";
+import { NotificationsSettingsTab } from "@/components/settings/NotificationsSettingsTab";
+import { PlayerSettingsTab } from "@/components/settings/PlayerSettingsTab";
+import { RecentAnimeOpensSettingsTab } from "@/components/settings/RecentAnimeOpensSettingsTab";
+import { useNotificationDiscovery } from "@/hooks/useNotificationDiscovery";
 import type { AdminTodoDto } from "@/lib/admin/todos";
 import type { Theme } from "@/lib/theme";
 
-type TabId = "appearance" | "home" | "discord" | "future";
+type TabId = "appearance" | "home" | "player" | "notifications" | "discord" | "future" | "recent";
 
 const TABS: { id: TabId; label: string }[] = [
   { id: "home", label: "Главная" },
+  { id: "player", label: "Плеер" },
   { id: "appearance", label: "Внешний вид" },
+  { id: "notifications", label: "Уведомления" },
   { id: "discord", label: "Discord RPC" },
   { id: "future", label: "Идеи" },
+  { id: "recent", label: "Недавние" },
 ];
 
 function SectionTitle({ children }: { children: React.ReactNode }) {
@@ -53,22 +66,26 @@ function OptionButton({
   hint,
   onClick,
   swatch,
+  disabled = false,
 }: {
   active: boolean;
   label: string;
   hint?: string;
   onClick: () => void;
   swatch?: string;
+  disabled?: boolean;
 }) {
   return (
     <button
       type="button"
       onClick={onClick}
+      disabled={disabled}
       className={[
         "rounded-lg border px-3 py-2 text-left text-sm transition",
         active
           ? "border-accent bg-accent/10 text-foreground"
           : "border-border bg-card text-muted hover:border-accent/40 hover:text-foreground",
+        disabled ? "cursor-wait opacity-60" : "",
       ].join(" ")}
     >
       <span className="flex items-center gap-2">
@@ -117,7 +134,7 @@ function RangeRow({
       <div className="flex items-baseline justify-between gap-3">
         <span className="text-sm font-medium text-foreground">{label}</span>
         <span className="shrink-0 text-sm font-semibold tabular-nums text-accent">
-          {value} {unit}
+          {Number.isInteger(value) ? value : value.toFixed(2)} {unit}
         </span>
       </div>
       {hint ? <p className="mt-0.5 text-xs text-muted">{hint}</p> : null}
@@ -215,21 +232,25 @@ function FontOptionButton({
   fontId,
   label,
   onClick,
+  disabled = false,
 }: {
   active: boolean;
   fontId: SiteFontFamily;
   label: string;
   onClick: () => void;
+  disabled?: boolean;
 }) {
   return (
     <button
       type="button"
       onClick={onClick}
+      disabled={disabled}
       className={[
         "rounded-lg border px-3 py-2.5 text-left transition",
         active
           ? "border-accent bg-accent/10 text-foreground"
           : "border-border bg-card text-muted hover:border-accent/40 hover:text-foreground",
+        disabled ? "cursor-wait opacity-60" : "",
       ].join(" ")}
     >
       <span
@@ -248,21 +269,25 @@ function CursorOptionButton({
   style,
   label,
   onClick,
+  disabled = false,
 }: {
   active: boolean;
   style: SiteCursorStyle;
   label: string;
   onClick: () => void;
+  disabled?: boolean;
 }) {
   return (
     <button
       type="button"
       onClick={onClick}
+      disabled={disabled}
       className={[
         "rounded-lg border px-3 py-2.5 text-left transition",
         active
           ? "border-accent bg-accent/10 text-foreground"
           : "border-border bg-card text-muted hover:border-accent/40 hover:text-foreground",
+        disabled ? "cursor-wait opacity-60" : "",
       ].join(" ")}
     >
       <span className="flex h-10 items-center justify-center rounded-md border border-border/70 bg-background/50">
@@ -273,14 +298,12 @@ function CursorOptionButton({
   );
 }
 
-function BackgroundSlideshowSection({
+function BackgroundPickerSection({
   settings,
-  toggleBackgroundInSlideshow,
-  setAllBackgroundSlideshow,
+  updateSettings,
 }: {
   settings: SiteSettings;
-  toggleBackgroundInSlideshow: (url: string, enabled: boolean, allUrls: string[]) => void;
-  setAllBackgroundSlideshow: (enabled: boolean, allUrls: string[]) => void;
+  updateSettings: (patch: Partial<SiteSettings>) => void;
 }) {
   const [backgrounds, setBackgrounds] = useState<Array<{ url: string; label: string }>>([]);
   const [loading, setLoading] = useState(true);
@@ -310,75 +333,60 @@ function BackgroundSlideshowSection({
     return null;
   }
 
-  const allUrls = backgrounds.map((item) => item.url);
-
-  const isBackgroundEnabled = (url: string) => {
-    if (settings.backgroundSlideshowFilter === null) return true;
-    return settings.backgroundSlideshowFilter.includes(url);
-  };
-
-  const allEnabled =
-    settings.backgroundSlideshowFilter === null ||
-    (backgrounds.length > 0 &&
-      backgrounds.every((item) => settings.backgroundSlideshowFilter!.includes(item.url)));
-
-  const slideshowDisabled = settings.backgroundSlideshowFilter?.length === 0;
+  const selectedUrl = settings.backgroundImageUrl;
 
   return (
     <section className="space-y-3">
-      <div className="flex flex-wrap items-end justify-between gap-2">
-        <div>
-          <SectionTitle>Фон-слайдшоу</SectionTitle>
-          <SectionHint>
-            {loading
-              ? "Загрузка фонов…"
-              : backgroundSlideshowFilterSummary(settings.backgroundSlideshowFilter, backgrounds.length)}
-          </SectionHint>
-        </div>
-        <div className="flex flex-wrap gap-2">
-          <button
-            type="button"
-            onClick={() => setAllBackgroundSlideshow(true, allUrls)}
-            disabled={loading || backgrounds.length === 0 || allEnabled}
-            className="rounded-md border border-border px-2.5 py-1 text-xs text-muted transition hover:border-accent/40 hover:text-foreground disabled:cursor-not-allowed disabled:opacity-40"
-          >
-            Все
-          </button>
-          <button
-            type="button"
-            onClick={() => setAllBackgroundSlideshow(false, allUrls)}
-            disabled={loading || backgrounds.length === 0 || slideshowDisabled}
-            className="rounded-md border border-border px-2.5 py-1 text-xs text-muted transition hover:border-accent/40 hover:text-foreground disabled:cursor-not-allowed disabled:opacity-40"
-          >
-            Отключить
-          </button>
-        </div>
+      <div>
+        <SectionTitle>Фон сайта</SectionTitle>
+        <SectionHint>
+          {loading
+            ? "Загрузка фонов…"
+            : backgroundImageSummary(selectedUrl, backgrounds.length)}
+        </SectionHint>
       </div>
 
       {loading ? (
         <p className="text-sm text-muted">Загрузка…</p>
       ) : (
         <div className="grid max-h-72 grid-cols-2 gap-2 overflow-y-auto pr-1 sm:grid-cols-3">
+          <button
+            type="button"
+            onClick={() => updateSettings({ backgroundImageUrl: null })}
+            className={[
+              "group overflow-hidden rounded-xl border text-left transition",
+              selectedUrl === null
+                ? "border-accent/50 ring-1 ring-accent/20"
+                : "border-border opacity-70 hover:border-accent/30 hover:opacity-100",
+            ].join(" ")}
+          >
+            <div className="relative flex aspect-[16/10] items-center justify-center bg-surface-dim">
+              <span className="text-xs font-medium text-muted">Без фона</span>
+              {selectedUrl === null ? (
+                <span className="absolute right-1.5 top-1.5 rounded-full bg-accent px-1.5 py-0.5 text-[10px] font-semibold text-white">
+                  ✓
+                </span>
+              ) : null}
+            </div>
+            <span className="block truncate px-2 py-1.5 text-xs font-medium text-foreground">
+              Без фона
+            </span>
+          </button>
+
           {backgrounds.map((item) => {
-            const enabled = isBackgroundEnabled(item.url);
+            const active = selectedUrl === item.url;
             return (
-              <label
+              <button
                 key={item.url}
+                type="button"
+                onClick={() => updateSettings({ backgroundImageUrl: item.url })}
                 className={[
-                  "group cursor-pointer overflow-hidden rounded-xl border transition",
-                  enabled
+                  "group overflow-hidden rounded-xl border text-left transition",
+                  active
                     ? "border-accent/50 ring-1 ring-accent/20"
                     : "border-border opacity-70 hover:border-accent/30 hover:opacity-100",
                 ].join(" ")}
               >
-                <input
-                  type="checkbox"
-                  checked={enabled}
-                  onChange={(event) =>
-                    toggleBackgroundInSlideshow(item.url, event.target.checked, allUrls)
-                  }
-                  className="sr-only"
-                />
                 <div className="relative aspect-[16/10] overflow-hidden bg-surface-dim">
                   {/* eslint-disable-next-line @next/next/no-img-element */}
                   <img
@@ -387,7 +395,7 @@ function BackgroundSlideshowSection({
                     className="h-full w-full object-cover transition duration-300 group-hover:scale-105"
                   />
                   <div className="absolute inset-0 bg-black/20" />
-                  {enabled ? (
+                  {active ? (
                     <span className="absolute right-1.5 top-1.5 rounded-full bg-accent px-1.5 py-0.5 text-[10px] font-semibold text-white">
                       ✓
                     </span>
@@ -396,7 +404,7 @@ function BackgroundSlideshowSection({
                 <span className="block truncate px-2 py-1.5 text-xs font-medium text-foreground">
                   {item.label}
                 </span>
-              </label>
+              </button>
             );
           })}
         </div>
@@ -405,20 +413,123 @@ function BackgroundSlideshowSection({
   );
 }
 
-function AppearanceTab({
+function AvatarDecorationSection({
   settings,
   updateSettings,
-  toggleBackgroundInSlideshow,
-  setAllBackgroundSlideshow,
+  disabled,
 }: {
   settings: SiteSettings;
   updateSettings: (patch: Partial<SiteSettings>) => void;
-  toggleBackgroundInSlideshow: (url: string, enabled: boolean, allUrls: string[]) => void;
-  setAllBackgroundSlideshow: (enabled: boolean, allUrls: string[]) => void;
+  disabled?: boolean;
 }) {
+  const { user } = useAuth();
+  const previewNickname = user?.nickname ?? "Вы";
+  const previewAvatar = user?.avatar ?? null;
+
+  return (
+    <section className="space-y-3">
+      <SectionTitle>Украшение аватарки</SectionTitle>
+      <SectionHint>
+        Рамка поверх аватарки в шапке, нижней навигации и профиле. Видно другим пользователям Track Anime.
+      </SectionHint>
+
+      {user ? (
+        <div className="flex flex-col items-center gap-3 rounded-lg border border-border bg-card px-4 py-5 sm:flex-row sm:items-center sm:gap-6">
+          <AvatarWithDecoration
+            avatar={previewAvatar}
+            nickname={previewNickname}
+            decorationId={settings.avatarDecorationId}
+            decorationScale={settings.avatarDecorationScale}
+            size="preview"
+          />
+          <p className="text-center text-sm text-muted sm:text-left">Так будет выглядеть ваш аватар</p>
+        </div>
+      ) : null}
+
+      {settings.avatarDecorationId ? (
+        <RangeRow
+          label="Размер украшения"
+          hint="Насколько рамка больше аватарки. Одинаково в шапке, профиле, друзьях и навигации."
+          value={normalizeAvatarDecorationScale(settings.avatarDecorationScale)}
+          min={AVATAR_DECORATION_SCALE_MIN}
+          max={AVATAR_DECORATION_SCALE_MAX}
+          step={AVATAR_DECORATION_SCALE_STEP}
+          unit="×"
+          onChange={(value) =>
+            updateSettings({ avatarDecorationScale: normalizeAvatarDecorationScale(value) })
+          }
+        />
+      ) : null}
+
+      <div className="grid max-h-72 grid-cols-3 gap-2 overflow-y-auto pr-1 sm:grid-cols-4">
+        <button
+          type="button"
+          disabled={disabled}
+          onClick={() => updateSettings({ avatarDecorationId: null })}
+          className={[
+            "flex aspect-square flex-col items-center justify-center rounded-lg border p-2 text-center text-xs transition",
+            settings.avatarDecorationId === null
+              ? "border-accent bg-accent/10 text-foreground"
+              : "border-border bg-card text-muted hover:border-accent/40 hover:text-foreground",
+            disabled ? "cursor-wait opacity-60" : "",
+          ].join(" ")}
+        >
+          <span className="mb-1 inline-flex h-10 w-10 items-center justify-center rounded-full border border-dashed border-border text-lg text-muted">
+            ∅
+          </span>
+          Без украшения
+        </button>
+
+        {AVATAR_DECORATION_OPTIONS.map((option) => {
+          const src = avatarDecorationUrl(option.id, "thumb");
+          if (!src) return null;
+
+          return (
+            <button
+              key={option.id}
+              type="button"
+              disabled={disabled}
+              title={option.label}
+              onClick={() => updateSettings({ avatarDecorationId: option.id })}
+              className={[
+                "relative aspect-square overflow-hidden rounded-lg border transition",
+                settings.avatarDecorationId === option.id
+                  ? "border-accent ring-2 ring-accent/35"
+                  : "border-border bg-card hover:border-accent/40",
+                disabled ? "cursor-wait opacity-60" : "",
+              ].join(" ")}
+            >
+              {/* eslint-disable-next-line @next/next/no-img-element */}
+              <img
+                src={src}
+                alt=""
+                className="h-full w-full object-contain p-1"
+                loading="lazy"
+                decoding="async"
+              />
+            </button>
+          );
+        })}
+      </div>
+    </section>
+  );
+}
+
+export function SiteSettingsAppearanceTab({
+  settings,
+  updateSettings,
+  hideTheme = false,
+}: {
+  settings: SiteSettings;
+  updateSettings: (patch: Partial<SiteSettings>) => void;
+  hideTheme?: boolean;
+}) {
+  const { remoteSaving } = useSiteSettings();
+  const settingsBusy = remoteSaving;
+
   return (
     <div className="space-y-6">
-      <ThemeSection />
+      {!hideTheme ? <ThemeSection /> : null}
 
       <section className="space-y-3">
         <SectionTitle>Шрифт</SectionTitle>
@@ -429,6 +540,7 @@ function AppearanceTab({
               active={settings.fontFamily === option.id}
               fontId={option.id}
               label={option.label}
+              disabled={settingsBusy}
               onClick={() => updateSettings({ fontFamily: option.id })}
             />
           ))}
@@ -444,6 +556,7 @@ function AppearanceTab({
               active={settings.cursorStyle === option.id}
               style={option.id}
               label={option.label}
+              disabled={settingsBusy}
               onClick={() => updateSettings({ cursorStyle: option.id })}
             />
           ))}
@@ -459,6 +572,7 @@ function AppearanceTab({
               active={settings.cardSize === option.id}
               label={option.label}
               hint={option.hint}
+              disabled={settingsBusy}
               onClick={() => updateSettings({ cardSize: option.id })}
             />
           ))}
@@ -474,17 +588,20 @@ function AppearanceTab({
               active={settings.accentPreset === option.id}
               label={option.label}
               swatch={option.swatch}
+              disabled={settingsBusy}
               onClick={() => updateSettings({ accentPreset: option.id })}
             />
           ))}
         </div>
       </section>
 
-      <BackgroundSlideshowSection
+      <AvatarDecorationSection
         settings={settings}
-        toggleBackgroundInSlideshow={toggleBackgroundInSlideshow}
-        setAllBackgroundSlideshow={setAllBackgroundSlideshow}
+        updateSettings={updateSettings}
+        disabled={settingsBusy}
       />
+
+      <BackgroundPickerSection settings={settings} updateSettings={updateSettings} />
 
       <section className="space-y-3">
         <SectionTitle>Затемнение фона</SectionTitle>
@@ -494,6 +611,7 @@ function AppearanceTab({
               key={option.id}
               active={settings.backgroundDim === option.id}
               label={option.label}
+              disabled={settingsBusy}
               onClick={() => updateSettings({ backgroundDim: option.id })}
             />
           ))}
@@ -512,7 +630,7 @@ function AppearanceTab({
   );
 }
 
-function HomeTab({
+export function SiteSettingsHomeTab({
   settings,
   updateSettings,
   toggleTranslationOnHome,
@@ -696,7 +814,7 @@ function HomeTab({
   );
 }
 
-function DiscordTab({
+export function SiteSettingsDiscordTab({
   settings,
   updateSettings,
 }: {
@@ -775,26 +893,45 @@ export function SiteSettingsModal() {
     updateSettings,
     resetSettings,
     settingsOpen,
+    settingsInitialTab,
+    remoteSaving,
     closeSettings,
+    clearSettingsInitialTab,
     toggleTranslationOnHome,
     setAllHomeTranslations,
     setPopularHomeTranslations,
-    toggleBackgroundInSlideshow,
-    setAllBackgroundSlideshow,
   } = useSiteSettings();
+  const { shouldShowGearDot, markTabSeen } = useNotificationDiscovery();
   const [tab, setTab] = useState<TabId>("home");
   const [mounted, setMounted] = useState(false);
 
   const visibleTabs = useMemo(
-    () => TABS.filter((item) => item.id !== "future" || isAdmin),
-    [isAdmin],
+    () =>
+      TABS.filter((item) => {
+        if (item.id === "future") return isAdmin;
+        if (item.id === "notifications") return Boolean(user);
+        return true;
+      }),
+    [isAdmin, user],
   );
+
+  useEffect(() => {
+    if (!settingsOpen || !settingsInitialTab) return;
+    setTab(settingsInitialTab);
+    clearSettingsInitialTab();
+  }, [settingsOpen, settingsInitialTab, clearSettingsInitialTab]);
 
   useEffect(() => {
     if (tab === "future" && !isAdmin) {
       setTab("home");
     }
-  }, [tab, isAdmin]);
+    if (tab === "notifications" && !user) {
+      setTab("home");
+    }
+    if (tab === "notifications" && user) {
+      markTabSeen();
+    }
+  }, [tab, isAdmin, user, markTabSeen]);
 
   useEffect(() => {
     setMounted(true);
@@ -859,28 +996,29 @@ export function SiteSettingsModal() {
                 type="button"
                 onClick={() => setTab(item.id)}
                 className={[
-                  "shrink-0 rounded-lg px-3 py-2 text-left text-sm font-medium transition",
+                  "relative shrink-0 rounded-lg px-3 py-2 text-left text-sm font-medium transition",
                   tab === item.id
                     ? "bg-accent/10 text-accent"
                     : "text-muted hover:bg-foreground/5 hover:text-foreground",
                 ].join(" ")}
               >
                 {item.label}
+                {item.id === "notifications" && shouldShowGearDot ? (
+                  <span
+                    aria-hidden
+                    className="absolute right-1.5 top-1.5 h-1.5 w-1.5 rounded-full bg-accent"
+                  />
+                ) : null}
               </button>
             ))}
           </nav>
 
           <div className="min-h-0 flex-1 overflow-y-auto px-4 py-4 sm:px-5 sm:py-5">
             {tab === "appearance" ? (
-              <AppearanceTab
-                settings={settings}
-                updateSettings={updateSettings}
-                toggleBackgroundInSlideshow={toggleBackgroundInSlideshow}
-                setAllBackgroundSlideshow={setAllBackgroundSlideshow}
-              />
+              <SiteSettingsAppearanceTab settings={settings} updateSettings={updateSettings} />
             ) : null}
             {tab === "home" ? (
-              <HomeTab
+              <SiteSettingsHomeTab
                 settings={settings}
                 updateSettings={updateSettings}
                 toggleTranslationOnHome={toggleTranslationOnHome}
@@ -888,21 +1026,35 @@ export function SiteSettingsModal() {
                 setPopularHomeTranslations={setPopularHomeTranslations}
               />
             ) : null}
+            {tab === "player" ? (
+              <PlayerSettingsTab settings={settings} updateSettings={updateSettings} />
+            ) : null}
+            {tab === "notifications" && user ? (
+              <Suspense fallback={<p className="text-sm text-muted">Загрузка…</p>}>
+                <NotificationsSettingsTab />
+              </Suspense>
+            ) : null}
             {tab === "discord" ? (
-              <DiscordTab settings={settings} updateSettings={updateSettings} />
+              <SiteSettingsDiscordTab settings={settings} updateSettings={updateSettings} />
             ) : null}
             {tab === "future" && isAdmin ? <FutureTab /> : null}
+            {tab === "recent" ? <RecentAnimeOpensSettingsTab /> : null}
           </div>
         </div>
 
         <footer className="flex items-center justify-between gap-3 border-t border-border px-4 py-3 sm:px-5">
-          <button
-            type="button"
-            onClick={resetSettings}
-            className="text-sm text-muted transition hover:text-foreground"
-          >
-            Сбросить всё
-          </button>
+          <div className="flex min-w-0 flex-1 items-center gap-3">
+            <button
+              type="button"
+              onClick={resetSettings}
+              className="text-sm text-muted transition hover:text-foreground"
+            >
+              Сбросить всё
+            </button>
+            {user && remoteSaving ? (
+              <span className="text-xs text-muted">Сохраняем…</span>
+            ) : null}
+          </div>
           <button
             type="button"
             onClick={closeSettings}

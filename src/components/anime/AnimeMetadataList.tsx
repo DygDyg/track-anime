@@ -1,10 +1,8 @@
 import Link from "next/link";
 import type { AnimePageDto } from "@/lib/anime-page";
+import { AnimeStudioLogos } from "@/components/anime/AnimeStudioLogos";
 import {
   formatDurationRu,
-  formatReleaseYear,
-  labelRating,
-  labelStatus,
 } from "@/lib/anime-labels";
 import { buildSearchHref } from "@/lib/search-shared";
 
@@ -41,21 +39,19 @@ function GenreValue({ genres }: { genres: AnimePageDto["genres"] }) {
 
 export function AnimeMetadataList({ anime }: { anime: AnimePageDto }) {
   const durationValue = formatDurationRu(anime.duration);
-  const studioValue = anime.studios.map((studio) => studio.name).join(", ") || null;
-  const dubberValue = anime.dubbers.length > 0 ? anime.dubbers.join(", ") : null;
-  const yearValue = formatReleaseYear(anime.airedOn, anime.releasedOn);
-  const statusValue = labelStatus(anime.status) ?? anime.status;
-  const ratingValue = labelRating(anime.rating) ?? anime.rating;
 
   return (
     <div className="mt-4 space-y-1">
       <MetadataRow label="Длительность" value={durationValue} />
-      <MetadataRow label="Студии" value={studioValue} />
-      <MetadataRow label="Дабберы" value={dubberValue} />
-      <MetadataRow label="Год выхода" value={yearValue} />
+      {anime.studios.length > 0 ? (
+        <div className="text-sm leading-relaxed">
+          <p className="text-foreground">Студии:</p>
+          <div className="mt-1.5">
+            <AnimeStudioLogos studios={anime.studios} />
+          </div>
+        </div>
+      ) : null}
       <MetadataRow label="Жанры" value={anime.genres.length > 0 ? <GenreValue genres={anime.genres} /> : null} />
-      <MetadataRow label="Статус" value={statusValue} />
-      <MetadataRow label="Возрастной рейтинг" value={ratingValue} />
     </div>
   );
 }

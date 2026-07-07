@@ -15,24 +15,25 @@ import {
   DEFAULT_SITE_SETTINGS,
   applySiteSettings,
   buildPopularHomeTranslationFilter,
+  hasStoredSiteSettings,
   normalizeSiteSettings,
   readStoredSiteSettings,
-  type BackgroundSlideshowFilter,
   type SiteSettings,
 } from "@/lib/site-settings";
 
 type SiteSettingsContextValue = {
   settings: SiteSettings;
+  remoteSaving: boolean;
   updateSettings: (patch: Partial<SiteSettings>) => void;
   resetSettings: () => void;
   settingsOpen: boolean;
-  openSettings: () => void;
+  settingsInitialTab: "notifications" | null;
+  openSettings: (tab?: "notifications") => void;
   closeSettings: () => void;
+  clearSettingsInitialTab: () => void;
   toggleTranslationOnHome: (name: string, enabled: boolean, allNames: string[]) => void;
   setAllHomeTranslations: (enabled: boolean, allNames: string[]) => void;
   setPopularHomeTranslations: (allNames: string[]) => void;
-  toggleBackgroundInSlideshow: (url: string, enabled: boolean, allUrls: string[]) => void;
-  setAllBackgroundSlideshow: (enabled: boolean, allUrls: string[]) => void;
 };
 
 const SiteSettingsContext = createContext<SiteSettingsContextValue | null>(null);
@@ -71,15 +72,6 @@ function buildTranslationFilter(
   return buildSelectionFilter(name, enabled, current, allNames);
 }
 
-function buildBackgroundSlideshowFilter(
-  url: string,
-  enabled: boolean,
-  current: BackgroundSlideshowFilter,
-  allUrls: string[],
-): BackgroundSlideshowFilter {
-  return buildSelectionFilter(url, enabled, current, allUrls);
-}
-
 async function fetchRemoteSiteSettings(): Promise<SiteSettings | null> {
   const res = await fetch("/api/user/site-settings", { cache: "no-store" });
   if (res.status === 401) return null;
@@ -99,14 +91,28 @@ async function saveRemoteSiteSettings(settings: SiteSettings): Promise<void> {
   }
 }
 
-export function SiteSettingsProvider({ children }: { children: ReactNode }) {
+export function SiteSettingsProvider({
+  children,
+  defaults = DEFAULT_SITE_SETTINGS,
+}: {
+  children: ReactNode;
+  defaults?: SiteSettings;
+}) {
   const { user, loading: authLoading } = useAuth();
-  const [settings, setSettings] = useState<SiteSettings>(DEFAULT_SITE_SETTINGS);
+  const [settings, setSettings] = useState<SiteSettings>(defaults);
   const [settingsOpen, setSettingsOpen] = useState(false);
+  const [settingsInitialTab, setSettingsInitialTab] = useState<"notifications" | null>(null);
   const [hydrated, setHydrated] = useState(false);
+  const [remoteSaving, setRemoteSaving] = useState(false);
   const saveTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const saveInFlightRef = useRef(0);
   const syncedUserIdRef = useRef<string | null>(null);
-  const settingsRef = useRef<SiteSettings>(DEFAULT_SITE_SETTINGS);
+  const settingsRef = useRef<SiteSettings>(defaults);
+  const defaultsRef = useRef<SiteSettings>(defaults);
+
+  useEffect(() => {
+    defaultsRef.current = defaults;
+  }, [defaults]);
 
   const scheduleRemoteSave = useCallback(
     (next: SiteSettings) => {
@@ -117,7 +123,16 @@ export function SiteSettingsProvider({ children }: { children: ReactNode }) {
       }
 
       saveTimerRef.current = setTimeout(() => {
-        void saveRemoteSiteSettings(next);
+        saveInFlightRef.current += 1;
+        setRemoteSaving(true);
+        void saveRemoteSiteSettings(next)
+          .catch(() => undefined)
+          .finally(() => {
+            saveInFlightRef.current = Math.max(0, saveInFlightRef.current - 1);
+            if (saveInFlightRef.current === 0) {
+              setRemoteSaving(false);
+            }
+          });
       }, REMOTE_SAVE_DELAY_MS);
     },
     [user],
@@ -138,12 +153,14 @@ export function SiteSettingsProvider({ children }: { children: ReactNode }) {
   );
 
   useEffect(() => {
-    const stored = readStoredSiteSettings();
-    settingsRef.current = stored;
-    setSettings(stored);
-    applySiteSettings(stored);
+    const initial = hasStoredSiteSettings()
+      ? readStoredSiteSettings(defaultsRef.current)
+      : { ...defaultsRef.current };
+    settingsRef.current = initial;
+    setSettings(initial);
+    applySiteSettings(initial);
     setHydrated(true);
-  }, []);
+  }, [defaults]);
 
   useEffect(() => {
     if (!user && saveTimerRef.current) {
@@ -173,7 +190,9 @@ export function SiteSettingsProvider({ children }: { children: ReactNode }) {
           return;
         }
 
-        const local = readStoredSiteSettings();
+        const local = hasStoredSiteSettings()
+          ? readStoredSiteSettings(defaultsRef.current)
+          : { ...defaultsRef.current };
         await saveRemoteSiteSettings(local);
       } catch {
         if (!cancelled) syncedUserIdRef.current = null;
@@ -193,7 +212,7 @@ export function SiteSettingsProvider({ children }: { children: ReactNode }) {
   );
 
   const resetSettings = useCallback(() => {
-    commitSettings({ ...DEFAULT_SITE_SETTINGS });
+    commitSettings({ ...defaultsRef.current });
   }, [commitSettings]);
 
   const toggleTranslationOnHome = useCallback(
@@ -227,56 +246,52 @@ export function SiteSettingsProvider({ children }: { children: ReactNode }) {
     [commitSettings],
   );
 
-  const toggleBackgroundInSlideshow = useCallback(
-    (url: string, enabled: boolean, allUrls: string[]) => {
-      const current = settingsRef.current;
-      const nextFilter = buildBackgroundSlideshowFilter(
-        url,
-        enabled,
-        current.backgroundSlideshowFilter,
-        allUrls,
-      );
-      commitSettings({ ...current, backgroundSlideshowFilter: nextFilter });
-    },
-    [commitSettings],
-  );
+  useEffect(() => {
+    if (typeof window === "undefined") return;
 
-  const setAllBackgroundSlideshow = useCallback(
-    (enabled: boolean, _allUrls?: string[]) => {
-      const current = settingsRef.current;
-      commitSettings({
-        ...current,
-        backgroundSlideshowFilter: enabled ? null : [],
-      });
-    },
-    [commitSettings],
-  );
+    const params = new URLSearchParams(window.location.search);
+    const settingsParam = params.get("settings");
+
+    if (settingsParam === "notifications") {
+      setSettingsOpen(true);
+      setSettingsInitialTab("notifications");
+      params.delete("settings");
+      const query = params.toString();
+      const nextUrl = `${window.location.pathname}${query ? `?${query}` : ""}`;
+      window.history.replaceState({}, "", nextUrl);
+    }
+  }, []);
 
   const value = useMemo<SiteSettingsContextValue>(
     () => ({
-      settings: hydrated ? settings : DEFAULT_SITE_SETTINGS,
+      settings: hydrated ? settings : defaults,
+      remoteSaving,
       updateSettings,
       resetSettings,
       settingsOpen,
-      openSettings: () => setSettingsOpen(true),
+      settingsInitialTab,
+      openSettings: (tab) => {
+        if (tab) setSettingsInitialTab(tab);
+        setSettingsOpen(true);
+      },
       closeSettings: () => setSettingsOpen(false),
+      clearSettingsInitialTab: () => setSettingsInitialTab(null),
       toggleTranslationOnHome,
       setAllHomeTranslations,
       setPopularHomeTranslations,
-      toggleBackgroundInSlideshow,
-      setAllBackgroundSlideshow,
     }),
     [
       hydrated,
       settings,
+      defaults,
+      remoteSaving,
       updateSettings,
       resetSettings,
       settingsOpen,
+      settingsInitialTab,
       toggleTranslationOnHome,
       setAllHomeTranslations,
       setPopularHomeTranslations,
-      toggleBackgroundInSlideshow,
-      setAllBackgroundSlideshow,
     ],
   );
 

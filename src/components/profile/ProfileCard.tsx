@@ -10,10 +10,14 @@ import { userFavoritesPath, userProfilePath } from "@/lib/public-user";
 import type { ProfileFriendStatus } from "@/lib/profile-friend-status";
 import { LIST_STATUS_LABELS, LIST_STATUS_TABS } from "@/lib/shikimori/user-rates.types";
 import type { ProfileFriendsData } from "@/lib/user-friends";
+import type { ProfileSiteFriendsData } from "@/lib/site-friends";
 import type { UserProfileStatsDto } from "@/lib/user-profile-stats";
 
 type ProfileUser = Pick<AuthUser, "shikimoriId" | "nickname" | "avatar" | "isAdmin"> &
-  Partial<Pick<AuthUser, "id">>;
+  Partial<Pick<AuthUser, "id">> & {
+    avatarDecorationId?: string | null;
+    avatarDecorationScale?: number;
+  };
 
 function formatMemberSince(iso: string): string {
   return new Date(iso).toLocaleDateString("ru-RU", {
@@ -169,6 +173,9 @@ export function ProfileCard({
   memberSince,
   variant = "own",
   friends,
+  siteFriends,
+  showIncomingFriendsTab = false,
+  showPublicProfileLink = true,
   onTrackAnime = true,
   dataSource = "site",
   friendStatus = null,
@@ -178,6 +185,9 @@ export function ProfileCard({
   memberSince: string | null;
   variant?: "own" | "public";
   friends: ProfileFriendsData;
+  siteFriends: ProfileSiteFriendsData;
+  showIncomingFriendsTab?: boolean;
+  showPublicProfileLink?: boolean;
   onTrackAnime?: boolean;
   dataSource?: "site" | "shikimori";
   friendStatus?: ProfileFriendStatus | null;
@@ -196,7 +206,12 @@ export function ProfileCard({
     <div className="overflow-hidden rounded-2xl border border-border bg-card shadow-lg shadow-black/25">
       <div className="border-b border-border bg-gradient-to-br from-accent/20 via-accent/5 to-transparent px-6 pb-7 pt-8 sm:px-8 sm:pb-8">
         <div className="flex flex-col items-center gap-6 text-center sm:flex-row sm:items-center sm:gap-8 sm:text-left">
-          <ProfileAvatar avatar={user.avatar} nickname={user.nickname} />
+          <ProfileAvatar
+            avatar={user.avatar}
+            nickname={user.nickname}
+            decorationId={user.avatarDecorationId}
+            decorationScale={user.avatarDecorationScale}
+          />
 
           <div className="min-w-0 flex-1">
             <div className="flex flex-wrap items-center gap-2">
@@ -289,8 +304,11 @@ export function ProfileCard({
 
         <ProfileFriendsSection
           nickname={user.nickname}
-          friends={friends.friends}
-          error={friends.error}
+          shikimoriFriends={friends.friends}
+          shikimoriError={friends.error}
+          siteOutgoing={siteFriends.outgoing}
+          siteIncoming={siteFriends.incoming}
+          showIncomingTab={showIncomingFriendsTab}
         />
 
         <div className="flex flex-wrap items-center gap-3">
@@ -299,6 +317,7 @@ export function ProfileCard({
               targetShikimoriId={user.shikimoriId}
               targetNickname={user.nickname}
               initialStatus={friendStatus}
+              targetOnTrackAnime={onTrackAnime}
             />
           ) : null}
           <Link
@@ -315,12 +334,14 @@ export function ProfileCard({
               >
                 История просмотра
               </Link>
-              <Link
-                href={publicProfileHref}
-                className="rounded-lg border border-border px-4 py-2.5 text-sm font-semibold text-foreground transition hover:border-accent/40 hover:bg-surface-dim"
-              >
-                Публичный профиль
-              </Link>
+              {showPublicProfileLink ? (
+                <Link
+                  href={publicProfileHref}
+                  className="rounded-lg border border-border px-4 py-2.5 text-sm font-semibold text-foreground transition hover:border-accent/40 hover:bg-surface-dim"
+                >
+                  Публичный профиль
+                </Link>
+              ) : null}
             </>
           ) : (
             <Link

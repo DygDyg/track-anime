@@ -1,7 +1,7 @@
 import type { AnimePageDto } from "@/lib/anime-page";
 import { formatScoreVotes } from "@/lib/anime-labels";
 
-export function AnimeShikimoriRating({ anime }: { anime: AnimePageDto }) {
+export function AnimeShikimoriRating({ anime, className = "" }: { anime: AnimePageDto; className?: string }) {
   if (!anime.score) return null;
 
   const scoreNumber = Number.parseFloat(anime.score);
@@ -10,7 +10,12 @@ export function AnimeShikimoriRating({ anime }: { anime: AnimePageDto }) {
     : 0;
 
   return (
-    <div className="mt-4 rounded-xl border border-border bg-background/80 p-3">
+    <div
+      className={[
+        "mt-4 border-y border-border bg-background/80 p-3 sm:mt-4 sm:rounded-xl sm:border",
+        className,
+      ].join(" ")}
+    >
       <p className="text-xs font-semibold uppercase tracking-wide text-muted">Рейтинг Shikimori</p>
       <div className="mt-2 flex items-baseline justify-between gap-2">
         <span className="text-lg font-bold tabular-nums text-accent">{anime.score}/10</span>

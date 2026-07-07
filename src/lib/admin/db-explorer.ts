@@ -189,7 +189,7 @@ export const DB_EXPLORER_MODELS: Record<DbModelKey, ModelDef> = {
     },
   },
   KodikImportJob: {
-    label: "Импорт Kodik",
+    label: "Импорт",
     columns: [
       "id",
       "phase",

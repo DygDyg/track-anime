@@ -7,6 +7,7 @@ import {
   type MaterialPosterSource,
 } from "@/lib/material-poster";
 import { fetchWorldArtPoster } from "@/lib/world-art-poster";
+import { dispatchHistoryNewEpisodeRelease } from "@/lib/notifications/dispatcher";
 
 function parseShikimoriId(value?: string | number | null): number | null {
   if (value === undefined || value === null || value === "") return null;
@@ -182,7 +183,28 @@ async function saveSeasonsAndEpisodes(
       const parsed = parseEpisodeValue(episodeValue);
       if (!parsed) continue;
 
-      try {
+      const episodeWhere = {
+        materialId_seasonNumber_episodeNumber: {
+          materialId,
+          seasonNumber,
+          episodeNumber,
+        },
+      };
+      const existingEpisode = await prisma.kodikEpisode.findUnique({
+        where: episodeWhere,
+        select: { id: true },
+      });
+
+      if (existingEpisode) {
+        await prisma.kodikEpisode.update({
+          where: episodeWhere,
+          data: {
+            playerLink: parsed.playerLink,
+            title: parsed.title,
+            screenshots: parsed.screenshots,
+          },
+        });
+      } else {
         await prisma.kodikEpisode.create({
           data: {
             materialId,
@@ -195,25 +217,6 @@ async function saveSeasonsAndEpisodes(
           },
         });
         newEpisodes += 1;
-      } catch (error) {
-        if (isUniqueViolation(error)) {
-          await prisma.kodikEpisode.update({
-            where: {
-              materialId_seasonNumber_episodeNumber: {
-                materialId,
-                seasonNumber,
-                episodeNumber,
-              },
-            },
-            data: {
-              playerLink: parsed.playerLink,
-              title: parsed.title,
-              screenshots: parsed.screenshots,
-            },
-          });
-        } else {
-          throw error;
-        }
       }
     }
   }
@@ -283,6 +286,15 @@ async function trackLatestRelease(
         releasedAt: kodikReleaseDate(material),
       },
     });
+
+    void dispatchHistoryNewEpisodeRelease({
+      materialId: materialRow.kodikId,
+      seasonNumber: season,
+      episodeNumber: episode,
+    }).catch((error: unknown) => {
+      console.error("[notifications] dispatch failed", error);
+    });
+
     return 1;
   } catch (error) {
     if (isUniqueViolation(error)) {

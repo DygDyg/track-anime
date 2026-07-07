@@ -1,6 +1,7 @@
 import { prisma } from "@/lib/prisma";
 import { saveKodikMaterial } from "@/db/save-material";
 import { isShikimoriStubMaterial } from "@/db/save-shikimori-material";
+import { normalizeKodikMaterialMetadata } from "@/lib/kodik-material-metadata-normalizer";
 import { kodikSearch } from "@/kodik/client";
 import {
   finishImportJobSession,
@@ -36,11 +37,12 @@ async function markEpisodesSkipped(kodikId: string): Promise<void> {
 async function importOneMaterialEpisodes(kodikId: string): Promise<{
   newEpisodes: number;
   newReleases: number;
+  shikimoriId: number | null;
   skipped: boolean;
 }> {
   if (isShikimoriStubMaterial(kodikId)) {
     await markEpisodesSkipped(kodikId);
-    return { newEpisodes: 0, newReleases: 0, skipped: true };
+    return { newEpisodes: 0, newReleases: 0, shikimoriId: null, skipped: true };
   }
 
   const response = await kodikSearch({
@@ -52,7 +54,7 @@ async function importOneMaterialEpisodes(kodikId: string): Promise<{
   const material = response.results[0];
   if (!material) {
     await markEpisodesSkipped(kodikId);
-    return { newEpisodes: 0, newReleases: 0, skipped: false };
+    return { newEpisodes: 0, newReleases: 0, shikimoriId: null, skipped: false };
   }
 
   const result = await saveKodikMaterial(prisma, material, {
@@ -62,7 +64,13 @@ async function importOneMaterialEpisodes(kodikId: string): Promise<{
 
   await markEpisodesSkipped(kodikId);
 
-  return { newEpisodes: result.newEpisodes, newReleases: result.newReleases, skipped: false };
+  const shikimoriId = material.shikimori_id != null ? Number(material.shikimori_id) : null;
+  return {
+    newEpisodes: result.newEpisodes,
+    newReleases: result.newReleases,
+    shikimoriId: shikimoriId != null && Number.isInteger(shikimoriId) && shikimoriId > 0 ? shikimoriId : null,
+    skipped: false,
+  };
 }
 
 export async function runKodikEpisodesImport(options?: {
@@ -109,6 +117,7 @@ export async function runKodikEpisodesImport(options?: {
   let newReleases = 0;
   let lastError: string | null = null;
   let stoppedReason: EpisodesImportResult["stoppedReason"] = null;
+  const touchedShikimoriIds = new Set<number>();
 
   while (processed + skipped < maxMaterials && Date.now() < deadline) {
     const materials = await prisma.kodikMaterial.findMany({
@@ -149,6 +158,7 @@ export async function runKodikEpisodesImport(options?: {
           batchProgress += 1;
           newEpisodes += result.newEpisodes;
           newReleases += result.newReleases;
+          if (result.shikimoriId != null) touchedShikimoriIds.add(result.shikimoriId);
         }
         lastError = null;
 
@@ -200,6 +210,13 @@ export async function runKodikEpisodesImport(options?: {
     lastError,
     currentItem: null,
   });
+
+  if (touchedShikimoriIds.size > 0) {
+    await normalizeKodikMaterialMetadata(prisma, {
+      ids: [...touchedShikimoriIds],
+      quiet: true,
+    });
+  }
 
   return {
     processed,

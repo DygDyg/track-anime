@@ -26,6 +26,8 @@ export type ResolvedProfile = {
   memberSince: string | null;
   localUserId: string | null;
   onTrackAnime: boolean;
+  avatarDecorationId: string | null;
+  avatarDecorationScale: number;
 };
 
 function emptyListCounts(): Record<string, number> {
@@ -107,6 +109,8 @@ export async function resolveUserProfile(
         memberSince: local.createdAt.toISOString(),
         localUserId: local.id,
         onTrackAnime: true,
+        avatarDecorationId: local.avatarDecorationId,
+        avatarDecorationScale: local.avatarDecorationScale,
       },
       shikimori: null,
     };
@@ -124,6 +128,8 @@ export async function resolveUserProfile(
       memberSince: null,
       localUserId: null,
       onTrackAnime: false,
+      avatarDecorationId: null,
+      avatarDecorationScale: 1,
     },
     shikimori,
   };

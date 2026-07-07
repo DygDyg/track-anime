@@ -43,6 +43,7 @@ function entryToRate(
     listStatus: string;
     userScore: number;
     watchedEpisodes: number;
+    rewatches: number;
     addedAt: Date | null;
     listUpdatedAt: Date | null;
   },
@@ -56,7 +57,7 @@ function entryToRate(
     score: entry.userScore,
     status: entry.listStatus,
     episodes: entry.watchedEpisodes,
-    rewatches: 0,
+    rewatches: entry.rewatches,
     created_at: entry.addedAt?.toISOString() ?? null,
     updated_at: entry.listUpdatedAt?.toISOString() ?? entry.addedAt?.toISOString() ?? null,
   };
@@ -85,6 +86,7 @@ async function upsertRatesChunk(
           listStatus: rate.status,
           userScore: rate.score,
           watchedEpisodes: rate.episodes,
+          rewatches: rate.rewatches,
           addedAt: parseShikimoriDate(rate.created_at),
           listUpdatedAt: parseShikimoriDate(rate.updated_at),
         },

@@ -17,8 +17,6 @@ export const headerControl = {
     active
       ? "flex h-10 w-full items-center border-l-2 border-accent bg-accent/10 pl-3 pr-2 text-sm font-medium text-accent"
       : "flex h-10 w-full items-center border-l-2 border-transparent pl-3 pr-2 text-sm font-medium text-foreground/80 transition hover:bg-foreground/5 hover:text-foreground",
-  searchInput:
-    "site-search-input h-10 w-full rounded-md border-0 border-b border-border/80 bg-transparent py-0 pl-9 pr-9 text-sm text-foreground outline-none transition placeholder:text-muted focus:border-accent focus:bg-foreground/[0.03]",
   skeleton: "inline-block h-10 w-[5.5rem] animate-pulse rounded-md bg-foreground/10",
   avatar: "h-7 w-7 shrink-0 rounded-full object-cover",
   avatarFallback:

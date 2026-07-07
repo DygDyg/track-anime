@@ -2,8 +2,11 @@
 
 import Link from "next/link";
 import { useEffect, useMemo, useState } from "react";
-import { ReleaseCard } from "@/components/ReleaseCard";
+import { RelativeTime } from "@/components/RelativeTime";
+import { HistoryWatchCard } from "@/components/history/HistoryWatchCard";
+import { NotificationDiscoveryCta } from "@/components/notifications/NotificationDiscoveryCta";
 import { headerControl } from "@/components/header/header-styles";
+import { useNotificationDiscovery } from "@/hooks/useNotificationDiscovery";
 import { useSiteSettings } from "@/components/SiteSettingsProvider";
 import { homeFeedGridClassName, homeHistoryInnerPadX, homeHistoryOuterGutterX } from "@/lib/home-feed-layout";
 import {
@@ -17,11 +20,10 @@ import type { ReleaseItemDto } from "@/lib/releases";
 export type HistoryNewEpisodeDto = ReleaseItemDto & {
   watchedSeasonNumber: number;
   watchedEpisodeNumber: number;
+  watchedPositionSeconds: number;
+  watchedEpisodeDurationSeconds: number;
+  watchedProgressPercent: number;
 };
-
-function formatWatchedLabel(_season: number, episode: number): string {
-  return `Вы остановились на серии ${episode}`;
-}
 
 function HistoryIcon() {
   return (
@@ -63,6 +65,7 @@ function formatCountLabel(count: number): string {
 
 export function HistoryNewEpisodesSection({ items }: { items: HistoryNewEpisodeDto[] }) {
   const { settings } = useSiteSettings();
+  const { shouldShowCta, dismissCta, openNotificationsSettings } = useNotificationDiscovery();
   const [collapsed, setCollapsed] = useState(false);
   const [collapseReady, setCollapseReady] = useState(false);
 
@@ -95,17 +98,20 @@ export function HistoryNewEpisodesSection({ items }: { items: HistoryNewEpisodeD
   return (
     <div className={`${homeHistoryOuterGutterX} mb-6 sm:mb-8`}>
       <section
-        className="home-history-section relative rounded-xl border border-border/90"
+        className="home-history-section relative rounded-xl border border-border"
         aria-labelledby="home-history-panel-title"
       >
         <div
           aria-hidden
-          className="site-header-bg pointer-events-none absolute inset-0 overflow-hidden rounded-xl backdrop-blur-lg backdrop-saturate-150"
+          className={[
+            "site-header-bg pointer-events-none absolute inset-0 overflow-hidden rounded-xl backdrop-blur-lg backdrop-saturate-150",
+            collapsed ? "hidden" : "",
+          ].join(" ")}
         />
 
         <div
           className={`site-header-text relative flex h-14 items-center justify-between gap-2 sm:h-16 sm:gap-2.5 ${homeHistoryInnerPadX} ${
-            collapsed ? "" : "border-b border-border/90"
+            collapsed ? "bg-card" : "border-b border-border"
           }`}
         >
           <button
@@ -144,7 +150,7 @@ export function HistoryNewEpisodesSection({ items }: { items: HistoryNewEpisodeD
         {!collapsed ? (
           <div
             id={bodyId}
-            className={`site-header-text relative border-t border-border/90 bg-card/95 py-3 backdrop-blur-lg backdrop-saturate-150 sm:py-4 ${homeHistoryInnerPadX}`}
+            className={`site-header-text relative bg-card/95 py-3 backdrop-blur-lg backdrop-saturate-150 sm:py-4 ${homeHistoryInnerPadX}`}
           >
             <p className="mb-3 text-xs text-muted sm:hidden">
               <Link href="/history" className="text-foreground/80 transition hover:text-accent">
@@ -152,13 +158,33 @@ export function HistoryNewEpisodesSection({ items }: { items: HistoryNewEpisodeD
               </Link>
             </p>
 
+            {shouldShowCta ? (
+              <NotificationDiscoveryCta
+                className="mb-3"
+                onConfigure={openNotificationsSettings}
+                onDismiss={dismissCta}
+              />
+            ) : null}
+
             <div className={homeFeedGridClassName}>
               {visibleItems.map((item) => (
-                <ReleaseCard
+                <HistoryWatchCard
                   key={item.id}
                   release={item}
+                  progress={{
+                    watchedEpisodeNumber: item.watchedEpisodeNumber,
+                    watchProgressPercent: item.watchedProgressPercent,
+                    watchPositionSeconds: item.watchedPositionSeconds,
+                    watchDurationSeconds: item.watchedEpisodeDurationSeconds,
+                  }}
+                  footer={
+                    <RelativeTime
+                      date={item.releasedAt}
+                      mode={settings.showRelativeTime ? "relative" : "absolute"}
+                      className="text-sm font-semibold text-foreground md:text-base"
+                    />
+                  }
                   hoverPanelPortal
-                  historyHint={formatWatchedLabel(item.watchedSeasonNumber, item.watchedEpisodeNumber)}
                 />
               ))}
             </div>

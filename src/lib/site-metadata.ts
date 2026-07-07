@@ -78,7 +78,9 @@ function buildPosterImages(
   alt: string,
   shikimoriId?: number,
 ): Array<{ url: string; width: number; height: number; alt: string }> {
-  const absolute = toAbsoluteUrl(resolvePosterUrl(posterUrl, { shikimoriId }));
+  const resolved = resolvePosterUrl(posterUrl, { shikimoriId });
+  if (!resolved) return [];
+  const absolute = toAbsoluteUrl(resolved);
   if (!absolute) return [];
 
   return [

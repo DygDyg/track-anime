@@ -21,14 +21,47 @@ export type KodikPlayerResume = {
   positionSeconds: number;
 };
 
+export type KodikPlayerResumeMode = "play" | "pause";
+
+export type KodikPlayerPlaybackState = {
+  isPlaying: boolean;
+  positionSeconds: number;
+  durationSeconds: number;
+  volume: number;
+  muted: boolean;
+};
+
 export type KodikPlayerHandle = {
-  seekAndPlay: (resume: KodikPlayerResume) => void;
+  seekTo: (resume: KodikPlayerResume, mode?: KodikPlayerResumeMode) => void;
+  seekBy: (deltaSeconds: number) => void;
+  abortContinue: () => void;
+  play: () => void;
+  pause: () => void;
+  togglePlay: () => void;
+  seekToPosition: (seconds: number) => void;
+  setVolume: (volume: number) => void;
+  mute: () => void;
+  unmute: () => void;
+};
+
+const CONTINUE_HARD_TIMEOUT_MS = 15_000;
+
+const DEFAULT_PLAYBACK_STATE: KodikPlayerPlaybackState = {
+  isPlaying: false,
+  positionSeconds: 0,
+  durationSeconds: 0,
+  volume: 1,
+  muted: false,
 };
 
 type Props = {
   src: string;
   title: string;
   initialResume?: KodikPlayerResume | null;
+  /** viewport — по высоте окна (минус шапка), с сохранением 16:9 */
+  sizeMode?: "default" | "viewport";
+  /** Beta: внешний кадр 16:9, внутренний iframe 16:9 на всю область (настройка crop в CSS) */
+  chromelessBeta?: boolean;
   onReady?: () => void;
   onContinueStateChange?: (active: boolean) => void;
   onProgress?: (payload: {
@@ -42,12 +75,14 @@ type Props = {
     positionSeconds: number;
   }) => void;
   onTranslationChange?: (translation: { id: number; title: string }) => void;
+  onPlaybackStateChange?: (state: KodikPlayerPlaybackState) => void;
 };
 
 type EpisodeState = { seasonNumber: number; episodeNumber: number };
 
 type ContinueFlow = {
   resume: KodikPlayerResume;
+  autoplay: boolean;
   stage: "episode" | "play";
   timers: number[];
 };
@@ -122,6 +157,12 @@ function finishContinueSeek(
     sendKodikCommand(iframe, { method: "seek", seconds: flow.resume.positionSeconds });
   }
 
+  if (!flow.autoplay) {
+    window.setTimeout(() => {
+      sendKodikCommand(iframe, { method: "pause" });
+    }, 350);
+  }
+
   clearContinueFlow(flow);
   continueFlowRef.current = null;
   onContinueStateChange?.(false);
@@ -134,6 +175,11 @@ function requestPlayThenSeek(
   episodeRef: MutableRefObject<EpisodeState>,
   onContinueStateChange?: (active: boolean) => void,
 ): void {
+  if (!flow.autoplay) {
+    finishContinueSeek(iframe, flow, continueFlowRef, episodeRef, onContinueStateChange);
+    return;
+  }
+
   flow.stage = "play";
   sendKodikCommand(iframe, { method: "play" });
 
@@ -147,6 +193,7 @@ function requestPlayThenSeek(
 function startContinueFlow(
   iframe: HTMLIFrameElement,
   resume: KodikPlayerResume,
+  autoplay: boolean,
   _current: EpisodeState,
   continueFlowRef: MutableRefObject<ContinueFlow | null>,
   episodeRef: MutableRefObject<EpisodeState>,
@@ -155,7 +202,7 @@ function startContinueFlow(
   clearContinueFlow(continueFlowRef.current);
   onContinueStateChange?.(true);
 
-  const flow: ContinueFlow = { resume, stage: "episode", timers: [] };
+  const flow: ContinueFlow = { resume, autoplay, stage: "episode", timers: [] };
   continueFlowRef.current = flow;
 
   sendKodikCommand(iframe, {
@@ -169,6 +216,14 @@ function startContinueFlow(
     requestPlayThenSeek(iframe, flow, continueFlowRef, episodeRef, onContinueStateChange);
   }, 1_800);
   flow.timers.push(episodeFallbackId);
+
+  const hardTimeoutId = window.setTimeout(() => {
+    if (continueFlowRef.current !== flow) return;
+    clearContinueFlow(flow);
+    continueFlowRef.current = null;
+    onContinueStateChange?.(false);
+  }, CONTINUE_HARD_TIMEOUT_MS);
+  flow.timers.push(hardTimeoutId);
 }
 
 function handleContinueFlowMessage(
@@ -208,17 +263,21 @@ export const KodikPlayer = forwardRef<KodikPlayerHandle, Props>(function KodikPl
     src,
     title,
     initialResume,
+    sizeMode = "default",
+    chromelessBeta = false,
     onReady,
     onContinueStateChange,
     onProgress,
     onPause,
     onTranslationChange,
+    onPlaybackStateChange,
   },
   ref,
 ) {
   const iframeRef = useRef<HTMLIFrameElement>(null);
   const episodeRef = useRef<EpisodeState>({ seasonNumber: 1, episodeNumber: 1 });
   const positionRef = useRef(0);
+  const playbackRef = useRef<KodikPlayerPlaybackState>({ ...DEFAULT_PLAYBACK_STATE });
   const translationIdRef = useRef<number | null>(null);
   const resumeAppliedRef = useRef(false);
   const playerReadyRef = useRef(false);
@@ -228,6 +287,16 @@ export const KodikPlayer = forwardRef<KodikPlayerHandle, Props>(function KodikPl
   const onTranslationChangeRef = useRef(onTranslationChange);
   const onReadyRef = useRef(onReady);
   const onContinueStateChangeRef = useRef(onContinueStateChange);
+  const onPlaybackStateChangeRef = useRef(onPlaybackStateChange);
+
+  const emitPlaybackState = () => {
+    onPlaybackStateChangeRef.current?.({ ...playbackRef.current });
+  };
+
+  const patchPlayback = (patch: Partial<KodikPlayerPlaybackState>) => {
+    playbackRef.current = { ...playbackRef.current, ...patch };
+    emitPlaybackState();
+  };
 
   useEffect(() => {
     onProgressRef.current = onProgress;
@@ -249,6 +318,10 @@ export const KodikPlayer = forwardRef<KodikPlayerHandle, Props>(function KodikPl
     onContinueStateChangeRef.current = onContinueStateChange;
   }, [onContinueStateChange]);
 
+  useEffect(() => {
+    onPlaybackStateChangeRef.current = onPlaybackStateChange;
+  }, [onPlaybackStateChange]);
+
   const markPlayerReady = () => {
     if (playerReadyRef.current) return;
     playerReadyRef.current = true;
@@ -260,6 +333,8 @@ export const KodikPlayer = forwardRef<KodikPlayerHandle, Props>(function KodikPl
     playerReadyRef.current = false;
     episodeRef.current = { seasonNumber: 1, episodeNumber: 1 };
     positionRef.current = 0;
+    playbackRef.current = { ...DEFAULT_PLAYBACK_STATE };
+    emitPlaybackState();
     translationIdRef.current = null;
     clearContinueFlow(continueFlowRef.current);
     continueFlowRef.current = null;
@@ -267,7 +342,7 @@ export const KodikPlayer = forwardRef<KodikPlayerHandle, Props>(function KodikPl
   }, [src]);
 
   useImperativeHandle(ref, () => ({
-    seekAndPlay(resume: KodikPlayerResume) {
+    seekTo(resume: KodikPlayerResume, mode: KodikPlayerResumeMode = "play") {
       if (!iframeRef.current) {
         onContinueStateChangeRef.current?.(false);
         return;
@@ -275,11 +350,55 @@ export const KodikPlayer = forwardRef<KodikPlayerHandle, Props>(function KodikPl
       startContinueFlow(
         iframeRef.current,
         resume,
+        mode === "play",
         episodeRef.current,
         continueFlowRef,
         episodeRef,
         onContinueStateChangeRef.current,
       );
+    },
+    seekBy(deltaSeconds: number) {
+      if (!iframeRef.current || !Number.isFinite(deltaSeconds)) return;
+      const next = Math.max(0, positionRef.current + deltaSeconds);
+      sendKodikCommand(iframeRef.current, { method: "seek", seconds: next });
+    },
+    play() {
+      if (!iframeRef.current) return;
+      sendKodikCommand(iframeRef.current, { method: "play" });
+    },
+    pause() {
+      if (!iframeRef.current) return;
+      sendKodikCommand(iframeRef.current, { method: "pause" });
+    },
+    togglePlay() {
+      if (!iframeRef.current) return;
+      sendKodikCommand(iframeRef.current, {
+        method: playbackRef.current.isPlaying ? "pause" : "play",
+      });
+    },
+    seekToPosition(seconds: number) {
+      if (!iframeRef.current || !Number.isFinite(seconds)) return;
+      sendKodikCommand(iframeRef.current, { method: "seek", seconds: Math.max(0, seconds) });
+    },
+    setVolume(volume: number) {
+      if (!iframeRef.current || !Number.isFinite(volume)) return;
+      sendKodikCommand(iframeRef.current, {
+        method: "volume",
+        volume: Math.min(1, Math.max(0, volume)),
+      });
+    },
+    mute() {
+      if (!iframeRef.current) return;
+      sendKodikCommand(iframeRef.current, { method: "mute" });
+    },
+    unmute() {
+      if (!iframeRef.current) return;
+      sendKodikCommand(iframeRef.current, { method: "unmute" });
+    },
+    abortContinue() {
+      clearContinueFlow(continueFlowRef.current);
+      continueFlowRef.current = null;
+      onContinueStateChangeRef.current?.(false);
     },
   }));
 
@@ -307,6 +426,12 @@ export const KodikPlayer = forwardRef<KodikPlayerHandle, Props>(function KodikPl
         episodeRef.current = normalizeEpisode(currentEpisode);
         applyInitialResume();
 
+        onProgressRef.current?.({
+          seasonNumber: episodeRef.current.seasonNumber,
+          episodeNumber: episodeRef.current.episodeNumber,
+          positionSeconds: positionRef.current,
+        });
+
         const translationId = currentEpisode.translation?.id;
         if (translationId != null && translationIdRef.current !== translationId) {
           translationIdRef.current = translationId;
@@ -319,6 +444,7 @@ export const KodikPlayer = forwardRef<KodikPlayerHandle, Props>(function KodikPl
 
       if (event.data.key === "kodik_player_time_update" && typeof event.data.value === "number") {
         positionRef.current = event.data.value;
+        patchPlayback({ positionSeconds: event.data.value });
         onProgressRef.current?.({
           seasonNumber: episodeRef.current.seasonNumber,
           episodeNumber: episodeRef.current.episodeNumber,
@@ -326,7 +452,24 @@ export const KodikPlayer = forwardRef<KodikPlayerHandle, Props>(function KodikPl
         });
       }
 
+      if (event.data.key === "kodik_player_play") {
+        patchPlayback({ isPlaying: true });
+      }
+
+      if (event.data.key === "kodik_player_duration_update" && typeof event.data.value === "number") {
+        patchPlayback({ durationSeconds: event.data.value });
+      }
+
+      if (event.data.key === "kodik_player_volume_change" && event.data.value) {
+        const value = event.data.value as { muted?: boolean; volume?: number };
+        patchPlayback({
+          muted: value.muted === true,
+          volume: typeof value.volume === "number" ? value.volume : playbackRef.current.volume,
+        });
+      }
+
       if (event.data.key === "kodik_player_pause") {
+        patchPlayback({ isPlaying: false });
         onPauseRef.current?.({
           seasonNumber: episodeRef.current.seasonNumber,
           episodeNumber: episodeRef.current.episodeNumber,
@@ -355,17 +498,51 @@ export const KodikPlayer = forwardRef<KodikPlayerHandle, Props>(function KodikPl
   }, [initialResume, src]);
 
   return (
-    <div className="overflow-hidden rounded-lg border border-border bg-black shadow-inner">
-      <div className="relative aspect-video w-full">
-        <iframe
-          ref={iframeRef}
-          src={toKodikPlayerEmbedUrl(src)}
-          title={title}
-          className="absolute inset-0 h-full w-full border-0"
-          allowFullScreen
-          allow="autoplay *; fullscreen *"
-          onLoad={markPlayerReady}
-        />
+    <div
+      className={[
+        "overflow-hidden rounded-lg border border-border bg-black shadow-inner",
+        sizeMode === "viewport" ? "anime-player-shell-viewport" : "",
+        chromelessBeta ? "rounded-none border-0 shadow-none" : "",
+      ].join(" ")}
+    >
+      <div
+        className={[
+          "relative w-full",
+          sizeMode === "viewport" ? "anime-player-viewport-frame" : "aspect-video",
+          chromelessBeta ? "kodik-player-beta-frame" : "",
+        ].join(" ")}
+      >
+        {chromelessBeta ? (
+          <div className="kodik-player-beta-inner">
+            <iframe
+              ref={iframeRef}
+              src={toKodikPlayerEmbedUrl(src)}
+              title={title}
+              className="kodik-player-beta-iframe"
+              allowFullScreen
+              allow="autoplay *; fullscreen *"
+              onLoad={markPlayerReady}
+            />
+          </div>
+        ) : (
+          <iframe
+            ref={iframeRef}
+            src={toKodikPlayerEmbedUrl(src)}
+            title={title}
+            className="absolute inset-0 h-full w-full border-0"
+            allowFullScreen
+            allow="autoplay *; fullscreen *"
+            onLoad={markPlayerReady}
+          />
+        )}
+        {chromelessBeta ? (
+          <span
+            className="pointer-events-none absolute left-2 top-2 z-10 rounded-md border border-white/20 bg-black/55 px-1.5 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-white/90 backdrop-blur-sm"
+            aria-hidden
+          >
+            Beta
+          </span>
+        ) : null}
       </div>
     </div>
   );

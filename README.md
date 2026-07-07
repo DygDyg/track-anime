@@ -191,6 +191,9 @@ npm run deploy:release      # деплой + пересборка Discord RPC ex
 | Файл | Содержание |
 |------|------------|
 | [`PROJECT_OVERVIEW.md`](PROJECT_OVERVIEW.md) | Обзор проекта |
+| [`AGENTS.md`](AGENTS.md) | Правила для Codex |
+| [`AI_RULES.md`](AI_RULES.md) | Общие правила для AI-ассистентов |
+| [`AI_CONTEXT.md`](AI_CONTEXT.md) | Быстрый контекст для Codex/Cursor |
 | [`ARCHITECTURE.md`](ARCHITECTURE.md) | Архитектура и потоки данных |
 | [`CODEBASE_MAP.md`](CODEBASE_MAP.md) | Карта кодовой базы |
 | [`docs/SERVER.md`](docs/SERVER.md) | Production-сервер |

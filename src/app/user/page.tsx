@@ -1,6 +1,7 @@
 import type { Metadata } from "next";
-import Link from "next/link";
+import { NavLink } from "@/components/NavLink";
 import { redirect } from "next/navigation";
+import { UsersSearchForm } from "@/components/user/UsersSearchForm";
 import { userProfilePath } from "@/lib/public-user";
 import { buildSitePageMetadata } from "@/lib/site-metadata";
 import {
@@ -23,7 +24,7 @@ type Props = {
 
 function UserResultCard({ user }: { user: ShikimoriUserBrief }) {
   return (
-    <Link
+    <NavLink
       href={userProfilePath(user.id)}
       className="group flex items-center gap-3 rounded-xl border border-border bg-card p-4 transition hover:border-accent/40 hover:bg-surface-dim/80"
     >
@@ -42,7 +43,7 @@ function UserResultCard({ user }: { user: ShikimoriUserBrief }) {
         <p className="truncate font-semibold text-foreground group-hover:text-accent">{user.nickname}</p>
         <p className="text-xs text-muted">Shikimori ID {user.id}</p>
       </div>
-    </Link>
+    </NavLink>
   );
 }
 
@@ -68,30 +69,7 @@ export default async function UsersPage({ searchParams }: Props) {
         </p>
       </div>
 
-      <form action="/user" method="get" className="mb-8">
-        <label htmlFor="users-search" className="sr-only">
-          Поиск пользователя
-        </label>
-        <div className="flex flex-col gap-3 sm:flex-row">
-          <input
-            id="users-search"
-            name="q"
-            type="search"
-            defaultValue={query}
-            placeholder="Ник или Shikimori ID…"
-            className="h-11 flex-1 rounded-xl border border-border bg-card px-4 text-sm text-foreground outline-none transition placeholder:text-muted focus:border-accent focus:ring-2 focus:ring-accent/25"
-            autoComplete="off"
-            spellCheck={false}
-            minLength={1}
-          />
-          <button
-            type="submit"
-            className="h-11 shrink-0 rounded-xl bg-accent px-5 text-sm font-semibold text-white transition hover:bg-accent/90"
-          >
-            Найти
-          </button>
-        </div>
-      </form>
+      <UsersSearchForm defaultQuery={query} />
 
       {query.length > 0 && query.length < 2 ? (
         <p className="text-sm text-muted">Введите минимум 2 символа для поиска по нику.</p>

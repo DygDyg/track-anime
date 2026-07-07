@@ -18,6 +18,7 @@ import { runKodikEpisodesImport } from "../src/lib/admin/kodik-import.js";
 import { finishCatalogImportSession, startCatalogImportSession } from "../src/lib/admin/import-job.js";
 import { buildListUrl, kodikListByUrl } from "../src/kodik/client.js";
 import { saveKodikMaterial } from "../src/db/save-material.js";
+import { normalizeKodikMaterialMetadata } from "../src/lib/kodik-material-metadata-normalizer.js";
 
 const prisma = new PrismaClient();
 const JOB_ID = "full";
@@ -151,13 +152,27 @@ async function importCatalogPhase() {
   while (nextUrl) {
     const page = await kodikListByUrl(nextUrl);
     let pageSaved = 0;
+    const touchedShikimoriIds = new Set<number>();
 
     for (const material of page.results) {
       await saveKodikMaterial(prisma, material, {
         loadEpisodes: false,
         trackReleases: false,
       });
+      if (material.shikimori_id != null && material.shikimori_id !== "") {
+        const shikimoriId = Number(material.shikimori_id);
+        if (Number.isInteger(shikimoriId) && shikimoriId > 0) {
+          touchedShikimoriIds.add(shikimoriId);
+        }
+      }
       pageSaved += 1;
+    }
+
+    if (touchedShikimoriIds.size > 0) {
+      await normalizeKodikMaterialMetadata(prisma, {
+        ids: [...touchedShikimoriIds],
+        quiet: true,
+      });
     }
 
     job = await prisma.kodikImportJob.update({

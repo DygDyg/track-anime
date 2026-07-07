@@ -61,11 +61,32 @@ export function readNavReturn(): NavReturnState | null {
   return state;
 }
 
-export function consumeNavReturn(expectedPath: string): NavReturnState | null {
+export function consumeNavReturn(
+  expectedPath: string,
+  options?: { samePathname?: boolean },
+): NavReturnState | null {
   const state = readNavReturn();
-  if (!state || state.path !== expectedPath) return null;
-  sessionStorage.removeItem(NAV_RETURN_KEY);
-  return state;
+  if (!state) return null;
+
+  if (state.path === expectedPath) {
+    sessionStorage.removeItem(NAV_RETURN_KEY);
+    return state;
+  }
+
+  if (options?.samePathname && typeof window !== "undefined") {
+    try {
+      const saved = new URL(state.path, window.location.origin);
+      const expected = new URL(expectedPath, window.location.origin);
+      if (saved.pathname === expected.pathname) {
+        sessionStorage.removeItem(NAV_RETURN_KEY);
+        return state;
+      }
+    } catch {
+      return null;
+    }
+  }
+
+  return null;
 }
 
 function feedStateKey(path: string): string {
@@ -86,12 +107,16 @@ export function consumeFeedState(path: string): FeedPersistState | null {
   return state;
 }
 
-export function consumePageRestore(path: string): { scrollY: number; feed: FeedPersistState | null } | null {
-  const nav = consumeNavReturn(path);
+export function consumePageRestore(
+  path: string,
+  options?: { samePathname?: boolean },
+): { scrollY: number; feed: FeedPersistState | null; savedPath: string } | null {
+  const nav = consumeNavReturn(path, options);
   if (!nav) return null;
   return {
     scrollY: nav.scrollY,
     feed: consumeFeedState(path),
+    savedPath: nav.path,
   };
 }
 

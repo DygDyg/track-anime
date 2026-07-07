@@ -136,7 +136,7 @@ export function ShikimoriSettingsPanel({
               onClick={() => void saveHost(hostInput)}
               className={adminClass.btnPrimary}
             >
-              Сохранить
+              {saving ? "Сохранение…" : "Сохранить"}
             </button>
           </div>
         </label>

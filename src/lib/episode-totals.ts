@@ -41,6 +41,45 @@ export function readEpisodesTotalFromMaterialData(materialData: unknown): number
   return total != null && total > 0 ? total : null;
 }
 
+/**
+ * Плановое число серий из официальных метаданных (Shikimori, episodes_total).
+ * Не включает lastEpisode/episodesCount Kodik — это уже вышедшие серии, не финал сезона.
+ */
+export function resolveAnnouncedEpisodesTotal(input: ResolveEpisodesTotalInput): number | null {
+  const candidates: number[] = [];
+  const materialData = input.materialData ?? input.material?.materialData;
+
+  if (input.shikimoriAnime?.episodes != null && input.shikimoriAnime.episodes > 0) {
+    candidates.push(input.shikimoriAnime.episodes);
+  }
+
+  const fromMaterialData = readEpisodesTotalFromMaterialData(materialData);
+  if (fromMaterialData != null) candidates.push(fromMaterialData);
+
+  return candidates.length > 0 ? Math.max(...candidates) : null;
+}
+
+/** Плановый тотал по Shikimori и materialData всех озвучек. */
+export function resolveAnnouncedEpisodesTotalForShikimoriMaterials(
+  shikimoriId: number,
+  shikimoriAnime: ShikimoriAnime | null | undefined,
+  materials: KodikMaterialEpisodesHint[],
+): number | null {
+  const candidates: number[] = [];
+  const fromAnime = resolveAnnouncedEpisodesTotal({ shikimoriAnime });
+  if (fromAnime != null) candidates.push(fromAnime);
+
+  for (const material of materials) {
+    const total = resolveAnnouncedEpisodesTotal({
+      materialData: material.materialData,
+      material,
+    });
+    if (total != null) candidates.push(total);
+  }
+
+  return candidates.length > 0 ? Math.max(...candidates) : null;
+}
+
 /** Максимум lastEpisode/episodesCount по всем озвучкам одного shikimoriId. */
 export function buildKodikEpisodeTotalsByShikimori(
   materials: KodikMaterialEpisodesHint[],
@@ -148,33 +187,92 @@ export async function loadEpisodeSeasonStats(materialIds: string[]): Promise<Epi
   return { maxEpisodeByMaterialSeason, maxSeasonByMaterial };
 }
 
+function resolveMaterialMaxSeason(
+  kodikId: string,
+  material: Pick<KodikMaterialEpisodesHint, "lastSeason"> | undefined,
+  stats: EpisodeSeasonStats,
+): number {
+  return stats.maxSeasonByMaterial.get(kodikId) ?? material?.lastSeason ?? 1;
+}
+
+function hasSeasonEpisodes(
+  kodikId: string,
+  seasonNumber: number,
+  stats: EpisodeSeasonStats,
+): boolean {
+  const maxEpisode = stats.maxEpisodeByMaterialSeason.get(seasonStatsKey(kodikId, seasonNumber));
+  return maxEpisode != null && maxEpisode > 0;
+}
+
+/**
+ * Плеер и сохранённый прогресс часто отдают season=1, хотя серии в Kodik лежат в lastSeason
+ * (например, отдельная карточка «ТВ-4» → сезон 4, как у shikimori 59970).
+ */
+export function resolveEffectiveSeasonNumber(
+  seasonNumber: number,
+  kodikId: string,
+  material: Pick<KodikMaterialEpisodesHint, "lastSeason"> | undefined,
+  stats: EpisodeSeasonStats,
+): number {
+  const maxSeason = resolveMaterialMaxSeason(kodikId, material, stats);
+  if (seasonNumber === maxSeason) return seasonNumber;
+
+  if (seasonNumber === 1 && maxSeason > 1 && !hasSeasonEpisodes(kodikId, 1, stats)) {
+    return maxSeason;
+  }
+
+  return seasonNumber;
+}
+
+function resolveSeasonMaxEpisode(
+  fromDb: number,
+  maxSeason: number,
+  episodesTotal: number | null,
+): number | null {
+  if (fromDb > 0) {
+    // Для односезонного тайтла episodesTotal — плановый финал, даже если в БД ещё не все серии.
+    if (maxSeason === 1 && episodesTotal != null && episodesTotal > fromDb) {
+      return episodesTotal;
+    }
+    return fromDb;
+  }
+
+  if (episodesTotal != null && episodesTotal > 0) {
+    return episodesTotal;
+  }
+
+  return null;
+}
+
 export function resolveSeasonBounds(
   kodikId: string,
   seasonNumber: number,
-  material: Pick<KodikMaterialEpisodesHint, "lastSeason"> | undefined,
+  material: Pick<KodikMaterialEpisodesHint, "lastSeason" | "lastEpisode"> | undefined,
   episodesTotal: number | null,
   stats: EpisodeSeasonStats,
 ): { maxSeason: number; seasonMaxEpisode: number } | null {
-  const maxSeasonFromDb = stats.maxSeasonByMaterial.get(kodikId);
-  const maxSeason = maxSeasonFromDb ?? material?.lastSeason ?? 1;
+  const maxSeason = resolveMaterialMaxSeason(kodikId, material, stats);
+  const effectiveSeason = resolveEffectiveSeasonNumber(seasonNumber, kodikId, material, stats);
 
-  if (seasonNumber !== maxSeason) return null;
+  if (effectiveSeason !== maxSeason) return null;
 
-  const fromDb = stats.maxEpisodeByMaterialSeason.get(seasonStatsKey(kodikId, seasonNumber)) ?? 0;
-
-  if (episodesTotal == null || episodesTotal <= 0) {
-    if (fromDb <= 0) return null;
-    return { maxSeason, seasonMaxEpisode: fromDb };
+  let fromDb =
+    stats.maxEpisodeByMaterialSeason.get(seasonStatsKey(kodikId, effectiveSeason)) ?? 0;
+  if (fromDb <= 0 && material?.lastEpisode != null && material.lastEpisode > 0) {
+    fromDb = material.lastEpisode;
   }
 
-  return { maxSeason, seasonMaxEpisode: Math.max(fromDb, episodesTotal) };
+  const seasonMaxEpisode = resolveSeasonMaxEpisode(fromDb, maxSeason, episodesTotal);
+  if (seasonMaxEpisode == null || seasonMaxEpisode <= 0) return null;
+
+  return { maxSeason, seasonMaxEpisode };
 }
 
 export function isOnSeasonMaxEpisode(
   seasonNumber: number,
   episodeNumber: number,
   kodikId: string,
-  material: Pick<KodikMaterialEpisodesHint, "lastSeason"> | undefined,
+  material: Pick<KodikMaterialEpisodesHint, "lastSeason" | "lastEpisode"> | undefined,
   episodesTotal: number | null,
   stats: EpisodeSeasonStats,
 ): boolean {

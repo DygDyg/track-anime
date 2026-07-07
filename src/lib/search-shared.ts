@@ -2,6 +2,26 @@ import type { AdvancedSearchFilters } from "@/lib/search-fields";
 
 export const SEARCH_MIN_QUERY_LENGTH = 2;
 export const SEARCH_PAGE_SIZE = 24;
+/** Меньше этого числа title-совпадений в шапке — второй запрос по описанию. */
+export const HEADER_DESCRIPTION_SUPPLEMENT_THRESHOLD = 10;
+
+export function parseExcludeShikimoriIds(value: string | null | undefined): number[] {
+  if (!value?.trim()) return [];
+
+  const seen = new Set<number>();
+  const result: number[] = [];
+
+  for (const part of value.split(",")) {
+    const id = Number(part.trim());
+    if (!Number.isFinite(id) || id <= 0) continue;
+    const normalized = Math.floor(id);
+    if (seen.has(normalized)) continue;
+    seen.add(normalized);
+    result.push(normalized);
+  }
+
+  return result;
+}
 
 export function escapeIlikePattern(value: string): string {
   return value.replace(/([%_\\])/g, "\\$1");
@@ -30,6 +50,8 @@ export type SearchPage = {
   hasMore: boolean;
   query: string;
   genre: string | null;
+  /** Запрос с исправленной раскладкой, если по исходному ничего не найдено. */
+  layoutCorrectedQuery?: string | null;
   tab?: "quick" | "advanced";
   advancedFilters?: AdvancedSearchFilters;
 };

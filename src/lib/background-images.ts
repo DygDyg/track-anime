@@ -17,13 +17,14 @@ function isImageFile(name: string): boolean {
 
 /** Каталог с фонами: `public/bg` или корневой `bg`. */
 export function getBackgroundImagesDir(): string | null {
+  const root = /* turbopackIgnore: true */ process.cwd();
   const candidates = [
-    path.join(process.cwd(), "public", "bg"),
-    path.join(process.cwd(), "bg"),
+    path.join(root, "public", "bg"),
+    path.join(root, "bg"),
   ];
 
   for (const dir of candidates) {
-    if (fs.existsSync(dir) && fs.statSync(dir).isDirectory()) {
+    if (fs.existsSync(/* turbopackIgnore: true */ dir) && fs.statSync(/* turbopackIgnore: true */ dir).isDirectory()) {
       return dir;
     }
   }
@@ -32,7 +33,8 @@ export function getBackgroundImagesDir(): string | null {
 }
 
 function fileToUrl(file: string, dir: string): string {
-  const publicDir = path.join(process.cwd(), "public", "bg");
+  const root = /* turbopackIgnore: true */ process.cwd();
+  const publicDir = path.join(root, "public", "bg");
   const inPublic = dir === path.normalize(publicDir);
 
   if (inPublic) {
@@ -46,12 +48,12 @@ export function listBackgroundImages(): string[] {
   const dir = getBackgroundImagesDir();
   if (!dir) return [];
 
-  const mtimeMs = fs.statSync(dir).mtimeMs;
+  const mtimeMs = fs.statSync(/* turbopackIgnore: true */ dir).mtimeMs;
   if (cachedListing?.dir === dir && cachedListing.mtimeMs === mtimeMs) {
     return cachedListing.files;
   }
 
-  const files = fs.readdirSync(dir).filter(isImageFile).sort();
+  const files = fs.readdirSync(/* turbopackIgnore: true */ dir).filter(isImageFile).sort();
   cachedListing = { dir, mtimeMs, files };
   return files;
 }

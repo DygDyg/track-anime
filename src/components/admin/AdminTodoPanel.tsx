@@ -25,6 +25,7 @@ export function AdminTodoPanel() {
   const [importance, setImportance] = useState(60);
   const [complexity, setComplexity] = useState(50);
   const [saving, setSaving] = useState(false);
+  const [busyId, setBusyId] = useState<string | null>(null);
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -71,6 +72,7 @@ export function AdminTodoPanel() {
   }
 
   async function patchItem(id: string, patch: Partial<AdminTodoDto>) {
+    setBusyId(id);
     setError(null);
     try {
       const res = await fetch(`/api/admin/todos/${id}`, {
@@ -82,12 +84,15 @@ export function AdminTodoPanel() {
       await load();
     } catch {
       setError("Не удалось обновить задачу");
+    } finally {
+      setBusyId(null);
     }
   }
 
   async function removeItem(id: string, itemTitle: string) {
     if (!window.confirm(`Удалить «${itemTitle}» из плана?`)) return;
 
+    setBusyId(id);
     setError(null);
     try {
       const res = await fetch(`/api/admin/todos/${id}`, { method: "DELETE" });
@@ -95,6 +100,8 @@ export function AdminTodoPanel() {
       await load();
     } catch {
       setError("Не удалось удалить задачу");
+    } finally {
+      setBusyId(null);
     }
   }
 
@@ -196,37 +203,41 @@ export function AdminTodoPanel() {
                     {item.status === "planned" ? (
                       <button
                         type="button"
+                        disabled={busyId === item.id}
                         onClick={() => void patchItem(item.id, { status: "in_progress" })}
                         className={adminClass.btnSecondary}
                       >
-                        В работу
+                        {busyId === item.id ? "…" : "В работу"}
                       </button>
                     ) : null}
                     {item.status !== "done" ? (
                       <button
                         type="button"
+                        disabled={busyId === item.id}
                         onClick={() => void patchItem(item.id, { status: "done" })}
                         className={adminClass.btnSecondary}
                       >
-                        Готово
+                        {busyId === item.id ? "…" : "Готово"}
                       </button>
                     ) : null}
                     {item.status === "done" ? (
                       <button
                         type="button"
+                        disabled={busyId === item.id}
                         onClick={() => void removeItem(item.id, item.title)}
                         className={adminClass.btnSecondary}
                       >
-                        Удалить
+                        {busyId === item.id ? "…" : "Удалить"}
                       </button>
                     ) : null}
                     {item.status === "in_progress" ? (
                       <button
                         type="button"
+                        disabled={busyId === item.id}
                         onClick={() => void patchItem(item.id, { status: "planned" })}
                         className={adminClass.btnSecondary}
                       >
-                        В план
+                        {busyId === item.id ? "…" : "В план"}
                       </button>
                     ) : null}
                   </div>

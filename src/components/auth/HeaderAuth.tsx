@@ -1,41 +1,31 @@
 "use client";
 
-import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { useEffect, useRef, useState } from "react";
 import { useAuth } from "@/components/auth/AuthProvider";
+import { profileMenuItemClass, profileMenuLogoutClass } from "@/components/auth/profile-menu-styles";
+import { NavLink } from "@/components/NavLink";
+import { AvatarWithDecoration } from "@/components/profile/AvatarWithDecoration";
+import { useSiteSettings } from "@/components/SiteSettingsProvider";
+import { userProfilePath } from "@/lib/public-user";
 import { headerControl } from "@/components/header/header-styles";
+import { LoadingSpinner } from "@/components/ui/LoadingSpinner";
 
-function UserAvatar({ nickname, avatar }: { nickname: string; avatar: string | null }) {
-  if (avatar) {
-    return <img src={avatar} alt="" className={headerControl.avatar} />;
-  }
-
+function LoginIcon({ className = "h-5 w-5" }: { className?: string }) {
   return (
-    <span className={headerControl.avatarFallback}>{nickname.slice(0, 1).toUpperCase()}</span>
-  );
-}
-
-function ChevronIcon({ open }: { open: boolean }) {
-  return (
-    <svg
-      viewBox="0 0 20 20"
-      className={[
-        "h-4 w-4 shrink-0 text-muted transition-transform",
-        open ? "rotate-180" : "",
-      ].join(" ")}
-      fill="none"
-      stroke="currentColor"
-      strokeWidth="2"
-      aria-hidden
-    >
-      <path d="M5 8l5 5 5-5" strokeLinecap="round" strokeLinejoin="round" />
+    <svg viewBox="0 0 24 24" className={className} fill="none" stroke="currentColor" strokeWidth="1.75" aria-hidden>
+      <circle cx="12" cy="8" r="4" />
+      <path d="M4 20c0-3.3 2.7-6 6-6h4c3.3 0 6 2.7 6 6" strokeLinecap="round" />
     </svg>
   );
 }
 
+const profileMenuPanelClass =
+  "site-header-bg absolute z-50 mt-1 w-[min(16rem,calc(100vw-2rem))] overflow-hidden rounded-xl border border-border/90 py-1 shadow-lg shadow-black/30 backdrop-blur-lg backdrop-saturate-150";
+
 function ProfileMenu({ compact = false }: { compact?: boolean }) {
-  const { user, logout } = useAuth();
+  const { user, logout, loggingOut } = useAuth();
+  const { settings } = useSiteSettings();
   const pathname = usePathname();
   const [open, setOpen] = useState(false);
   const rootRef = useRef<HTMLDivElement>(null);
@@ -47,7 +37,7 @@ function ProfileMenu({ compact = false }: { compact?: boolean }) {
   useEffect(() => {
     if (!open) return;
 
-    const onPointerDown = (event: MouseEvent) => {
+    const onPointerDown = (event: PointerEvent) => {
       if (rootRef.current && !rootRef.current.contains(event.target as Node)) {
         setOpen(false);
       }
@@ -57,94 +47,131 @@ function ProfileMenu({ compact = false }: { compact?: boolean }) {
       if (event.key === "Escape") setOpen(false);
     };
 
-    document.addEventListener("mousedown", onPointerDown);
+    document.addEventListener("pointerdown", onPointerDown);
     document.addEventListener("keydown", onKeyDown);
     return () => {
-      document.removeEventListener("mousedown", onPointerDown);
+      document.removeEventListener("pointerdown", onPointerDown);
       document.removeEventListener("keydown", onKeyDown);
     };
   }, [open]);
 
   if (!user) return null;
 
-  const menuItemClass =
-    "flex w-full items-center rounded-md px-3 py-2 text-left text-sm text-foreground transition hover:bg-foreground/5";
-  const menuItemActiveClass = "bg-accent/10 text-accent";
+  const profileHref = userProfilePath(user.shikimoriId);
+  const profileActive =
+    Boolean(profileHref && (pathname === profileHref || pathname.startsWith(`${profileHref}/`))) ||
+    pathname === "/profile" ||
+    pathname.startsWith("/profile/");
+
+  const avatarDecorationId = settings.avatarDecorationId;
+  const avatarDecorationScale = settings.avatarDecorationScale;
+  const menuCentered = !compact;
 
   return (
     <div ref={rootRef} className={compact ? "relative w-full" : "relative"}>
       <button
         type="button"
         onClick={() => setOpen((value) => !value)}
-        className={[
-          headerControl.text,
-          compact ? "w-full justify-between" : "",
-          open ? "bg-foreground/5" : "",
-        ].join(" ")}
+        className={
+          compact
+            ? [
+                headerControl.text,
+                "w-full justify-between",
+                open ? "bg-foreground/5" : "",
+              ].join(" ")
+            : [
+                "inline-flex h-10 w-10 shrink-0 items-center justify-center overflow-visible rounded-full",
+                "border border-border bg-card text-muted transition-colors hover:text-foreground",
+                profileActive || open
+                  ? "text-accent ring-2 ring-accent/35 ring-offset-2 ring-offset-card"
+                  : "",
+              ].join(" ")
+        }
+        aria-label={user.nickname}
         aria-expanded={open}
         aria-haspopup="menu"
         title={user.nickname}
       >
-        <span className="inline-flex min-w-0 items-center gap-2">
-          <UserAvatar nickname={user.nickname} avatar={user.avatar} />
-          <span className="truncate">{user.nickname}</span>
-        </span>
-        <ChevronIcon open={open} />
+        {compact ? (
+          <span className="inline-flex min-w-0 items-center gap-2">
+            <AvatarWithDecoration
+              avatar={user.avatar}
+              nickname={user.nickname}
+              decorationId={avatarDecorationId}
+              decorationScale={avatarDecorationScale}
+              size="xs"
+            />
+            <span className="truncate">{user.nickname}</span>
+          </span>
+        ) : (
+          <AvatarWithDecoration
+            avatar={user.avatar}
+            nickname={user.nickname}
+            decorationId={avatarDecorationId}
+            decorationScale={avatarDecorationScale}
+            size="sm"
+          />
+        )}
       </button>
 
       {open ? (
         <div
           role="menu"
-          className={[
-            "absolute z-50 mt-1 min-w-[12rem] overflow-hidden rounded-lg border border-border bg-card py-1 shadow-lg shadow-black/25",
-            compact ? "left-0 right-0" : "right-0",
-          ].join(" ")}
+          className={[profileMenuPanelClass, compact ? "left-0 right-0" : "right-0"].join(" ")}
         >
-          <Link
-            href="/profile"
+          <NavLink
+            href={profileHref}
             role="menuitem"
-            className={[menuItemClass, pathname === "/profile" ? menuItemActiveClass : ""].join(" ")}
+            className={profileMenuItemClass(pathname === profileHref, menuCentered)}
             onClick={() => setOpen(false)}
           >
-            Профиль
-          </Link>
-          <Link
+            <span className="truncate">{user.nickname}</span>
+          </NavLink>
+          <NavLink
             href="/history"
             role="menuitem"
-            className={[menuItemClass, pathname === "/history" ? menuItemActiveClass : ""].join(" ")}
+            className={profileMenuItemClass(pathname === "/history", menuCentered)}
             onClick={() => setOpen(false)}
           >
             История
-          </Link>
-          <Link
+          </NavLink>
+          <NavLink
             href="/favorites"
             role="menuitem"
-            className={[menuItemClass, pathname === "/favorites" ? menuItemActiveClass : ""].join(" ")}
+            className={profileMenuItemClass(
+              pathname === "/favorites" || pathname.startsWith("/favorites/"),
+              menuCentered,
+            )}
             onClick={() => setOpen(false)}
           >
             Избранное
-          </Link>
+          </NavLink>
           {user.isAdmin ? (
-            <Link
+            <NavLink
               href="/admin"
               role="menuitem"
-              className={[menuItemClass, pathname.startsWith("/admin") ? menuItemActiveClass : ""].join(" ")}
+              className={profileMenuItemClass(pathname.startsWith("/admin"), menuCentered)}
               onClick={() => setOpen(false)}
             >
               Админ
-            </Link>
+            </NavLink>
           ) : null}
           <div className="my-1 border-t border-border/80" />
           <button
             type="button"
             role="menuitem"
-            className={`${menuItemClass} text-muted hover:text-foreground`}
+            disabled={loggingOut}
+            aria-busy={loggingOut || undefined}
+            className={[
+              profileMenuLogoutClass(menuCentered),
+              loggingOut ? "cursor-wait opacity-70" : "",
+            ].join(" ")}
             onClick={() => {
               setOpen(false);
               void logout();
             }}
           >
-            Выйти
+            {loggingOut ? "Выход…" : "Выйти"}
           </button>
         </div>
       ) : null}
@@ -153,19 +180,27 @@ function ProfileMenu({ compact = false }: { compact?: boolean }) {
 }
 
 export function HeaderAuth({ compact = false }: { compact?: boolean }) {
-  const { user, loading, login } = useAuth();
+  const { user, login, authNavigating } = useAuth();
 
-  if (loading) {
-    return <span aria-hidden className={headerControl.skeleton} />;
+  if (user) {
+    return <ProfileMenu compact={compact} />;
   }
 
-  if (!user) {
-    return (
-      <button type="button" onClick={login} className={headerControl.primary}>
-        Войти
-      </button>
-    );
-  }
-
-  return <ProfileMenu compact={compact} />;
+  return (
+    <button
+      type="button"
+      onClick={login}
+      disabled={authNavigating}
+      aria-busy={authNavigating || undefined}
+      className={[
+        "inline-flex h-10 w-10 shrink-0 items-center justify-center overflow-hidden rounded-full",
+        "border border-border bg-card text-muted transition-colors hover:text-foreground",
+        authNavigating ? "cursor-wait opacity-80" : "",
+      ].join(" ")}
+      aria-label="Войти через Shikimori"
+      title="Войти"
+    >
+      {authNavigating ? <LoadingSpinner size="sm" /> : <LoginIcon />}
+    </button>
+  );
 }

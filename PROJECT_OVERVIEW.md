@@ -58,6 +58,8 @@ Background / CLI:
 
 ## Related Docs
 
+- `AGENTS.md` — Codex rules and project invariants
+- `AI_RULES.md` / `AI_CONTEXT.md` — shared AI rules and quick reference for Codex/Cursor
 - `docs/shikimori-api/` — Shikimori API reference
 - `docs/kodik-api/` — Kodik API reference
 - `docs/KodikSyncDocumentation.md` — sync system details

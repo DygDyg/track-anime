@@ -2,7 +2,7 @@ import { shikimoriAuthFetch } from "@/lib/shikimori/auth-client";
 import type { ShikimoriListStatus } from "@/lib/shikimori/user-rates.types";
 
 export type { ShikimoriListStatus, ListStatusTab } from "@/lib/shikimori/user-rates.types";
-export { LIST_STATUS_LABELS, LIST_STATUS_TABS } from "@/lib/shikimori/user-rates.types";
+export { LIST_STATUS_LABELS, LIST_STATUS_LABELS_MOBILE, LIST_STATUS_TABS } from "@/lib/shikimori/user-rates.types";
 
 export type ShikimoriUserRate = {
   id: number;

@@ -10,8 +10,9 @@ export const authConfig = {
   oauthRedirectCookie: OAUTH_REDIRECT_COOKIE,
   sessionMaxAgeSec: SESSION_MAX_AGE_SEC,
   oauthStateMaxAgeSec: OAUTH_STATE_MAX_AGE_SEC,
-  /** Только scope, включённые в OAuth-приложении Shikimori. Друзья — через SHIKIMORI_OAUTH_SCOPE. */
+  /** Scope по умолчанию — только то, что доступно большинству OAuth-приложений Shikimori. */
   defaultScope: "user_rates",
+  oauthReturnCookie: "ta.oauth_return",
 } as const;
 
 export function getAuthBaseUrl(): string {
@@ -29,8 +30,15 @@ function parseOriginHost(origin: string): string | null {
   }
 }
 
+/** Публичные домены Track Anime (OAuth и редиректы остаются на текущем host). */
+const DEFAULT_ALLOWED_ORIGIN_HOSTS = [
+  "ta.dygdyg.ru",
+  "track-anime.dygdyg.ru",
+  "track-anime.duckdns.org",
+] as const;
+
 function getAllowedOriginHosts(): Set<string> {
-  const hosts = new Set<string>();
+  const hosts = new Set<string>(DEFAULT_ALLOWED_ORIGIN_HOSTS);
 
   const configuredHost = parseOriginHost(getAuthBaseUrl());
   if (configuredHost) hosts.add(configuredHost);
@@ -73,7 +81,7 @@ export function getShikimoriOAuthHint(redirectUri: string, siteOrigin: string): 
   if (!isShikimoriAllowedRedirectUri(redirectUri)) {
     return (
       "Shikimori не принимает HTTP для доменов (только localhost). " +
-      "Откройте http://localhost:3000 для dev или https://ta.dygdyg.ru для прода."
+      "Откройте http://localhost:3000 для dev или HTTPS-адрес текущего сайта для прода."
     );
   }
 
@@ -146,20 +154,6 @@ export function getShikimoriRedirectUri(origin?: string | null): string {
     return explicit.replace(/\/$/, "");
   }
 
-  const configuredBase = getAuthBaseUrl();
-  try {
-    const configured = new URL(configuredBase);
-    // Production за reverse proxy: OAuth всегда на публичный AUTH_URL
-    if (!isLocalHost(configured.hostname)) {
-      const prodUri = `${configuredBase}/api/auth/callback/shikimori`;
-      if (isShikimoriAllowedRedirectUri(prodUri)) {
-        return prodUri;
-      }
-    }
-  } catch {
-    /* ignore invalid AUTH_URL */
-  }
-
   const resolved = `${resolveAuthOrigin(origin)}/api/auth/callback/shikimori`;
   if (isShikimoriAllowedRedirectUri(resolved)) {
     return resolved;
@@ -196,6 +190,20 @@ export function getShikimoriScope(): string {
   return process.env.SHIKIMORI_OAUTH_SCOPE?.trim() || authConfig.defaultScope;
 }
 
+/** Безопасный относительный путь для редиректа после OAuth. */
+export function parseOAuthReturnPath(raw: string | null | undefined): string | null {
+  if (!raw?.trim()) return null;
+  const path = raw.trim();
+  if (!path.startsWith("/") || path.startsWith("//")) return null;
+  if (path.includes("://")) return null;
+  return path;
+}
+
+/** @deprecated Используйте parseOAuthReturnPath */
+export function sanitizeOAuthReturnPath(raw: string | null | undefined): string | null {
+  return parseOAuthReturnPath(raw);
+}
+
 /** Shikimori ID администраторов (через запятую). При входе выдаётся isAdmin. */
 export function getAdminShikimoriIds(): Set<number> {
   const raw = process.env.ADMIN_SHIKIMORI_IDS?.trim();
@@ -213,12 +221,17 @@ export function isBootstrapAdmin(shikimoriId: number): boolean {
   return getAdminShikimoriIds().has(shikimoriId);
 }
 
-/** Shikimori ждёт scope через «+» в URL; URLSearchParams кодирует «+» в %2B — передаём пробелы. */
-export function formatShikimoriScopeForAuthorize(scope: string): string {
+/** Scope для authorize URL: буквальные «+» между scopes (Shikimori не принимает %2B). */
+export function buildShikimoriAuthorizeScopeQuery(scope: string): string {
   return scope
-    .split("+")
+    .split(/[\s+]+/)
     .map((part) => part.trim())
     .filter(Boolean)
-    .join(" ");
+    .join("+");
+}
+
+/** @deprecated Используйте buildShikimoriAuthorizeScopeQuery + ручной query-параметр scope. */
+export function formatShikimoriScopeForAuthorize(scope: string): string {
+  return buildShikimoriAuthorizeScopeQuery(scope).split("+").join(" ");
 }
 

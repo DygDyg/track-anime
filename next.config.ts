@@ -1,8 +1,9 @@
 import type { NextConfig } from "next";
 import { withSerwist } from "@serwist/turbopack";
+import { getDevAllowedOrigins } from "./scripts/dev-allowed-origins.mjs";
 
 const nextConfig: NextConfig = {
-  allowedDevOrigins: ["track-anime.dygdyg.ru", "dygdyg.ru"],
+  allowedDevOrigins: getDevAllowedOrigins(),
   async headers() {
     return [
       {

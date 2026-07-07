@@ -5,6 +5,7 @@ import { useCallback, useEffect, useState } from "react";
 import { pingDiscordBridge } from "@/lib/discord-presence";
 import { useDiscordConfig } from "@/hooks/useDiscordConfig";
 import type { SiteSettings } from "@/lib/site-settings";
+import { LoadingSpinner } from "@/components/ui/LoadingSpinner";
 
 function ToggleRow({
   label,
@@ -49,14 +50,23 @@ export function DiscordRpcSettingsTab({
   updateSettings: (patch: Partial<SiteSettings>) => void;
 }) {
   const [bridgeOnline, setBridgeOnline] = useState<boolean | null>(null);
+  const [bridgeChecking, setBridgeChecking] = useState(false);
   const { configured, loading, bridgeDownloadUrl } = useDiscordConfig();
 
   const checkBridge = useCallback(async () => {
-    setBridgeOnline(await pingDiscordBridge());
+    setBridgeChecking(true);
+    try {
+      setBridgeOnline(await pingDiscordBridge());
+    } finally {
+      setBridgeChecking(false);
+    }
   }, []);
 
   useEffect(() => {
-    if (!configured) return;
+    if (!configured || !settings.discordPresenceEnabled) {
+      setBridgeOnline(null);
+      return;
+    }
     void checkBridge();
   }, [checkBridge, configured, settings.discordPresenceEnabled]);
 
@@ -78,6 +88,14 @@ export function DiscordRpcSettingsTab({
             .
           </p>
         ) : null}
+
+        <ToggleRow
+          label="Включить Discord RPC"
+          hint="По умолчанию выключено — сайт не обращается к локальному мосту, пока вы не включите"
+          checked={settings.discordPresenceEnabled}
+          disabled={!configured}
+          onChange={(checked) => updateSettings({ discordPresenceEnabled: checked })}
+        />
       </section>
 
       <section className="space-y-2">
@@ -112,24 +130,21 @@ export function DiscordRpcSettingsTab({
           </span>
           <button
             type="button"
+            disabled={bridgeChecking}
             onClick={() => void checkBridge()}
-            className="rounded-md border border-border px-2 py-1 transition hover:border-accent/40 hover:text-foreground"
+            className="inline-flex items-center gap-1.5 rounded-md border border-border px-2 py-1 transition hover:border-accent/40 hover:text-foreground disabled:cursor-wait disabled:opacity-60"
           >
-            Проверить
+            {bridgeChecking ? <LoadingSpinner size="xs" /> : null}
+            {bridgeChecking ? "Проверка…" : "Проверить"}
           </button>
         </div>
       </section>
 
       <section className="space-y-2">
         <h3 className="text-sm font-semibold text-foreground">Отображение</h3>
-
-        <ToggleRow
-          label="Показывать просмотр в Discord"
-          hint="Название аниме, серия и таймер просмотра"
-          checked={settings.discordPresenceEnabled}
-          disabled={!configured}
-          onChange={(checked) => updateSettings({ discordPresenceEnabled: checked })}
-        />
+        <p className="text-xs text-muted">
+          На странице аниме при включённом RPC показываются название, серия и таймер просмотра.
+        </p>
 
         <ToggleRow
           label="Показывать раздел сайта"

@@ -1,6 +1,7 @@
 import { cookies } from "next/headers";
 import { NextRequest, NextResponse } from "next/server";
-import { authConfig, isAuthConfigured } from "@/lib/auth/config";
+import { authConfig, getShikimoriScope, isAuthConfigured } from "@/lib/auth/config";
+import { hasShikimoriScope, isFriendsScopeConfigured } from "@/lib/auth/shikimori-scope";
 import { getRequestOrigin } from "@/lib/auth/request-origin";
 import { consumeOAuthState } from "@/lib/auth/oauth-state-store";
 import {
@@ -10,6 +11,7 @@ import {
 } from "@/lib/auth/shikimori-oauth";
 import {
   clearOAuthRedirectCookieOptions,
+  clearOAuthReturnCookieOptions,
   clearOAuthStateCookieOptions,
   createSession,
   sessionCookieOptions,
@@ -19,6 +21,7 @@ import {
 function clearOAuthCookies(response: NextResponse) {
   response.cookies.set(clearOAuthStateCookieOptions());
   response.cookies.set(clearOAuthRedirectCookieOptions());
+  response.cookies.set(clearOAuthReturnCookieOptions());
 }
 
 function finishLoginError(baseUrl: string, params: Record<string, string>) {
@@ -84,6 +87,17 @@ export async function GET(request: NextRequest) {
 
   try {
     const tokens = await exchangeShikimoriCode(code, oauthContext.redirectUri);
+    const grantedScope = tokens.scope ?? getShikimoriScope();
+
+    if (isFriendsScopeConfigured() && !hasShikimoriScope(grantedScope, "friends")) {
+      const response = finishLoginError(baseUrl, {
+        error: "friends_scope_missing",
+        details: `Shikimori выдал: ${grantedScope}. Запрошено: ${getShikimoriScope()}. Включите scope friends в OAuth-приложении на Shikimori.`,
+      });
+      clearOAuthCookies(response);
+      return response;
+    }
+
     const whoami = await fetchShikimoriWhoami(tokens.access_token);
     const user = await upsertShikimoriUser({
       shikimoriId: whoami.id,
@@ -92,12 +106,16 @@ export async function GET(request: NextRequest) {
       accessToken: tokens.access_token,
       refreshToken: tokens.refresh_token,
       expiresAt: tokenExpiresAt(tokens.expires_in),
-      scope: tokens.scope ?? authConfig.defaultScope,
+      scope: grantedScope,
     });
 
     const sessionToken = await createSession(user.id);
 
-    const response = NextResponse.redirect(new URL("/", baseUrl));
+    const cookieStore = await cookies();
+    const returnPath = cookieStore.get(authConfig.oauthReturnCookie)?.value;
+    const redirectTarget = returnPath?.startsWith("/") ? returnPath : "/";
+
+    const response = NextResponse.redirect(new URL(redirectTarget, baseUrl));
     response.cookies.set(sessionCookieOptions(sessionToken));
     clearOAuthCookies(response);
     return response;
