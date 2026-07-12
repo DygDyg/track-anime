@@ -1,5 +1,10 @@
 import { NextRequest, NextResponse } from "next/server";
-import { getRecentReleasesPageLive, serializeRelease, type ReleasesCursor } from "@/lib/releases";
+import {
+  getRecentReleasesPage,
+  getRecentReleasesPageLive,
+  serializeRelease,
+  type ReleasesCursor,
+} from "@/lib/releases";
 
 const DEFAULT_PAGE_SIZE = 24;
 const MAX_PAGE_SIZE = 48;
@@ -29,8 +34,11 @@ export async function GET(request: NextRequest) {
     Math.max(1, Number(searchParams.get("pageSize") ?? DEFAULT_PAGE_SIZE) || DEFAULT_PAGE_SIZE),
   );
   const cursor = parseCursor(searchParams.get("cursor"));
+  const live = searchParams.get("live") === "1";
 
-  const { items, hasMore, nextCursor } = await getRecentReleasesPageLive(pageSize, cursor);
+  const { items, hasMore, nextCursor } = live
+    ? await getRecentReleasesPageLive(pageSize, cursor)
+    : await getRecentReleasesPage(pageSize, cursor);
 
   return NextResponse.json(
     {
@@ -40,7 +48,7 @@ export async function GET(request: NextRequest) {
     },
     {
       headers: {
-        "Cache-Control": "private, no-store",
+        "Cache-Control": live ? "private, no-store" : "public, s-maxage=300, stale-while-revalidate=60",
       },
     },
   );

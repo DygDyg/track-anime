@@ -117,6 +117,10 @@ type RawReleaseRow = {
   score: string | null;
 };
 
+const CATALOG_QUERY_BATCH_FACTOR = 4;
+const CATALOG_QUERY_MIN_BATCH = 96;
+const CATALOG_QUERY_MAX_BATCHES = 8;
+
 /** title_key тайтлов, у которых есть KodikEpisodeRelease (для исключения из каталога) */
 function releaseTitleKeysCte() {
   return `
@@ -233,46 +237,49 @@ async function queryCatalogReleasesPerTitle(
   limit: number,
   after?: { releasedAt: Date; id: string },
 ): Promise<ReleaseItem[]> {
+  const items: ReleaseItem[] = [];
+  const seenIds = new Set<string>();
+  let scanAfter = after;
+
+  for (let batch = 0; batch < CATALOG_QUERY_MAX_BATCHES && items.length < limit; batch += 1) {
+    const rows = await queryCatalogReleaseCandidates(
+      Math.max(CATALOG_QUERY_MIN_BATCH, limit * CATALOG_QUERY_BATCH_FACTOR),
+      scanAfter,
+    );
+
+    if (rows.length === 0) break;
+
+    for (const row of rows) {
+      scanAfter = { releasedAt: toDate(row.releasedAt), id: row.id };
+
+      if (seenIds.has(row.id)) continue;
+      seenIds.add(row.id);
+      items.push(mapReleaseRow(row));
+
+      if (items.length >= limit) break;
+    }
+
+    if (rows.length < Math.max(CATALOG_QUERY_MIN_BATCH, limit * CATALOG_QUERY_BATCH_FACTOR)) break;
+  }
+
+  return items;
+}
+
+async function queryCatalogReleaseCandidates(
+  limit: number,
+  after?: { releasedAt: Date; id: string },
+): Promise<RawReleaseRow[]> {
   const afterReleasedAt = after?.releasedAt ?? null;
   const afterId = after?.id ?? null;
 
   const rows = await prisma.$queryRawUnsafe<RawReleaseRow[]>(
     `
-    WITH ${releaseTitleKeysCte()},
-    titled_materials AS (
+    WITH catalog_candidates AS (
       SELECT
-        m."kodikId",
-        m."shikimoriId",
-        m."kodikUpdatedAt",
-        m."lastSeason",
-        m."lastEpisode",
         CASE
           WHEN m."shikimoriId" IS NOT NULL THEN m."shikimoriId"::text
           ELSE m."kodikId"
-        END AS title_key
-      FROM "KodikMaterial" m
-      WHERE (
-        COALESCE(m."lastEpisode", 0) > 0
-        OR m."episodesLoaded" = true
-      )
-      AND CASE
-        WHEN m."shikimoriId" IS NOT NULL THEN m."shikimoriId"::text
-        ELSE m."kodikId"
-      END NOT IN (SELECT title_key FROM release_title_keys)
-    ),
-    best_material AS (
-      SELECT DISTINCT ON (tm.title_key)
-        tm.title_key,
-        tm."kodikId",
-        tm."shikimoriId",
-        tm."lastSeason",
-        tm."lastEpisode"
-      FROM titled_materials tm
-      ORDER BY tm.title_key, tm."kodikUpdatedAt" DESC NULLS LAST, tm."kodikId"
-    ),
-    catalog_row AS (
-      SELECT DISTINCT ON (bm.title_key)
-        bm.title_key AS id,
+        END AS id,
         COALESCE(
           NULLIF(m."materialData"->>'anime_title', ''),
           m."title"
@@ -283,12 +290,12 @@ async function queryCatalogReleasesPerTitle(
           NULLIF(m."materialData"->>'worldart_poster_url', '')
         ) AS "posterUrl",
         m."materialData"->>'worldart_link' AS "worldartLinkFromMaterial",
-        COALESCE(bm."lastSeason", 1) AS "seasonNumber",
-        bm."lastEpisode" AS "episodeNumber",
+        COALESCE(m."lastSeason", 1) AS "seasonNumber",
+        m."lastEpisode" AS "episodeNumber",
         m."translationTitle" AS "translationName",
         COALESCE(e."playerLink", m."playerLink") AS "playerLink",
-        bm."shikimoriId",
-        COALESCE(m."kodikUpdatedAt", m."updatedAt") AS "releasedAt",
+        m."shikimoriId",
+        m."kodikUpdatedAt" AS "releasedAt",
         COALESCE(
           m."materialData"->>'anime_description',
           m."materialData"->>'description'
@@ -306,29 +313,56 @@ async function queryCatalogReleasesPerTitle(
         )), '') AS score,
         m."materialData"->'screenshots' AS "animeScreenshots",
         e."screenshots" AS "episodeScreenshots"
-      FROM best_material bm
-      INNER JOIN "KodikMaterial" m ON m."kodikId" = bm."kodikId"
-      LEFT JOIN "KodikEpisode" e ON e."materialId" = bm."kodikId"
-        AND e."seasonNumber" = COALESCE(bm."lastSeason", 1)
-        AND e."episodeNumber" = bm."lastEpisode"
-      WHERE bm."lastEpisode" IS NOT NULL AND bm."lastEpisode" > 0
-      ORDER BY bm.title_key
+      FROM "KodikMaterial" m
+      LEFT JOIN "KodikEpisode" e ON e."materialId" = m."kodikId"
+        AND e."seasonNumber" = COALESCE(m."lastSeason", 1)
+        AND e."episodeNumber" = m."lastEpisode"
+      WHERE m."episodesLoaded" = true
+        AND m."lastEpisode" IS NOT NULL
+        AND m."lastEpisode" > 0
+        AND m."kodikUpdatedAt" IS NOT NULL
+        AND (
+          $2::timestamptz IS NULL
+          OR (
+            m."kodikUpdatedAt",
+            CASE
+              WHEN m."shikimoriId" IS NOT NULL THEN m."shikimoriId"::text
+              ELSE m."kodikId"
+            END
+          ) < ($2::timestamptz, $3)
+        )
+        AND NOT EXISTS (
+          SELECT 1
+          FROM "KodikEpisodeRelease" r
+          LEFT JOIN "KodikMaterial" rm ON rm."kodikId" = r."materialId"
+          WHERE CASE
+            WHEN COALESCE(rm."shikimoriId", r."shikimoriId") IS NOT NULL
+              THEN COALESCE(rm."shikimoriId", r."shikimoriId")::text
+            ELSE r."materialId"
+          END = CASE
+            WHEN m."shikimoriId" IS NOT NULL THEN m."shikimoriId"::text
+            ELSE m."kodikId"
+          END
+        )
+      ORDER BY
+        m."kodikUpdatedAt" DESC,
+        CASE
+          WHEN m."shikimoriId" IS NOT NULL THEN m."shikimoriId"::text
+          ELSE m."kodikId"
+        END ASC,
+        m."kodikId" ASC
+      LIMIT $1
     )
     SELECT *
-    FROM catalog_row
-    WHERE (
-      $2::timestamptz IS NULL
-      OR ("releasedAt", id) < ($2::timestamptz, $3)
-    )
+    FROM catalog_candidates
     ORDER BY "releasedAt" DESC, id ASC
-    LIMIT $1
     `,
     limit,
     afterReleasedAt,
     afterId,
   );
 
-  return rows.map(mapReleaseRow);
+  return rows;
 }
 
 async function countFreshReleasesPerTitle(): Promise<number> {
@@ -372,10 +406,7 @@ async function countCatalogReleasesPerTitle(): Promise<number> {
           ELSE m."kodikId"
         END AS title_key
       FROM "KodikMaterial" m
-      WHERE (
-        COALESCE(m."lastEpisode", 0) > 0
-        OR m."episodesLoaded" = true
-      )
+      WHERE m."episodesLoaded" = true
       AND CASE
         WHEN m."shikimoriId" IS NOT NULL THEN m."shikimoriId"::text
         ELSE m."kodikId"
@@ -390,16 +421,11 @@ async function countCatalogReleasesPerTitle(): Promise<number> {
     )
     SELECT COUNT(*)::bigint AS count
     FROM best_material bm
-    WHERE bm."lastEpisode" IS NOT NULL AND bm."lastEpisode" > 0
+
     `,
   );
 
   return Number(result[0]?.count ?? 0);
-}
-
-async function catalogHasMore(after?: { releasedAt: Date; id: string }): Promise<boolean> {
-  const rows = await queryCatalogReleasesPerTitle(1, after);
-  return rows.length > 0;
 }
 
 async function getRecentReleasesPageUncached(pageSize: number, cursor?: ReleasesCursor | null) {
@@ -420,11 +446,10 @@ async function getRecentReleasesPageUncached(pageSize: number, cursor?: Releases
       };
     }
 
-    const hasCatalog = await catalogHasMore();
     return {
       items,
-      hasMore: hasCatalog,
-      nextCursor: hasCatalog ? ({ phase: "catalog", releasedAt: "", id: "" } satisfies ReleasesCursor) : null,
+      hasMore: true,
+      nextCursor: { phase: "catalog", releasedAt: "", id: "" } satisfies ReleasesCursor,
     };
   }
 
@@ -448,15 +473,13 @@ export async function getRecentReleases(limit = 48): Promise<ReleaseItem[]> {
 }
 
 export async function getRecentReleasesPage(pageSize: number, cursor?: ReleasesCursor | null) {
-  if (!cursor) {
-    return unstable_cache(
-      async () => getRecentReleasesPageUncached(pageSize, null),
-      ["recent-releases-page", String(pageSize), "initial"],
-      { revalidate: 300, tags: ["releases"] },
-    )();
-  }
+  const cacheKey = cursor ? JSON.stringify(cursor) : "initial";
 
-  return getRecentReleasesPageUncached(pageSize, cursor);
+  return unstable_cache(
+    async () => getRecentReleasesPageUncached(pageSize, cursor ?? null),
+    ["recent-releases-page", String(pageSize), cacheKey],
+    { revalidate: 300, tags: ["releases"] },
+  )();
 }
 
 /** Свежие данные для API и клиентского polling (без unstable_cache). */
@@ -480,3 +503,4 @@ export async function getReleaseStats() {
     episodes,
   };
 }
+

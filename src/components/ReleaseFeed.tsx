@@ -23,12 +23,20 @@ type Props = {
   excludeIds?: string[];
 };
 
-const LOAD_AHEAD_PX = 800;
+const LOAD_AHEAD_PX = 1800;
+const MAX_LOAD_MORE_PAGE_SIZE = 48;
 const MAX_EMPTY_PAGES = 8;
+const RELEASES_FETCH_TIMEOUT_MS = 20_000;
 const HOME_PATH = "/";
 const HOME_FEED_POLL_MS = 60_000;
 const HOME_FEED_POLL_START_MS = 15_000;
 const HOME_FEED_SCROLL_TOP_PX = 120;
+
+type ReleasesPageResponse = {
+  items: ReleaseItemDto[];
+  hasMore: boolean;
+  nextCursor: ReleasesCursor | null;
+};
 
 export function ReleaseFeed({
   initialItems,
@@ -105,18 +113,12 @@ export function ReleaseFeed({
 
     try {
       while (emptyPages < MAX_EMPTY_PAGES && cursor) {
+        const loadPageSize = Math.min(MAX_LOAD_MORE_PAGE_SIZE, pageSize * 2);
         const params = new URLSearchParams({
-          pageSize: String(pageSize),
+          pageSize: String(loadPageSize),
           cursor: JSON.stringify(cursor),
         });
-        const res = await fetch(`/api/releases?${params.toString()}`, { cache: "no-store" });
-        if (!res.ok) throw new Error("Не удалось загрузить серии");
-
-        const data: {
-          items: ReleaseItemDto[];
-          hasMore: boolean;
-          nextCursor: ReleasesCursor | null;
-        } = await res.json();
+        const data = await fetchReleasesPage(params);
 
         const ids = new Set(itemsRef.current.map((i) => i.id));
         const fresh = data.items.filter((i) => !ids.has(i.id));
@@ -156,15 +158,8 @@ export function ReleaseFeed({
     if (document.hidden) return;
 
     try {
-      const params = new URLSearchParams({ pageSize: String(pageSize) });
-      const res = await fetch(`/api/releases?${params.toString()}`, { cache: "no-store" });
-      if (!res.ok) return;
-
-      const data: {
-        items: ReleaseItemDto[];
-        hasMore: boolean;
-        nextCursor: ReleasesCursor | null;
-      } = await res.json();
+      const params = new URLSearchParams({ pageSize: String(pageSize), live: "1" });
+      const data = await fetchReleasesPage(params);
 
       const merged = mergeReleaseFeedHead(itemsRef.current, data.items);
       if (!releaseFeedHeadChanged(itemsRef.current, merged, pageSize)) return;
@@ -298,6 +293,27 @@ export function ReleaseFeed({
       </div>
     </>
   );
+}
+
+async function fetchReleasesPage(params: URLSearchParams): Promise<ReleasesPageResponse> {
+  const controller = new AbortController();
+  const timeoutId = window.setTimeout(() => controller.abort(), RELEASES_FETCH_TIMEOUT_MS);
+
+  try {
+    const res = await fetch(`/api/releases?${params.toString()}`, {
+      cache: "no-store",
+      signal: controller.signal,
+    });
+    if (!res.ok) throw new Error("Не удалось загрузить серии");
+    return (await res.json()) as ReleasesPageResponse;
+  } catch (error) {
+    if (error instanceof DOMException && error.name === "AbortError") {
+      throw new Error("Загрузка заняла слишком много времени");
+    }
+    throw error;
+  } finally {
+    window.clearTimeout(timeoutId);
+  }
 }
 
 function visibleItemsCount(items: ReleaseItemDto[], filter: HomeTranslationFilter): number {

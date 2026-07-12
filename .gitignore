@@ -7,6 +7,9 @@ dist/
 .telegram-bot.lock
 data/cover-cache/*
 !data/cover-cache/.gitkeep
+data/image-cache/*
+!data/image-cache/.gitkeep
+tmp/
 
 # Serwist (generated at build)
 public/sw.js
