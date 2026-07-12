@@ -1668,3 +1668,176 @@ html[data-tv-nav="true"] [data-tv-card]:focus-visible {
 .anime-cards-scroll-row {
   scrollbar-color: color-mix(in srgb, var(--muted) 45%, transparent) transparent;
 }
+
+/* 404 page — визуальная перекличка со статическим зеркалом */
+.not-found-scene {
+  position: relative;
+  min-height: calc(100dvh - var(--site-header-height) - env(safe-area-inset-top, 0px));
+  display: grid;
+  place-items: center;
+  overflow: hidden;
+  padding: clamp(2rem, 7vw, 5rem) 1rem;
+  isolation: isolate;
+  animation: not-found-cursor-spin 0.4s steps(1, end) infinite;
+}
+
+.not-found-bg-video {
+  position: absolute;
+  inset: 0;
+  z-index: -3;
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  filter: blur(18px) saturate(1.15);
+  transform: scale(1.08);
+  opacity: 0.72;
+}
+
+.not-found-vignette {
+  position: absolute;
+  inset: 0;
+  z-index: -2;
+  background:
+    radial-gradient(circle at 50% 45%, rgba(12, 14, 20, 0.12), rgba(12, 14, 20, 0.8) 68%),
+    inset 0 0 180px 80px rgba(0, 0, 0, 0.82);
+}
+
+.not-found-stage {
+  position: absolute;
+  inset: 0;
+  z-index: -1;
+  display: flex;
+  align-items: center;
+  justify-content: space-around;
+  gap: clamp(1rem, 4vw, 4rem);
+  padding: 0 clamp(1rem, 4vw, 5rem);
+  pointer-events: none;
+}
+
+.not-found-center-video {
+  width: min(42vw, 32rem);
+  height: 100%;
+  max-height: calc(100dvh - var(--site-header-height) - env(safe-area-inset-top, 0px));
+  min-width: 13rem;
+  object-fit: cover;
+  opacity: 0.9;
+  mask-image: linear-gradient(
+    to right,
+    transparent 0%,
+    black 20%,
+    black 80%,
+    transparent 100%
+  );
+}
+
+.not-found-code {
+  flex: 0 0 auto;
+  font-size: clamp(5.5rem, 18vw, 16rem);
+  font-weight: 900;
+  line-height: 0.8;
+  color: rgba(229, 241, 245, 0.5);
+  -webkit-text-stroke: 2px rgba(0, 0, 0, 0.55);
+  text-shadow: 0 34px 22px rgba(0, 0, 0, 0.58);
+  animation: not-found-shake 0.92s ease-in-out infinite;
+}
+
+.not-found-code-left {
+  transform-origin: center;
+}
+
+.not-found-code-right {
+  animation-delay: -0.18s;
+  transform-origin: center;
+}
+
+.not-found-content {
+  width: min(100%, 42rem);
+  border: 1px solid rgba(255, 255, 255, 0.16);
+  border-radius: 0.75rem;
+  background: rgba(8, 10, 16, 0.48);
+  padding: clamp(1.5rem, 4vw, 2.5rem);
+  text-align: center;
+  box-shadow: 0 28px 90px rgba(0, 0, 0, 0.48);
+  backdrop-filter: blur(12px);
+}
+
+@keyframes not-found-shake {
+  0%,
+  100% {
+    transform: translate(0, 0) rotate(0deg);
+    color: rgba(179, 206, 181, 0.5);
+  }
+  25% {
+    transform: translate(5px, 5px) rotate(4deg);
+    color: rgba(212, 225, 228, 0.52);
+  }
+  50% {
+    transform: translate(0, 0) rotate(0deg);
+    color: rgba(227, 215, 189, 0.48);
+  }
+  75% {
+    transform: translate(-5px, 5px) rotate(-4deg);
+    color: rgba(165, 177, 179, 0.5);
+  }
+}
+
+@keyframes not-found-cursor-spin {
+  0% {
+    cursor: w-resize;
+  }
+  25% {
+    cursor: ne-resize;
+  }
+  50% {
+    cursor: n-resize;
+  }
+  75%,
+  100% {
+    cursor: nw-resize;
+  }
+}
+
+@media (max-width: 760px) {
+  .not-found-scene {
+    min-height: calc(100dvh - var(--site-header-height) - var(--pwa-nav-height));
+  }
+
+  .not-found-stage {
+    justify-content: center;
+    opacity: 0.8;
+  }
+
+  .not-found-center-video {
+    width: min(74vw, 24rem);
+    height: 100%;
+    max-height: calc(100dvh - var(--site-header-height) - var(--pwa-nav-height));
+  }
+
+  .not-found-code {
+    position: absolute;
+    font-size: clamp(4.75rem, 28vw, 9rem);
+  }
+
+  .not-found-code-left {
+    left: -0.25rem;
+    top: 14%;
+  }
+
+  .not-found-code-right {
+    right: -0.25rem;
+    bottom: 13%;
+  }
+}
+
+html[data-reduce-motion="true"] .not-found-code {
+  animation: none;
+}
+
+html[data-reduce-motion="true"] .not-found-scene {
+  animation: none;
+}
+
+html[data-reduce-motion="true"] .not-found-bg-video,
+html[data-reduce-motion="true"] .not-found-center-video {
+  animation: none;
+}

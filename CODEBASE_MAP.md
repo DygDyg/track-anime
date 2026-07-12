@@ -26,6 +26,7 @@ ta_new/
 | Path | Purpose |
 |------|---------|
 | `page.tsx` | Home — release feed + history new episodes |
+| `not-found.tsx` | Custom 404 page with animated Track Anime error scene |
 | `anime/[shikimoriId]/` | Anime page with player |
 | `search/` | Search results |
 | `favorites/` | User anime lists and bookmarks |
@@ -214,6 +215,7 @@ ta_new/
 Root components: `ReleaseFeed`, `ReleaseCard`, `Header`, `RecentAnimeOpensButton`, `SiteBackground`, `ThemeProvider`, `NavigationProgress`.
 
 Brand assets: `public/brand-logos/` contains optional `.webp` logos for global rotation; fallback remains `public/logo.webp`.
+Error page asset: `public/404.webm` is used by the custom App Router 404 page.
 
 ## `scripts/` — CLI Tools
 
