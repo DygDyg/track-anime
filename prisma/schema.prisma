@@ -35,6 +35,38 @@ model ShikimoriSettings {
   updatedAt DateTime @updatedAt
 }
 
+/// Внешние ID аниме для серверных интеграций (например AniSkip требует MAL ID)
+model AnimeExternalIdMap {
+  shikimoriId Int      @id
+  malId       Int?
+  source      String   @default("shikimori-graphql")
+  syncedAt    DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  @@index([malId])
+}
+
+/// Тайминги пропуска OP/ED/recap из внешних источников (AniSkip)
+model AnimeEpisodeSkipTime {
+  id             String   @id @default(cuid())
+  shikimoriId    Int
+  malId          Int
+  seasonNumber   Int      @default(1)
+  episodeNumber  Int
+  episodeLength  Float
+  provider       String   @default("aniskip")
+  skipType       String
+  startTime      Float
+  endTime        Float
+  externalSkipId String?
+  syncedAt       DateTime @default(now())
+  updatedAt      DateTime @updatedAt
+
+  @@unique([provider, malId, seasonNumber, episodeNumber, episodeLength, skipType, startTime])
+  @@index([shikimoriId, seasonNumber, episodeNumber])
+  @@index([malId, episodeNumber])
+}
+
 /// Discord Rich Presence (Application ID из Developer Portal)
 model DiscordSettings {
   id                String   @id @default("default")
@@ -56,6 +88,22 @@ model WatchHistorySettings {
   id                          String   @id @default("default")
   completeEpisodeThresholdPct Int      @default(50)
   updatedAt                   DateTime @updatedAt
+}
+
+/// Настройки поиска на сайте
+model SearchSettings {
+  id                     String   @id @default("default")
+  headerSearchDebounceMs Int      @default(1500)
+  updatedAt              DateTime @updatedAt
+}
+
+/// Ротация бренд-логотипов из public/brand-logos
+model BrandRotationSettings {
+  id              String   @id @default("default")
+  enabled         Boolean  @default(true)
+  intervalMinutes Int      @default(120)
+  rotationSeed    String   @default("default")
+  updatedAt       DateTime @updatedAt
 }
 
 /// Принудительное смещение интро по озвучкам (перекрывает настройки пользователей)
