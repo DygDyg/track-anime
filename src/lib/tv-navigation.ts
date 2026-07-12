@@ -21,14 +21,24 @@ function isInsideModal(element: HTMLElement): boolean {
   return Boolean(element.closest('[role="dialog"][aria-modal="true"]'));
 }
 
+function isInsidePlayerKeyboardScope(element: HTMLElement): boolean {
+  return Boolean(element.closest("[data-player-keyboard-scope]"));
+}
+
 export function shouldIgnoreTvNavigation(event: KeyboardEvent): boolean {
   if (event.defaultPrevented) return true;
   if (event.altKey || event.ctrlKey || event.metaKey) return true;
+  if (event.target instanceof HTMLElement && isInsidePlayerKeyboardScope(event.target)) return true;
   if (isTextEntryTarget(event.target)) return true;
 
   const active = document.activeElement;
   if (active instanceof HTMLIFrameElement) return true;
-  if (active instanceof HTMLElement && isInsideModal(active)) return true;
+  if (
+    active instanceof HTMLElement &&
+    (isInsideModal(active) || isInsidePlayerKeyboardScope(active))
+  ) {
+    return true;
+  }
 
   return false;
 }

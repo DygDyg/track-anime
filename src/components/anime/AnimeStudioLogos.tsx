@@ -5,6 +5,7 @@ import { useState } from "react";
 import { NavLink } from "@/components/NavLink";
 import { LoadingSpinner } from "@/components/ui/LoadingSpinner";
 import { EXTERNAL_IMG_ATTRS } from "@/lib/external-image";
+import { buildCachedImageUrl } from "@/lib/image-cache-url";
 import type { AnimePageDto } from "@/lib/anime-page";
 import { searchFieldParamName } from "@/lib/search-fields";
 
@@ -16,9 +17,10 @@ function buildStudioSearchHref(studioName: string): string {
 }
 
 function StudioLogo({ studio }: { studio: AnimePageDto["studios"][number] }) {
+  const imageUrl = buildCachedImageUrl("studio", studio.imageUrl);
   const [imgFailed, setImgFailed] = useState(false);
-  const [imgLoading, setImgLoading] = useState(Boolean(studio.imageUrl));
-  const showImage = Boolean(studio.imageUrl) && !imgFailed;
+  const [imgLoading, setImgLoading] = useState(Boolean(imageUrl));
+  const showImage = Boolean(imageUrl) && !imgFailed;
 
   return (
     <NavLink
@@ -34,7 +36,7 @@ function StudioLogo({ studio }: { studio: AnimePageDto["studios"][number] }) {
       {showImage ? (
         // eslint-disable-next-line @next/next/no-img-element
         <img
-          src={studio.imageUrl!}
+          src={imageUrl!}
           alt={studio.name}
           loading="lazy"
           decoding="async"

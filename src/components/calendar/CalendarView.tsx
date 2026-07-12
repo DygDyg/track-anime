@@ -5,6 +5,7 @@ import { useCallback, useEffect, useMemo, useState, useTransition, type ReactNod
 import { ReleaseCard } from "@/components/ReleaseCard";
 import { CalendarScrollToToday } from "@/components/calendar/CalendarScrollToToday";
 import { headerControl } from "@/components/header/header-styles";
+import { BrandLoadingOverlay } from "@/components/ui/BrandLoading";
 import type { CalendarDay, CalendarItemDto, CalendarMonth, CalendarTab } from "@/lib/calendar";
 import { calendarItemToReleaseDto, splitAnonsMonthsBySchedule } from "@/lib/calendar";
 import {
@@ -409,7 +410,12 @@ export function CalendarView({
           </div>
         </div>
       ) : (
-        <div role="tabpanel" className={isPending ? "favorites-tab-panel-pending" : ""}>
+        <div
+          role="tabpanel"
+          aria-busy={isPending}
+          className={["relative", isPending ? "favorites-tab-panel-pending" : ""].join(" ")}
+        >
+          {isPending ? <BrandLoadingOverlay /> : null}
           {tab === "ongoing" ? (
             <CalendarDaysList days={ongoingDays} todayDayOfWeek={todayDayOfWeek} />
           ) : (

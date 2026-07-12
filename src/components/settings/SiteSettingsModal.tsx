@@ -1,6 +1,5 @@
 "use client";
 
-import Link from "next/link";
 import { useEffect, useMemo, useState, Suspense } from "react";
 import { createPortal } from "react-dom";
 import { TranslationBadge } from "@/components/TranslationBadge";
@@ -35,12 +34,10 @@ import { AVATAR_DECORATION_OPTIONS, avatarDecorationUrl } from "@/lib/avatar-dec
 import { DiscordRpcSettingsTab } from "@/components/settings/DiscordRpcSettingsTab";
 import { NotificationsSettingsTab } from "@/components/settings/NotificationsSettingsTab";
 import { PlayerSettingsTab } from "@/components/settings/PlayerSettingsTab";
-import { RecentAnimeOpensSettingsTab } from "@/components/settings/RecentAnimeOpensSettingsTab";
 import { useNotificationDiscovery } from "@/hooks/useNotificationDiscovery";
-import type { AdminTodoDto } from "@/lib/admin/todos";
 import type { Theme } from "@/lib/theme";
 
-type TabId = "appearance" | "home" | "player" | "notifications" | "discord" | "future" | "recent";
+type TabId = "appearance" | "home" | "player" | "notifications" | "discord";
 
 const TABS: { id: TabId; label: string }[] = [
   { id: "home", label: "Главная" },
@@ -48,8 +45,6 @@ const TABS: { id: TabId; label: string }[] = [
   { id: "appearance", label: "Внешний вид" },
   { id: "notifications", label: "Уведомления" },
   { id: "discord", label: "Discord RPC" },
-  { id: "future", label: "Идеи" },
-  { id: "recent", label: "Недавние" },
 ];
 
 function SectionTitle({ children }: { children: React.ReactNode }) {
@@ -524,6 +519,7 @@ export function SiteSettingsAppearanceTab({
   updateSettings: (patch: Partial<SiteSettings>) => void;
   hideTheme?: boolean;
 }) {
+  const { user } = useAuth();
   const { remoteSaving } = useSiteSettings();
   const settingsBusy = remoteSaving;
 
@@ -595,11 +591,13 @@ export function SiteSettingsAppearanceTab({
         </div>
       </section>
 
-      <AvatarDecorationSection
-        settings={settings}
-        updateSettings={updateSettings}
-        disabled={settingsBusy}
-      />
+      {user ? (
+        <AvatarDecorationSection
+          settings={settings}
+          updateSettings={updateSettings}
+          disabled={settingsBusy}
+        />
+      ) : null}
 
       <BackgroundPickerSection settings={settings} updateSettings={updateSettings} />
 
@@ -621,9 +619,21 @@ export function SiteSettingsAppearanceTab({
       <section className="space-y-2">
         <ToggleRow
           label="Уменьшить анимации"
-          hint="Отключает плавные переходы и декоративные анимации"
+          hint="Отключает плавные переходы и анимации интерфейса"
           checked={settings.reduceMotion}
           onChange={(checked) => updateSettings({ reduceMotion: checked })}
+        />
+        <ToggleRow
+          label="Отключить анимации украшений аватарок"
+          hint="Показывает статичные версии рамок, не затрагивая остальные анимации сайта"
+          checked={settings.reduceAvatarDecorationMotion}
+          onChange={(checked) => updateSettings({ reduceAvatarDecorationMotion: checked })}
+        />
+        <ToggleRow
+          label="Показывать часы"
+          hint="Показывает текущее время в верхней панели и в fullscreen beta-плеере"
+          checked={settings.showClock}
+          onChange={(checked) => updateSettings({ showClock: checked })}
         />
       </section>
     </div>
@@ -824,73 +834,12 @@ export function SiteSettingsDiscordTab({
   return <DiscordRpcSettingsTab settings={settings} updateSettings={updateSettings} />;
 }
 
-function FutureTab() {
-  const [items, setItems] = useState<AdminTodoDto[]>([]);
-  const [loading, setLoading] = useState(true);
-
-  useEffect(() => {
-    let cancelled = false;
-
-    void (async () => {
-      try {
-        const res = await fetch("/api/admin/todos");
-        if (!res.ok) throw new Error("load_failed");
-        const data: { items: AdminTodoDto[] } = await res.json();
-        if (!cancelled) {
-          setItems(data.items.filter((item) => item.status !== "done").slice(0, 8));
-        }
-      } catch {
-        if (!cancelled) setItems([]);
-      } finally {
-        if (!cancelled) setLoading(false);
-      }
-    })();
-
-    return () => {
-      cancelled = true;
-    };
-  }, []);
-
-  return (
-    <div className="space-y-4">
-      <SectionTitle>План разработки</SectionTitle>
-      <SectionHint>
-        Полный список задач с приоритетами — в{" "}
-        <Link href="/admin/todo" className="text-accent hover:underline">
-          админке → To-do
-        </Link>
-        . Новые идеи присылайте в чат.
-      </SectionHint>
-
-      {loading ? (
-        <p className="text-sm text-muted">Загрузка…</p>
-      ) : items.length === 0 ? (
-        <p className="text-sm text-muted">Активных задач нет.</p>
-      ) : (
-        <ul className="space-y-2">
-          {items.map((item) => (
-            <li
-              key={item.id}
-              className="rounded-lg border border-border bg-background/50 px-3 py-2 text-sm"
-            >
-              <span className="font-medium text-foreground">{item.title}</span>
-              <span className="mt-1 block text-xs text-muted">
-                приоритет {item.score} · важн. {item.importance} · сложн. {item.complexity}
-              </span>
-            </li>
-          ))}
-        </ul>
-      )}
-    </div>
-  );
-}
-
 export function SiteSettingsModal() {
   const { user } = useAuth();
-  const isAdmin = Boolean(user?.isAdmin);
   const {
     settings,
     updateSettings,
+    updateLocalSettings,
     resetSettings,
     settingsOpen,
     settingsInitialTab,
@@ -908,11 +857,10 @@ export function SiteSettingsModal() {
   const visibleTabs = useMemo(
     () =>
       TABS.filter((item) => {
-        if (item.id === "future") return isAdmin;
         if (item.id === "notifications") return Boolean(user);
         return true;
       }),
-    [isAdmin, user],
+    [user],
   );
 
   useEffect(() => {
@@ -922,16 +870,13 @@ export function SiteSettingsModal() {
   }, [settingsOpen, settingsInitialTab, clearSettingsInitialTab]);
 
   useEffect(() => {
-    if (tab === "future" && !isAdmin) {
-      setTab("home");
-    }
     if (tab === "notifications" && !user) {
       setTab("home");
     }
     if (tab === "notifications" && user) {
       markTabSeen();
     }
-  }, [tab, isAdmin, user, markTabSeen]);
+  }, [tab, user, markTabSeen]);
 
   useEffect(() => {
     setMounted(true);
@@ -1027,7 +972,11 @@ export function SiteSettingsModal() {
               />
             ) : null}
             {tab === "player" ? (
-              <PlayerSettingsTab settings={settings} updateSettings={updateSettings} />
+              <PlayerSettingsTab
+                settings={settings}
+                updateSettings={updateSettings}
+                updateLocalSettings={updateLocalSettings}
+              />
             ) : null}
             {tab === "notifications" && user ? (
               <Suspense fallback={<p className="text-sm text-muted">Загрузка…</p>}>
@@ -1037,8 +986,6 @@ export function SiteSettingsModal() {
             {tab === "discord" ? (
               <SiteSettingsDiscordTab settings={settings} updateSettings={updateSettings} />
             ) : null}
-            {tab === "future" && isAdmin ? <FutureTab /> : null}
-            {tab === "recent" ? <RecentAnimeOpensSettingsTab /> : null}
           </div>
         </div>
 

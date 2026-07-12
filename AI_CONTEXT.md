@@ -26,7 +26,9 @@ Next.js anime streaming site with Shikimori OAuth + Kodik player. Data lives in 
 | Fix lists/favorites | `src/lib/favorites-sync.ts`, `src/lib/shikimori/user-list-mutations.ts` |
 | Fix search | `src/lib/search.ts` (server-only, raw SQL) |
 | Fix import/sync | `src/lib/admin/kodik-sync.ts`, `scripts/kodik-import-full.ts` |
+| Fix MAL ID / AniSkip mapping | `src/lib/admin/mal-id-sync.ts`, `src/lib/shikimori/mal-id.ts`, `src/lib/aniskip.ts`, `MalIdSyncPanel.tsx` |
 | Fix posters | `src/lib/poster.ts`, `AnimePoster.tsx`, `src/lib/cover-cache.ts`, `src/app/api/cover/route.ts` |
+| Fix notifications | `src/lib/notifications/`, `src/app/api/notifications/`, `scripts/notification-worker.ts` |
 | Fix admin | `src/lib/auth/admin.ts`, `src/app/admin/` |
 
 ## Request routing (multi-task / dispatcher)
@@ -46,6 +48,8 @@ Codex: использовать эту таблицу напрямую и чит
 | Deploy | деплой, deploy, prod | `scripts/deploy.ps1`, `docs/DEPLOY.md` |
 | Auth | oauth, login, session | `shikimori-oauth.ts`, `src/app/api/auth/` |
 | Home feed | главная, лента | `releases.ts`, `ReleaseFeed.tsx` |
+| Notifications | уведомлен, push, telegram, vk, discord | `src/lib/notifications/`, `src/app/api/notifications/`, `NotificationSettingsPanel.tsx` |
+| Brand rotation | лого, логотип, favicon, бренд | `src/lib/brand-rotation.ts`, `src/components/admin/BrandRotationSettingsPanel.tsx`, `public/brand-logos/` |
 
 ## Shikimori sync policy (lists)
 
@@ -60,7 +64,7 @@ Details: `DECISIONS.md`, если файл присутствует. Если ф
 
 ## Hidden Assumptions
 
-1. **middleware.ts** — redirects legacy `?shikimori_id=` → `/anime/{id}` and canonicalizes legacy host; auth is per-route, not global
+1. **proxy.ts** — redirects legacy `?shikimori_id=` → `/anime/{id}` and canonicalizes legacy host; auth is per-route, not global
 2. **Shikimori ID is the URL key** — not internal DB id, not kodikId
 3. **KodikMaterial = one translation** — multiple materials per anime
 4. **Watch progress is per shikimoriId** — not per translation
@@ -77,7 +81,9 @@ Details: `DECISIONS.md`, если файл присутствует. Если ф
 Home:  KodikEpisodeRelease → releases.ts → ReleaseFeed
 Anime: shikimoriId → anime-page.ts → Shikimori API + KodikMaterial DB
 Player: playerLink → KodikPlayer iframe → postMessage → watch-history API
+Skip times: AnimeWatchPanel → /api/anime/[shikimoriId]/skip-times → aniskip.ts → AniSkip + DB cache → manual/auto OP/ED skip
 Lists: favorites-sync.ts → Shikimori user_rates → UserAnimeListEntry
+Notifications: preferences + links → notification-worker.ts → browser/Discord/Telegram/VK + in-app feed
 ```
 
 ## Environment Variables (must-know)
@@ -105,6 +111,7 @@ Lists: favorites-sync.ts → Shikimori user_rates → UserAnimeListEntry
 | Session lost | Cookie domain/path, or expired Session row |
 | Phone dev: no JS, TitleCover only | Open via LAN IP without `allowedDevOrigins` — restart `npm run dev`, use `http://192.168.x.x:3000` |
 | `dygdyg:3000` unreachable | Add `192.168.x.x dygdyg` to hosts; dev must bind `0.0.0.0` (`npm run dev`) |
+| Brand logo does not rotate | No `.webp` files in `public/brand-logos`, `BrandRotationSettings.enabled=false`, or interval slot has not changed yet |
 
 ## Debugging Notes
 
@@ -125,6 +132,7 @@ npm run kodik:import:resume
 node scripts/debug-user-rates.mjs
 node scripts/debug-history-new.mjs
 tsx scripts/check-poster.ts <shikimoriId>
+npm run shikimori:malid-stats -- --refresh --limit=100
 ```
 
 **Import job status:** `KodikImportJob` where `id = "full"`.
@@ -150,13 +158,16 @@ tsx scripts/check-poster.ts <shikimoriId>
 - `User.shikimoriId` — unique, from OAuth
 - `UserWatchProgress` — unique (userId, shikimoriId)
 - `KodikEpisodeRelease` — home feed source
+- `UserNotificationPreferences`, `UserNotificationLink`, `NotificationDelivery` — notifications state
+- `AnimeExternalIdMap` — server-side external ID cache (`shikimoriId -> malId`)
+- `AnimeEpisodeSkipTime` — AniSkip OP/ED/recap cache by shikimoriId/season/episode/length
 
 ## When Adding Features
 
 1. Find similar implementation first (see CONVENTIONS.md)
 2. Server data in `src/lib/`, API in `src/app/api/`
 3. Client UI in `src/components/`
-4. Don't expand middleware — auth via `getSession()` in routes; middleware only for legacy `?shikimori_id=` redirect
+4. Keep auth per route via `getSession()` / `requireAdmin*()`; `src/proxy.ts` is only for legacy host/query redirects
 5. Don't call external APIs from client components
 6. Run documentation impact check and update only affected doc sections if behavior changes
 

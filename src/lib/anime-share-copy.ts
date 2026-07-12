@@ -5,6 +5,7 @@ import {
   labelRating,
   labelStatus,
 } from "@/lib/anime-labels";
+import { preferOriginalShikimoriImageUrl } from "@/lib/poster";
 import { stripShikimoriBbcode } from "@/lib/shikimori-bbcode";
 import { shikimoriSiteUrl } from "@/lib/shikimori/endpoints";
 
@@ -90,6 +91,10 @@ function discordGenres(anime: AnimePageDto, origin: string): string {
 function plainDescription(anime: AnimePageDto): string {
   if (!anime.description) return "";
   return stripShikimoriBbcode(anime.description);
+}
+
+function sharePosterUrl(anime: AnimePageDto): string | null {
+  return preferOriginalShikimoriImageUrl(anime.posterUrl) ?? anime.posterUrl;
 }
 
 function truncateShareDescription(text: string, maxLen = VK_DESCRIPTION_MAX_LEN): string {
@@ -183,6 +188,7 @@ export function buildDiscordShareText(anime: AnimePageDto, origin: string): stri
   const pageUrl = getAnimePageUrl(origin, anime.shikimoriId);
   const shikimoriUrl = anime.shikimoriUrl ?? shikimoriSiteUrl(`/animes/${anime.shikimoriId}`);
   const relativeTime = discordRelativeTime(anime);
+  const posterUrl = sharePosterUrl(anime);
 
   return `
 ~~                                                                                                                                                                                          ~~
@@ -202,7 +208,7 @@ ${relativeTime}
 [Открыть на Track Anime](<${pageUrl}>)
 [Открыть на shikimori](<${shikimoriUrl}>)
 
-${anime.posterUrl ? `[Обложка](${anime.posterUrl})` : ""}
+${posterUrl ? `[Обложка](${posterUrl})` : ""}
 `.trim();
 }
 
@@ -210,12 +216,13 @@ export function buildTelegramShareText(anime: AnimePageDto, origin: string): str
   const pageUrl = getAnimePageUrl(origin, anime.shikimoriId);
   const shikimoriUrl = anime.shikimoriUrl ?? shikimoriSiteUrl(`/animes/${anime.shikimoriId}`);
   const description = plainDescription(anime);
+  const posterUrl = sharePosterUrl(anime);
 
   return `
 
 **[${kindLabel(anime)}]**  \`${anime.title}\`
 
-${anime.posterUrl ? `||🖼️ [Обложка] ${anime.posterUrl}||` : ""}
+${posterUrl ? `||🖼️ [Обложка] ${posterUrl}||` : ""}
 
     | 🎬 **Серии:** __${episodesText(anime)}__
     | ⏱ **Длительность:** __${durationText(anime)}__
@@ -239,11 +246,12 @@ export function buildVkShareText(anime: AnimePageDto, origin: string): string {
   const shikimoriUrl = anime.shikimoriUrl ?? shikimoriSiteUrl(`/animes/${anime.shikimoriId}`);
   const description = plainDescription(anime);
   const hashtags = vkHashtags(anime);
+  const posterUrl = sharePosterUrl(anime);
 
   const lines: string[] = [];
 
-  if (anime.posterUrl) {
-    lines.push(vkUrlLine("🖼", "Обложка", anime.posterUrl));
+  if (posterUrl) {
+    lines.push(vkUrlLine("🖼", "Обложка", posterUrl));
   }
 
   lines.push(`【 ${kindLabel(anime)} 】 ${anime.title}`, VK_SECTION_RULE, ...vkStatsLines(anime), VK_SECTION_RULE);
@@ -262,13 +270,14 @@ export function buildVkShareText(anime: AnimePageDto, origin: string): string {
 }
 
 export function buildVkShareUrl(anime: AnimePageDto, origin: string): string {
+  const posterUrl = sharePosterUrl(anime);
   const url = new URL("https://vk.com/share.php");
   url.searchParams.set("url", getAnimePageUrl(origin, anime.shikimoriId));
   url.searchParams.set(
     "title",
     `Серии: ${episodesText(anime)} | [${kindLabel(anime)}] ${anime.title}`,
   );
-  if (anime.posterUrl) url.searchParams.set("image", anime.posterUrl);
+  if (posterUrl) url.searchParams.set("image", posterUrl);
   url.searchParams.set("noparse", "true");
   return url.toString();
 }

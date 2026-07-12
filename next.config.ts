@@ -26,6 +26,12 @@ const nextConfig: NextConfig = {
       {
         pathname: "/logo.png",
       },
+      {
+        pathname: "/logoNEW.png",
+      },
+      {
+        pathname: "/logo.webp",
+      },
     ],
     remotePatterns: [
       { protocol: "https", hostname: "shikimori.io" },

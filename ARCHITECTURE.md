@@ -44,7 +44,9 @@ GET /api/auth/callback/shikimori?code=&state=
   → create Session, set ta.session cookie
 ```
 
-Нет `middleware.ts` — auth проверяется per-route через `getSession()` / `requireAdmin()`.
+`src/proxy.ts` используется только для канонизации legacy host и редиректа legacy
+`?shikimori_id=` → `/anime/{id}`. Auth проверяется per-route через `getSession()` /
+`requireAdmin()`.
 
 ### Kodik data pipeline
 
@@ -81,10 +83,14 @@ AnimeWatchPanel (client)
 | Service | Client module | Auth | Rate limit |
 |---------|---------------|------|------------|
 | Shikimori public API | `src/lib/shikimori/client.ts` | None | `rate-limiter.ts` |
+| Shikimori GraphQL | `src/lib/shikimori/mal-id.ts` via `client.ts` | None | `rate-limiter.ts` |
 | Shikimori user API | `src/lib/shikimori/auth-client.ts` | OAuth tokens per user | Shared limiter |
 | Shikimori OAuth | `src/lib/auth/shikimori-oauth.ts` | Client ID/secret | — |
+| AniSkip API | `src/lib/aniskip.ts` | None | cache in DB |
 | Kodik API | `src/kodik/client.ts` | API token | `src/kodik/rate-limiter.ts` |
 | Kodik player | iframe + `src/lib/kodik-player-api.ts` | — | — |
+| Browser push | `src/lib/notifications/*` | VAPID keys | worker dispatch |
+| Discord/Telegram/VK notifications | `src/lib/notifications/channels/*` | User channel links | worker dispatch |
 
 Shikimori host (`shikimori.io` / `shikimori.one`) настраивается в `ShikimoriSettings` (админка).
 
@@ -106,10 +112,31 @@ Shikimori host (`shikimori.io` / `shikimori.one`) настраивается в 
 - `GET /api/cover` — прокси и кэш обложек (sharp resize)
 - Настройки в `CoverCacheSettings`
 
+### Brand rotation (`src/lib/brand-rotation.ts`)
+
+- WEBP-логотипы читаются из `public/brand-logos`
+- Активный логотип выбирается детерминированно на временной слот из `BrandRotationSettings`
+- `/api/brand/logo`, `/api/brand/icon`, `/api/brand/favicon` отдают текущее лого, PNG-иконки и favicon для шапки, metadata, manifest и уведомлений
+
 ### Shikimori anime cache (`src/lib/shikimori/anime-cache.ts`)
 
 - JSON-кэш метаданных аниме в БД
 - TTL + background refresh
+
+### Shikimori MAL ID mapping (`src/lib/shikimori/mal-id.ts`)
+
+- Серверный mapping `shikimoriId -> malId` для интеграций, которым нужен MyAnimeList ID
+- Источник: Shikimori GraphQL `animes { id malId }`
+- Кэш в `AnimeExternalIdMap`, включая `null`, чтобы не повторять бесполезные запросы
+- Админский refresh: `src/lib/admin/mal-id-sync.ts` + `/api/admin/shikimori/mal-id-sync`
+- Kodik sync фоном дозаполняет mapping для новых/обновленных `shikimoriId`
+
+### AniSkip skip-times (`src/lib/aniskip.ts`)
+
+- Сервер получает OP/ED интервалы по `malId + episodeNumber + episodeLength`
+- Клиент вызывает только `/api/anime/[shikimoriId]/skip-times`
+- Найденные интервалы кэшируются в `AnimeEpisodeSkipTime`
+- Обычный Kodik player показывает кнопки пропуска и делает `seek` на `endTime`
 
 ### Favorites sync (`src/lib/favorites-sync.ts`)
 
@@ -121,6 +148,14 @@ Shikimori host (`shikimori.io` / `shikimori.one`) настраивается в 
 - Cursor pagination по `KodikEpisodeRelease`
 - Фильтр по translation (site settings)
 
+### Notifications (`src/lib/notifications/*`)
+
+- Preferences хранятся в `UserNotificationPreferences`
+- Внешние привязки каналов — `UserNotificationLink`
+- События доставки и ошибки — `NotificationDelivery`
+- API routes обслуживают browser push subscription, in-app ленту и Discord/Telegram/VK link/unlink
+- Фоновая отправка — `scripts/notification-worker.ts`
+
 ## Admin Subsystem
 
 `src/app/admin/*` + `src/app/api/admin/*` + `src/lib/admin/*`
@@ -129,6 +164,9 @@ Shikimori host (`shikimori.io` / `shikimori.one`) настраивается в 
 - Auto-sync scheduler (`kodik-sync-scheduler.ts`)
 - DB explorer, user management, todos
 - Cover cache and Shikimori host settings
+- Search settings (`SearchSettings`) for header search debounce
+- Notification settings, test delivery, VAPID generation
+- Site defaults, watch-history settings, translation intro offsets
 
 ## Caching Strategy
 

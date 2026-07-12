@@ -35,7 +35,12 @@ async function pollInAppNotifications(pushActive: boolean): Promise<void> {
   const url = new URL("/api/notifications/in-app", window.location.origin);
   url.searchParams.set("since", since);
 
-  const response = await fetch(url.toString(), { cache: "no-store" });
+  let response: Response;
+  try {
+    response = await fetch(url.toString(), { cache: "no-store" });
+  } catch {
+    return;
+  }
   if (response.status === 401) return;
   if (!response.ok) return;
 

@@ -30,6 +30,8 @@ const SEARCH_CANDIDATE_POOL_MIN = 120;
 const SEARCH_CANDIDATE_POOL_MAX = 500;
 const SEARCH_CANDIDATE_POOL_DEEP_MAX = 2000;
 const DESCRIPTION_MATCH_RANK = 4;
+const FUZZY_SEARCH_MAX_IDS = 160;
+const FUZZY_SEARCH_MIN_TOKEN_LENGTH = 4;
 
 export {
   SEARCH_MIN_QUERY_LENGTH,
@@ -76,6 +78,145 @@ function searchCandidatePoolLimit(offset: number, pageSize: number): number {
     return Math.max(needed, SEARCH_CANDIDATE_POOL_MIN);
   }
   return Math.min(needed, SEARCH_CANDIDATE_POOL_DEEP_MAX);
+}
+
+function normalizeSearchText(value: string): string {
+  return value
+    .toLocaleLowerCase("ru-RU")
+    .replace(/ё/g, "е")
+    .replace(/[^\p{L}\p{N}]+/gu, " ")
+    .trim()
+    .replace(/\s+/g, " ");
+}
+
+function fuzzyDistanceLimit(length: number): number {
+  if (length >= 10) return 3;
+  if (length >= 7) return 2;
+  if (length >= FUZZY_SEARCH_MIN_TOKEN_LENGTH) return 1;
+  return 0;
+}
+
+function levenshteinWithin(a: string, b: string, maxDistance: number): number | null {
+  if (Math.abs(a.length - b.length) > maxDistance) return null;
+  if (a === b) return 0;
+
+  let previous = Array.from({ length: b.length + 1 }, (_, index) => index);
+  let current = new Array<number>(b.length + 1);
+
+  for (let i = 1; i <= a.length; i += 1) {
+    current[0] = i;
+    let rowMin = current[0]!;
+
+    for (let j = 1; j <= b.length; j += 1) {
+      const cost = a[i - 1] === b[j - 1] ? 0 : 1;
+      const value = Math.min(
+        previous[j]! + 1,
+        current[j - 1]! + 1,
+        previous[j - 1]! + cost,
+      );
+      current[j] = value;
+      rowMin = Math.min(rowMin, value);
+    }
+
+    if (rowMin > maxDistance) return null;
+    [previous, current] = [current, previous];
+  }
+
+  const distance = previous[b.length]!;
+  return distance <= maxDistance ? distance : null;
+}
+
+function bestTokenDistance(queryToken: string, titleTokens: string[]): number | null {
+  const limit = fuzzyDistanceLimit(queryToken.length);
+  if (limit <= 0) return null;
+
+  let best: number | null = null;
+  for (const titleToken of titleTokens) {
+    if (titleToken.length < FUZZY_SEARCH_MIN_TOKEN_LENGTH) continue;
+    if (titleToken.includes(queryToken) || queryToken.includes(titleToken)) return 0;
+
+    const distance = levenshteinWithin(queryToken, titleToken, limit);
+    if (distance === null) continue;
+    best = best === null ? distance : Math.min(best, distance);
+  }
+
+  return best;
+}
+
+function fuzzyTitleScore(query: string, title: string): number | null {
+  const normalizedQuery = normalizeSearchText(query);
+  const normalizedTitle = normalizeSearchText(title);
+  if (!normalizedQuery || !normalizedTitle) return null;
+
+  if (normalizedTitle === normalizedQuery) return 0;
+  if (normalizedTitle.startsWith(normalizedQuery)) return 1;
+  if (normalizedTitle.includes(normalizedQuery)) return 2;
+
+  const queryTokens = normalizedQuery
+    .split(" ")
+    .filter((token) => token.length >= FUZZY_SEARCH_MIN_TOKEN_LENGTH);
+  if (queryTokens.length === 0) return null;
+
+  const titleTokens = normalizedTitle.split(" ");
+  let distanceTotal = 0;
+
+  for (const queryToken of queryTokens) {
+    const distance = bestTokenDistance(queryToken, titleTokens);
+    if (distance === null) return null;
+    distanceTotal += distance;
+  }
+
+  return 4 + distanceTotal + Math.max(0, queryTokens.length - 1);
+}
+
+type FuzzySearchCandidateRow = {
+  shikimoriId: number;
+  title: string | null;
+  titleOrig: string | null;
+  otherTitle: string | null;
+  animeTitle: string | null;
+};
+
+async function findFuzzySearchShikimoriIds(query: string): Promise<number[]> {
+  const normalizedQuery = normalizeSearchText(query);
+  if (normalizedQuery.length < SEARCH_MIN_QUERY_LENGTH) return [];
+
+  const candidates = await prisma.$queryRaw<FuzzySearchCandidateRow[]>`
+    SELECT
+      m."shikimoriId",
+      m.title,
+      m."titleOrig",
+      m."otherTitle",
+      m."materialData"->>'anime_title' AS "animeTitle"
+    FROM "KodikMaterial" m
+    WHERE m."shikimoriId" IS NOT NULL
+  `;
+
+  const bestById = new Map<number, { score: number; title: string }>();
+
+  for (const candidate of candidates) {
+    const titles = [
+      candidate.animeTitle,
+      candidate.title,
+      candidate.titleOrig,
+      candidate.otherTitle,
+    ].filter((value): value is string => Boolean(value?.trim()));
+
+    for (const title of titles) {
+      const score = fuzzyTitleScore(normalizedQuery, title);
+      if (score === null) continue;
+
+      const previous = bestById.get(candidate.shikimoriId);
+      if (!previous || score < previous.score) {
+        bestById.set(candidate.shikimoriId, { score, title });
+      }
+    }
+  }
+
+  return [...bestById.entries()]
+    .sort(([, a], [, b]) => a.score - b.score || a.title.localeCompare(b.title, "ru-RU"))
+    .slice(0, FUZZY_SEARCH_MAX_IDS)
+    .map(([shikimoriId]) => shikimoriId);
 }
 
 function buildSearchPage(
@@ -488,11 +629,16 @@ export async function searchAnimes(
   const pattern = `%${escapeIlikePattern(trimmed)}%`;
   const prefixPattern = `${escapeIlikePattern(trimmed)}%`;
   const shikimoriIdMatch = /^\d+$/.test(trimmed) ? Number(trimmed) : null;
+  const fuzzyShikimoriIds = await findFuzzySearchShikimoriIds(trimmed);
   const offset = (safePage - 1) * safePageSize;
 
   const shikimoriFilter =
     shikimoriIdMatch !== null
       ? Prisma.sql`OR m."shikimoriId" = ${shikimoriIdMatch}`
+      : Prisma.empty;
+  const fuzzyFilter =
+    fuzzyShikimoriIds.length > 0
+      ? Prisma.sql`OR m."shikimoriId" IN (${Prisma.join(fuzzyShikimoriIds)})`
       : Prisma.empty;
 
   const filterSql = Prisma.sql`
@@ -502,6 +648,7 @@ export async function searchAnimes(
       OR COALESCE(m."otherTitle", '') ILIKE ${pattern}
       OR COALESCE(m."materialData"->>'anime_title', '') ILIKE ${pattern}
       ${shikimoriFilter}
+      ${fuzzyFilter}
     )
   `;
 
@@ -510,6 +657,7 @@ export async function searchAnimes(
       WHEN lower(COALESCE(m."materialData"->>'anime_title', m.title)) = lower(${trimmed}) THEN 0
       WHEN COALESCE(m."materialData"->>'anime_title', m.title) ILIKE ${prefixPattern} THEN 1
       WHEN COALESCE(m."titleOrig", '') ILIKE ${prefixPattern} THEN 2
+      WHEN m."shikimoriId" IN (${Prisma.join(fuzzyShikimoriIds.length > 0 ? fuzzyShikimoriIds : [-1])}) THEN 4
       ELSE 3
     END
   `;
@@ -617,13 +765,19 @@ async function searchAnimesQuickCore(
   }
 
   const parts: Prisma.Sql[] = [];
+  let fuzzyShikimoriIds: number[] = [];
 
   if (hasQuery) {
     const pattern = `%${escapeIlikePattern(trimmed)}%`;
     const shikimoriIdMatch = /^\d+$/.test(trimmed) ? Number(trimmed) : null;
+    fuzzyShikimoriIds = await findFuzzySearchShikimoriIds(trimmed);
     const shikimoriFilter =
       shikimoriIdMatch !== null
         ? Prisma.sql`OR m."shikimoriId" = ${shikimoriIdMatch}`
+        : Prisma.empty;
+    const fuzzyFilter =
+      fuzzyShikimoriIds.length > 0
+        ? Prisma.sql`OR m."shikimoriId" IN (${Prisma.join(fuzzyShikimoriIds)})`
         : Prisma.empty;
 
     parts.push(Prisma.sql`
@@ -633,6 +787,7 @@ async function searchAnimesQuickCore(
         OR COALESCE(m."otherTitle", '') ILIKE ${pattern}
         OR COALESCE(m."materialData"->>'anime_title', '') ILIKE ${pattern}
         ${shikimoriFilter}
+        ${fuzzyFilter}
       )
     `);
   }
@@ -661,6 +816,7 @@ async function searchAnimesQuickCore(
           WHEN lower(COALESCE(m."materialData"->>'anime_title', m.title)) = lower(${trimmed}) THEN 0
           WHEN COALESCE(m."materialData"->>'anime_title', m.title) ILIKE ${prefixPattern} THEN 1
           WHEN COALESCE(m."titleOrig", '') ILIKE ${prefixPattern} THEN 2
+          WHEN m."shikimoriId" IN (${Prisma.join(fuzzyShikimoriIds.length > 0 ? fuzzyShikimoriIds : [-1])}) THEN 4
           ELSE 3
         END
       `

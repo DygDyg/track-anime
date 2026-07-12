@@ -7,6 +7,7 @@ import { AnimeLink } from "@/components/AnimeLink";
 import { AnimePoster } from "@/components/AnimePoster";
 import { AnimeScoreBadge } from "@/components/AnimeScoreBadge";
 import { FavoriteRewatchBadge } from "@/components/favorites/FavoriteRewatchBadge";
+import { GenreInfoLink } from "@/components/GenreInfoLink";
 import { useUserListStatus } from "@/components/favorites/UserListStatusProvider";
 import { ReleaseCardQuickActions } from "@/components/ReleaseCardQuickActions";
 import { TranslationBadge } from "@/components/TranslationBadge";
@@ -18,7 +19,6 @@ import {
   HOVER_PORTAL_ESTIMATED_HEIGHT,
 } from "@/lib/hover-portal-position";
 import type { HoverPanelReleaseInput } from "@/lib/hover-panel-release";
-import { buildSearchHref } from "@/lib/search-shared";
 import {
   sendYoutubePlayerCommand,
   startYoutubePlayerListening,
@@ -124,12 +124,9 @@ function ReleaseGenresRow({ genres }: { genres: string[] }) {
       {genres.slice(0, 6).map((genre, index) => (
         <span key={genre}>
           {index > 0 ? ", " : null}
-          <Link
-            href={buildSearchHref({ genre })}
-            className="font-medium text-accent transition hover:underline"
-          >
+          <GenreInfoLink genre={genre} className="font-medium text-accent transition hover:underline">
             {genre}
-          </Link>
+          </GenreInfoLink>
         </span>
       ))}
     </p>
@@ -248,7 +245,7 @@ export function ReleaseCardHoverPanel({
     const updatePosition = () => {
       const anchor = anchorRef.current;
       if (!anchor) return;
-      const panelHeight = panelRef?.current?.offsetHeight ?? HOVER_PORTAL_ESTIMATED_HEIGHT;
+      const panelHeight = panelRef?.current?.scrollHeight ?? HOVER_PORTAL_ESTIMATED_HEIGHT;
       setPortalStyle(
         computeHoverPortalStyle(
           anchor.getBoundingClientRect(),

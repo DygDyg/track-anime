@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect } from "react";
+import { useSiteSettings } from "@/components/SiteSettingsProvider";
 import {
   findTvFocusNeighbor,
   focusTvElement,
@@ -43,8 +44,16 @@ function isTvLikeDevice(): boolean {
 }
 
 export function TvNavigationProvider() {
+  const { settings } = useSiteSettings();
+
+  useEffect(() => {
+    if (settings.tvNavigationEnabled) return;
+    delete document.documentElement.dataset.tvNav;
+  }, [settings.tvNavigationEnabled]);
+
   useEffect(() => {
     const onKeyDown = (event: KeyboardEvent) => {
+      if (!settings.tvNavigationEnabled) return;
       if (shouldIgnoreTvNavigation(event)) return;
 
       const direction = DIRECTION_KEYS[event.key];
@@ -101,7 +110,7 @@ export function TvNavigationProvider() {
 
     window.addEventListener("keydown", onKeyDown, true);
     return () => window.removeEventListener("keydown", onKeyDown, true);
-  }, []);
+  }, [settings.tvNavigationEnabled]);
 
   return null;
 }

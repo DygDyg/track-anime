@@ -45,6 +45,7 @@ export type KodikPlayerHandle = {
 };
 
 const CONTINUE_HARD_TIMEOUT_MS = 15_000;
+const SEEK_BY_FLUSH_DELAY_MS = 120;
 
 const DEFAULT_PLAYBACK_STATE: KodikPlayerPlaybackState = {
   isPlaying: false,
@@ -76,6 +77,7 @@ type Props = {
   }) => void;
   onTranslationChange?: (translation: { id: number; title: string }) => void;
   onPlaybackStateChange?: (state: KodikPlayerPlaybackState) => void;
+  onEnded?: () => void;
 };
 
 type EpisodeState = { seasonNumber: number; episodeNumber: number };
@@ -86,6 +88,10 @@ type ContinueFlow = {
   stage: "episode" | "play";
   timers: number[];
 };
+
+function commandSeason(seasonNumber: number): number | undefined {
+  return seasonNumber === 1 ? undefined : seasonNumber;
+}
 
 function normalizeEpisode(value: KodikCurrentEpisode): EpisodeState {
   return {
@@ -115,7 +121,7 @@ function applyInitialSeek(
   if (needsEpisodeChange) {
     sendKodikCommand(iframe, {
       method: "change_episode",
-      season: resume.seasonNumber > 1 ? resume.seasonNumber : undefined,
+      season: commandSeason(resume.seasonNumber),
       episode: resume.episodeNumber,
     });
   }
@@ -141,7 +147,7 @@ function finishContinueSeek(
     flow.stage = "episode";
     sendKodikCommand(iframe, {
       method: "change_episode",
-      season: flow.resume.seasonNumber > 1 ? flow.resume.seasonNumber : undefined,
+      season: commandSeason(flow.resume.seasonNumber),
       episode: flow.resume.episodeNumber,
     });
 
@@ -207,7 +213,7 @@ function startContinueFlow(
 
   sendKodikCommand(iframe, {
     method: "change_episode",
-    season: resume.seasonNumber > 1 ? resume.seasonNumber : undefined,
+    season: commandSeason(resume.seasonNumber),
     episode: resume.episodeNumber,
   });
 
@@ -271,6 +277,7 @@ export const KodikPlayer = forwardRef<KodikPlayerHandle, Props>(function KodikPl
     onPause,
     onTranslationChange,
     onPlaybackStateChange,
+    onEnded,
   },
   ref,
 ) {
@@ -282,12 +289,15 @@ export const KodikPlayer = forwardRef<KodikPlayerHandle, Props>(function KodikPl
   const resumeAppliedRef = useRef(false);
   const playerReadyRef = useRef(false);
   const continueFlowRef = useRef<ContinueFlow | null>(null);
+  const bufferedSeekTargetRef = useRef<number | null>(null);
+  const bufferedSeekTimerRef = useRef<number | null>(null);
   const onProgressRef = useRef(onProgress);
   const onPauseRef = useRef(onPause);
   const onTranslationChangeRef = useRef(onTranslationChange);
   const onReadyRef = useRef(onReady);
   const onContinueStateChangeRef = useRef(onContinueStateChange);
   const onPlaybackStateChangeRef = useRef(onPlaybackStateChange);
+  const onEndedRef = useRef(onEnded);
 
   const emitPlaybackState = () => {
     onPlaybackStateChangeRef.current?.({ ...playbackRef.current });
@@ -296,6 +306,30 @@ export const KodikPlayer = forwardRef<KodikPlayerHandle, Props>(function KodikPl
   const patchPlayback = (patch: Partial<KodikPlayerPlaybackState>) => {
     playbackRef.current = { ...playbackRef.current, ...patch };
     emitPlaybackState();
+  };
+
+  const clearBufferedSeek = () => {
+    if (bufferedSeekTimerRef.current != null) {
+      window.clearTimeout(bufferedSeekTimerRef.current);
+      bufferedSeekTimerRef.current = null;
+    }
+    bufferedSeekTargetRef.current = null;
+  };
+
+  const flushBufferedSeek = () => {
+    const target = bufferedSeekTargetRef.current;
+    bufferedSeekTimerRef.current = null;
+    bufferedSeekTargetRef.current = null;
+    if (!iframeRef.current || target == null) return;
+    sendKodikCommand(iframeRef.current, { method: "seek", seconds: target });
+  };
+
+  const scheduleBufferedSeek = (target: number) => {
+    bufferedSeekTargetRef.current = target;
+    if (bufferedSeekTimerRef.current != null) {
+      window.clearTimeout(bufferedSeekTimerRef.current);
+    }
+    bufferedSeekTimerRef.current = window.setTimeout(flushBufferedSeek, SEEK_BY_FLUSH_DELAY_MS);
   };
 
   useEffect(() => {
@@ -322,6 +356,10 @@ export const KodikPlayer = forwardRef<KodikPlayerHandle, Props>(function KodikPl
     onPlaybackStateChangeRef.current = onPlaybackStateChange;
   }, [onPlaybackStateChange]);
 
+  useEffect(() => {
+    onEndedRef.current = onEnded;
+  }, [onEnded]);
+
   const markPlayerReady = () => {
     if (playerReadyRef.current) return;
     playerReadyRef.current = true;
@@ -338,6 +376,7 @@ export const KodikPlayer = forwardRef<KodikPlayerHandle, Props>(function KodikPl
     translationIdRef.current = null;
     clearContinueFlow(continueFlowRef.current);
     continueFlowRef.current = null;
+    clearBufferedSeek();
     onContinueStateChangeRef.current?.(false);
   }, [src]);
 
@@ -347,6 +386,7 @@ export const KodikPlayer = forwardRef<KodikPlayerHandle, Props>(function KodikPl
         onContinueStateChangeRef.current?.(false);
         return;
       }
+      clearBufferedSeek();
       startContinueFlow(
         iframeRef.current,
         resume,
@@ -359,8 +399,12 @@ export const KodikPlayer = forwardRef<KodikPlayerHandle, Props>(function KodikPl
     },
     seekBy(deltaSeconds: number) {
       if (!iframeRef.current || !Number.isFinite(deltaSeconds)) return;
-      const next = Math.max(0, positionRef.current + deltaSeconds);
-      sendKodikCommand(iframeRef.current, { method: "seek", seconds: next });
+      const duration = playbackRef.current.durationSeconds;
+      const nextRaw = positionRef.current + deltaSeconds;
+      const next = duration > 0 ? Math.min(duration, Math.max(0, nextRaw)) : Math.max(0, nextRaw);
+      positionRef.current = next;
+      patchPlayback({ positionSeconds: next });
+      scheduleBufferedSeek(next);
     },
     play() {
       if (!iframeRef.current) return;
@@ -378,7 +422,13 @@ export const KodikPlayer = forwardRef<KodikPlayerHandle, Props>(function KodikPl
     },
     seekToPosition(seconds: number) {
       if (!iframeRef.current || !Number.isFinite(seconds)) return;
-      sendKodikCommand(iframeRef.current, { method: "seek", seconds: Math.max(0, seconds) });
+      clearBufferedSeek();
+      const duration = playbackRef.current.durationSeconds;
+      const nextRaw = Math.max(0, seconds);
+      const next = duration > 0 ? Math.min(duration, nextRaw) : nextRaw;
+      positionRef.current = next;
+      patchPlayback({ positionSeconds: next });
+      sendKodikCommand(iframeRef.current, { method: "seek", seconds: next });
     },
     setVolume(volume: number) {
       if (!iframeRef.current || !Number.isFinite(volume)) return;
@@ -476,6 +526,11 @@ export const KodikPlayer = forwardRef<KodikPlayerHandle, Props>(function KodikPl
           positionSeconds: positionRef.current,
         });
       }
+
+      if (event.data.key === "kodik_player_video_ended") {
+        patchPlayback({ isPlaying: false });
+        onEndedRef.current?.();
+      }
     };
 
     window.addEventListener("message", onMessage);
@@ -483,6 +538,7 @@ export const KodikPlayer = forwardRef<KodikPlayerHandle, Props>(function KodikPl
       window.removeEventListener("message", onMessage);
       clearContinueFlow(continueFlowRef.current);
       continueFlowRef.current = null;
+      clearBufferedSeek();
       onContinueStateChangeRef.current?.(false);
     };
   }, [initialResume, src]);
@@ -519,8 +575,7 @@ export const KodikPlayer = forwardRef<KodikPlayerHandle, Props>(function KodikPl
               src={toKodikPlayerEmbedUrl(src)}
               title={title}
               className="kodik-player-beta-iframe"
-              allowFullScreen
-              allow="autoplay *; fullscreen *"
+              allow="autoplay *"
               onLoad={markPlayerReady}
             />
           </div>
@@ -535,14 +590,6 @@ export const KodikPlayer = forwardRef<KodikPlayerHandle, Props>(function KodikPl
             onLoad={markPlayerReady}
           />
         )}
-        {chromelessBeta ? (
-          <span
-            className="pointer-events-none absolute left-2 top-2 z-10 rounded-md border border-white/20 bg-black/55 px-1.5 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-white/90 backdrop-blur-sm"
-            aria-hidden
-          >
-            Beta
-          </span>
-        ) : null}
       </div>
     </div>
   );

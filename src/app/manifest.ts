@@ -2,11 +2,18 @@ import type { MetadataRoute } from "next";
 import { defaultSiteDescription } from "@/lib/site-metadata";
 import { PWA_EXTRA_SHORTCUTS, PWA_NAV_ITEMS } from "@/lib/pwa-nav";
 import { SITE_NAME } from "@/lib/site-brand";
+import { getActiveBrandAsset } from "@/lib/brand-rotation";
 
 const PWA_THEME_COLOR = "#0c0e14";
 const PWA_BACKGROUND_COLOR = "#0c0e14";
 
-export default function manifest(): MetadataRoute.Manifest {
+export default async function manifest(): Promise<MetadataRoute.Manifest> {
+  const brand = await getActiveBrandAsset();
+  const icon192 = brand.file
+    ? `/api/brand/icon?size=192&v=${brand.cacheKey}`
+    : "/icon-192.png";
+  const icon512 = brand.file ? `/api/brand/icon?size=512&v=${brand.cacheKey}` : "/icon.png";
+
   return {
     id: "/",
     name: SITE_NAME,
@@ -26,29 +33,29 @@ export default function manifest(): MetadataRoute.Manifest {
       short_name: item.label,
       description: item.shortcutDescription,
       url: item.href,
-      icons: [{ src: "/icon-192.png", sizes: "192x192", type: "image/png" }],
+      icons: [{ src: icon192, sizes: "192x192", type: "image/png" }],
     })),
     icons: [
       {
-        src: "/icon-192.png",
+        src: icon192,
         sizes: "192x192",
         type: "image/png",
         purpose: "any",
       },
       {
-        src: "/icon.png",
+        src: icon512,
         sizes: "512x512",
         type: "image/png",
         purpose: "any",
       },
       {
-        src: "/icon-192.png",
+        src: icon192,
         sizes: "192x192",
         type: "image/png",
         purpose: "maskable",
       },
       {
-        src: "/icon.png",
+        src: icon512,
         sizes: "512x512",
         type: "image/png",
         purpose: "maskable",

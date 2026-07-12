@@ -10,11 +10,19 @@ import { HeaderSearch } from "@/components/search/HeaderSearch";
 import { HeaderAuth } from "@/components/auth/HeaderAuth";
 import { HeaderDiscordRpcButton } from "@/components/HeaderDiscordRpcButton";
 import { HeaderPwaInstallButton } from "@/components/HeaderPwaInstallButton";
+import { RecentAnimeOpensButton } from "@/components/RecentAnimeOpensButton";
 import { SiteSettingsButton } from "@/components/SiteSettingsMenu";
+import { SiteClock } from "@/components/SiteClock";
+import { useSiteSettings } from "@/components/SiteSettingsProvider";
 import { ThemeToggle } from "@/components/ThemeToggle";
 import { headerControl } from "@/components/header/header-styles";
 import { PWA_NAV_ITEMS } from "@/lib/pwa-nav";
-import { SITE_LOGO_ALT, SITE_NAME, siteLogoSrc } from "@/lib/site-brand";
+import {
+  SITE_LOGO_ALT,
+  SITE_LOGO_PATH,
+  SITE_LOGO_RANDOM_API_PATH,
+  SITE_NAME,
+} from "@/lib/site-brand";
 
 function HeaderSearchIcon({ className = "h-5 w-5" }: { className?: string }) {
   return (
@@ -22,38 +30,6 @@ function HeaderSearchIcon({ className = "h-5 w-5" }: { className?: string }) {
       <circle cx="11" cy="11" r="7" />
       <path d="M20 20l-3-3" strokeLinecap="round" />
     </svg>
-  );
-}
-
-function UsersIcon() {
-  return (
-    <svg viewBox="0 0 24 24" className="h-5 w-5" fill="none" stroke="currentColor" strokeWidth="2" aria-hidden>
-      <path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2" strokeLinecap="round" strokeLinejoin="round" />
-      <circle cx="9" cy="7" r="4" />
-      <path d="M22 21v-2a4 4 0 0 0-3-3.87" strokeLinecap="round" strokeLinejoin="round" />
-      <path d="M16 3.13a4 4 0 0 1 0 7.75" strokeLinecap="round" strokeLinejoin="round" />
-    </svg>
-  );
-}
-
-function HeaderUsersLink() {
-  const pathname = usePathname();
-  const active = pathname === "/user" || pathname.startsWith("/user/");
-  const handleClick = useNavigationClick("/user");
-
-  return (
-    <Link
-      href="/user"
-      onClick={handleClick}
-      className={[
-        headerControl.icon,
-        active ? "text-accent hover:text-accent" : "text-muted hover:text-foreground",
-      ].join(" ")}
-      aria-label="Пользователи Shikimori"
-      title="Пользователи Shikimori"
-    >
-      <UsersIcon />
-    </Link>
   );
 }
 
@@ -135,8 +111,10 @@ function NavLinks({
   );
 }
 
-export function Header() {
+export function Header({ logoSrc: initialLogoSrc = SITE_LOGO_PATH }: { logoSrc?: string }) {
   const [mobileSearchOpen, setMobileSearchOpen] = useState(false);
+  const [logoSrc, setLogoSrc] = useState(initialLogoSrc);
+  const { settings } = useSiteSettings();
   const pathname = usePathname();
   const handleHomeClick = useNavigationClick("/");
   const searchActive =
@@ -145,6 +123,37 @@ export function Header() {
   useEffect(() => {
     setMobileSearchOpen(false);
   }, [pathname]);
+
+  useEffect(() => {
+    setLogoSrc(initialLogoSrc);
+  }, [initialLogoSrc]);
+
+  useEffect(() => {
+    let cancelled = false;
+
+    async function refreshLogo() {
+      try {
+        const response = await fetch(SITE_LOGO_RANDOM_API_PATH, { cache: "no-store" });
+        if (!response.ok) return;
+
+        const data = (await response.json()) as { src?: unknown };
+        if (!cancelled && typeof data.src === "string" && data.src.length > 0) {
+          setLogoSrc(data.src);
+        }
+      } catch {
+        /* keep current logo */
+      }
+    }
+
+    const intervalId = window.setInterval(() => {
+      void refreshLogo();
+    }, 60_000);
+
+    return () => {
+      cancelled = true;
+      window.clearInterval(intervalId);
+    };
+  }, []);
 
   useEffect(() => {
     document.documentElement.classList.toggle("mobile-bottom-search-open", mobileSearchOpen);
@@ -166,12 +175,13 @@ export function Header() {
           className={`${headerControl.text} inline-flex shrink-0 items-center gap-2 font-semibold tracking-tight`}
         >
           <Image
-            src={siteLogoSrc()}
+            src={logoSrc}
             alt={SITE_LOGO_ALT}
-            width={160}
-            height={48}
-            className="h-8 w-auto sm:h-9"
+            width={1536}
+            height={1024}
+            className="h-12 w-auto sm:h-14"
             priority
+            unoptimized
           />
           <span className="hidden truncate sm:inline">{SITE_NAME}</span>
         </Link>
@@ -182,12 +192,12 @@ export function Header() {
         />
 
         <div className="ml-auto flex min-w-0 items-center gap-1 sm:gap-1.5 md:gap-2">
+          {settings.showClock ? <SiteClock className="hidden sm:inline-flex" /> : null}
           <HeaderSearch className="hidden w-44 sm:block sm:w-52 md:w-60 lg:w-72" />
+          <RecentAnimeOpensButton />
 
           <HeaderDiscordRpcButton />
           <HeaderPwaInstallButton />
-
-          <HeaderUsersLink />
 
           <ThemeToggle />
 

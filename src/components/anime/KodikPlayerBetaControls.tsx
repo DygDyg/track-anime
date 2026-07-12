@@ -1,24 +1,40 @@
 "use client";
 
-import type { CSSProperties, ReactNode } from "react";
+import {
+  useRef,
+  useState,
+  type CSSProperties,
+  type ReactNode,
+  type WheelEvent as ReactWheelEvent,
+} from "react";
 import type { KodikPlayerPlaybackState } from "@/components/anime/KodikPlayer";
-import type { KodikStreamQuality } from "@/lib/kodik-player-quality";
 import { formatWatchPosition } from "@/lib/watch-history";
+
+export type KodikPlayerBetaTheaterMode = "normal" | "height";
 
 type Props = {
   disabled?: boolean;
   playback: KodikPlayerPlaybackState;
-  qualities: KodikStreamQuality[];
-  currentQuality: string | null;
   fullscreenActive: boolean;
   seekSkipLabelSeconds: number;
   onPlayPause: () => void;
+  onPreviousEpisode?: () => void;
+  onNextEpisode?: () => void;
+  previousEpisodeDisabled?: boolean;
+  nextEpisodeDisabled?: boolean;
   onSeek: (seconds: number) => void;
   onSeekSkip: (deltaSeconds: number) => void;
   onVolumeChange: (volume: number) => void;
   onMuteToggle: () => void;
-  onQualityChange: (quality: KodikStreamQuality) => void;
+  theaterMode: KodikPlayerBetaTheaterMode;
+  onTheaterToggle: () => void;
   onFullscreenToggle: () => void;
+  pipAvailable?: boolean;
+  onPictureInPicture?: () => void;
+  castAvailable?: boolean;
+  onCast?: () => void;
+  onFullscreenTranslationsToggle?: () => void;
+  fullscreenTranslationsOpen?: boolean;
   overlay?: boolean;
 };
 
@@ -34,6 +50,22 @@ function IconPause() {
   return (
     <svg viewBox="0 0 24 24" className="h-5 w-5 fill-current" aria-hidden>
       <path d="M6 5h4v14H6V5zm8 0h4v14h-4V5z" />
+    </svg>
+  );
+}
+
+function IconPreviousEpisode() {
+  return (
+    <svg viewBox="0 0 24 24" className="h-5 w-5 fill-current" aria-hidden>
+      <path d="M6 5h2v14H6V5zm3 7 9 7V5l-9 7z" />
+    </svg>
+  );
+}
+
+function IconNextEpisode() {
+  return (
+    <svg viewBox="0 0 24 24" className="h-5 w-5 fill-current" aria-hidden>
+      <path d="M16 5h2v14h-2V5zM6 5v14l9-7-9-7z" />
     </svg>
   );
 }
@@ -75,6 +107,50 @@ function IconFullscreen({ active }: { active: boolean }) {
   );
 }
 
+function IconTheater({ mode }: { mode: KodikPlayerBetaTheaterMode }) {
+  return (
+    <svg viewBox="0 0 24 24" className="h-5 w-5 fill-current" aria-hidden>
+      {mode === "height" ? (
+        <path d="M5 3h14v18H5V3zm2 5v8h10V8H7z" />
+      ) : (
+        <path d="M4 7h16v10H4V7zm2 2v6h12V9H6zm1-6h10v2H7V3zm0 16h10v2H7v-2z" />
+      )}
+    </svg>
+  );
+}
+
+function IconPictureInPicture() {
+  return (
+    <svg viewBox="0 0 24 24" className="h-5 w-5 fill-current" aria-hidden>
+      <path d="M4 5h16v14H4V5zm2 2v10h12V7H6zm6 5h5v4h-5v-4z" />
+    </svg>
+  );
+}
+
+function IconCast() {
+  return (
+    <svg viewBox="0 0 24 24" className="h-5 w-5 fill-current" aria-hidden>
+      <path d="M3 6h18v9h-2V8H5v2H3V6zm0 11c1.1 0 2 .9 2 2H3v-2zm0-4c3.31 0 6 2.69 6 6H7c0-2.21-1.79-4-4-4v-2zm0-4c5.52 0 10 4.48 10 10h-2c0-4.42-3.58-8-8-8V9z" />
+    </svg>
+  );
+}
+
+function IconChevronDown() {
+  return (
+    <svg viewBox="0 0 24 24" className="h-4 w-4 fill-current" aria-hidden>
+      <path d="M7.41 8.59 12 13.17l4.59-4.58L18 10l-6 6-6-6 1.41-1.41z" />
+    </svg>
+  );
+}
+
+function IconChevronUp() {
+  return (
+    <svg viewBox="0 0 24 24" className="h-4 w-4 fill-current" aria-hidden>
+      <path d="M7.41 15.41 12 10.83l4.59 4.58L18 14l-6-6-6 6 1.41 1.41z" />
+    </svg>
+  );
+}
+
 function ControlButton({
   children,
   label,
@@ -95,10 +171,11 @@ function ControlButton({
       title={label}
       disabled={disabled}
       aria-pressed={pressed}
+      onMouseDown={(event) => event.preventDefault()}
       onClick={onClick}
       className={[
         "inline-flex h-9 w-9 shrink-0 items-center justify-center rounded-md text-white/90 transition",
-        "hover:bg-white/15 active:scale-95 disabled:cursor-not-allowed disabled:opacity-40",
+        "select-none hover:bg-white/15 active:scale-95 disabled:cursor-not-allowed disabled:opacity-40",
         pressed ? "bg-white/15" : "",
       ].join(" ")}
     >
@@ -110,49 +187,148 @@ function ControlButton({
 export function KodikPlayerBetaControls({
   disabled = false,
   playback,
-  qualities,
-  currentQuality,
   fullscreenActive,
   seekSkipLabelSeconds,
   onPlayPause,
+  onPreviousEpisode,
+  onNextEpisode,
+  previousEpisodeDisabled = false,
+  nextEpisodeDisabled = false,
   onSeek,
   onSeekSkip,
   onVolumeChange,
   onMuteToggle,
-  onQualityChange,
+  theaterMode,
+  onTheaterToggle,
   onFullscreenToggle,
+  pipAvailable = false,
+  onPictureInPicture,
+  castAvailable = false,
+  onCast,
+  onFullscreenTranslationsToggle,
+  fullscreenTranslationsOpen = false,
   overlay = false,
 }: Props) {
   const duration = Math.max(playback.durationSeconds, 0);
   const position = Math.min(Math.max(playback.positionSeconds, 0), duration || playback.positionSeconds);
+  const [dragPosition, setDragPosition] = useState<number | null>(null);
+  const progressDraggingRef = useRef(false);
+  const dragStartPositionRef = useRef(position);
+  const dragLatestPositionRef = useRef(position);
+  const displayedPosition = dragPosition ?? position;
+  const progressReady = duration > 0;
   const progressMax = duration > 0 ? duration : Math.max(position, 1);
   const volumeLow = !playback.muted && playback.volume < 0.5;
-  const progressFill = `${(position / progressMax) * 100}%`;
+  const progressPercent = (displayedPosition / progressMax) * 100;
+  const progressFill = `${progressPercent}%`;
   const volumeValue = playback.muted ? 0 : playback.volume;
   const volumeFill = `${volumeValue * 100}%`;
+  const theaterLabel =
+    theaterMode === "normal"
+      ? "По высоте экрана"
+      : "Обычный размер";
+  const dragDeltaSeconds =
+    dragPosition == null ? 0 : Math.round(dragPosition - dragStartPositionRef.current);
+  const dragPositionLabel = formatWatchPosition(displayedPosition);
+  const wheelDirection = (event: ReactWheelEvent<HTMLElement>) =>
+    Math.abs(event.deltaX) > Math.abs(event.deltaY) ? event.deltaX : event.deltaY;
+  const handleSeekSkipButton = (deltaSeconds: number) => {
+    onSeekSkip(deltaSeconds);
+  };
+  const commitProgressDrag = () => {
+    if (!progressDraggingRef.current) return;
+    progressDraggingRef.current = false;
+    const next = dragLatestPositionRef.current;
+    setDragPosition(null);
+    onSeek(next);
+  };
+  const cancelProgressDrag = () => {
+    progressDraggingRef.current = false;
+    setDragPosition(null);
+    dragLatestPositionRef.current = position;
+  };
+  const handleProgressPointerDown = (value: number) => {
+    if (disabled || !progressReady) return;
+    progressDraggingRef.current = true;
+    dragStartPositionRef.current = position;
+    dragLatestPositionRef.current = value;
+    setDragPosition(value);
+  };
+  const handleProgressChange = (value: number) => {
+    if (!progressReady) return;
+    if (!progressDraggingRef.current) {
+      onSeek(value);
+      return;
+    }
+    dragLatestPositionRef.current = value;
+    setDragPosition(value);
+  };
+  const handleProgressWheel = (event: ReactWheelEvent<HTMLInputElement>) => {
+    event.preventDefault();
+    event.stopPropagation();
+    if (!progressReady) return;
+    const delta = wheelDirection(event);
+    if (delta === 0) return;
+    onSeekSkip(delta > 0 ? 10 : -10);
+  };
+  const handleVolumeWheel = (event: ReactWheelEvent<HTMLInputElement>) => {
+    event.preventDefault();
+    event.stopPropagation();
+    const delta = wheelDirection(event);
+    if (delta === 0) return;
+    const next = volumeValue + (delta < 0 ? 0.05 : -0.05);
+    onVolumeChange(Math.min(1, Math.max(0, next)));
+  };
+  const handleVolumeGroupWheel = (event: ReactWheelEvent<HTMLDivElement>) => {
+    event.preventDefault();
+    event.stopPropagation();
+    const delta = wheelDirection(event);
+    if (delta === 0) return;
+    const next = volumeValue + (delta < 0 ? 0.05 : -0.05);
+    onVolumeChange(Math.min(1, Math.max(0, next)));
+  };
 
   return (
     <div
       className={[
-        "kodik-player-beta-controls px-2 py-2 text-white sm:px-3",
+        "kodik-player-beta-controls relative px-2 py-1.5 text-white sm:px-3",
         overlay
-          ? "kodik-player-beta-controls--overlay rounded-none border-0 pb-2.5"
+          ? "kodik-player-beta-controls--overlay rounded-none border-0 pb-2"
           : "rounded-b-lg border border-t-0 border-border bg-[#0f0f0f]",
       ].join(" ")}
     >
-      <div className="mb-2 flex items-center gap-2">
-        <input
-          type="range"
-          min={0}
-          max={progressMax}
-          step={1}
-          value={position}
-          disabled={disabled}
-          aria-label="Прогресс воспроизведения"
-          onChange={(event) => onSeek(Number(event.target.value))}
-          style={{ "--range-fill": progressFill } as CSSProperties}
-          className="kodik-player-beta-range kodik-player-beta-progress site-range h-1.5 min-w-0 flex-1 cursor-pointer"
-        />
+      <div className="mb-1 flex h-1.5 items-center gap-2">
+        <div className="relative min-w-0 flex-1">
+          {dragPosition != null ? (
+            <span
+              className="pointer-events-none absolute bottom-full z-10 mb-1 -translate-x-1/2 rounded-md border border-white/10 bg-black/70 px-1.5 py-0.5 text-[10px] font-semibold tabular-nums text-white/90 shadow-lg backdrop-blur-sm"
+              style={{ left: progressFill }}
+            >
+              {dragPositionLabel}
+            </span>
+          ) : null}
+          <input
+            type="range"
+            min={0}
+            max={progressMax}
+            step={1}
+            value={displayedPosition}
+            disabled={disabled || !progressReady}
+            aria-label="Прогресс воспроизведения"
+            onPointerDown={(event) => {
+              event.currentTarget.setPointerCapture(event.pointerId);
+              handleProgressPointerDown(Number(event.currentTarget.value));
+            }}
+            onPointerUp={commitProgressDrag}
+            onPointerCancel={cancelProgressDrag}
+            onBlur={commitProgressDrag}
+            onKeyUp={commitProgressDrag}
+            onChange={(event) => handleProgressChange(Number(event.target.value))}
+            onWheel={handleProgressWheel}
+            style={{ "--range-fill": progressFill } as CSSProperties}
+            className="kodik-player-beta-range kodik-player-beta-progress site-range h-1.5 w-full cursor-pointer disabled:cursor-not-allowed disabled:opacity-45"
+          />
+        </div>
       </div>
 
       <div className="flex flex-wrap items-center gap-1 sm:gap-2">
@@ -164,65 +340,99 @@ export function KodikPlayerBetaControls({
           {playback.isPlaying ? <IconPause /> : <IconPlay />}
         </ControlButton>
 
+        {onPreviousEpisode ? (
+          <ControlButton
+            label="Предыдущая серия"
+            disabled={disabled || previousEpisodeDisabled}
+            onClick={onPreviousEpisode}
+          >
+            <IconPreviousEpisode />
+          </ControlButton>
+        ) : null}
+
         <button
           type="button"
           disabled={disabled}
-          onClick={() => onSeekSkip(-(seekSkipLabelSeconds - 2))}
-          className="rounded-md px-2 py-1 text-xs font-medium text-white/90 transition hover:bg-white/15 disabled:cursor-not-allowed disabled:opacity-40"
+          onMouseDown={(event) => event.preventDefault()}
+          onClick={() => handleSeekSkipButton(-seekSkipLabelSeconds)}
+          className="select-none rounded-md px-2 py-1 text-xs font-medium text-white/90 transition hover:bg-white/15 disabled:cursor-not-allowed disabled:opacity-40"
         >
           −{seekSkipLabelSeconds}
         </button>
         <button
           type="button"
           disabled={disabled}
-          onClick={() => onSeekSkip(seekSkipLabelSeconds - 2)}
-          className="rounded-md px-2 py-1 text-xs font-medium text-white/90 transition hover:bg-white/15 disabled:cursor-not-allowed disabled:opacity-40"
+          onMouseDown={(event) => event.preventDefault()}
+          onClick={() => handleSeekSkipButton(seekSkipLabelSeconds)}
+          className="select-none rounded-md px-2 py-1 text-xs font-medium text-white/90 transition hover:bg-white/15 disabled:cursor-not-allowed disabled:opacity-40"
         >
           +{seekSkipLabelSeconds}
         </button>
 
-        <span className="hidden min-w-[7.5rem] shrink-0 tabular-nums text-xs text-white/75 sm:inline">
-          {formatWatchPosition(position)}
-          {duration > 0 ? ` / ${formatWatchPosition(duration)}` : ""}
-        </span>
+        {onNextEpisode ? (
+          <ControlButton
+            label="Следующая серия"
+            disabled={disabled || nextEpisodeDisabled}
+            onClick={onNextEpisode}
+          >
+            <IconNextEpisode />
+          </ControlButton>
+        ) : null}
+
+        {progressReady ? (
+          <span className="hidden min-w-[7.5rem] shrink-0 tabular-nums text-xs text-white/75 sm:inline">
+            {formatWatchPosition(position)} / {formatWatchPosition(duration)}
+          </span>
+        ) : null}
 
         <div className="ml-auto flex items-center gap-1 sm:gap-2">
-          <ControlButton
-            label={playback.muted ? "Включить звук" : "Выключить звук"}
-            disabled={disabled}
-            onClick={onMuteToggle}
-          >
-            <IconVolume muted={playback.muted} low={volumeLow} />
-          </ControlButton>
-          <input
-            type="range"
-            min={0}
-            max={1}
-            step={0.05}
-            value={volumeValue}
-            disabled={disabled}
-            aria-label="Громкость"
-            onChange={(event) => onVolumeChange(Number(event.target.value))}
-            style={{ "--range-fill": volumeFill } as CSSProperties}
-            className="kodik-player-beta-range kodik-player-beta-volume site-range hidden w-20 cursor-pointer sm:block"
-          />
+          <div className="flex items-center gap-1 sm:gap-2" onWheel={handleVolumeGroupWheel}>
+            <ControlButton
+              label={playback.muted ? "Включить звук" : "Выключить звук"}
+              disabled={disabled}
+              onClick={onMuteToggle}
+            >
+              <IconVolume muted={playback.muted} low={volumeLow} />
+            </ControlButton>
+            <input
+              type="range"
+              min={0}
+              max={1}
+              step={0.05}
+              value={volumeValue}
+              disabled={disabled}
+              aria-label="Громкость"
+              onChange={(event) => onVolumeChange(Number(event.target.value))}
+              onWheel={handleVolumeWheel}
+              style={{ "--range-fill": volumeFill } as CSSProperties}
+              className="kodik-player-beta-range kodik-player-beta-volume site-range hidden w-20 cursor-pointer sm:block"
+            />
+          </div>
 
-          <label className="sr-only" htmlFor="kodik-beta-quality">
-            Качество видео
-          </label>
-          <select
-            id="kodik-beta-quality"
+          {pipAvailable && onPictureInPicture ? (
+            <ControlButton
+              label="Картинка в картинке"
+              disabled={disabled}
+              onClick={onPictureInPicture}
+            >
+              <IconPictureInPicture />
+            </ControlButton>
+          ) : null}
+
+          {castAvailable && onCast ? (
+            <ControlButton label="Транслировать на ТВ" disabled={disabled} onClick={onCast}>
+              <IconCast />
+            </ControlButton>
+          ) : null}
+
+          <ControlButton
+            label={theaterLabel}
             disabled={disabled}
-            value={currentQuality ?? qualities[0] ?? "720p"}
-            onChange={(event) => onQualityChange(event.target.value as KodikStreamQuality)}
-            className="max-w-[6.5rem] rounded-md border border-white/15 bg-black/40 px-2 py-1.5 text-xs text-white outline-none ring-accent/40 focus:ring-2 disabled:cursor-not-allowed disabled:opacity-40"
+            pressed={theaterMode !== "normal"}
+            onClick={onTheaterToggle}
           >
-            {qualities.map((quality) => (
-              <option key={quality} value={quality}>
-                {quality}
-              </option>
-            ))}
-          </select>
+            <IconTheater mode={theaterMode} />
+          </ControlButton>
 
           <ControlButton
             label={fullscreenActive ? "Выйти из полноэкранного режима" : "На весь экран"}
@@ -234,6 +444,18 @@ export function KodikPlayerBetaControls({
           </ControlButton>
         </div>
       </div>
+      {fullscreenActive && onFullscreenTranslationsToggle ? (
+        <button
+          type="button"
+          onClick={onFullscreenTranslationsToggle}
+          className="kodik-player-beta-translations-toggle absolute bottom-1 left-1/2 z-10 inline-flex -translate-x-1/2 items-center gap-1 rounded-md border border-white/5 bg-white/5 px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-white/45 backdrop-blur-sm transition hover:bg-white/10 hover:text-white/75"
+          aria-label={fullscreenTranslationsOpen ? "Скрыть озвучки" : "Показать озвучки"}
+          title={fullscreenTranslationsOpen ? "Скрыть озвучки" : "Показать озвучки"}
+        >
+          {fullscreenTranslationsOpen ? <IconChevronUp /> : <IconChevronDown />}
+          <span>Озвучки</span>
+        </button>
+      ) : null}
     </div>
   );
 }

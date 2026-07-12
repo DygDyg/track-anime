@@ -34,6 +34,8 @@ function resolveDecorationVariant(reduceMotion: boolean): AvatarDecorationVarian
   return reduceMotion ? "display" : "full";
 }
 
+type AvatarDecorationAnimationMode = "always" | "hover";
+
 type AvatarWithDecorationProps = {
   avatar: string | null | undefined;
   nickname: string;
@@ -44,6 +46,7 @@ type AvatarWithDecorationProps = {
   /** Скрыть overlay (например, когда он рисуется снаружи кнопки FAB) */
   hideDecoration?: boolean;
   decorationClassName?: string;
+  decorationAnimationMode?: AvatarDecorationAnimationMode;
 };
 
 export function AvatarWithDecoration({
@@ -55,12 +58,20 @@ export function AvatarWithDecoration({
   className = "",
   hideDecoration = false,
   decorationClassName = "avatar-decoration-overlay",
+  decorationAnimationMode = "always",
 }: AvatarWithDecorationProps) {
   const { settings } = useSiteSettings();
   const avatarSrc = shikimoriAvatarUrlLarge(avatar);
+  const reduceDecorationMotion = settings.reduceAvatarDecorationMotion;
+  const decorationVariant =
+    decorationAnimationMode === "hover" ? "display" : resolveDecorationVariant(reduceDecorationMotion);
   const decorationSrc = hideDecoration
     ? null
-    : avatarDecorationUrl(decorationId, resolveDecorationVariant(settings.reduceMotion));
+    : avatarDecorationUrl(decorationId, decorationVariant);
+  const hoverDecorationSrc =
+    !hideDecoration && decorationAnimationMode === "hover" && !reduceDecorationMotion
+      ? avatarDecorationUrl(decorationId, "full")
+      : null;
   const initial = nickname.slice(0, 1).toUpperCase();
   const hostStyle = avatarDecorationHostStyle(decorationScale);
 
@@ -101,6 +112,17 @@ export function AvatarWithDecoration({
           decoding="async"
         />
       ) : null}
+
+      {hoverDecorationSrc ? (
+        // eslint-disable-next-line @next/next/no-img-element
+        <img
+          src={hoverDecorationSrc}
+          alt=""
+          aria-hidden
+          className={`${decorationClassName} avatar-decoration-overlay-hover`}
+          decoding="async"
+        />
+      ) : null}
     </div>
   );
 }
@@ -117,7 +139,7 @@ export function AvatarDecorationOverlay({
   const { settings } = useSiteSettings();
   const decorationSrc = avatarDecorationUrl(
     decorationId,
-    resolveDecorationVariant(settings.reduceMotion),
+    resolveDecorationVariant(settings.reduceAvatarDecorationMotion),
   );
   if (!decorationSrc) return null;
 

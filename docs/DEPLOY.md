@@ -4,7 +4,8 @@
 
 **Сервер:** `root@195.26.230.35`  
 **Каталог на сервере:** `/var/www/ta_new`  
-**Сайт:** https://ta.dygdyg.ru/
+**Сайт:** https://track-anime.dygdyg.ru/
+**Legacy redirect:** https://ta.dygdyg.ru/ → https://track-anime.dygdyg.ru/
 
 ---
 
@@ -31,16 +32,19 @@ npm run deploy
 Или напрямую:
 
 ```powershell
+.\deploy.bat
+.\deploy.bat -ForceTrayRebuild
 .\scripts\deploy.ps1
 .\scripts\deploy.ps1 -ForceTrayRebuild
 .\scripts\deploy-rpc.ps1
 ```
 
 Скрипт:
-1. Упаковывает исходники в `tar.gz` (без `node_modules`, `.next`, `.env`)
-2. Загружает на сервер через `scp`
-3. На сервере в **screen** (`ta_deploy`): `npm ci` → Prisma → `npm run build` → restart `track-anime`
-4. Проверяет HTTP 200 на https://ta.dygdyg.ru/
+1. Публикует `TrackAnimeDiscordRPC.exe` в `public/downloads/`
+2. Упаковывает исходники в `tar.gz` (без `node_modules`, `.next`, `.env`, `scripts/discord-rpc-tray`)
+3. Загружает на сервер через `scp`
+4. На сервере в **screen** (`ta_deploy`): `npm ci` → Prisma → `npm run build` → restart `track-anime`
+5. Проверяет HTTP 200 на https://track-anime.dygdyg.ru/
 
 Деплой идёт в screen-сессии — если SSH оборвётся, сборка **не остановится**. Можно подключиться:
 
@@ -91,6 +95,7 @@ ssh -i "$env:USERPROFILE\.ssh\id_rsa" root@195.26.230.35 "echo ok"
 | `-SshKey` | `~\.ssh\id_rsa` | Путь к приватному ключу |
 | `-ServerAppDir` | `/var/www/ta_new` | Каталог приложения на сервере |
 | `-DryRun` | — | Только `tar`, без upload |
+| `-SkipBuild` | — | Пропустить локальную precheck-сборку в `deploy.bat`; серверная сборка всё равно выполняется |
 | `-ForceTrayRebuild` | — | Пересобрать `TrackAnimeDiscordRPC.exe` перед деплоем |
 
 ---
@@ -101,15 +106,16 @@ ssh -i "$env:USERPROFILE\.ssh\id_rsa" root@195.26.230.35 "echo ok"
 
 ```
 extract tar
-  → npm ci
+  → npm ci (quiet: deprecated warnings suppressed, errors visible)
   → prisma generate + db push
   → increment .build-number
+  → cleanup stale source files from older deploys
   → setup-cover-cache.sh
   → npm run build
   → chown .next → www-data
   → systemctl restart track-anime
   → install-kodik-sync-cron.sh
-  → curl https://ta.dygdyg.ru/ (ожидается 200)
+  → curl https://track-anime.dygdyg.ru/ (ожидается 200)
 ```
 
 `.env` на сервере **не перезаписывается** — он исключён из архива.
@@ -126,6 +132,7 @@ cd E:\GitHub\ta_new
 tar -czf $env:TEMP\ta_deploy.tar.gz `
   --exclude=node_modules --exclude=.next --exclude=.git `
   --exclude=.env --exclude=.build-number --exclude=tmp `
+  --exclude=scripts/discord-rpc-tray `
   --exclude="*.tar.gz" --exclude="*.mp4" .
 
 scp -i $env:USERPROFILE\.ssh\id_rsa `
@@ -157,6 +164,7 @@ ssh root@195.26.230.35 "cd /var/www/ta_new && npm run build && chown -R www-data
 - `.env` — секреты остаются только на сервере
 - `.git/`, `tmp/`, `*.tar.gz`, `*.mp4`
 - `.build-number` — номер билда ведётся на сервере
+- `scripts/discord-rpc-tray/` — Electron-проект нужен только локально для сборки exe; на сервер отправляется `public/downloads/TrackAnimeDiscordRPC.exe`
 
 ---
 
@@ -191,7 +199,7 @@ CLI-скрипты исключены из `tsconfig.json` (`exclude: ["scripts"
 ### Проверка после деплоя
 
 ```bash
-curl -s -o /dev/null -w '%{http_code}\n' https://ta.dygdyg.ru/
+curl -s -o /dev/null -w '%{http_code}\n' https://track-anime.dygdyg.ru/
 # ожидается: 200
 
 ssh root@195.26.230.35 "cat /var/www/ta_new/.build-number"
@@ -219,7 +227,7 @@ Server /tmp/ta_deploy.tar.gz
   ├── npm ci + prisma
   ├── npm run build → .next/
   └── systemctl restart track-anime
-        └── nginx → https://ta.dygdyg.ru/
+        └── nginx → https://track-anime.dygdyg.ru/
 ```
 
 **Почему сборка на сервере, а не в WSL:** быстрее (~55 с vs ~70 с), проще, нет проблем с symlinks и Google Fonts. Подробнее — раздел 8 в [SERVER.md](./SERVER.md).

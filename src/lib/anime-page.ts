@@ -27,6 +27,7 @@ export type KodikTranslationDto = {
   translationType: string;
   lastSeason: number | null;
   lastEpisode: number | null;
+  availableSeasons: Array<{ seasonNumber: number }>;
   playerLink: string | null;
   quality: string | null;
 };
@@ -71,7 +72,121 @@ function normalizePlayerLink(link: string | null): string | null {
 
 function normalizeDescription(text: string | null): string | null {
   if (!text) return null;
-  return text.trim();
+  const trimmed = text.trim();
+  return trimmed || null;
+}
+
+function decodeHtmlEntities(text: string): string {
+  const named: Record<string, string> = {
+    amp: "&",
+    gt: ">",
+    lt: "<",
+    nbsp: " ",
+    quot: '"',
+    apos: "'",
+  };
+
+  return text.replace(/&(#x[0-9a-f]+|#\d+|[a-z]+);/gi, (match, entity: string) => {
+    const lower = entity.toLowerCase();
+    if (lower.startsWith("#x")) {
+      const code = Number.parseInt(lower.slice(2), 16);
+      return Number.isFinite(code) ? String.fromCodePoint(code) : match;
+    }
+    if (lower.startsWith("#")) {
+      const code = Number.parseInt(lower.slice(1), 10);
+      return Number.isFinite(code) ? String.fromCodePoint(code) : match;
+    }
+    return named[lower] ?? match;
+  });
+}
+
+function getHtmlAttr(attrs: string, name: string): string | null {
+  const attrName = name.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+  const re = new RegExp(`${attrName}\\s*=\\s*("([^"]*)"|'([^']*)'|([^\\s"'=<>\\x60]+))`, "i");
+  const match = attrs.match(re);
+  if (!match) return null;
+  return decodeHtmlEntities(match[2] ?? match[3] ?? match[4] ?? "").trim();
+}
+
+function stripHtmlTags(html: string): string {
+  return html.replace(/<[^>]*>/g, "");
+}
+
+function escapeBbcodeLabel(text: string): string {
+  return text.replace(/\[/g, "(").replace(/]/g, ")");
+}
+
+function shikimoriEntityTagFromHref(href: string): { tag: "anime" | "character" | "manga" | "person"; id: string } | null {
+  let pathname: string;
+  try {
+    pathname = new URL(href, "https://shikimori.local").pathname;
+  } catch {
+    return null;
+  }
+
+  const match = pathname.match(/^\/(animes|characters|mangas|people)\/(\d+)(?:[-/]|$)/i);
+  if (!match) return null;
+
+  const tagByPath: Record<string, "anime" | "character" | "manga" | "person"> = {
+    animes: "anime",
+    characters: "character",
+    mangas: "manga",
+    people: "person",
+  };
+
+  return { tag: tagByPath[match[1].toLowerCase()], id: match[2] };
+}
+
+function convertHtmlLinkToBbcode(attrs: string, innerHtml: string): string {
+  const label = decodeHtmlEntities(stripHtmlTags(innerHtml)).replace(/\s+/g, " ").trim();
+  if (!label) return "";
+
+  const href = getHtmlAttr(attrs, "href");
+  if (!href) return label;
+
+  const entity = shikimoriEntityTagFromHref(href);
+  if (entity) {
+    const safeLabel = escapeBbcodeLabel(label);
+    return `[${entity.tag}=${entity.id}]${safeLabel}[/${entity.tag}]`;
+  }
+
+  const absoluteHref = href.startsWith("/") ? shikimoriSiteUrl(href) : href;
+  if (/^https?:\/\//i.test(absoluteHref)) {
+    return `[url=${absoluteHref}]${escapeBbcodeLabel(label)}[/url]`;
+  }
+
+  return label;
+}
+
+function shikimoriDescriptionHtmlToBbcode(html: string | null): string | null {
+  if (!html) return null;
+
+  const text = html
+    .replace(/\r\n?/g, "\n")
+    .replace(/<\s*br\s*\/?>/gi, "\n")
+    .replace(/<\s*li\b[^>]*>/gi, "\n- ")
+    .replace(/<\/\s*(p|div|li|blockquote|h[1-6])\s*>/gi, "\n\n")
+    .replace(/<a\b([^>]*)>([\s\S]*?)<\/a>/gi, (_match, attrs: string, innerHtml: string) =>
+      convertHtmlLinkToBbcode(attrs, innerHtml),
+    )
+    .replace(/<\s*(strong|b)\b[^>]*>([\s\S]*?)<\/\s*\1\s*>/gi, "[b]$2[/b]")
+    .replace(/<\s*(em|i)\b[^>]*>([\s\S]*?)<\/\s*\1\s*>/gi, "[i]$2[/i]")
+    .replace(/<[^>]*>/g, "");
+
+  return normalizeDescription(
+    decodeHtmlEntities(text)
+      .replace(/[ \t]+\n/g, "\n")
+      .replace(/\n[ \t]+/g, "\n")
+      .replace(/\n{3,}/g, "\n\n"),
+  );
+}
+
+function resolveDescription(anime: ShikimoriAnime | null, fallbackDescription: string | null): string | null {
+  return (
+    shikimoriDescriptionHtmlToBbcode(anime?.description_html ?? null) ??
+    normalizeDescription(anime?.description ?? null) ??
+    fallbackDescription
+  );
 }
 
 function sumScoreVotes(stats: ShikimoriAnime["rates_scores_stats"]): number | null {
@@ -234,7 +349,7 @@ function mapAnimeToDto(
     duration: anime?.duration ?? null,
     airedOn: anime?.aired_on ?? null,
     releasedOn: anime?.released_on ?? null,
-    description: normalizeDescription(anime?.description ?? null) ?? kodikMeta.description,
+    description: resolveDescription(anime, kodikMeta.description),
     genres: mapGenres(anime, kodikMeta.genres),
     studios: resolveStudios(anime, allMaterials, kodikMeta.studios),
     synonyms: anime?.synonyms?.slice(0, 6) ?? [],
@@ -272,6 +387,10 @@ export const getAnimePageData = cache(async (shikimoriId: number): Promise<Anime
         playerLink: true,
         quality: true,
         materialData: true,
+        seasons: {
+          orderBy: { seasonNumber: "asc" },
+          select: { seasonNumber: true },
+        },
       },
     }),
     prisma.kodikEpisodeRelease.findFirst({
@@ -305,6 +424,7 @@ export const getAnimePageData = cache(async (shikimoriId: number): Promise<Anime
       translationType: m.translationType,
       lastSeason: m.lastSeason,
       lastEpisode: m.lastEpisode,
+      availableSeasons: m.seasons.filter((season) => season.seasonNumber >= 0),
       playerLink: normalizePlayerLink(m.playerLink),
       quality: m.quality,
     }));

@@ -104,8 +104,9 @@ function getMainLineNodeIds(links: ShikimoriFranchiseLink[], currentId: number):
 
 export async function fetchShikimoriFranchise(
   shikimoriId: number,
+  init?: RequestInit,
 ): Promise<ShikimoriFranchiseResponse | null> {
-  return shikimoriFetch<ShikimoriFranchiseResponse>(`/animes/${shikimoriId}/franchise`);
+  return shikimoriFetch<ShikimoriFranchiseResponse>(`/animes/${shikimoriId}/franchise`, init);
 }
 
 function mapFranchiseNodes(

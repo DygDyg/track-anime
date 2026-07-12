@@ -2,6 +2,9 @@ import type { AdvancedSearchFilters } from "@/lib/search-fields";
 
 export const SEARCH_MIN_QUERY_LENGTH = 2;
 export const SEARCH_PAGE_SIZE = 24;
+export const DEFAULT_HEADER_SEARCH_DEBOUNCE_MS = 1500;
+export const MIN_HEADER_SEARCH_DEBOUNCE_MS = 500;
+export const MAX_HEADER_SEARCH_DEBOUNCE_MS = 5000;
 /** Меньше этого числа title-совпадений в шапке — второй запрос по описанию. */
 export const HEADER_DESCRIPTION_SUPPLEMENT_THRESHOLD = 10;
 

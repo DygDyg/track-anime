@@ -77,6 +77,8 @@ KODIK_API_TOKEN="ваш_токен_с_kodik"
 KODIK_API_URL="https://kodik-api.com"
 KODIK_SYNC_PAGES="3"
 KODIK_USER_AGENT="TrackAnime/0.1"
+SHIKIMORI_REQUEST_TIMEOUT_MS="8000"
+SHIKIMORI_TOTAL_TIMEOUT_MS="15000"
 NODE_ENV="production"
 ```
 
@@ -87,6 +89,8 @@ NODE_ENV="production"
 | `KODIK_API_URL` | нет | По умолчанию `https://kodik-api.com` |
 | `KODIK_SYNC_PAGES` | нет | Сколько страниц `/list` обрабатывать за один sync (по умолчанию 3) |
 | `KODIK_USER_AGENT` | нет | User-Agent для запросов к Kodik |
+| `SHIKIMORI_REQUEST_TIMEOUT_MS` | нет | Таймаут одной публичной попытки Shikimori API (по умолчанию 8000 мс) |
+| `SHIKIMORI_TOTAL_TIMEOUT_MS` | нет | Общий бюджет публичного Shikimori API-запроса с retry (по умолчанию 15000 мс) |
 | `NODE_ENV` | для prod | `production` при `npm run start` |
 
 **Токен Kodik:** получите в [bd.kodikres.com](https://bd.kodikres.com) → API. Без токена скрипты `kodik:*` завершатся с ошибкой `KODIK_API_TOKEN не задан в .env`.

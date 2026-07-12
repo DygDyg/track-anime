@@ -41,6 +41,22 @@ export function normalizeDirectImageUrl(url: string): string {
   return trimmed.replace(/^http:\/\//i, "https://");
 }
 
+export function preferOriginalShikimoriImageUrl(url: string | null | undefined): string | null {
+  if (!isValidImageUrl(url)) return null;
+
+  const normalized = normalizeDirectImageUrl(url!);
+
+  if (/\/system\/animes\/(?:preview|x96|x48)\//i.test(normalized)) {
+    return normalized.replace(/\/system\/animes\/(?:preview|x96|x48)\//i, "/system/animes/original/");
+  }
+
+  if (/\/(?:preview|x96|x48)\//i.test(normalized) && /shikimori\./i.test(normalized)) {
+    return normalized.replace(/\/(?:preview|x96|x48)\//i, "/original/");
+  }
+
+  return normalized;
+}
+
 /** Для карточек — Shikimori preview вместо original, если возможно. */
 export function pickThumbDirectUrl(url: string): string {
   const normalized = normalizeDirectImageUrl(url);

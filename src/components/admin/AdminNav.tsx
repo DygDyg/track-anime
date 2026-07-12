@@ -12,6 +12,8 @@ const items = [
   { href: "/admin/shikimori", label: "Shikimori" },
   { href: "/admin/discord", label: "Discord" },
   { href: "/admin/notifications", label: "Уведомления" },
+  { href: "/admin/brand", label: "Бренд" },
+  { href: "/admin/search", label: "Поиск" },
   { href: "/admin/site-settings", label: "Настройки сайта" },
   { href: "/admin/intro-offsets", label: "Интро озвучек" },
   { href: "/admin/watch-history", label: "История" },

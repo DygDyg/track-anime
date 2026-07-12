@@ -116,7 +116,7 @@ export function BbcodeInlineCharacterLink({
     const updatePosition = () => {
       const anchor = anchorRef.current;
       if (!anchor) return;
-      const panelHeight = panelRef.current?.offsetHeight ?? HOVER_PORTAL_ESTIMATED_HEIGHT;
+      const panelHeight = panelRef.current?.scrollHeight ?? HOVER_PORTAL_ESTIMATED_HEIGHT;
       setPortalStyle(
         computeHoverPortalStyle(
           anchor.getBoundingClientRect(),
@@ -166,7 +166,7 @@ export function BbcodeInlineCharacterLink({
         aria-hidden={!hovered}
       >
         <div className="flex max-h-[inherit] flex-col overflow-hidden rounded-xl border border-border bg-card shadow-2xl shadow-black/70 ring-1 ring-white/5">
-          <div className="relative aspect-[4/3] w-full shrink-0 overflow-hidden bg-surface-dim">
+          <div className="relative aspect-[3/4] w-full shrink-0 overflow-hidden bg-surface-dim">
             {preview?.imageUrl ? (
               // eslint-disable-next-line @next/next/no-img-element
               <img

@@ -36,6 +36,10 @@ export const AVATAR_DECORATION_SCALE_MIN = 1;
 export const AVATAR_DECORATION_SCALE_MAX = 2;
 export const AVATAR_DECORATION_SCALE_DEFAULT = 1.08;
 export const AVATAR_DECORATION_SCALE_STEP = 0.01;
+export const BETA_HIDDEN_PROGRESS_OPACITY_MIN = 0;
+export const BETA_HIDDEN_PROGRESS_OPACITY_MAX = 1;
+export const BETA_HIDDEN_PROGRESS_OPACITY_DEFAULT = 1;
+export const BETA_HIDDEN_PROGRESS_OPACITY_STEP = 0.05;
 
 export type SiteSettings = {
   fontFamily: SiteFontFamily;
@@ -45,8 +49,10 @@ export type SiteSettings = {
   backgroundDim: SiteBackgroundDim;
   backgroundImageUrl: SiteBackgroundImageUrl;
   reduceMotion: boolean;
+  reduceAvatarDecorationMotion: boolean;
   preferPosterOverScreenshot: boolean;
   showRelativeTime: boolean;
+  showClock: boolean;
   homeTranslationFilter: HomeTranslationFilter;
   hoverTrailerEnabled: boolean;
   hoverTrailerDelaySec: number;
@@ -66,6 +72,12 @@ export type SiteSettings = {
   avatarDecorationScale: number;
   /** Beta: обрезка панелей Kodik, видео 16:9, iframe кликабелен */
   betaChromelessPlayer: boolean;
+  /** Автоматически пропускать найденные AniSkip OP/ED интервалы */
+  autoSkipOpeningsEndings: boolean;
+  /** Видимость полосы прогресса, когда beta-интерфейс скрыт; 0 = выключена */
+  betaHiddenProgressOpacity: number;
+  /** Локально для устройства: навигация стрелками по карточкам сайта */
+  tvNavigationEnabled: boolean;
 };
 
 export const SITE_SETTINGS_STORAGE_KEY = "track-anime-site-settings";
@@ -79,8 +91,10 @@ export const DEFAULT_SITE_SETTINGS: SiteSettings = {
   backgroundDim: "medium",
   backgroundImageUrl: null,
   reduceMotion: false,
+  reduceAvatarDecorationMotion: false,
   preferPosterOverScreenshot: false,
   showRelativeTime: true,
+  showClock: false,
   homeTranslationFilter: null,
   hoverTrailerEnabled: true,
   hoverTrailerDelaySec: HOVER_TRAILER_DELAY_DEFAULT_SEC,
@@ -92,6 +106,9 @@ export const DEFAULT_SITE_SETTINGS: SiteSettings = {
   avatarDecorationId: null,
   avatarDecorationScale: AVATAR_DECORATION_SCALE_DEFAULT,
   betaChromelessPlayer: false,
+  autoSkipOpeningsEndings: false,
+  betaHiddenProgressOpacity: BETA_HIDDEN_PROGRESS_OPACITY_DEFAULT,
+  tvNavigationEnabled: true,
 };
 
 export const SITE_FONT_OPTIONS: { id: SiteFontFamily; label: string }[] = [
@@ -188,6 +205,18 @@ export function normalizeAvatarDecorationScale(value: unknown): number {
   );
 }
 
+function normalizeBetaHiddenProgressOpacity(value: unknown): number {
+  const parsed = typeof value === "number" ? value : Number(value);
+  if (!Number.isFinite(parsed)) return BETA_HIDDEN_PROGRESS_OPACITY_DEFAULT;
+  const stepped =
+    Math.round(parsed / BETA_HIDDEN_PROGRESS_OPACITY_STEP) *
+    BETA_HIDDEN_PROGRESS_OPACITY_STEP;
+  return Math.min(
+    BETA_HIDDEN_PROGRESS_OPACITY_MAX,
+    Math.max(BETA_HIDDEN_PROGRESS_OPACITY_MIN, Math.round(stepped * 100) / 100),
+  );
+}
+
 export function normalizeSiteSettings(raw: unknown): SiteSettings {
   if (!isRecord(raw)) return { ...DEFAULT_SITE_SETTINGS };
 
@@ -226,8 +255,10 @@ export function normalizeSiteSettings(raw: unknown): SiteSettings {
         : DEFAULT_SITE_SETTINGS.backgroundDim,
     backgroundImageUrl: parseBackgroundImageUrl(raw),
     reduceMotion: raw.reduceMotion === true,
+    reduceAvatarDecorationMotion: raw.reduceAvatarDecorationMotion === true,
     preferPosterOverScreenshot: raw.preferPosterOverScreenshot === true,
     showRelativeTime: raw.showRelativeTime !== false,
+    showClock: raw.showClock === true,
     homeTranslationFilter: parseHomeTranslationFilter(raw.homeTranslationFilter),
     hoverTrailerEnabled: raw.hoverTrailerEnabled !== false,
     hoverTrailerDelaySec: parseHoverTrailerDelaySec(raw.hoverTrailerDelaySec),
@@ -239,6 +270,9 @@ export function normalizeSiteSettings(raw: unknown): SiteSettings {
     avatarDecorationId: normalizeAvatarDecorationId(raw.avatarDecorationId),
     avatarDecorationScale: normalizeAvatarDecorationScale(raw.avatarDecorationScale),
     betaChromelessPlayer: raw.betaChromelessPlayer === true,
+    autoSkipOpeningsEndings: raw.autoSkipOpeningsEndings === true,
+    betaHiddenProgressOpacity: normalizeBetaHiddenProgressOpacity(raw.betaHiddenProgressOpacity),
+    tvNavigationEnabled: raw.tvNavigationEnabled !== false,
   };
 }
 
@@ -263,7 +297,7 @@ export function hasStoredSiteSettings(): boolean {
 
 export function buildSiteSettingsInitScript(defaults: SiteSettings): string {
   const fallback = JSON.stringify(defaults);
-  return `(function(){try{var k="${SITE_SETTINGS_STORAGE_KEY}";var raw=localStorage.getItem(k);var d=raw?JSON.parse(raw):${fallback};var el=document.documentElement;var f=d.fontFamily||"inter";var c=d.cursorStyle||"default";var s=d.cardSize||"normal";var a=d.accentPreset||"blue";var b=d.backgroundDim||"medium";var allowed=${JSON.stringify(SITE_FONT_IDS)};var cursors=${JSON.stringify(SITE_CURSOR_OPTIONS.map((item) => item.id))};if(allowed.indexOf(f)===-1)f="inter";if(cursors.indexOf(c)===-1)c="default";el.setAttribute("data-font",f);el.setAttribute("data-cursor",c);el.setAttribute("data-card-size",s);el.setAttribute("data-accent",a);el.setAttribute("data-bg-dim",b);if(d.reduceMotion===true)el.setAttribute("data-reduce-motion","true");else el.removeAttribute("data-reduce-motion");}catch(e){}})();`;
+  return `(function(){try{var k="${SITE_SETTINGS_STORAGE_KEY}";var raw=localStorage.getItem(k);var d=raw?JSON.parse(raw):${fallback};var el=document.documentElement;var f=d.fontFamily||"inter";var c=d.cursorStyle||"default";var s=d.cardSize||"normal";var a=d.accentPreset||"blue";var b=d.backgroundDim||"medium";var allowed=${JSON.stringify(SITE_FONT_IDS)};var cursors=${JSON.stringify(SITE_CURSOR_OPTIONS.map((item) => item.id))};if(allowed.indexOf(f)===-1)f="inter";if(cursors.indexOf(c)===-1)c="default";el.setAttribute("data-font",f);el.setAttribute("data-cursor",c);el.setAttribute("data-card-size",s);el.setAttribute("data-accent",a);el.setAttribute("data-bg-dim",b);el.setAttribute("data-tv-nav-enabled",d.tvNavigationEnabled===false?"false":"true");if(d.tvNavigationEnabled===false)el.removeAttribute("data-tv-nav");if(d.reduceMotion===true)el.setAttribute("data-reduce-motion","true");else el.removeAttribute("data-reduce-motion");}catch(e){}})();`;
 }
 
 export const siteSettingsInitScript = buildSiteSettingsInitScript(DEFAULT_SITE_SETTINGS);
@@ -279,6 +313,10 @@ export function applySiteSettings(settings: SiteSettings): void {
     root.setAttribute("data-reduce-motion", "true");
   } else {
     root.removeAttribute("data-reduce-motion");
+  }
+  root.setAttribute("data-tv-nav-enabled", settings.tvNavigationEnabled ? "true" : "false");
+  if (!settings.tvNavigationEnabled) {
+    root.removeAttribute("data-tv-nav");
   }
   localStorage.setItem(SITE_SETTINGS_STORAGE_KEY, JSON.stringify(settings));
 }

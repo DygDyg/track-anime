@@ -21,7 +21,7 @@ function redirectLegacyHost(request: NextRequest): NextResponse | null {
   return NextResponse.redirect(url, 308);
 }
 
-export function middleware(request: NextRequest) {
+export function proxy(request: NextRequest) {
   const legacyRedirect = redirectLegacyHost(request);
   if (legacyRedirect) return legacyRedirect;
 

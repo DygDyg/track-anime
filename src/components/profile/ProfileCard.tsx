@@ -4,6 +4,7 @@ import { ProfileAvatar } from "@/components/profile/ProfileAvatar";
 import { ProfileFriendButton } from "@/components/profile/ProfileFriendButton";
 import { ProfileFriendsSection } from "@/components/profile/ProfileFriendsSection";
 import { ProfileSiteSettingsNote } from "@/components/profile/ProfileSiteSettingsNote";
+import { UsersSearchForm } from "@/components/user/UsersSearchForm";
 import { shikimoriSiteUrl } from "@/lib/shikimori/endpoints";
 import type { AuthUser } from "@/lib/auth/session";
 import { userFavoritesPath, userProfilePath } from "@/lib/public-user";
@@ -301,6 +302,18 @@ export function ProfileCard({
         </section>
 
         {isOwn ? <ProfileSiteSettingsNote /> : null}
+
+        {isOwn ? (
+          <section className="rounded-xl border border-border bg-background/40 px-4 py-4">
+            <h2 className="text-sm font-semibold uppercase tracking-wide text-muted">
+              Пользователи Shikimori
+            </h2>
+            <p className="mt-1 text-sm text-muted">
+              Найдите пользователя по нику или Shikimori ID, чтобы открыть его профиль и списки.
+            </p>
+            <UsersSearchForm className="mt-3" />
+          </section>
+        ) : null}
 
         <ProfileFriendsSection
           nickname={user.nickname}

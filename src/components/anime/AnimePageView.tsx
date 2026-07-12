@@ -125,6 +125,34 @@ function AnimeInfoStats({ anime }: { anime: AnimePageDto }) {
   );
 }
 
+function AnimeTitleBlock({
+  anime,
+  titleWithKind,
+  className = "",
+}: {
+  anime: AnimePageDto;
+  titleWithKind: string;
+  className?: string;
+}) {
+  return (
+    <div className={className}>
+      <h1 className="text-xl font-bold leading-tight text-foreground sm:text-2xl md:text-3xl">
+        {titleWithKind}
+      </h1>
+
+      {anime.titleOriginal && anime.titleOriginal !== anime.title ? (
+        <p className="mt-1 text-sm text-muted">{anime.titleOriginal}</p>
+      ) : null}
+
+      {anime.synonyms.length > 0 ? (
+        <p className="mt-1.5 text-xs leading-relaxed text-muted">
+          Также: {anime.synonyms.join(" · ")}
+        </p>
+      ) : null}
+    </div>
+  );
+}
+
 export function AnimePageView({ anime }: { anime: AnimePageDto }) {
   const statusLabel = labelStatus(anime.status);
   const kindShortLabel = labelKindShort(anime.kind);
@@ -139,6 +167,11 @@ export function AnimePageView({ anime }: { anime: AnimePageDto }) {
         <div className="mx-auto max-w-5xl space-y-6 px-3 sm:px-6 lg:px-8">
           <ContentPanel className="overflow-x-hidden p-0 sm:overflow-visible sm:p-6">
             <div className="anime-page-hero-row relative flex flex-col gap-5 sm:flex-row sm:gap-8">
+              <div className="px-4 pt-4 sm:hidden">
+                <AnimePageBackButton className="mb-3 inline-flex items-center gap-1.5 rounded-lg border border-border bg-background px-3 py-1.5 text-xs font-medium text-muted transition hover:border-accent/40 hover:text-foreground" />
+                <AnimeTitleBlock anime={anime} titleWithKind={titleWithKind} />
+              </div>
+
               <aside className="flex w-full shrink-0 flex-col sm:w-[220px] md:w-[240px]">
                 <AnimePosterCover
                   shikimoriId={anime.shikimoriId}
@@ -166,21 +199,9 @@ export function AnimePageView({ anime }: { anime: AnimePageDto }) {
               </aside>
 
               <div className="min-w-0 flex-1 px-4 sm:px-0">
-                <AnimePageBackButton className="mb-3 inline-flex items-center gap-1.5 rounded-lg border border-border bg-background px-3 py-1.5 text-xs font-medium text-muted transition hover:border-accent/40 hover:text-foreground" />
+                <AnimePageBackButton className="mb-3 hidden items-center gap-1.5 rounded-lg border border-border bg-background px-3 py-1.5 text-xs font-medium text-muted transition hover:border-accent/40 hover:text-foreground sm:inline-flex" />
 
-                <h1 className="text-xl font-bold leading-tight text-foreground sm:text-2xl md:text-3xl">
-                  {titleWithKind}
-                </h1>
-
-                {anime.titleOriginal && anime.titleOriginal !== anime.title ? (
-                  <p className="mt-1 text-sm text-muted">{anime.titleOriginal}</p>
-                ) : null}
-
-                {anime.synonyms.length > 0 ? (
-                  <p className="mt-1.5 text-xs leading-relaxed text-muted">
-                    Также: {anime.synonyms.join(" · ")}
-                  </p>
-                ) : null}
+                <AnimeTitleBlock anime={anime} titleWithKind={titleWithKind} className="hidden sm:block" />
 
                 <div className="mt-4 flex flex-wrap items-center gap-2">
                   <AnimePageListBadge shikimoriId={anime.shikimoriId} size="md" className="max-w-full" />
@@ -223,11 +244,13 @@ export function AnimePageView({ anime }: { anime: AnimePageDto }) {
           {anime.description ? (
             <ContentPanel className="p-4 sm:p-5">
               <h2 className="mb-3 text-lg font-semibold text-foreground">Описание</h2>
-              <FormattedDescription
-                text={anime.description}
-                paragraphClassName="text-sm leading-relaxed text-muted sm:text-base"
-                enableEntityHover
-              />
+              <div className="anime-description-body">
+                <FormattedDescription
+                  text={anime.description}
+                  paragraphClassName="text-sm leading-relaxed text-muted sm:text-base"
+                  enableEntityHover
+                />
+              </div>
             </ContentPanel>
           ) : null}
 

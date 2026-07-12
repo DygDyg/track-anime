@@ -22,13 +22,15 @@ Track Anime (`track-anime`) — веб-приложение для просмо�
 
 - **Home feed** — лента новых серий (`KodikEpisodeRelease`) с infinite scroll
 - **History new episodes** — блок «новые серии из вашей истории» для авторизованных
-- **Anime page** — метаданные Shikimori + выбор озвучки Kodik + плеер
-- **Search** — поиск по локальной БД Kodik
+- **Anime page** — метаданные Shikimori + выбор озвучки Kodik + плеер с ручным и автоматическим OP/ED skip
+- **Search** — поиск по локальной БД Kodik с неточными совпадениями по названию и настраиваемой задержкой подсказок в шапке
 - **Favorites / lists** — списки Shikimori (смотрю, в планах и т.д.) с локальным кэшем
 - **Watch history** — прогресс просмотра (сезон, серия, позиция в секундах)
 - **Calendar** — расписание выхода серий ongoing-аниме
-- **User profiles** — публичные профили по Shikimori ID
-- **Admin panel** — импорт Kodik, sync, настройки, DB explorer, todos
+- **User profiles** — публичные профили по Shikimori ID и поиск пользователей Shikimori из профиля текущего пользователя
+- **Site settings** — настройки внешнего вида, часов, ленты, плеера, локального ТВ-режима и украшений аватарок для авторизованных; админская ротация WEBP-логотипов из `public/brand-logos`; «Недавно открытые» доступны отдельной иконкой рядом с поиском
+- **Notifications** — browser push, in-app лента и внешние каналы Discord/Telegram/VK через пользовательские привязки
+- **Admin panel** — импорт Kodik, sync, уведомления, search/site defaults, DB explorer, todos
 
 ## High-Level Architecture
 
@@ -40,12 +42,15 @@ Browser
         └── PostgreSQL (Prisma)
               ├── Kodik materials, episodes, releases
               ├── Users, sessions, watch progress
-              └── Shikimori list cache
+              ├── Shikimori list cache
+              ├── Notification preferences, links, deliveries
+              └── External ID / skip-time cache
 
 Background / CLI:
   scripts/kodik-import-full.ts  — полный импорт каталога
   scripts/kodik-sync-recent.ts  — инкрементальный sync
   scripts/kodik-sync-scheduled.ts  — cron auto-sync
+  scripts/notification-worker.ts  — доставка уведомлений
 ```
 
 **Ключевой принцип:** фронтенд не обращается напрямую к Shikimori или Kodik API. Все внешние запросы идут через серверные модули (`src/lib/`, `src/kodik/`).
@@ -62,5 +67,6 @@ Background / CLI:
 - `AI_RULES.md` / `AI_CONTEXT.md` — shared AI rules and quick reference for Codex/Cursor
 - `docs/shikimori-api/` — Shikimori API reference
 - `docs/kodik-api/` — Kodik API reference
+- `docs/aniskip-api.md` — AniSkip API reference
 - `docs/KodikSyncDocumentation.md` — sync system details
 - `docs/SERVER.md` — production deployment

@@ -1,8 +1,12 @@
 import { AdminActionButton } from "@/components/admin/AdminActionButton";
 import { ImportProgressPanel } from "@/components/admin/ImportProgressPanel";
+import { MalIdSyncPanel } from "@/components/admin/MalIdSyncPanel";
+import { PendingKodikMaterialsPanel } from "@/components/admin/PendingKodikMaterialsPanel";
 import { ShikimoriAnonsSyncPanel } from "@/components/admin/ShikimoriAnonsSyncPanel";
 import { SyncSettingsPanel } from "@/components/admin/SyncSettingsPanel";
 import { adminClass } from "@/components/admin/admin-styles";
+import { getMalIdSyncStatus } from "@/lib/admin/mal-id-sync";
+import { getPendingKodikMaterials } from "@/lib/admin/pending-kodik-materials";
 import { getImportJobStatus } from "@/lib/admin/stats";
 import {
   getSyncHistory,
@@ -14,11 +18,13 @@ import { getShikimoriAnonsSyncStatus } from "@/lib/admin/shikimori-anons-sync";
 export const dynamic = "force-dynamic";
 
 export default async function AdminImportPage() {
-  const [job, settings, history, anonsStatus] = await Promise.all([
+  const [job, pendingMaterials, settings, history, anonsStatus, malIdStatus] = await Promise.all([
     getImportJobStatus(),
+    getPendingKodikMaterials({ limit: 50 }),
     getSyncSettings(),
     getSyncHistory(30),
     getShikimoriAnonsSyncStatus(),
+    getMalIdSyncStatus(),
   ]);
 
   return (
@@ -28,6 +34,8 @@ export default async function AdminImportPage() {
         pollWhenIdle={Boolean(job?.isRunning || job?.pendingEpisodes)}
       />
 
+      <PendingKodikMaterialsPanel initialData={pendingMaterials} />
+
       <SyncSettingsPanel
         initialSettings={settings}
         initialHistory={history}
@@ -35,6 +43,8 @@ export default async function AdminImportPage() {
       />
 
       <ShikimoriAnonsSyncPanel initialStatus={anonsStatus} />
+
+      <MalIdSyncPanel initialStatus={malIdStatus} />
 
       <section>
         <h2 className="mb-3 text-lg font-semibold text-foreground">Действия</h2>

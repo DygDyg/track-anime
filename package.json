@@ -28,6 +28,7 @@
     "kodik:normalize-metadata": "tsx scripts/normalize-kodik-material-metadata.ts",
     "kodik:normalize-metadata:write": "tsx scripts/normalize-kodik-material-metadata.ts --write --quiet",
     "shikimori:sync-anons": "tsx scripts/shikimori-sync-anons.ts",
+    "shikimori:malid-stats": "tsx scripts/shikimori-malid-stats.ts",
     "kodik:backfill-dates": "tsx scripts/kodik-backfill-release-dates.ts",
     "import:sqlite-history": "node scripts/import-sqlite-watch-history.mjs --create-users",
     "import:sqlite-history:merge": "node scripts/import-sqlite-watch-history.mjs --skip-existing",

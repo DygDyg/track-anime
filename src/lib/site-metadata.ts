@@ -244,7 +244,9 @@ export function buildUserProfilePageMetadata(input: {
   });
 }
 
-export function buildDefaultOpenGraph(): NonNullable<Metadata["openGraph"]> {
+export function buildDefaultOpenGraph(
+  logoUrl = versionedAsset(SITE_LOGO_PATH),
+): NonNullable<Metadata["openGraph"]> {
   return {
     type: "website",
     locale: "ru_RU",
@@ -253,7 +255,7 @@ export function buildDefaultOpenGraph(): NonNullable<Metadata["openGraph"]> {
     description: defaultSiteDescription,
     images: [
       {
-        url: versionedAsset(SITE_LOGO_PATH),
+        url: logoUrl,
         width: 512,
         height: 512,
         alt: SITE_LOGO_ALT,

@@ -3,14 +3,20 @@
 import { useState } from "react";
 import { AsyncButton } from "@/components/ui/AsyncButton";
 
-export function UsersSearchForm({ defaultQuery = "" }: { defaultQuery?: string }) {
+export function UsersSearchForm({
+  defaultQuery = "",
+  className = "mb-8",
+}: {
+  defaultQuery?: string;
+  className?: string;
+}) {
   const [pending, setPending] = useState(false);
 
   return (
     <form
       action="/user"
       method="get"
-      className="mb-8"
+      className={className}
       onSubmit={() => setPending(true)}
     >
       <label htmlFor="users-search" className="sr-only">

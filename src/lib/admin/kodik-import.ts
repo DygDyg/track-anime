@@ -2,6 +2,7 @@ import { prisma } from "@/lib/prisma";
 import { saveKodikMaterial } from "@/db/save-material";
 import { isShikimoriStubMaterial } from "@/db/save-shikimori-material";
 import { normalizeKodikMaterialMetadata } from "@/lib/kodik-material-metadata-normalizer";
+import { scheduleMalIdRefreshForShikimoriIds } from "@/lib/admin/mal-id-sync";
 import { kodikSearch } from "@/kodik/client";
 import {
   finishImportJobSession,
@@ -216,6 +217,7 @@ export async function runKodikEpisodesImport(options?: {
       ids: [...touchedShikimoriIds],
       quiet: true,
     });
+    scheduleMalIdRefreshForShikimoriIds([...touchedShikimoriIds]);
   }
 
   return {

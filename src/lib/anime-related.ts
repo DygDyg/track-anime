@@ -13,7 +13,11 @@ import {
   type ShikimoriRelatedAnimeBrief,
 } from "@/lib/shikimori/related";
 import { getShikimoriSimilarAnimes } from "@/lib/shikimori/similar";
-import { isShikimoriRateLimitError, shikimoriAssetUrl } from "@/lib/shikimori/client";
+import {
+  isShikimoriRateLimitError,
+  isShikimoriTransientFetchError,
+  shikimoriAssetUrl,
+} from "@/lib/shikimori/client";
 
 export type RelatedAnimeDto = ShikimoriRelatedAnimeBrief;
 
@@ -27,6 +31,7 @@ export type RelatedAnimesBundle = {
 
 const RELATED_BUNDLE_CACHE_SECONDS = 7 * 24 * 60 * 60; // 7 дней — сезоны/хронология/напрямую
 const SIMILAR_CACHE_SECONDS = 3600;
+const NON_CRITICAL_SHIKIMORI_TIMEOUT_MS = 2_500;
 
 const SEASON_MOVIE_KINDS = new Set(["tv", "movie"]);
 
@@ -194,9 +199,15 @@ const EMPTY_RELATED_BUNDLE: RelatedAnimesBundle = {
   direct: [],
 };
 
+function nonCriticalShikimoriInit(): RequestInit {
+  return { signal: AbortSignal.timeout(NON_CRITICAL_SHIKIMORI_TIMEOUT_MS) };
+}
+
 async function getRelatedAnimesBundleUncached(shikimoriId: number): Promise<RelatedAnimesBundle> {
-  const directRaw = await getShikimoriRelatedAnimes(shikimoriId);
-  const franchise = await fetchShikimoriFranchise(shikimoriId);
+  const [directRaw, franchise] = await Promise.all([
+    getShikimoriRelatedAnimes(shikimoriId, nonCriticalShikimoriInit()),
+    fetchShikimoriFranchise(shikimoriId, nonCriticalShikimoriInit()),
+  ]);
 
   const franchiseSeasons = franchise?.nodes?.length ? mapFranchiseSeasons(franchise) : [];
   const franchiseChronology = franchise?.nodes?.length ? mapFranchiseChronology(franchise) : [];
@@ -220,7 +231,10 @@ export async function getRelatedAnimesBundle(shikimoriId: number): Promise<Relat
       { revalidate: RELATED_BUNDLE_CACHE_SECONDS, tags: [`related-animes-${shikimoriId}`] },
     )();
   } catch (error) {
-    if (isShikimoriRateLimitError(error)) return EMPTY_RELATED_BUNDLE;
+    if (isShikimoriRateLimitError(error) || isShikimoriTransientFetchError(error)) {
+      console.warn("[anime-related] bundle unavailable:", shikimoriId);
+      return EMPTY_RELATED_BUNDLE;
+    }
     throw error;
   }
 }
@@ -232,7 +246,7 @@ export async function getRelatedAnimes(shikimoriId: number): Promise<RelatedAnim
 
 /** Похожие аниме из Shikimori /similar. */
 async function getSimilarAnimesUncached(shikimoriId: number): Promise<RelatedAnimeDto[]> {
-  const similar = await getShikimoriSimilarAnimes(shikimoriId);
+  const similar = await getShikimoriSimilarAnimes(shikimoriId, nonCriticalShikimoriInit());
   return enrichRelatedBriefs(similar);
 }
 
@@ -244,9 +258,14 @@ export async function getSimilarAnimes(shikimoriId: number): Promise<RelatedAnim
       { revalidate: SIMILAR_CACHE_SECONDS, tags: [`similar-animes-${shikimoriId}`] },
     )();
   } catch (error) {
+    if (isShikimoriTransientFetchError(error)) {
+      console.warn("[anime-related] similar unavailable:", shikimoriId);
+      return [];
+    }
+
     if (isShikimoriRateLimitError(error)) {
       console.warn("[anime-related] similar rate limited:", shikimoriId);
-      return getSimilarAnimesUncached(shikimoriId).catch(() => []);
+      return [];
     }
     throw error;
   }

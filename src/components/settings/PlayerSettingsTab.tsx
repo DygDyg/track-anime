@@ -3,7 +3,12 @@
 import { useEffect, useMemo, useState } from "react";
 import { TranslationBadge } from "@/components/TranslationBadge";
 import { useSiteSettings } from "@/components/SiteSettingsProvider";
-import type { SiteSettings } from "@/lib/site-settings";
+import {
+  BETA_HIDDEN_PROGRESS_OPACITY_MAX,
+  BETA_HIDDEN_PROGRESS_OPACITY_MIN,
+  BETA_HIDDEN_PROGRESS_OPACITY_STEP,
+  type SiteSettings,
+} from "@/lib/site-settings";
 import {
   TRANSLATION_INTRO_OFFSET_MAX_SEC,
   TRANSLATION_INTRO_OFFSET_MIN_SEC,
@@ -21,13 +26,15 @@ function SectionHint({ children }: { children: React.ReactNode }) {
 type Props = {
   settings: SiteSettings;
   updateSettings: (patch: Partial<SiteSettings>) => void;
+  updateLocalSettings: (patch: Partial<SiteSettings>) => void;
 };
 
-export function PlayerSettingsTab({ settings, updateSettings }: Props) {
+export function PlayerSettingsTab({ settings, updateSettings, updateLocalSettings }: Props) {
   const { remoteSaving } = useSiteSettings();
   const [names, setNames] = useState<string[]>([]);
   const [loading, setLoading] = useState(true);
   const [query, setQuery] = useState("");
+  const [betaConfirmOpen, setBetaConfirmOpen] = useState(false);
 
   useEffect(() => {
     let cancelled = false;
@@ -71,29 +78,108 @@ export function PlayerSettingsTab({ settings, updateSettings }: Props) {
     updateSettings({ translationIntroOffsets: next });
   };
 
+  const setBetaChromeless = (enabled: boolean) => {
+    if (enabled && !settings.betaChromelessPlayer) {
+      setBetaConfirmOpen(true);
+      return;
+    }
+    updateSettings({ betaChromelessPlayer: enabled });
+  };
+
   return (
     <div className="space-y-4">
       <section className="space-y-2 rounded-lg border border-amber-500/30 bg-amber-500/5 p-3">
         <div className="flex flex-wrap items-center justify-between gap-3">
           <div className="min-w-0">
-            <SectionTitle>Beta-плеер без панелей Kodik</SectionTitle>
+            <SectionTitle>Beta-плеер Kodik</SectionTitle>
             <SectionHint>
-              Своя панель управления, ряд серий сверху, полноэкранный режим через браузер (
-              <code className="text-foreground/80">requestFullscreen</code>) — плеер, контролы и
-              озвучки. Crop — в CSS (
-              <code className="text-foreground/80">.kodik-player-beta-*</code>).
+              Это тестовый режим плеера с собственной панелью управления. В нём могут быть баги:
+              некорректная перемотка, проблемы с полноэкранным режимом, PiP, трансляцией или
+              управлением Kodik.
             </SectionHint>
           </div>
           <label className="flex shrink-0 cursor-pointer items-center gap-2 text-sm font-medium text-foreground">
             <input
               type="checkbox"
               checked={settings.betaChromelessPlayer}
-              onChange={(event) => updateSettings({ betaChromelessPlayer: event.target.checked })}
+              onChange={(event) => setBetaChromeless(event.target.checked)}
               className="h-4 w-4 rounded border-border accent-accent"
             />
             Включить
           </label>
         </div>
+      </section>
+
+      <section className="space-y-2 rounded-lg border border-border bg-background/60 p-3">
+        <div className="flex flex-wrap items-center justify-between gap-3">
+          <div className="min-w-0">
+            <SectionTitle>ТВ-режим управления</SectionTitle>
+            <SectionHint>
+              Локально для этого устройства. Когда выключено, стрелки не переключают фокус по
+              карточкам сайта.
+            </SectionHint>
+          </div>
+          <label className="flex shrink-0 cursor-pointer items-center gap-2 text-sm font-medium text-foreground">
+            <input
+              type="checkbox"
+              checked={settings.tvNavigationEnabled}
+              onChange={(event) =>
+                updateLocalSettings({ tvNavigationEnabled: event.target.checked })
+              }
+              className="h-4 w-4 rounded border-border accent-accent"
+            />
+            Включить
+          </label>
+        </div>
+      </section>
+
+      <section className="space-y-2 rounded-lg border border-border bg-background/60 p-3">
+        <div className="flex flex-wrap items-center justify-between gap-3">
+          <div className="min-w-0">
+            <SectionTitle>Автопропуск OP/ED</SectionTitle>
+            <SectionHint>
+              Когда AniSkip нашёл тайминги, плеер автоматически переходит к концу опенинга или
+              эндинга. Recap остаётся ручным.
+            </SectionHint>
+          </div>
+          <label className="flex shrink-0 cursor-pointer items-center gap-2 text-sm font-medium text-foreground">
+            <input
+              type="checkbox"
+              checked={settings.autoSkipOpeningsEndings}
+              onChange={(event) =>
+                updateSettings({ autoSkipOpeningsEndings: event.target.checked })
+              }
+              className="h-4 w-4 rounded border-border accent-accent"
+            />
+            Включить
+          </label>
+        </div>
+      </section>
+
+      <section className="space-y-2 rounded-lg border border-border bg-background/60 p-3">
+        <div className="flex flex-wrap items-start justify-between gap-3">
+          <div className="min-w-0">
+            <SectionTitle>Полоса прогресса при скрытом интерфейсе</SectionTitle>
+            <SectionHint>
+              Видимость тонкой полосы внизу beta-плеера, когда панель управления исчезает.
+              0% — выключить.
+            </SectionHint>
+          </div>
+          <span className="shrink-0 text-sm font-semibold tabular-nums text-accent">
+            {Math.round(settings.betaHiddenProgressOpacity * 100)}%
+          </span>
+        </div>
+        <input
+          type="range"
+          min={BETA_HIDDEN_PROGRESS_OPACITY_MIN}
+          max={BETA_HIDDEN_PROGRESS_OPACITY_MAX}
+          step={BETA_HIDDEN_PROGRESS_OPACITY_STEP}
+          value={settings.betaHiddenProgressOpacity}
+          onChange={(event) =>
+            updateSettings({ betaHiddenProgressOpacity: Number(event.target.value) })
+          }
+          className="site-range w-full"
+        />
       </section>
 
       <section className="space-y-2">
@@ -150,6 +236,48 @@ export function PlayerSettingsTab({ settings, updateSettings }: Props) {
         </ul>
       )}
       {remoteSaving ? <p className="text-xs text-muted">Сохраняем настройки…</p> : null}
+
+      {betaConfirmOpen ? (
+        <div className="fixed inset-0 z-[130] flex items-center justify-center bg-black/60 p-4">
+          <div
+            role="dialog"
+            aria-modal="true"
+            aria-labelledby="settings-beta-player-confirm-title"
+            className="w-full max-w-md rounded-xl border border-border bg-card p-5 shadow-2xl shadow-black/50"
+          >
+            <h3
+              id="settings-beta-player-confirm-title"
+              className="text-base font-semibold text-foreground"
+            >
+              Beta-плеер Kodik
+            </h3>
+            <p className="mt-2 text-sm leading-relaxed text-muted">
+              Это тестовый режим плеера с собственной панелью управления. В нём могут быть баги:
+              некорректная перемотка, проблемы с полноэкранным режимом, PiP, трансляцией или
+              управлением Kodik.
+            </p>
+            <div className="mt-5 flex justify-end gap-2">
+              <button
+                type="button"
+                onClick={() => setBetaConfirmOpen(false)}
+                className="rounded-lg border border-border bg-background px-3 py-2 text-sm font-medium text-foreground transition hover:bg-surface-dim"
+              >
+                Отмена
+              </button>
+              <button
+                type="button"
+                onClick={() => {
+                  updateSettings({ betaChromelessPlayer: true });
+                  setBetaConfirmOpen(false);
+                }}
+                className="rounded-lg border border-accent/50 bg-accent/15 px-3 py-2 text-sm font-medium text-accent transition hover:bg-accent/20"
+              >
+                Включить beta
+              </button>
+            </div>
+          </div>
+        </div>
+      ) : null}
     </div>
   );
 }

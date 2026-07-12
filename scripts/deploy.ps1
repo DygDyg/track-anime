@@ -6,6 +6,7 @@
 #   .\scripts\deploy.ps1 -DryRun
 #   .\scripts\deploy.ps1 -ForceTrayRebuild
 #   .\scripts\deploy.ps1 -Remote "root@1.2.3.4"
+#   .\scripts\deploy.ps1 -SkipBuild
 #
 # См. docs/DEPLOY.md
 
@@ -14,7 +15,8 @@ param(
     [string]$SshKey = "$env:USERPROFILE\.ssh\id_rsa",
     [string]$ServerAppDir = "/var/www/ta_new",
     [switch]$DryRun,
-    [switch]$ForceTrayRebuild
+    [switch]$ForceTrayRebuild,
+    [switch]$SkipBuild
 )
 
 $ErrorActionPreference = "Stop"
@@ -171,8 +173,10 @@ function Test-DeployExcludedFile {
     return (
         $Name -eq ".env" -or
         $Name -eq ".build-number" -or
+        $Name -eq "Desktop.ini" -or
         $Name -eq "tsconfig.tsbuildinfo" -or
         $Name -like "*.tar.gz" -or
+        $Name -like "*~ov.ico" -or
         $Name -like "*.mp4" -or
         $Name -like "*.db"
     )
@@ -182,7 +186,7 @@ function Get-DeploySourceBytes {
     param([string]$Root)
 
     $excludedTop = [System.Collections.Generic.HashSet[string]]::new(
-        [string[]]@("node_modules", ".next", ".git", "tmp", ".cursor", ".kilo"),
+        [string[]]@("node_modules", ".next", ".git", "tmp", ".cursor", ".kilo", ".roo"),
         [StringComparer]::OrdinalIgnoreCase
     )
     $total = [int64]0
@@ -382,6 +386,18 @@ function Write-ServerDeployLogDelta {
             continue
         }
 
+        if ($line -match '^npm warn deprecated ') {
+            if (-not $script:DeployNpmDeprecatedWarningsSuppressed) {
+                Write-Host "[deploy] npm deprecated warnings suppressed"
+                $script:DeployNpmDeprecatedWarningsSuppressed = $true
+            }
+            continue
+        }
+
+        if ($line.Length -gt 2000) {
+            $line = $line.Substring(0, 2000) + " ... [truncated]"
+        }
+
         Write-Host $line
     }
 }
@@ -412,9 +428,13 @@ $tarExcludes = @(
     "--exclude=.env",
     "--exclude=.build-number",
     "--exclude=tmp",
+    "--exclude=scripts/discord-rpc-tray",
     "--exclude=.cursor",
     "--exclude=.kilo",
+    "--exclude=.roo",
+    "--exclude=Desktop.ini",
     "--exclude=*.tar.gz",
+    "--exclude=*~ov.ico",
     "--exclude=*.mp4",
     "--exclude=*.db",
     "--exclude=tsconfig.tsbuildinfo"

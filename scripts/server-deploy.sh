@@ -31,15 +31,20 @@ rm -f server.ts
 rm -rf src/components/watch-party src/lib/watch-party src/app/api/watch-party
 rm -f src/server/watch-party-ws.ts src/lib/kodik-player-control.ts
 rm -f scripts/ws-create-test.mjs scripts/test-ws.mjs scripts/fix-nginx-ws.sh
+rm -f src/middleware.ts src/src/middleware.ts src/src/proxy.ts
 
 deploy_progress 2 "npm ci"
-npm ci
+echo "[deploy] npm ci uses quiet output; errors remain visible"
+npm ci --no-audit --no-fund --progress=false --loglevel=error
+echo "[deploy] npm ci done"
 
 deploy_progress 3 "prisma generate"
 npx prisma generate
+echo "[deploy] prisma generate done"
 
 deploy_progress 4 "prisma db push"
 npx prisma db push --skip-generate --accept-data-loss
+echo "[deploy] prisma db push done"
 
 BUILD_FILE="$APP_DIR/.build-number"
 BUILD_NUM=$(($(cat "$BUILD_FILE" 2>/dev/null || echo 0) + 1))
@@ -57,6 +62,7 @@ if systemctl is-active --quiet "$SERVICE_NAME"; then
 fi
 rm -rf .next
 npm run build
+echo "[deploy] next build done"
 
 deploy_progress 7 "chown .next"
 chown -R www-data:www-data "$APP_DIR/.next"

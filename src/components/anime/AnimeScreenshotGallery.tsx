@@ -2,6 +2,7 @@
 
 import { useState } from "react";
 import { EXTERNAL_IMG_ATTRS } from "@/lib/external-image";
+import { buildCachedImageUrl } from "@/lib/image-cache-url";
 import { ImageLightbox } from "@/components/anime/ImageLightbox";
 import { LoadingSpinner } from "@/components/ui/LoadingSpinner";
 
@@ -19,7 +20,8 @@ export function AnimeScreenshotGallery({ title, screenshots, className = "" }: P
 
   if (screenshots.length === 0) return null;
 
-  const items = screenshots.map((src, index) => ({
+  const cachedScreenshots = screenshots.map((src) => buildCachedImageUrl("screenshot", src) ?? src);
+  const items = cachedScreenshots.map((src, index) => ({
     src,
     alt: `Скриншот ${index + 1} из «${title}»`,
   }));
@@ -31,7 +33,7 @@ export function AnimeScreenshotGallery({ title, screenshots, className = "" }: P
           Скриншоты <span className="font-normal normal-case">({screenshots.length})</span>
         </p>
         <div className="flex gap-2 overflow-x-auto pb-1 snap-x snap-mandatory [-ms-overflow-style:none] [scrollbar-width:thin]">
-          {screenshots.map((src, index) => (
+          {cachedScreenshots.map((src, index) => (
             <button
               key={`${src}-${index}`}
               type="button"

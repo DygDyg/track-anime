@@ -11,6 +11,8 @@ import {
   type KodikPlayerResumeMode,
 } from "@/components/anime/KodikPlayer";
 import { KodikPlayerBetaViewport } from "@/components/anime/KodikPlayerBetaViewport";
+import { KodikPlayerBetaEpisodeStrip } from "@/components/anime/KodikPlayerBetaEpisodeStrip";
+import type { KodikPlayerBetaTheaterMode } from "@/components/anime/KodikPlayerBetaControls";
 import type { KodikTranslationDto } from "@/lib/anime-page";
 import { formatEpisodeProgress } from "@/lib/anime-labels";
 import { resolveTranslationStudioId } from "@/lib/translation-colors";
@@ -18,13 +20,8 @@ import { formatWatchPosition, formatEpisodeOfTotal, type WatchProgressDto } from
 import { useDiscordConfig } from "@/hooks/useDiscordConfig";
 import { useDiscordPresence } from "@/hooks/useDiscordPresence";
 import { useForcedTranslationIntroOffsets } from "@/hooks/useForcedTranslationIntroOffsets";
-import { applyIntroOffset } from "@/lib/translation-intro-offset";
-import {
-  listKodikStreamQualities,
-  parseStreamQualityFromPlayerLink,
-  replaceStreamQualityInPlayerLink,
-  type KodikStreamQuality,
-} from "@/lib/kodik-player-quality";
+import { coverCacheUrl } from "@/lib/poster";
+import { applyIntroOffset, resolveTranslationIntroOffsetSec } from "@/lib/translation-intro-offset";
 
 type Props = {
   shikimoriId: number;
@@ -33,11 +30,34 @@ type Props = {
   episodesTotal?: number | null;
 };
 
+type LockableScreenOrientation = ScreenOrientation & {
+  lock?: (orientation: "landscape" | "landscape-primary" | "landscape-secondary") => Promise<void>;
+};
+
+type MediaSessionAction =
+  | "play"
+  | "pause"
+  | "previoustrack"
+  | "nexttrack"
+  | "seekbackward"
+  | "seekforward";
+
+type MediaSessionApi = {
+  metadata: MediaMetadata | null;
+  playbackState: "none" | "paused" | "playing";
+  setActionHandler: (action: MediaSessionAction, handler: (() => void) | null) => void;
+};
+
+type MediaSessionNavigator = Navigator & {
+  mediaSession?: MediaSessionApi;
+};
+
 const SAVE_INTERVAL_MS = 30_000;
 const MIN_SAVE_POSITION_SECONDS = 60;
 const PLAYER_SEEK_SKIP_LABEL_SECONDS = 90;
-const PLAYER_SEEK_SKIP_SECONDS = PLAYER_SEEK_SKIP_LABEL_SECONDS - 2;
+const PLAYER_SEEK_SKIP_SECONDS = PLAYER_SEEK_SKIP_LABEL_SECONDS;
 const CONTINUE_LOADING_TIMEOUT_MS = 12_000;
+const AUTO_SKIP_CANCEL_SECONDS = 5;
 
 const DEFAULT_PLAYBACK_STATE: KodikPlayerPlaybackState = {
   isPlaying: false,
@@ -59,11 +79,153 @@ function IconPlayerRefresh({ spinning = false }: { spinning?: boolean }) {
   );
 }
 
+function IconSkipTimesFound() {
+  return (
+    <svg viewBox="0 0 24 24" className="h-4 w-4 fill-current" aria-hidden>
+      <path d="M7 5.5v13l10-6.5-10-6.5z" />
+      <path d="M18 5h2v14h-2V5z" />
+    </svg>
+  );
+}
+
 type ProgressPayload = {
   seasonNumber: number;
   episodeNumber: number;
   positionSeconds: number;
 };
+
+type SkipTimeDto = {
+  skipType: "op" | "ed" | "mixed-op" | "mixed-ed";
+  startTime: number;
+  endTime: number;
+  episodeLength?: number;
+};
+
+type DisplaySkipTimeDto = SkipTimeDto & {
+  originalStartTime: number;
+  originalEndTime: number;
+};
+
+async function lockLandscapeOrientation(): Promise<void> {
+  try {
+    await (screen.orientation as LockableScreenOrientation | undefined)?.lock?.("landscape");
+  } catch {
+    /* Mobile browsers may reject orientation lock outside installed/PWA contexts. */
+  }
+}
+
+function unlockScreenOrientation(): void {
+  screen.orientation?.unlock?.();
+}
+
+type PendingAutoSkip = {
+  key: string;
+  skipTime: DisplaySkipTimeDto;
+};
+
+type SkipTimesDto = {
+  found: boolean;
+  source: "cache" | "aniskip" | "missing-mal-id";
+  malId: number | null;
+  seasonNumber: number;
+  episodeNumber: number;
+  episodeLength: number;
+  results: SkipTimeDto[];
+};
+
+type SkipTimesResponse = {
+  skipTimes?: SkipTimesDto;
+};
+
+type AdminSkipTimesPrefetchDto = {
+  checked: number;
+  failed: number;
+  found: number;
+  episodes: Array<{
+    seasonNumber: number;
+    episodeNumber: number;
+    count: number;
+    source: string;
+  }>;
+};
+
+function skipTimeLabel(type: SkipTimeDto["skipType"]): string {
+  switch (type) {
+    case "op":
+    case "mixed-op":
+      return "Пропустить опенинг";
+    case "ed":
+    case "mixed-ed":
+      return "Пропустить эндинг";
+  }
+}
+
+function skipTimeTypeLabel(type: SkipTimeDto["skipType"]): string {
+  switch (type) {
+    case "op":
+      return "OP";
+    case "ed":
+      return "ED";
+    case "mixed-op":
+      return "Mixed OP";
+    case "mixed-ed":
+      return "Mixed ED";
+  }
+}
+
+function skipTimeSourceLabel(source: SkipTimesDto["source"]): string {
+  switch (source) {
+    case "cache":
+      return "кэш";
+    case "aniskip":
+      return "AniSkip";
+    case "missing-mal-id":
+      return "нет MAL ID";
+  }
+}
+
+function isSkipTimeActionable(skipTime: DisplaySkipTimeDto, positionSeconds: number): boolean {
+  if (positionSeconds >= skipTime.endTime) return false;
+  return positionSeconds >= skipTime.startTime;
+}
+
+function formatKodikSeasonLabel(seasonNumber: number): string {
+  return seasonNumber === 0 ? "Рекап" : `${seasonNumber} сезон`;
+}
+
+function formatKodikSeasonsBadge(seasons: Array<{ seasonNumber: number }>): string | null {
+  if (seasons.length <= 1) return null;
+  return seasons.map((season) => formatKodikSeasonLabel(season.seasonNumber)).join(" + ");
+}
+
+function isSkipTimeAutoSkipPending(skipTime: DisplaySkipTimeDto, positionSeconds: number): boolean {
+  if (positionSeconds >= skipTime.startTime) return false;
+  return positionSeconds >= Math.max(0, skipTime.startTime - AUTO_SKIP_CANCEL_SECONDS);
+}
+
+function isOpeningOrEndingSkipTime(skipTime: DisplaySkipTimeDto): boolean {
+  return (
+    skipTime.skipType === "op" ||
+    skipTime.skipType === "ed" ||
+    skipTime.skipType === "mixed-op" ||
+    skipTime.skipType === "mixed-ed"
+  );
+}
+
+function skipTimeKey(
+  kodikId: string,
+  episode: { seasonNumber: number; episodeNumber: number },
+  skipTime: DisplaySkipTimeDto,
+): string {
+  return [
+    kodikId,
+    episode.seasonNumber,
+    episode.episodeNumber,
+    skipTime.skipType,
+    Math.round(skipTime.originalStartTime * 10) / 10,
+    Math.round(skipTime.originalEndTime * 10) / 10,
+  ].join(":");
+}
 
 export function AnimeWatchPanel({
   shikimoriId,
@@ -72,7 +234,7 @@ export function AnimeWatchPanel({
   episodesTotal,
 }: Props) {
   const { user } = useAuth();
-  const { settings } = useSiteSettings();
+  const { settings, updateSettings } = useSiteSettings();
   const forcedIntroOffsets = useForcedTranslationIntroOffsets();
   const { applicationId, largeImageKey, configured: discordConfigured } = useDiscordConfig();
   const discordPresenceEnabled = settings.discordPresenceEnabled && discordConfigured;
@@ -102,13 +264,25 @@ export function AnimeWatchPanel({
   const [continueTarget, setContinueTarget] = useState<{ episodeNumber: number } | null>(null);
   const [playerExpanded, setPlayerExpanded] = useState(false);
   const [playerSrc, setPlayerSrc] = useState("");
-  const [streamQuality, setStreamQuality] = useState<string | null>(null);
   const [playback, setPlayback] = useState<KodikPlayerPlaybackState>(DEFAULT_PLAYBACK_STATE);
   const [playerResetNonce, setPlayerResetNonce] = useState(0);
   const [isNativeFullscreen, setIsNativeFullscreen] = useState(false);
+  const [fullscreenTranslationsOpen, setFullscreenTranslationsOpen] = useState(false);
+  const [fullscreenTranslationsHovered, setFullscreenTranslationsHovered] = useState(false);
+  const [betaTheaterMode, setBetaTheaterMode] =
+    useState<KodikPlayerBetaTheaterMode>("normal");
+  const [betaConfirmOpen, setBetaConfirmOpen] = useState(false);
   const [playerEpisode, setPlayerEpisode] = useState({ seasonNumber: 1, episodeNumber: 1 });
+  const [skipTimes, setSkipTimes] = useState<SkipTimeDto[]>([]);
+  const [skipTimesInfo, setSkipTimesInfo] = useState<SkipTimesDto | null>(null);
+  const [skipTimesLoading, setSkipTimesLoading] = useState(false);
+  const [adminSkipPrefetch, setAdminSkipPrefetch] = useState<AdminSkipTimesPrefetchDto | null>(null);
+  const [adminSkipPrefetchLoading, setAdminSkipPrefetchLoading] = useState(false);
+  const [skipTimesPopupPinned, setSkipTimesPopupPinned] = useState(false);
+  const [pendingAutoSkip, setPendingAutoSkip] = useState<PendingAutoSkip | null>(null);
   const playerExpandedHostRef = useRef<HTMLDivElement>(null);
   const betaFullscreenRef = useRef<HTMLDivElement>(null);
+  const betaTranslationsRef = useRef<HTMLDivElement>(null);
 
   const playerRef = useRef<KodikPlayerHandle>(null);
   const selectedIdRef = useRef("");
@@ -123,6 +297,11 @@ export function AnimeWatchPanel({
   const lastSavedFingerprintRef = useRef("");
   const savingRef = useRef(false);
   const pendingContinueRef = useRef<KodikPlayerResume | null>(null);
+  const autoSkippedIntervalsRef = useRef(new Set<string>());
+  const cancelledAutoSkipIntervalsRef = useRef(new Set<string>());
+  const previousAutoSkipPositionRef = useRef(0);
+  const translationIntroOffsetsRef = useRef(settings.translationIntroOffsets);
+  const forcedIntroOffsetsRef = useRef(forcedIntroOffsets);
 
   const playableByKodikId = useMemo(() => {
     const map = new Map<string, KodikTranslationDto>();
@@ -144,16 +323,24 @@ export function AnimeWatchPanel({
         resume,
         fromTitle,
         toTranslation.translationTitle,
-        settings.translationIntroOffsets,
-        forcedIntroOffsets,
+        translationIntroOffsetsRef.current,
+        forcedIntroOffsetsRef.current,
       );
     },
-    [forcedIntroOffsets, playableByKodikId, settings.translationIntroOffsets],
+    [playableByKodikId],
   );
 
   useEffect(() => {
     selectedIdRef.current = selectedId;
   }, [selectedId]);
+
+  useEffect(() => {
+    translationIntroOffsetsRef.current = settings.translationIntroOffsets;
+  }, [settings.translationIntroOffsets]);
+
+  useEffect(() => {
+    forcedIntroOffsetsRef.current = forcedIntroOffsets;
+  }, [forcedIntroOffsets]);
 
   useEffect(() => {
     let cancelled = false;
@@ -345,6 +532,15 @@ export function AnimeWatchPanel({
       const adjusted = applyPositionOffset(resume, kodikId, selectedIdRef.current);
       const mode: KodikPlayerResumeMode = isPausedRef.current ? "pause" : "play";
 
+      if (mode === "pause") {
+        pendingContinueRef.current = null;
+        setContinueLoading(false);
+        setContinueTarget(null);
+        setBootResume(adjusted);
+        setSelectedId(kodikId);
+        return;
+      }
+
       setContinueLoading(true);
       setContinueTarget({ episodeNumber: adjusted.episodeNumber });
       pendingContinueRef.current = adjusted;
@@ -496,6 +692,10 @@ export function AnimeWatchPanel({
     playerRef.current?.seekBy(deltaSeconds);
   };
 
+  const handleSkipTime = useCallback((skipTime: DisplaySkipTimeDto) => {
+    playerRef.current?.seekToPosition(skipTime.endTime);
+  }, []);
+
   const scrollPlayerToTop = useCallback(() => {
     const host = playerExpandedHostRef.current;
     if (!host) return;
@@ -519,10 +719,298 @@ export function AnimeWatchPanel({
 
   const seekSkipDisabled = !ready || continueLoading;
   const betaChromeless = settings.betaChromelessPlayer;
+  const betaTheaterExpanded = betaTheaterMode !== "normal";
+  const betaTranslationsHoverEnabled = isNativeFullscreen;
+  const roundedEpisodeLength = Math.round(playback.durationSeconds);
+  const previousEpisodeDisabled = playerEpisode.episodeNumber <= 1;
+  const nextEpisodeDisabled =
+    episodesTotal != null && playerEpisode.episodeNumber >= episodesTotal;
+  const selected = playable.find((tr) => tr.kodikId === selectedId) ?? playable[0];
+  const selectedPlayerLink = selected?.playerLink ?? null;
+  const selectedIntroOffsetSeconds = selected
+    ? resolveTranslationIntroOffsetSec(
+        selected.translationTitle,
+        settings.translationIntroOffsets,
+        forcedIntroOffsets,
+      )
+    : 0;
+  const displaySkipTimes = useMemo<DisplaySkipTimeDto[]>(
+    () =>
+      skipTimes.map((skipTime) => ({
+        ...skipTime,
+        originalStartTime: skipTime.startTime,
+        originalEndTime: skipTime.endTime,
+        startTime: skipTime.startTime + selectedIntroOffsetSeconds,
+        endTime: skipTime.endTime + selectedIntroOffsetSeconds,
+      })),
+    [selectedIntroOffsetSeconds, skipTimes],
+  );
+  const actionableSkipTimes = useMemo(
+    () =>
+      displaySkipTimes.filter((skipTime) =>
+        isSkipTimeActionable(skipTime, playback.positionSeconds),
+      ),
+    [displaySkipTimes, playback.positionSeconds],
+  );
+  const autoSkipActionableTimes = useMemo(
+    () => actionableSkipTimes.filter(isOpeningOrEndingSkipTime),
+    [actionableSkipTimes],
+  );
+  const pendingAutoSkipTimes = useMemo(
+    () =>
+      displaySkipTimes.filter(
+        (skipTime) =>
+          isOpeningOrEndingSkipTime(skipTime) &&
+          isSkipTimeAutoSkipPending(skipTime, playback.positionSeconds),
+      ),
+    [displaySkipTimes, playback.positionSeconds],
+  );
+
+  const setBetaChromeless = useCallback(
+    (enabled: boolean) => {
+      if (enabled && !settings.betaChromelessPlayer) {
+        setBetaConfirmOpen(true);
+        return;
+      }
+
+      updateSettings({ betaChromelessPlayer: enabled });
+      if (!enabled) {
+        setBetaTheaterMode("normal");
+        setFullscreenTranslationsOpen(false);
+        setFullscreenTranslationsHovered(false);
+      }
+    },
+    [settings.betaChromelessPlayer, updateSettings],
+  );
+
+  const confirmBetaChromeless = useCallback(() => {
+    updateSettings({ betaChromelessPlayer: true });
+    setBetaConfirmOpen(false);
+  }, [updateSettings]);
+
+  const cycleBetaTheaterMode = useCallback(() => {
+    if (isNativeFullscreen) return;
+
+    setBetaTheaterMode((current) => {
+      const next: KodikPlayerBetaTheaterMode = current === "normal" ? "height" : "normal";
+
+      if (next !== "normal") {
+        requestAnimationFrame(() => {
+          betaFullscreenRef.current?.scrollIntoView({
+            behavior: "smooth",
+            block: "start",
+          });
+        });
+      }
+
+      setFullscreenTranslationsOpen(false);
+      setFullscreenTranslationsHovered(false);
+
+      return next;
+    });
+  }, [isNativeFullscreen]);
 
   const handlePlaybackStateChange = useCallback((state: KodikPlayerPlaybackState) => {
     setPlayback(state);
   }, []);
+
+  useEffect(() => {
+    autoSkippedIntervalsRef.current.clear();
+    cancelledAutoSkipIntervalsRef.current.clear();
+    previousAutoSkipPositionRef.current = 0;
+    setPendingAutoSkip(null);
+  }, [selectedId, playerEpisode.seasonNumber, playerEpisode.episodeNumber]);
+
+  useEffect(() => {
+    if (!selectedId) return;
+
+    const previousPosition = previousAutoSkipPositionRef.current;
+    const currentPosition = playback.positionSeconds;
+    previousAutoSkipPositionRef.current = currentPosition;
+
+    if (currentPosition >= previousPosition - 1) return;
+
+    for (const skipTime of displaySkipTimes) {
+      if (!isOpeningOrEndingSkipTime(skipTime)) continue;
+      if (currentPosition >= skipTime.endTime) continue;
+
+      const key = skipTimeKey(selectedId, playerEpisode, skipTime);
+      autoSkippedIntervalsRef.current.delete(key);
+      cancelledAutoSkipIntervalsRef.current.delete(key);
+    }
+  }, [displaySkipTimes, playback.positionSeconds, playerEpisode, selectedId]);
+
+  useEffect(() => {
+    if (
+      !settings.autoSkipOpeningsEndings ||
+      seekSkipDisabled ||
+      !selectedId ||
+      pendingAutoSkipTimes.length === 0
+    ) {
+      return;
+    }
+
+    const skipTime = pendingAutoSkipTimes[0];
+    const key = skipTimeKey(selectedId, playerEpisode, skipTime);
+    if (autoSkippedIntervalsRef.current.has(key)) return;
+    if (cancelledAutoSkipIntervalsRef.current.has(key)) return;
+    if (pendingAutoSkip?.key === key) return;
+
+    setPendingAutoSkip({
+      key,
+      skipTime,
+    });
+  }, [
+    pendingAutoSkipTimes,
+    playerEpisode,
+    pendingAutoSkip?.key,
+    seekSkipDisabled,
+    selectedId,
+    settings.autoSkipOpeningsEndings,
+  ]);
+
+  useEffect(() => {
+    if (!pendingAutoSkip) return;
+    if (!selectedId || seekSkipDisabled || !settings.autoSkipOpeningsEndings) {
+      setPendingAutoSkip(null);
+      return;
+    }
+    if (playback.positionSeconds >= pendingAutoSkip.skipTime.endTime) {
+      setPendingAutoSkip(null);
+      return;
+    }
+    if (playback.positionSeconds < Math.max(0, pendingAutoSkip.skipTime.startTime - AUTO_SKIP_CANCEL_SECONDS)) {
+      setPendingAutoSkip(null);
+      return;
+    }
+
+    if (playback.positionSeconds >= pendingAutoSkip.skipTime.startTime) {
+      autoSkippedIntervalsRef.current.add(pendingAutoSkip.key);
+      playerRef.current?.seekToPosition(pendingAutoSkip.skipTime.endTime);
+      setPendingAutoSkip(null);
+      return;
+    }
+  }, [
+    pendingAutoSkip,
+    playback.positionSeconds,
+    seekSkipDisabled,
+    selectedId,
+    settings.autoSkipOpeningsEndings,
+  ]);
+
+  const cancelPendingAutoSkip = useCallback(() => {
+    setPendingAutoSkip((current) => {
+      if (current) cancelledAutoSkipIntervalsRef.current.add(current.key);
+      return null;
+    });
+  }, []);
+
+  useEffect(() => {
+    if (!ready || !selectedId || roundedEpisodeLength < 300) {
+      setSkipTimes([]);
+      setSkipTimesInfo(null);
+      setSkipTimesLoading(false);
+      return;
+    }
+
+    const controller = new AbortController();
+    const params = new URLSearchParams({
+      season: String(playerEpisode.seasonNumber),
+      episode: String(playerEpisode.episodeNumber),
+      episodeLength: String(roundedEpisodeLength),
+    });
+
+    setSkipTimesLoading(true);
+    void (async () => {
+      try {
+        const res = await fetch(`/api/anime/${shikimoriId}/skip-times?${params.toString()}`, {
+          cache: "no-store",
+          signal: controller.signal,
+        });
+        if (!res.ok) {
+          if (!controller.signal.aborted) {
+            setSkipTimes([]);
+            setSkipTimesInfo(null);
+          }
+          return;
+        }
+
+        const data = (await res.json()) as SkipTimesResponse;
+        if (!controller.signal.aborted) {
+          setSkipTimesInfo(data.skipTimes ?? null);
+          setSkipTimes(data.skipTimes?.results ?? []);
+        }
+      } catch {
+        if (!controller.signal.aborted) {
+          setSkipTimes([]);
+          setSkipTimesInfo(null);
+        }
+      } finally {
+        if (!controller.signal.aborted) setSkipTimesLoading(false);
+      }
+    })();
+
+    return () => controller.abort();
+  }, [
+    playerEpisode.episodeNumber,
+    playerEpisode.seasonNumber,
+    ready,
+    roundedEpisodeLength,
+    selectedId,
+    shikimoriId,
+  ]);
+
+  useEffect(() => {
+    if (!user?.isAdmin || !ready || !selectedId || roundedEpisodeLength < 300) {
+      setAdminSkipPrefetch(null);
+      setAdminSkipPrefetchLoading(false);
+      return;
+    }
+
+    const controller = new AbortController();
+    const params = new URLSearchParams({
+      season: String(playerEpisode.seasonNumber),
+      episode: String(playerEpisode.episodeNumber),
+      episodeLength: String(roundedEpisodeLength),
+      radius: "50",
+      limit: "100",
+    });
+
+    setAdminSkipPrefetchLoading(true);
+    void (async () => {
+      try {
+        const res = await fetch(
+          `/api/admin/anime/${shikimoriId}/skip-times-prefetch?${params.toString()}`,
+          {
+            method: "POST",
+            cache: "no-store",
+            signal: controller.signal,
+          },
+        );
+        if (!res.ok) {
+          if (!controller.signal.aborted) setAdminSkipPrefetch(null);
+          return;
+        }
+
+        const data = (await res.json()) as AdminSkipTimesPrefetchDto;
+        if (!controller.signal.aborted) setAdminSkipPrefetch(data);
+      } catch {
+        if (!controller.signal.aborted) setAdminSkipPrefetch(null);
+      } finally {
+        if (!controller.signal.aborted) setAdminSkipPrefetchLoading(false);
+      }
+    })();
+
+    return () => controller.abort();
+  }, [
+    playerEpisode.episodeNumber,
+    playerEpisode.seasonNumber,
+    ready,
+    roundedEpisodeLength,
+    selectedId,
+    shikimoriId,
+    user?.isAdmin,
+  ]);
 
   const toggleBetaFullscreen = useCallback(async () => {
     const root = betaFullscreenRef.current;
@@ -531,8 +1019,10 @@ export function AnimeWatchPanel({
     try {
       if (document.fullscreenElement === root) {
         await document.exitFullscreen();
+        unlockScreenOrientation();
       } else {
         await root.requestFullscreen();
+        await lockLandscapeOrientation();
       }
     } catch {
       /* ignore */
@@ -541,25 +1031,47 @@ export function AnimeWatchPanel({
 
   useEffect(() => {
     const onFullscreenChange = () => {
-      setIsNativeFullscreen(document.fullscreenElement === betaFullscreenRef.current);
+      const active = document.fullscreenElement === betaFullscreenRef.current;
+      setIsNativeFullscreen(active);
+      if (active) setBetaTheaterMode("normal");
+      if (!active) {
+        setFullscreenTranslationsOpen(false);
+        setFullscreenTranslationsHovered(false);
+        unlockScreenOrientation();
+      }
     };
 
     document.addEventListener("fullscreenchange", onFullscreenChange);
     return () => document.removeEventListener("fullscreenchange", onFullscreenChange);
   }, []);
 
-  const selected = playable.find((tr) => tr.kodikId === selectedId) ?? playable[0];
-  const selectedPlayerLink = selected?.playerLink ?? null;
+  useEffect(() => {
+    const stage = betaFullscreenRef.current;
+    const translations = betaTranslationsRef.current;
+    if (!stage || !translations) return;
+
+    const updateTranslationsShift = () => {
+      stage.style.setProperty(
+        "--kodik-beta-translations-shift",
+        `${translations.getBoundingClientRect().height}px`,
+      );
+    };
+
+    updateTranslationsShift();
+
+    const resizeObserver = new ResizeObserver(updateTranslationsShift);
+    resizeObserver.observe(translations);
+    window.addEventListener("resize", updateTranslationsShift);
+
+    return () => {
+      resizeObserver.disconnect();
+      window.removeEventListener("resize", updateTranslationsShift);
+    };
+  }, [playable.length, isNativeFullscreen]);
 
   useEffect(() => {
     setPlayerSrc(selectedPlayerLink ?? "");
-    setStreamQuality(parseStreamQualityFromPlayerLink(selectedPlayerLink ?? "") ?? "720p");
   }, [selectedPlayerLink, selectedId]);
-
-  const streamQualities = useMemo(
-    () => listKodikStreamQualities(selectedPlayerLink),
-    [selectedPlayerLink],
-  );
 
   const restartPlayerAtCurrentPosition = useCallback(() => {
     const resume = { ...liveProgressRef.current };
@@ -578,36 +1090,126 @@ export function AnimeWatchPanel({
     restartPlayerAtCurrentPosition();
   }, [continueLoading, ready, restartPlayerAtCurrentPosition]);
 
-  const handleQualityChange = useCallback(
-    (quality: KodikStreamQuality) => {
-      const base = playerSrc || selectedPlayerLink;
-      if (!base) return;
-
-      const nextSrc = replaceStreamQualityInPlayerLink(base, quality);
-      if (nextSrc === playerSrc) return;
-
-      setStreamQuality(quality);
-      setPlayerSrc(nextSrc);
-      restartPlayerAtCurrentPosition();
-    },
-    [playerSrc, restartPlayerAtCurrentPosition, selectedPlayerLink],
-  );
-
-  const handleEpisodeSelect = useCallback((episodeNumber: number) => {
-    if (episodeNumber === liveProgressRef.current.episodeNumber) return;
+  const handleEpisodeSelect = useCallback((seasonNumber: number, episodeNumber: number) => {
+    if (
+      seasonNumber === liveProgressRef.current.seasonNumber &&
+      episodeNumber === liveProgressRef.current.episodeNumber
+    ) {
+      return;
+    }
     const resume: KodikPlayerResume = {
-      seasonNumber: liveProgressRef.current.seasonNumber,
+      seasonNumber,
       episodeNumber,
       positionSeconds: 0,
     };
+    isPausedRef.current = false;
     playerRef.current?.seekTo(resume, "play");
   }, []);
+
+  const handleAdjacentEpisode = useCallback(
+    (delta: -1 | 1) => {
+      const current = liveProgressRef.current;
+      const nextEpisode = current.episodeNumber + delta;
+      if (nextEpisode < 1) return;
+      if (episodesTotal != null && nextEpisode > episodesTotal) return;
+
+      isPausedRef.current = false;
+      playerRef.current?.seekTo(
+        {
+          seasonNumber: current.seasonNumber,
+          episodeNumber: nextEpisode,
+          positionSeconds: 0,
+        },
+        "play",
+      );
+    },
+    [episodesTotal],
+  );
+
+  const handlePlayerEnded = useCallback(() => {
+    const current = liveProgressRef.current;
+    const nextEpisode = current.episodeNumber + 1;
+
+    if (episodesTotal != null && nextEpisode > episodesTotal) return;
+
+    playerRef.current?.seekTo(
+      {
+        seasonNumber: current.seasonNumber,
+        episodeNumber: nextEpisode,
+        positionSeconds: 0,
+      },
+      "play",
+    );
+  }, [episodesTotal]);
+
+  useEffect(() => {
+    if (typeof window === "undefined" || !("MediaMetadata" in window)) return;
+
+    const mediaSession = (navigator as MediaSessionNavigator).mediaSession;
+    if (!mediaSession || !selected) return;
+
+    const episodeLabel = formatEpisodeOfTotal(playerEpisode.episodeNumber, episodesTotal ?? null);
+    const seasonLabel = playerEpisode.seasonNumber > 1 ? `${playerEpisode.seasonNumber} сезон` : null;
+    const artworkSrc = new URL(coverCacheUrl(shikimoriId), window.location.origin).toString();
+
+    mediaSession.metadata = new MediaMetadata({
+      title: `${animeTitle} — ${episodeLabel}`,
+      artist: selected.translationTitle,
+      album: seasonLabel ?? animeTitle,
+      artwork: [
+        { src: artworkSrc, sizes: "96x96", type: "image/png" },
+        { src: artworkSrc, sizes: "128x128", type: "image/png" },
+        { src: artworkSrc, sizes: "192x192", type: "image/png" },
+        { src: artworkSrc, sizes: "256x256", type: "image/png" },
+        { src: artworkSrc, sizes: "512x512", type: "image/png" },
+      ],
+    });
+    mediaSession.playbackState = playback.isPlaying ? "playing" : "paused";
+
+    mediaSession.setActionHandler("play", () => playerRef.current?.play());
+    mediaSession.setActionHandler("pause", () => playerRef.current?.pause());
+    mediaSession.setActionHandler(
+      "previoustrack",
+      previousEpisodeDisabled ? null : () => handleAdjacentEpisode(-1),
+    );
+    mediaSession.setActionHandler(
+      "nexttrack",
+      nextEpisodeDisabled ? null : () => handleAdjacentEpisode(1),
+    );
+    mediaSession.setActionHandler("seekbackward", () =>
+      playerRef.current?.seekBy(-PLAYER_SEEK_SKIP_SECONDS),
+    );
+    mediaSession.setActionHandler("seekforward", () =>
+      playerRef.current?.seekBy(PLAYER_SEEK_SKIP_SECONDS),
+    );
+
+    return () => {
+      mediaSession.setActionHandler("play", null);
+      mediaSession.setActionHandler("pause", null);
+      mediaSession.setActionHandler("previoustrack", null);
+      mediaSession.setActionHandler("nexttrack", null);
+      mediaSession.setActionHandler("seekbackward", null);
+      mediaSession.setActionHandler("seekforward", null);
+    };
+  }, [
+    animeTitle,
+    episodesTotal,
+    handleAdjacentEpisode,
+    nextEpisodeDisabled,
+    playback.isPlaying,
+    playerEpisode.episodeNumber,
+    playerEpisode.seasonNumber,
+    previousEpisodeDisabled,
+    selected,
+    shikimoriId,
+  ]);
 
   const renderTranslationButtons = () => (
     <ul className="grid grid-cols-[repeat(auto-fill,minmax(9.5rem,1fr))] items-stretch gap-2">
       {playable.map((tr) => {
         const active = tr.kodikId === selected.kodikId;
         const progress = formatEpisodeProgress(tr.lastSeason, tr.lastEpisode);
+        const seasonsBadge = formatKodikSeasonsBadge(tr.availableSeasons);
         const studioId = resolveTranslationStudioId(tr.translationTitle);
         return (
           <li key={tr.kodikId} className="flex min-w-0">
@@ -615,23 +1217,28 @@ export function AnimeWatchPanel({
               type="button"
               onClick={() => handleTranslationSelect(tr.kodikId)}
               disabled={continueLoading}
+              aria-pressed={active}
               data-studio={studioId ?? undefined}
               className={[
-                "flex h-full w-full flex-col items-center justify-center rounded-lg border px-3 py-1.5 text-center text-xs transition disabled:cursor-wait disabled:opacity-50",
-                studioId ? "translation-btn" : "",
-                studioId && active ? "translation-btn--active" : "",
+                "translation-btn flex h-full w-full flex-col items-center justify-center rounded-lg border px-3 py-1.5 text-center text-xs transition disabled:cursor-wait disabled:opacity-50",
+                active ? "translation-btn--active" : "",
                 studioId
                   ? active
-                    ? "ring-1 ring-offset-1 ring-offset-card"
+                    ? "ring-2 ring-white/75 ring-offset-1 ring-offset-card"
                     : "hover:brightness-110"
                   : active
-                    ? "border-accent bg-accent/15 text-foreground"
+                    ? "border-accent bg-accent/20 text-foreground ring-2 ring-white/75 ring-offset-1 ring-offset-card"
                     : "border-border bg-background text-muted hover:border-accent/40 hover:text-foreground",
               ].join(" ")}
             >
               <span className="font-medium leading-snug line-clamp-2">{tr.translationTitle}</span>
               {progress ? (
                 <span className="mt-0.5 text-[10px] leading-tight opacity-80">{progress}</span>
+              ) : null}
+              {seasonsBadge ? (
+                <span className="mt-1 rounded border border-white/20 bg-black/20 px-1.5 py-0.5 text-[10px] font-semibold leading-tight text-white/90">
+                  {seasonsBadge}
+                </span>
               ) : null}
             </button>
           </li>
@@ -655,14 +1262,81 @@ export function AnimeWatchPanel({
   const continueTranslation = continueProgress
     ? playable.find((tr) => tr.kodikId === continueProgress.kodikId)
     : null;
-  const initialResume =
-    bootResume && selected.kodikId === continueProgress?.kodikId ? bootResume : null;
+  const initialResume = bootResume;
 
   const showContinue =
     user &&
     continueProgress &&
+    !playback.isPlaying &&
     continueProgress.positionSeconds >= MIN_SAVE_POSITION_SECONDS &&
     playable.some((tr) => tr.kodikId === continueProgress.kodikId);
+  const pendingAutoSkipRemainingSeconds = pendingAutoSkip
+    ? Math.max(0, Math.ceil(pendingAutoSkip.skipTime.startTime - playback.positionSeconds))
+    : 0;
+
+  const betaContinueAction =
+    showContinue && continueProgress ? (
+      <button
+        type="button"
+        onClick={handleContinue}
+        disabled={continueLoading}
+        aria-busy={continueLoading}
+        className={[
+          "inline-flex max-w-full items-center gap-[clamp(0.375rem,0.32vw,0.65rem)] rounded-md border border-white/10 bg-black/35 px-[clamp(0.5rem,0.42vw,0.8rem)] py-[clamp(0.25rem,0.21vw,0.4rem)] text-[clamp(11px,0.58vw,15px)] font-medium text-white/85 backdrop-blur-sm transition",
+          continueLoading
+            ? "cursor-wait opacity-80"
+            : "hover:border-white/20 hover:bg-black/45 active:scale-[0.98]",
+        ].join(" ")}
+      >
+        {continueLoading ? (
+          <span
+            aria-hidden
+            className="inline-block h-3 w-3 shrink-0 animate-spin rounded-full border-2 border-current border-r-transparent"
+          />
+        ) : null}
+        <span className="shrink-0">{continueLoading ? "Переход…" : "Продолжить"}</span>
+        <span className="min-w-0 truncate font-normal text-white/85">
+          {formatEpisodeOfTotal(continueProgress.episodeNumber, episodesTotal ?? null)} ·{" "}
+          {formatWatchPosition(continueProgress.positionSeconds)}
+        </span>
+      </button>
+    ) : null;
+
+  const betaSkipAction = pendingAutoSkip ? (
+    <button
+      type="button"
+      onClick={cancelPendingAutoSkip}
+      className={[
+        "inline-flex max-w-full items-center gap-2 rounded-md border border-amber-300/50",
+        "bg-amber-500/25 px-[clamp(0.55rem,0.46vw,0.85rem)] py-[clamp(0.28rem,0.24vw,0.45rem)]",
+        "text-[clamp(11px,0.58vw,15px)] font-semibold text-amber-100 backdrop-blur-sm transition",
+        "hover:border-amber-200 hover:bg-amber-500/35 active:scale-[0.98]",
+      ].join(" ")}
+    >
+      <span className="truncate">Отменить</span>
+      <span className="shrink-0 font-normal text-amber-100/85">
+        автопропуск через {pendingAutoSkipRemainingSeconds}…
+      </span>
+    </button>
+  ) : actionableSkipTimes[0] ? (
+    <button
+      type="button"
+      onClick={() => handleSkipTime(actionableSkipTimes[0])}
+      disabled={seekSkipDisabled}
+      className={[
+        "inline-flex max-w-full items-center gap-2 rounded-md border border-emerald-300/45",
+        "bg-emerald-500/20 px-[clamp(0.55rem,0.46vw,0.85rem)] py-[clamp(0.28rem,0.24vw,0.45rem)]",
+        "text-[clamp(11px,0.58vw,15px)] font-semibold text-emerald-100 backdrop-blur-sm transition",
+        "hover:border-emerald-200 hover:bg-emerald-500/30 active:scale-[0.98]",
+        "disabled:cursor-not-allowed disabled:opacity-50",
+      ].join(" ")}
+    >
+      <span className="truncate">{skipTimeLabel(actionableSkipTimes[0].skipType)}</span>
+      <span className="shrink-0 font-normal text-emerald-100/80">
+        {formatWatchPosition(actionableSkipTimes[0].endTime)}
+      </span>
+    </button>
+  ) : null;
 
   return (
     <section
@@ -720,7 +1394,173 @@ export function AnimeWatchPanel({
 
       <div className="flex flex-col gap-2">
         {ready && selected?.playerLink ? (
-          <div className="flex justify-end">
+          <div className="flex flex-wrap items-center justify-between gap-2">
+            <div className="flex flex-wrap items-center gap-2">
+              <label className="inline-flex cursor-pointer items-center gap-2 rounded-md border border-border bg-background px-2.5 py-1.5 text-xs font-medium text-foreground transition hover:border-accent/40 hover:bg-surface-dim">
+                <input
+                  type="checkbox"
+                  checked={settings.betaChromelessPlayer}
+                  onChange={(event) => setBetaChromeless(event.target.checked)}
+                  className="h-4 w-4 rounded border-border accent-accent"
+                />
+                <span
+                  title="Beta-плеер"
+                  className="inline-flex h-5 items-center justify-center rounded-md border border-amber-300/35 bg-amber-400/10 px-1.5 text-xs font-black leading-none text-amber-200"
+                >
+                  β-плеер
+                </span>
+              </label>
+              <label className="inline-flex cursor-pointer items-center gap-2 rounded-md border border-border bg-background px-2.5 py-1.5 text-xs font-medium text-foreground transition hover:border-accent/40 hover:bg-surface-dim">
+                <input
+                  type="checkbox"
+                  checked={settings.autoSkipOpeningsEndings}
+                  onChange={(event) =>
+                    updateSettings({ autoSkipOpeningsEndings: event.target.checked })
+                  }
+                  className="h-4 w-4 rounded border-border accent-accent"
+                />
+                Автопропуск OP/ED
+              </label>
+              {user?.isAdmin && ready && selected?.playerLink ? (
+                <div className="group relative">
+                  <button
+                    type="button"
+                    onClick={() => setSkipTimesPopupPinned(true)}
+                    className={[
+                      "inline-flex items-center gap-1.5 rounded-md border px-2.5 py-1.5 text-xs font-medium transition",
+                      skipTimesInfo?.found && skipTimesInfo.results.length > 0
+                        ? "border-emerald-400/40 bg-emerald-500/10 text-emerald-300 hover:border-emerald-300 hover:bg-emerald-500/15"
+                        : skipTimesLoading || roundedEpisodeLength < 300
+                          ? "border-amber-400/40 bg-amber-500/10 text-amber-300 hover:border-amber-300 hover:bg-amber-500/15"
+                          : "border-border bg-background text-muted hover:border-accent/40 hover:bg-surface-dim",
+                    ].join(" ")}
+                    aria-label="Диагностика AniSkip"
+                  >
+                    <IconSkipTimesFound />
+                    <span>
+                      {skipTimesLoading || roundedEpisodeLength < 300
+                        ? "…"
+                        : skipTimesInfo?.results.length ?? 0}
+                    </span>
+                  </button>
+                  <div
+                    className={[
+                      "absolute left-0 top-full z-40 mt-2 w-[min(22rem,calc(100vw-2rem))] rounded-lg border border-border bg-card p-3 text-xs text-foreground shadow-xl shadow-black/35",
+                      skipTimesPopupPinned
+                        ? "block"
+                        : "hidden group-focus-within:block group-hover:block",
+                    ].join(" ")}
+                  >
+                    <div className="mb-2 flex items-start justify-between gap-3">
+                      <div>
+                        <p className="font-semibold text-foreground">
+                          {skipTimesInfo?.found
+                            ? "AniSkip тайминги найдены"
+                            : skipTimesLoading
+                              ? "AniSkip ищет тайминги"
+                              : roundedEpisodeLength < 300
+                                ? "AniSkip ждёт длительность"
+                                : "AniSkip тайминги не найдены"}
+                        </p>
+                        <p className="mt-0.5 text-muted">
+                          {skipTimesInfo
+                            ? `${skipTimeSourceLabel(skipTimesInfo.source)} · MAL ${skipTimesInfo.malId ?? "—"}`
+                            : `S${playerEpisode.seasonNumber} · E${playerEpisode.episodeNumber}`}
+                        </p>
+                      </div>
+                      <div className="flex items-center gap-1.5">
+                        <span className="rounded border border-border bg-background px-1.5 py-0.5 text-[10px] uppercase text-muted">
+                          admin
+                        </span>
+                        {skipTimesPopupPinned ? (
+                          <button
+                            type="button"
+                            onClick={() => setSkipTimesPopupPinned(false)}
+                            aria-label="Закрыть окно AniSkip"
+                            className="inline-flex h-6 w-6 items-center justify-center rounded-md border border-border bg-background text-sm leading-none text-muted transition hover:border-accent/40 hover:text-foreground"
+                          >
+                            ×
+                          </button>
+                        ) : null}
+                      </div>
+                    </div>
+                    <dl className="grid grid-cols-2 gap-x-3 gap-y-1 text-muted">
+                      <dt>Серия</dt>
+                      <dd className="text-right text-foreground">
+                        S{skipTimesInfo?.seasonNumber ?? playerEpisode.seasonNumber} · E
+                        {skipTimesInfo?.episodeNumber ?? playerEpisode.episodeNumber}
+                      </dd>
+                      <dt>Длительность</dt>
+                      <dd className="text-right text-foreground">
+                        {roundedEpisodeLength >= 300
+                          ? formatWatchPosition(skipTimesInfo?.episodeLength ?? roundedEpisodeLength)
+                          : "ожидание"}
+                      </dd>
+                      <dt>Смещение озвучки</dt>
+                      <dd className="text-right text-foreground">
+                        {selectedIntroOffsetSeconds > 0
+                          ? `+${formatWatchPosition(selectedIntroOffsetSeconds)}`
+                          : "нет"}
+                      </dd>
+                    </dl>
+                    {skipTimesInfo?.found && skipTimesInfo.results.length > 0 ? (
+                      <div className="mt-2 space-y-1 border-t border-border pt-2">
+                        {displaySkipTimes.map((skipTime) => (
+                        <div
+                          key={`${skipTime.skipType}:${skipTime.startTime}:${skipTime.endTime}`}
+                          className="flex items-center justify-between gap-3 text-muted"
+                        >
+                          <span className="font-medium text-foreground">
+                            {skipTimeTypeLabel(skipTime.skipType)}
+                          </span>
+                          <span>
+                            {formatWatchPosition(skipTime.startTime)} →{" "}
+                            {formatWatchPosition(skipTime.endTime)}
+                          </span>
+                        </div>
+                        ))}
+                      </div>
+                    ) : (
+                      <p className="mt-2 border-t border-border pt-2 text-muted">
+                        {roundedEpisodeLength < 300
+                          ? "Kodik ещё не прислал длительность видео, запрос к AniSkip не запущен."
+                          : "Для текущей серии и длительности интервалов в AniSkip нет."}
+                      </p>
+                    )}
+                    <div className="mt-2 border-t border-border pt-2">
+                      <p className="font-medium text-foreground">
+                        Прогрев тайтла:{" "}
+                        {adminSkipPrefetchLoading
+                          ? "идёт"
+                          : adminSkipPrefetch
+                            ? `${adminSkipPrefetch.found}/${adminSkipPrefetch.checked}`
+                            : "ожидание"}
+                      </p>
+                      {adminSkipPrefetch?.episodes.length ? (
+                        <div className="mt-1 max-h-28 space-y-1 overflow-auto pr-1 text-muted">
+                          {adminSkipPrefetch.episodes.slice(0, 20).map((episode) => (
+                            <div
+                              key={`${episode.seasonNumber}:${episode.episodeNumber}`}
+                              className="flex items-center justify-between gap-3"
+                            >
+                              <span>
+                                S{episode.seasonNumber} · E{episode.episodeNumber}
+                              </span>
+                              <span>{episode.count}</span>
+                            </div>
+                          ))}
+                        </div>
+                      ) : null}
+                      {adminSkipPrefetch?.failed ? (
+                        <p className="mt-1 text-amber-300">
+                          Ошибок при прогреве: {adminSkipPrefetch.failed}
+                        </p>
+                      ) : null}
+                    </div>
+                  </div>
+                </div>
+              ) : null}
+            </div>
             <button
               type="button"
               onClick={handlePlayerRefresh}
@@ -728,10 +1568,9 @@ export function AnimeWatchPanel({
               aria-busy={continueLoading}
               aria-label="Перезапустить плеер с текущей позиции"
               title="Перезапустить плеер с текущей позиции"
-              className="inline-flex items-center gap-1.5 rounded-md border border-border bg-background px-2.5 py-1.5 text-xs font-medium text-foreground transition hover:border-accent/40 hover:bg-surface-dim disabled:cursor-not-allowed disabled:opacity-50"
+              className="inline-flex h-8 w-8 items-center justify-center rounded-md border border-border bg-background text-foreground transition hover:border-accent/40 hover:bg-surface-dim disabled:cursor-not-allowed disabled:opacity-50"
             >
               <IconPlayerRefresh spinning={continueLoading} />
-              <span>Перезапустить плеер</span>
             </button>
           </div>
         ) : null}
@@ -741,26 +1580,32 @@ export function AnimeWatchPanel({
           betaChromeless ? (
             <div
               ref={betaFullscreenRef}
-              className="kodik-player-beta-stage overflow-hidden rounded-lg border border-border bg-black"
+              className={[
+                "kodik-player-beta-stage overflow-hidden rounded-lg border border-border bg-black",
+                fullscreenTranslationsOpen ? "kodik-player-beta-stage--translations-open" : "",
+                betaTheaterMode === "height" ? "kodik-player-beta-stage--height-expanded" : "",
+              ].join(" ")}
             >
-              <div ref={playerExpandedHostRef} className="relative min-w-0">
+              <div ref={playerExpandedHostRef} className="kodik-player-beta-player-host relative min-w-0">
                 <KodikPlayerBetaViewport
                   playerRef={playerRef}
                   playerKey={`${selected.kodikId}-${playerResetNonce}-beta-${playerSrc}`}
                   src={playerSrc}
                   title={`${animeTitle} — ${selected.translationTitle}`}
-                  sizeMode={isNativeFullscreen ? "viewport" : "default"}
+                  sizeMode={isNativeFullscreen || betaTheaterExpanded ? "viewport" : "default"}
                   initialResume={initialResume}
                   shikimoriId={shikimoriId}
                   kodikId={selected.kodikId}
                   seasonNumber={playerEpisode.seasonNumber}
                   currentEpisode={playerEpisode.episodeNumber}
                   playback={playback}
-                  qualities={streamQualities}
-                  currentQuality={streamQuality}
                   fullscreenActive={isNativeFullscreen}
+                  theaterMode={isNativeFullscreen ? "normal" : betaTheaterMode}
                   seekSkipLabelSeconds={PLAYER_SEEK_SKIP_LABEL_SECONDS}
                   controlsDisabled={seekSkipDisabled}
+                  keepUiVisible={betaTranslationsHoverEnabled && fullscreenTranslationsHovered}
+                  continueAction={betaContinueAction}
+                  skipAction={betaSkipAction}
                   continueOverlay={
                     continueLoading ? (
                       <div className="pointer-events-none absolute inset-0 z-30 flex items-center justify-center bg-black/55">
@@ -785,6 +1630,10 @@ export function AnimeWatchPanel({
                   onPlaybackStateChange={handlePlaybackStateChange}
                   onEpisodeSelect={handleEpisodeSelect}
                   onPlayPause={() => playerRef.current?.togglePlay()}
+                  onPreviousEpisode={() => handleAdjacentEpisode(-1)}
+                  onNextEpisode={() => handleAdjacentEpisode(1)}
+                  previousEpisodeDisabled={previousEpisodeDisabled}
+                  nextEpisodeDisabled={nextEpisodeDisabled}
                   onSeek={(seconds) => playerRef.current?.seekToPosition(seconds)}
                   onSeekSkip={(delta) => playerRef.current?.seekBy(delta)}
                   onVolumeChange={(volume) => {
@@ -795,11 +1644,23 @@ export function AnimeWatchPanel({
                     if (playback.muted) playerRef.current?.unmute();
                     else playerRef.current?.mute();
                   }}
-                  onQualityChange={handleQualityChange}
+                  onTheaterToggle={cycleBetaTheaterMode}
                   onFullscreenToggle={() => void toggleBetaFullscreen()}
+                  onFullscreenTranslationsIntent={setFullscreenTranslationsOpen}
+                  fullscreenTranslationsOpen={fullscreenTranslationsOpen}
+                  onEnded={handlePlayerEnded}
                 />
               </div>
-              <div className="kodik-player-beta-translations border-t border-border bg-card p-4">
+              <div
+                ref={betaTranslationsRef}
+                onMouseEnter={() => {
+                  if (!betaTranslationsHoverEnabled) return;
+                  setFullscreenTranslationsHovered(true);
+                  setFullscreenTranslationsOpen(true);
+                }}
+                onMouseLeave={() => setFullscreenTranslationsHovered(false)}
+                className="kodik-player-beta-translations border-t border-border bg-card p-4"
+              >
                 <p className="mb-2 text-xs font-medium uppercase tracking-wide text-muted">Озвучка</p>
                 {renderTranslationButtons()}
               </div>
@@ -812,6 +1673,14 @@ export function AnimeWatchPanel({
               playerExpanded ? "anime-player-expanded-host" : "",
             ].join(" ")}
           >
+            <KodikPlayerBetaEpisodeStrip
+              shikimoriId={shikimoriId}
+              kodikId={selected.kodikId}
+              seasonNumber={playerEpisode.seasonNumber}
+              currentEpisode={playerEpisode.episodeNumber}
+              disabled={seekSkipDisabled}
+              onSelect={handleEpisodeSelect}
+            />
             {continueLoading ? (
               <div className="pointer-events-none absolute inset-0 z-10 flex items-center justify-center rounded-lg bg-black/55">
                 <div className="flex items-center gap-2 rounded-lg border border-white/15 bg-black/70 px-4 py-2 text-sm text-white shadow-lg">
@@ -837,6 +1706,8 @@ export function AnimeWatchPanel({
               onProgress={trackProgress}
               onPause={handlePause}
               onTranslationChange={handlePlayerTranslationChange}
+              onPlaybackStateChange={handlePlaybackStateChange}
+              onEnded={handlePlayerEnded}
             />
           </div>
           )
@@ -844,6 +1715,31 @@ export function AnimeWatchPanel({
 
         {ready && selected?.playerLink && !betaChromeless ? (
           <div className="flex justify-stretch gap-2 sm:justify-end">
+            {pendingAutoSkip ? (
+              <button
+                type="button"
+                onClick={cancelPendingAutoSkip}
+                className="flex-1 rounded-md border border-amber-400/45 bg-amber-500/15 px-3 py-2 text-sm font-medium text-amber-200 transition hover:border-amber-300 hover:bg-amber-500/20 sm:flex-none sm:px-2.5 sm:py-1 sm:text-xs"
+              >
+                Отменить: автопропуск через {pendingAutoSkipRemainingSeconds}…
+              </button>
+            ) : null}
+            {actionableSkipTimes.map((skipTime) => (
+              <button
+                key={`${skipTime.skipType}:${skipTime.startTime}:${skipTime.endTime}`}
+                type="button"
+                onClick={() => handleSkipTime(skipTime)}
+                disabled={seekSkipDisabled}
+                className="flex-1 rounded-md border border-accent/40 bg-accent/10 px-3 py-2 text-sm font-medium text-accent transition hover:border-accent hover:bg-accent/15 disabled:cursor-not-allowed disabled:opacity-50 sm:flex-none sm:px-2.5 sm:py-1 sm:text-xs"
+              >
+                {skipTimeLabel(skipTime.skipType)}
+              </button>
+            ))}
+            {skipTimesLoading ? (
+              <span className="hidden items-center rounded-md border border-border bg-background px-2.5 py-1 text-xs text-muted sm:inline-flex">
+                Поиск OP/ED…
+              </span>
+            ) : null}
             <button
               type="button"
               onClick={() => handleSeekSkip(-PLAYER_SEEK_SKIP_SECONDS)}
@@ -871,6 +1767,42 @@ export function AnimeWatchPanel({
         <p className="mb-2 text-xs font-medium uppercase tracking-wide text-muted">Озвучка</p>
         {renderTranslationButtons()}
       </div>
+      ) : null}
+
+      {betaConfirmOpen ? (
+        <div className="fixed inset-0 z-[120] flex items-center justify-center bg-black/60 p-4">
+          <div
+            role="dialog"
+            aria-modal="true"
+            aria-labelledby="beta-player-confirm-title"
+            className="w-full max-w-md rounded-xl border border-border bg-card p-5 shadow-2xl shadow-black/50"
+          >
+            <h3 id="beta-player-confirm-title" className="text-base font-semibold text-foreground">
+              Beta-плеер Kodik
+            </h3>
+            <p className="mt-2 text-sm leading-relaxed text-muted">
+              Это тестовый режим плеера с собственной панелью управления. В нём могут быть баги:
+              некорректная перемотка, проблемы с полноэкранным режимом, PiP, трансляцией или
+              управлением Kodik.
+            </p>
+            <div className="mt-5 flex justify-end gap-2">
+              <button
+                type="button"
+                onClick={() => setBetaConfirmOpen(false)}
+                className="rounded-lg border border-border bg-background px-3 py-2 text-sm font-medium text-foreground transition hover:bg-surface-dim"
+              >
+                Отмена
+              </button>
+              <button
+                type="button"
+                onClick={confirmBetaChromeless}
+                className="rounded-lg border border-accent/50 bg-accent/15 px-3 py-2 text-sm font-medium text-accent transition hover:bg-accent/20"
+              >
+                Включить beta
+              </button>
+            </div>
+          </div>
+        </div>
       ) : null}
     </section>
   );

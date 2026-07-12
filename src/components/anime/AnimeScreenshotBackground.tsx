@@ -2,6 +2,7 @@
 
 import { useEffect, useMemo, useRef, useState } from "react";
 import { EXTERNAL_IMG_ATTRS } from "@/lib/external-image";
+import { buildCachedImageUrl } from "@/lib/image-cache-url";
 import { resolvePosterUrl } from "@/lib/poster";
 
 type Props = {
@@ -39,7 +40,7 @@ function waitForPaint(): Promise<void> {
 
 export function AnimeScreenshotBackground({ urls, fallbackUrl, title }: Props) {
   const images = useMemo(() => {
-    const unique = [...new Set(urls.filter(Boolean))];
+    const unique = [...new Set(urls.filter(Boolean).map((url) => buildCachedImageUrl("screenshot", url) ?? url))];
     if (unique.length > 0) return unique;
     const poster = resolvePosterUrl(fallbackUrl);
     return poster ? [poster] : [];

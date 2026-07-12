@@ -22,7 +22,15 @@ import { siteClass } from "@/components/site/site-styles";
 import { buildAdvancedSearchHref } from "@/lib/search-fields";
 import { getAlternateKeyboardLayoutQuery } from "@/lib/keyboard-layout";
 import { useMobileKeyboardInset } from "@/hooks/useMobileKeyboardInset";
-import { SEARCH_MIN_QUERY_LENGTH, HEADER_DESCRIPTION_SUPPLEMENT_THRESHOLD, buildSearchHref, type SearchResultDto } from "@/lib/search-shared";
+import {
+  DEFAULT_HEADER_SEARCH_DEBOUNCE_MS,
+  HEADER_DESCRIPTION_SUPPLEMENT_THRESHOLD,
+  MAX_HEADER_SEARCH_DEBOUNCE_MS,
+  MIN_HEADER_SEARCH_DEBOUNCE_MS,
+  SEARCH_MIN_QUERY_LENGTH,
+  buildSearchHref,
+  type SearchResultDto,
+} from "@/lib/search-shared";
 
 const HEADER_SEARCH_LIMIT = 12;
 const HEADER_SEARCH_INPUT_CLASS = `${siteClass.input} site-search-input !bg-card !pl-10 !pr-11 focus:ring-2 focus:ring-accent/25`;
@@ -37,6 +45,10 @@ type SearchResponse = {
   total: number;
   items: SearchResultDto[];
   layoutCorrectedQuery?: string | null;
+};
+
+type SearchSettingsResponse = {
+  headerSearchDebounceMs: number;
 };
 
 type Props = {
@@ -114,6 +126,7 @@ export function HeaderSearch({
   const [total, setTotal] = useState(0);
   const [loading, setLoading] = useState(false);
   const [expandingSearch, setExpandingSearch] = useState(false);
+  const [searchDebounceMs, setSearchDebounceMs] = useState(DEFAULT_HEADER_SEARCH_DEBOUNCE_MS);
   const [open, setOpen] = useState(false);
   const [panelRect, setPanelRect] = useState<{
     top: number;
@@ -284,6 +297,34 @@ export function HeaderSearch({
   }, [pathname, reset]);
 
   useEffect(() => {
+    let cancelled = false;
+
+    const loadSearchSettings = async () => {
+      try {
+        const response = await fetch("/api/search/settings", { cache: "no-store" });
+        if (!response.ok) return;
+        const data = (await response.json()) as SearchSettingsResponse;
+        const debounceMs = Number(data.headerSearchDebounceMs);
+        if (!Number.isFinite(debounceMs) || cancelled) return;
+        setSearchDebounceMs(
+          Math.min(
+            MAX_HEADER_SEARCH_DEBOUNCE_MS,
+            Math.max(MIN_HEADER_SEARCH_DEBOUNCE_MS, Math.round(debounceMs)),
+          ),
+        );
+      } catch {
+        /* default debounce is used */
+      }
+    };
+
+    void loadSearchSettings();
+
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
+  useEffect(() => {
     if (!autoFocus || !sheetOpen) return;
     const id = window.requestAnimationFrame(() => {
       inputRef.current?.focus({ preventScroll: true });
@@ -336,22 +377,23 @@ export function HeaderSearch({
     if (debounceRef.current) window.clearTimeout(debounceRef.current);
 
     if (query.trim().length < SEARCH_MIN_QUERY_LENGTH) {
+      abortRef.current?.abort();
       setItems([]);
       setTotal(0);
+      setLayoutCorrectedQuery(null);
       setLoading(false);
       setExpandingSearch(false);
       return;
     }
 
-    setLoading(true);
     debounceRef.current = window.setTimeout(() => {
       void fetchResults(query);
-    }, 300);
+    }, searchDebounceMs);
 
     return () => {
       if (debounceRef.current) window.clearTimeout(debounceRef.current);
     };
-  }, [query, fetchResults]);
+  }, [query, fetchResults, searchDebounceMs]);
 
   useEffect(() => {
     if (isBottomSheet) return;
@@ -555,9 +597,13 @@ export function HeaderSearch({
               <SearchResultRow key={item.shikimoriId} item={item} onSelect={handleSelect} />
             ))}
             {expandingSearch ? (
-              <p className="flex items-center gap-2 px-2.5 py-3 text-sm text-muted">
-                <span className="site-search-spinner inline-block h-3.5 w-3.5 shrink-0 rounded-full border-2 border-accent border-r-transparent" />
-                Расширяю поиск…
+              <p className="flex flex-col items-center gap-2 px-2.5 py-4 text-center text-sm text-muted">
+                <span
+                  className="h-14 w-14 shrink-0 bg-contain bg-center bg-no-repeat"
+                  style={{ backgroundImage: "url('/search.webp')" }}
+                  aria-hidden="true"
+                />
+                Расширение территории...
               </p>
             ) : null}
           </div>

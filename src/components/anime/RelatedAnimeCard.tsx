@@ -34,10 +34,7 @@ export function RelatedAnimeCard({
   const statusClass = statusBadgeClass(item.status);
   const hoverRelease = relatedToHoverRelease(item);
 
-  const previewUrl =
-    settings.preferPosterOverScreenshot || !item.screenshotUrl
-      ? item.posterUrl
-      : item.screenshotUrl ?? item.posterUrl;
+  const previewUrl = item.screenshotUrl ?? item.posterUrl;
 
   const showScreenshotBackground =
     Boolean(item.screenshotUrl) && !settings.preferPosterOverScreenshot;

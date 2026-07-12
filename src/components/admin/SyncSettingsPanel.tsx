@@ -1,8 +1,10 @@
 "use client";
 
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import { adminClass } from "@/components/admin/admin-styles";
 import type { KodikSyncHistoryDto, KodikSyncSettingsDto } from "@/lib/admin/kodik-sync-settings";
+
+const HISTORY_COLLAPSED_LIMIT = 5;
 
 const TRIGGER_LABELS: Record<string, string> = {
   auto: "Авто",
@@ -64,8 +66,14 @@ export function SyncSettingsPanel({
 }) {
   const [settings, setSettings] = useState(initialSettings);
   const [history, setHistory] = useState(initialHistory);
+  const [historyExpanded, setHistoryExpanded] = useState(false);
   const [saving, setSaving] = useState(false);
   const [saveMessage, setSaveMessage] = useState<{ ok: boolean; text: string } | null>(null);
+  const visibleRuns = useMemo(
+    () => (historyExpanded ? history.runs : history.runs.slice(0, HISTORY_COLLAPSED_LIMIT)),
+    [history.runs, historyExpanded],
+  );
+  const hiddenRunsCount = Math.max(0, history.runs.length - HISTORY_COLLAPSED_LIMIT);
 
   const refresh = useCallback(async () => {
     try {
@@ -233,7 +241,19 @@ export function SyncSettingsPanel({
       </section>
 
       <section className={adminClass.panel}>
-        <h2 className="text-lg font-semibold text-foreground">История проверок</h2>
+        <div className="flex flex-wrap items-center justify-between gap-3">
+          <h2 className="text-lg font-semibold text-foreground">История проверок</h2>
+          {hiddenRunsCount > 0 ? (
+            <button
+              type="button"
+              onClick={() => setHistoryExpanded((current) => !current)}
+              className={adminClass.btnSecondary}
+              aria-expanded={historyExpanded}
+            >
+              {historyExpanded ? "Свернуть" : `Показать ещё ${hiddenRunsCount}`}
+            </button>
+          ) : null}
+        </div>
         {history.runs.length === 0 ? (
           <p className="mt-3 text-sm text-muted">Проверок пока не было.</p>
         ) : (
@@ -251,7 +271,7 @@ export function SyncSettingsPanel({
                 </tr>
               </thead>
               <tbody>
-                {history.runs.map((run) => (
+                {visibleRuns.map((run) => (
                   <tr key={run.id} className={adminClass.tableRow}>
                     <td className="px-3 py-2 tabular-nums text-foreground">
                       {formatDateTime(run.startedAt)}
@@ -283,9 +303,9 @@ export function SyncSettingsPanel({
           </div>
         )}
 
-        {history.runs.some((run) => run.error) ? (
+        {visibleRuns.some((run) => run.error) ? (
           <div className="mt-4 space-y-2">
-            {history.runs
+            {visibleRuns
               .filter((run) => run.error)
               .slice(0, 3)
               .map((run) => (

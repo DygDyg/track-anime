@@ -20,6 +20,8 @@ import { FAVORITES_TAB_THEMES } from "@/components/favorites/favorites-tab-theme
 import { favoriteToHoverRelease } from "@/lib/hover-panel-release";
 import { consumeNavReturn, restoreScrollY } from "@/lib/navigation-return";
 import { LoadingSpinner } from "@/components/ui/LoadingSpinner";
+import { BrandLoadingOverlay } from "@/components/ui/BrandLoading";
+import { homeFeedGridClassName, homeFeedGutterX } from "@/lib/home-feed-layout";
 
 const TAB_ORDER: ListStatusTab[] = [
   "watching",
@@ -440,7 +442,7 @@ export function FavoritesView({
   );
 
   return (
-    <div className="mx-auto max-w-7xl px-3 py-4 sm:px-6 sm:py-8">
+    <div className={`${homeFeedGutterX} py-4 sm:py-8`}>
       {backHref ? (
         <Link
           href={backHref}
@@ -671,11 +673,14 @@ export function FavoritesView({
       <div
         key={displayTab}
         role="tabpanel"
+        aria-busy={isPending}
         className={[
+          "relative",
           "favorites-tab-panel",
           isPending ? "favorites-tab-panel-pending" : "",
         ].join(" ")}
       >
+        {isPending ? <BrandLoadingOverlay /> : null}
         {filteredItems.length === 0 ? (
           <div className="rounded-xl border border-border bg-card p-10 text-center shadow-lg shadow-black/20">
             <p className="text-base font-medium text-foreground/90">
@@ -718,7 +723,7 @@ export function FavoritesView({
             ) : null}
           </div>
         ) : (
-          <div className="flex flex-col gap-2 md:grid md:grid-cols-3 md:gap-3 lg:grid-cols-4 xl:grid-cols-5 2xl:grid-cols-6">
+          <div className={`${homeFeedGridClassName} md:overflow-visible`}>
             {filteredItems.map((item) => (
               <FavoriteAnimeCard
                 key={`${item.shikimoriId}-${item.listStatus ?? "bookmark"}`}

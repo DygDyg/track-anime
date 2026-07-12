@@ -54,9 +54,9 @@ self.addEventListener("push", (event) => {
   const title = payload.title ?? "Track Anime";
   const options = {
     body: payload.body ?? "",
-    icon: payload.icon ?? "/icon.png",
+    icon: payload.icon ?? "/api/brand/logo",
     image: payload.image ?? payload.icon,
-    badge: "/icon.png",
+    badge: "/api/brand/logo",
     tag: payload.tag,
     data: { url: payload.url ?? "/" },
   } satisfies NotificationOptions & { image?: string };

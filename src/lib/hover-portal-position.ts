@@ -2,7 +2,7 @@ import type { CSSProperties } from "react";
 
 export const HOVER_PORTAL_MARGIN = 12;
 export const HOVER_PORTAL_GAP = 8;
-export const HOVER_PORTAL_ESTIMATED_HEIGHT = 420;
+export const HOVER_PORTAL_ESTIMATED_HEIGHT = 560;
 
 export function computeHoverPanelOffsetX(
   rect: DOMRect,
@@ -26,14 +26,19 @@ export function computeHoverPortalStyle(
   const margin = HOVER_PORTAL_MARGIN;
   const viewportH = window.innerHeight;
   const anchorCenterX = anchorRect.left + anchorRect.width / 2;
+  const availableHeight = Math.max(160, viewportH - margin * 2);
+  const desiredHeight = Math.min(panelHeight, availableHeight);
+  const top = Math.min(
+    Math.max(anchorRect.top, margin),
+    Math.max(margin, viewportH - desiredHeight - margin),
+  );
 
-  // Панель растёт от верхнего края карточки (как у inline-режима), а не под ней.
   return {
     position: "fixed",
     left: anchorCenterX,
-    top: anchorRect.top,
+    top,
     width: panelWidth,
-    maxHeight: Math.max(160, Math.min(panelHeight, viewportH - anchorRect.top - margin)),
+    maxHeight: desiredHeight,
     zIndex: 200,
     transform: `translate(calc(-50% + ${panelOffsetX}px), 0)`,
     transition: "opacity 160ms ease-out, transform 160ms ease-out, visibility 160ms ease-out",

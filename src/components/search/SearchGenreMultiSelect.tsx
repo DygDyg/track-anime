@@ -10,6 +10,7 @@ import {
   type KeyboardEvent,
 } from "react";
 import { siteClass } from "@/components/site/site-styles";
+import { getGenreDescription } from "@/lib/genre-descriptions";
 import { SEARCH_GENRE_PLACEHOLDER, parseGenreList, serializeGenreList } from "@/lib/search-fields";
 
 const GENRE_FETCH_LIMIT = 500;
@@ -43,6 +44,7 @@ export function SearchGenreMultiSelect({ value, onChange, label = "Жанр" }: 
   const [loading, setLoading] = useState(false);
   const [loaded, setLoaded] = useState(false);
   const [activeIndex, setActiveIndex] = useState(-1);
+  const [hoveredGenre, setHoveredGenre] = useState<string | null>(null);
 
   const selectedGenres = parseGenreList(value);
 
@@ -122,6 +124,10 @@ export function SearchGenreMultiSelect({ value, onChange, label = "Жанр" }: 
     }
   }, [activeIndex, visibleItems.length]);
 
+  useEffect(() => {
+    if (!open) setHoveredGenre(null);
+  }, [open]);
+
   const handleFocus = () => {
     setOpen(true);
     void loadAllGenres();
@@ -165,6 +171,13 @@ export function SearchGenreMultiSelect({ value, onChange, label = "Жанр" }: 
 
   const trimmedQuery = query.trim();
   const showDropdown = open && (loading || visibleItems.length > 0 || (loaded && Boolean(trimmedQuery)));
+  const previewGenre =
+    hoveredGenre && visibleItems.some((item) => genreKey(item) === genreKey(hoveredGenre))
+      ? hoveredGenre
+      : activeIndex >= 0
+        ? visibleItems[activeIndex] ?? null
+        : null;
+  const previewDescription = previewGenre ? getGenreDescription(previewGenre) : null;
 
   return (
     <div ref={rootRef} className="relative">
@@ -222,34 +235,48 @@ export function SearchGenreMultiSelect({ value, onChange, label = "Жанр" }: 
       </div>
 
       {showDropdown ? (
-        <ul
-          id={`${listboxId}-listbox`}
-          role="listbox"
-          className={`site-genre-suggest ${siteClass.dropdown}`}
-        >
-          {loading ? (
-            <li className="px-3 py-2 text-sm text-muted">Загрузка…</li>
-          ) : visibleItems.length === 0 ? (
-            <li className="px-3 py-2 text-sm text-muted">Ничего не найдено</li>
-          ) : (
-            visibleItems.map((item, index) => (
-              <li key={item} role="presentation">
-                <button
-                  type="button"
-                  role="option"
-                  aria-selected={index === activeIndex}
-                  onMouseDown={(event) => event.preventDefault()}
-                  onClick={() => addGenre(item)}
-                  className={
-                    index === activeIndex ? siteClass.dropdownOptionActive : siteClass.dropdownOption
-                  }
-                >
-                  {item}
-                </button>
-              </li>
-            ))
-          )}
-        </ul>
+        <div className="site-genre-suggest-wrap">
+          <ul
+            id={`${listboxId}-listbox`}
+            role="listbox"
+            className={`site-genre-suggest ${siteClass.dropdown}`}
+          >
+            {loading ? (
+              <li className="px-3 py-2 text-sm text-muted">Загрузка…</li>
+            ) : visibleItems.length === 0 ? (
+              <li className="px-3 py-2 text-sm text-muted">Ничего не найдено</li>
+            ) : (
+              visibleItems.map((item, index) => (
+                <li key={item} role="presentation">
+                  <button
+                    type="button"
+                    role="option"
+                    aria-selected={index === activeIndex}
+                    onMouseEnter={() => {
+                      setHoveredGenre(item);
+                      setActiveIndex(index);
+                    }}
+                    onMouseDown={(event) => event.preventDefault()}
+                    onClick={() => addGenre(item)}
+                    className={
+                      index === activeIndex ? siteClass.dropdownOptionActive : siteClass.dropdownOption
+                    }
+                  >
+                    {item}
+                  </button>
+                </li>
+              ))
+            )}
+          </ul>
+
+          {previewGenre && previewDescription ? (
+            <aside className="site-genre-suggest-description" aria-live="polite">
+              <p className="text-[11px] font-semibold uppercase text-muted">Жанр</p>
+              <p className="mt-0.5 text-sm font-semibold leading-snug text-foreground">{previewGenre}</p>
+              <p className="mt-1.5 text-xs leading-relaxed text-foreground/90">{previewDescription}</p>
+            </aside>
+          ) : null}
+        </div>
       ) : null}
     </div>
   );

@@ -1,4 +1,8 @@
-import { shikimoriFetch } from "@/lib/shikimori/client";
+import {
+  isShikimoriRateLimitError,
+  isShikimoriTransientFetchError,
+  shikimoriFetch,
+} from "@/lib/shikimori/client";
 import {
   loadShikimoriAnimeFromCache,
   loadStaleShikimoriAnimeFromCache,
@@ -23,6 +27,14 @@ export function scheduleShikimoriAnimeRefresh(shikimoriId: number): void {
         await persistShikimoriAnimeCache(anime);
       }
     } catch (error) {
+      if (isShikimoriRateLimitError(error)) {
+        console.warn("[shikimori/anime-cache] background refresh rate limited:", shikimoriId);
+        return;
+      }
+      if (isShikimoriTransientFetchError(error)) {
+        console.warn("[shikimori/anime-cache] background refresh unavailable:", shikimoriId);
+        return;
+      }
       console.error("[shikimori/anime-cache] background refresh failed:", shikimoriId, error);
     } finally {
       backgroundRefreshInFlight.delete(shikimoriId);
@@ -42,6 +54,14 @@ export async function getShikimoriAnime(id: number): Promise<ShikimoriAnime | nu
       return anime;
     }
   } catch (error) {
+    if (isShikimoriRateLimitError(error)) {
+      console.warn("[shikimori/animes] API fetch rate limited:", id);
+      return loadStaleShikimoriAnimeFromCache(id);
+    }
+    if (isShikimoriTransientFetchError(error)) {
+      console.warn("[shikimori/animes] API fetch unavailable:", id);
+      return loadStaleShikimoriAnimeFromCache(id);
+    }
     console.error("[shikimori/animes] API fetch failed:", id, error);
   }
 

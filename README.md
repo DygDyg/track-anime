@@ -1,6 +1,6 @@
 <div align="center">
 
-<img src="public/logo.png" alt="Track Anime" width="120" />
+<img src="public/logo.webp" alt="Track Anime" width="120" />
 
 # Track Anime
 
@@ -55,6 +55,7 @@ flowchart LR
 | 📅 **Календарь** | Расписание выхода серий ongoing-аниме |
 | 👤 **Профили** | Публичные страницы пользователей по Shikimori ID |
 | 📱 **PWA** | Установка как приложение, офлайн-страница |
+| 🔔 **Уведомления** | Browser push, in-app лента, Discord/Telegram/VK привязки |
 | 🎮 **Discord RPC** | Статус «смотрю» через локальный tray-приложение |
 | ⚙️ **Админка** | Импорт Kodik, sync, настройки, DB explorer |
 

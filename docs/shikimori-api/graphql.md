@@ -12,8 +12,11 @@ GraphQL — **рекомендуемая** версия API Shikimori. Prefer Gr
 ## Endpoint
 
 ```
-POST https://shikimori.one/api/graphql
+POST https://<configured-shikimori-host>/api/graphql
 ```
+
+В Track Anime endpoint строится через настроенный Shikimori host (`shikimori.io` /
+`shikimori.one`). Для текущей интеграции `malId` проверенный рабочий host — `shikimori.io`.
 
 Заголовки:
 
@@ -96,7 +99,13 @@ curl -X POST "https://shikimori.one/api/graphql" \
 - v2 `user_rates` — списки
 - v1 `animes`, `users`, `calendar` — каталог и расписание
 
-GraphQL подключите позже, когда понадобятся **новые постеры** или сложные выборки.
+GraphQL используется точечно для `malId` mapping (`src/lib/shikimori/mal-id.ts`):
+
+- запрос `animes(ids: "...") { id malId }`
+- результат кэшируется в `AnimeExternalIdMap`
+- `malId` нужен для интеграций вроде AniSkip, но основной ключ сайта остаётся `shikimoriId`
+
+Для остальных задач GraphQL подключайте только когда понадобятся **новые постеры** или сложные выборки.
 
 ## Связанные разделы
 

@@ -38,8 +38,9 @@ function relationRank(relation: string): number {
 
 export async function getShikimoriRelatedAnimes(
   shikimoriId: number,
+  init?: RequestInit,
 ): Promise<ShikimoriRelatedAnimeBrief[]> {
-  const entries = await shikimoriFetch<ShikimoriRelatedEntry[]>(`/animes/${shikimoriId}/related`);
+  const entries = await shikimoriFetch<ShikimoriRelatedEntry[]>(`/animes/${shikimoriId}/related`, init);
   if (!entries?.length) return [];
 
   const byId = new Map<number, ShikimoriRelatedAnimeBrief>();

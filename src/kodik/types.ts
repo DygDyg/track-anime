@@ -13,6 +13,7 @@ export type KodikEpisodeValue =
     };
 
 export type KodikSeason = {
+  title?: string;
   link?: string;
   episodes?: Record<string, KodikEpisodeValue>;
 };

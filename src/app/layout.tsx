@@ -26,42 +26,59 @@ import { buildDefaultOpenGraph, defaultSiteDescription } from "@/lib/site-metada
 import { SITE_LOGO_PATH, SITE_NAME, versionedAsset } from "@/lib/site-brand";
 import { getSiteUrl } from "@/lib/site-url";
 import { siteFontBodyClassName } from "@/lib/site-fonts";
+import { getActiveBrandAsset } from "@/lib/brand-rotation";
 import "./globals.css";
 import "./translation-badges.css";
 
-export const metadata: Metadata = {
-  metadataBase: new URL(getSiteUrl()),
-  applicationName: SITE_NAME,
-  title: {
-    default: SITE_NAME,
-    template: `%s — ${SITE_NAME}`,
-  },
-  description: defaultSiteDescription,
-  appleWebApp: {
-    capable: true,
-    statusBarStyle: "black-translucent",
-    title: SITE_NAME,
-  },
-  formatDetection: {
-    telephone: false,
-  },
-  openGraph: buildDefaultOpenGraph(),
-  twitter: {
-    card: "summary_large_image",
-    title: SITE_NAME,
+export async function generateMetadata(): Promise<Metadata> {
+  const brand = await getActiveBrandAsset();
+  const logoUrl = brand.file ? `/api/brand/logo?v=${brand.cacheKey}` : versionedAsset(SITE_LOGO_PATH);
+  const faviconUrl = brand.file ? `/api/brand/favicon?v=${brand.cacheKey}` : versionedAsset("/favicon.ico");
+  const icon32Url = brand.file
+    ? `/api/brand/icon?size=32&v=${brand.cacheKey}`
+    : versionedAsset("/favicon-32.png");
+  const icon16Url = brand.file
+    ? `/api/brand/icon?size=16&v=${brand.cacheKey}`
+    : versionedAsset("/favicon-16.png");
+  const appleIconUrl = brand.file
+    ? `/api/brand/icon?size=180&v=${brand.cacheKey}`
+    : versionedAsset("/apple-touch-icon.png");
+
+  return {
+    metadataBase: new URL(getSiteUrl()),
+    applicationName: SITE_NAME,
+    title: {
+      default: SITE_NAME,
+      template: `%s — ${SITE_NAME}`,
+    },
     description: defaultSiteDescription,
-    images: [versionedAsset(SITE_LOGO_PATH)],
-  },
-  icons: {
-    icon: [
-      { url: versionedAsset("/icon.png"), sizes: "512x512", type: "image/png" },
-      { url: versionedAsset("/favicon-32.png"), sizes: "32x32", type: "image/png" },
-      { url: versionedAsset("/favicon-16.png"), sizes: "16x16", type: "image/png" },
-    ],
-    apple: [{ url: versionedAsset("/apple-touch-icon.png"), sizes: "180x180", type: "image/png" }],
-    shortcut: [versionedAsset("/favicon.ico")],
-  },
-};
+    appleWebApp: {
+      capable: true,
+      statusBarStyle: "black-translucent",
+      title: SITE_NAME,
+    },
+    formatDetection: {
+      telephone: false,
+    },
+    openGraph: buildDefaultOpenGraph(logoUrl),
+    twitter: {
+      card: "summary_large_image",
+      title: SITE_NAME,
+      description: defaultSiteDescription,
+      images: [logoUrl],
+    },
+    icons: {
+      icon: [
+        { url: logoUrl, type: "image/webp" },
+        { url: faviconUrl, type: "image/x-icon" },
+        { url: icon32Url, sizes: "32x32", type: "image/png" },
+        { url: icon16Url, sizes: "16x16", type: "image/png" },
+      ],
+      apple: [{ url: appleIconUrl, sizes: "180x180", type: "image/png" }],
+      shortcut: [faviconUrl],
+    },
+  };
+}
 
 export const viewport: Viewport = {
   width: "device-width",
@@ -80,6 +97,7 @@ export default async function RootLayout({ children }: { children: React.ReactNo
     Promise.resolve(listBackgroundImageUrls()),
     getSiteSettingsDefaults(),
   ]);
+  const brand = await getActiveBrandAsset();
 
   return (
     <html lang="ru" suppressHydrationWarning data-theme="dark">
@@ -106,7 +124,7 @@ export default async function RootLayout({ children }: { children: React.ReactNo
                       <ScrollRestoration />
                     </Suspense>
                     <TvNavigationProvider />
-                    <Header />
+                    <Header logoSrc={brand.logoSrc} />
                     <DiscordSitePresence />
                     <main className="relative z-10">{children}</main>
                     <SiteSettingsModal />

@@ -4,14 +4,17 @@
 #   .\scripts\deploy-precheck.ps1
 #   .\scripts\deploy-precheck.ps1 -DryRun
 #   .\scripts\deploy-precheck.ps1 -SkipBuild
+#   .\scripts\deploy-precheck.ps1 -ForceTrayRebuild
 #
 # See docs/DEPLOY.md
 
 param(
     [string]$Remote = "root@195.26.230.35",
     [string]$SshKey = "$env:USERPROFILE\.ssh\id_rsa",
+    [string]$ServerAppDir = "/var/www/ta_new",
     [switch]$DryRun,
-    [switch]$SkipBuild
+    [switch]$SkipBuild,
+    [switch]$ForceTrayRebuild
 )
 
 $ErrorActionPreference = "Stop"
@@ -49,6 +52,8 @@ function Test-RequiredCommand {
 
 Set-Location $ProjectRoot
 Write-Step "project: $ProjectRoot"
+Write-Step "remote:  $Remote"
+Write-Step "app dir: $ServerAppDir"
 
 if (-not (Test-Path (Join-Path $ProjectRoot "package.json"))) {
     throw "package.json not found in $ProjectRoot"

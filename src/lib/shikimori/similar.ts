@@ -6,8 +6,9 @@ const SIMILAR_LIMIT = 24;
 
 export async function getShikimoriSimilarAnimes(
   shikimoriId: number,
+  init?: RequestInit,
 ): Promise<ShikimoriRelatedAnimeBrief[]> {
-  const items = await shikimoriFetch<ShikimoriAnimeBrief[]>(`/animes/${shikimoriId}/similar`);
+  const items = await shikimoriFetch<ShikimoriAnimeBrief[]>(`/animes/${shikimoriId}/similar`, init);
   if (!items?.length) return [];
 
   return items

@@ -25,6 +25,7 @@ type SiteSettingsContextValue = {
   settings: SiteSettings;
   remoteSaving: boolean;
   updateSettings: (patch: Partial<SiteSettings>) => void;
+  updateLocalSettings: (patch: Partial<SiteSettings>) => void;
   resetSettings: () => void;
   settingsOpen: boolean;
   settingsInitialTab: "notifications" | null;
@@ -81,10 +82,11 @@ async function fetchRemoteSiteSettings(): Promise<SiteSettings | null> {
 }
 
 async function saveRemoteSiteSettings(settings: SiteSettings): Promise<void> {
+  const { tvNavigationEnabled: _tvNavigationEnabled, ...remoteSettings } = settings;
   const res = await fetch("/api/user/site-settings", {
     method: "PUT",
     headers: { "Content-Type": "application/json" },
-    body: JSON.stringify(settings),
+    body: JSON.stringify(remoteSettings),
   });
   if (!res.ok && res.status !== 401) {
     throw new Error("Failed to save site settings");
@@ -186,7 +188,10 @@ export function SiteSettingsProvider({
         syncedUserIdRef.current = user.id;
 
         if (remote) {
-          commitSettings(remote, false);
+          commitSettings(
+            { ...remote, tvNavigationEnabled: settingsRef.current.tvNavigationEnabled },
+            false,
+          );
           return;
         }
 
@@ -207,6 +212,13 @@ export function SiteSettingsProvider({
   const updateSettings = useCallback(
     (patch: Partial<SiteSettings>) => {
       setSettings((current) => commitSettings({ ...current, ...patch }));
+    },
+    [commitSettings],
+  );
+
+  const updateLocalSettings = useCallback(
+    (patch: Partial<SiteSettings>) => {
+      setSettings((current) => commitSettings({ ...current, ...patch }, false));
     },
     [commitSettings],
   );
@@ -267,6 +279,7 @@ export function SiteSettingsProvider({
       settings: hydrated ? settings : defaults,
       remoteSaving,
       updateSettings,
+      updateLocalSettings,
       resetSettings,
       settingsOpen,
       settingsInitialTab,
@@ -286,6 +299,7 @@ export function SiteSettingsProvider({
       defaults,
       remoteSaving,
       updateSettings,
+      updateLocalSettings,
       resetSettings,
       settingsOpen,
       settingsInitialTab,

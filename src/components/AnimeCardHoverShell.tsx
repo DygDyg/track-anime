@@ -66,10 +66,6 @@ export function AnimeCardHoverShell({
 
     const onScrollClose = () => {
       if (!hoveredRef.current) return;
-      if (hoverPanelPortal) {
-        updatePanelOffset();
-        return;
-      }
       hoveredRef.current = false;
       setHovered(false);
     };
@@ -82,7 +78,7 @@ export function AnimeCardHoverShell({
       window.removeEventListener("scroll", onScrollClose, { capture: true });
       window.removeEventListener("resize", onViewportChange);
     };
-  }, [updatePanelOffset, hoverPanelPortal]);
+  }, [updatePanelOffset]);
 
   return (
     <div

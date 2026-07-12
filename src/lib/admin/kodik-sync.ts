@@ -1,6 +1,7 @@
 import { prisma } from "@/lib/prisma";
 import { saveKodikMaterial } from "@/db/save-material";
 import { normalizeKodikMaterialMetadata } from "@/lib/kodik-material-metadata-normalizer";
+import { scheduleMalIdRefreshForShikimoriIds } from "@/lib/admin/mal-id-sync";
 import { buildListUrl, kodikListByUrl, kodikSearch } from "@/kodik/client";
 import {
   finishImportJobSession,
@@ -164,6 +165,7 @@ export async function runKodikIncrementalSync(
         ids: [...touchedShikimoriIds],
         quiet: true,
       });
+      scheduleMalIdRefreshForShikimoriIds([...touchedShikimoriIds]);
     }
 
     await finishImportJobSession({

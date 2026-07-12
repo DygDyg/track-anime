@@ -45,6 +45,7 @@ function FriendCard({
             nickname={friend.nickname}
             decorationId={friend.avatarDecorationId}
             decorationScale={friend.avatarDecorationScale}
+            decorationAnimationMode="hover"
             size="friend"
           />
 

@@ -1,10 +1,9 @@
-import Link from "next/link";
 import type { AnimePageDto } from "@/lib/anime-page";
 import { AnimeStudioLogos } from "@/components/anime/AnimeStudioLogos";
 import {
   formatDurationRu,
 } from "@/lib/anime-labels";
-import { buildSearchHref } from "@/lib/search-shared";
+import { GenreInfoLink } from "@/components/GenreInfoLink";
 
 function MetadataRow({ label, value }: { label: string; value: React.ReactNode | null }) {
   if (value == null || value === "") return null;
@@ -25,12 +24,9 @@ function GenreValue({ genres }: { genres: AnimePageDto["genres"] }) {
       {genres.map((genre, index) => (
         <span key={genre.id}>
           {index > 0 ? ", " : null}
-          <Link
-            href={buildSearchHref({ genre: genre.name })}
-            className="transition hover:underline"
-          >
+          <GenreInfoLink genre={genre.name} className="transition hover:underline">
             {genre.name}
-          </Link>
+          </GenreInfoLink>
         </span>
       ))}
     </>

@@ -1,8 +1,16 @@
 import Link from "next/link";
+import type { Metadata } from "next";
 import { AdminNav } from "@/components/admin/AdminNav";
 import { adminClass } from "@/components/admin/admin-styles";
 import { requireAdmin } from "@/lib/auth/admin";
 import "./admin.css";
+
+export const metadata: Metadata = {
+  title: {
+    default: "Админка",
+    template: "Админка: %s",
+  },
+};
 
 export default async function AdminLayout({ children }: { children: React.ReactNode }) {
   await requireAdmin();
