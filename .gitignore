@@ -11,6 +11,25 @@ data/image-cache/*
 !data/image-cache/.gitkeep
 tmp/
 
+# Local scratch/design files
+.cursorignore
+Desktop.ini
+test_filesystem.txt
+tmp-home.html
+yp9cbm0~ov.ico
+404.png
+404.webp
+favicon*.ico
+favicon*.png
+favicon_local.png
+favicon_proxy.png
+e/
+public/private/
+public/!promt_logo*.txt
+public/!referens.png
+public/331af195-*
+public/7574683b-*
+
 # Serwist (generated at build)
 public/sw.js
 public/sw.js.map
