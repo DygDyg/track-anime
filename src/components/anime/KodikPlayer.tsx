@@ -31,6 +31,13 @@ export type KodikPlayerPlaybackState = {
   muted: boolean;
 };
 
+export type KodikPlayerProgressPayload = {
+  seasonNumber: number;
+  episodeNumber: number;
+  positionSeconds: number;
+  source?: "episode" | "time";
+};
+
 export type KodikPlayerHandle = {
   seekTo: (resume: KodikPlayerResume, mode?: KodikPlayerResumeMode) => void;
   seekBy: (deltaSeconds: number) => void;
@@ -66,11 +73,7 @@ type Props = {
   chromelessBeta?: boolean;
   onReady?: () => void;
   onContinueStateChange?: (active: boolean) => void;
-  onProgress?: (payload: {
-    seasonNumber: number;
-    episodeNumber: number;
-    positionSeconds: number;
-  }) => void;
+  onProgress?: (payload: KodikPlayerProgressPayload) => void;
   onPause?: (payload: {
     seasonNumber: number;
     episodeNumber: number;
@@ -507,6 +510,7 @@ export const KodikPlayer = forwardRef<KodikPlayerHandle, Props>(function KodikPl
           seasonNumber: episodeRef.current.seasonNumber,
           episodeNumber: episodeRef.current.episodeNumber,
           positionSeconds: positionRef.current,
+          source: "episode",
         });
 
         const translationId = currentEpisode.translation?.id;
@@ -526,6 +530,7 @@ export const KodikPlayer = forwardRef<KodikPlayerHandle, Props>(function KodikPl
           seasonNumber: episodeRef.current.seasonNumber,
           episodeNumber: episodeRef.current.episodeNumber,
           positionSeconds: event.data.value,
+          source: "time",
         });
       }
 

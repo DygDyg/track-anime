@@ -15,6 +15,7 @@ import {
   KodikPlayer,
   type KodikPlayerHandle,
   type KodikPlayerPlaybackState,
+  type KodikPlayerProgressPayload,
   type KodikPlayerResume,
 } from "@/components/anime/KodikPlayer";
 import {
@@ -69,11 +70,7 @@ type Props = {
   skipAction?: ReactNode;
   onReady?: () => void;
   onContinueStateChange?: (active: boolean) => void;
-  onProgress?: (payload: {
-    seasonNumber: number;
-    episodeNumber: number;
-    positionSeconds: number;
-  }) => void;
+  onProgress?: (payload: KodikPlayerProgressPayload) => void;
   onPause?: (payload: {
     seasonNumber: number;
     episodeNumber: number;

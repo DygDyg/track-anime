@@ -15,6 +15,7 @@ import {
   KodikPlayer,
   type KodikPlayerHandle,
   type KodikPlayerPlaybackState,
+  type KodikPlayerProgressPayload,
   type KodikPlayerResume,
   type KodikPlayerResumeMode,
 } from "@/components/anime/KodikPlayer";
@@ -74,6 +75,7 @@ const CONTINUE_LOADING_TIMEOUT_MS = 12_000;
 const AUTO_SKIP_CANCEL_SECONDS = 5;
 const WATCH_PARTY_SYNC_TIMEOUT_MS = 4_000;
 const WATCH_PARTY_TRANSLATION_SYNC_STORAGE_KEY = "ta.watchParty.translationSync";
+const EPISODE_END_CANDIDATE_WINDOW_SECONDS = 20;
 
 const DEFAULT_PLAYBACK_STATE: KodikPlayerPlaybackState = {
   isPlaying: false,
@@ -131,11 +133,7 @@ function PlayerLoadingOverlay({
   );
 }
 
-type ProgressPayload = {
-  seasonNumber: number;
-  episodeNumber: number;
-  positionSeconds: number;
-};
+type ProgressPayload = KodikPlayerProgressPayload;
 
 function readWatchPartyTranslationSyncEnabled() {
   if (typeof window === "undefined") return true;
@@ -349,6 +347,7 @@ export function AnimeWatchPanel({
     episodeNumber: 1,
     positionSeconds: 0,
   });
+  const episodeEndCandidateRef = useRef<ProgressPayload | null>(null);
   const latestProgressRef = useRef<ProgressPayload | null>(null);
   const lastSavedFingerprintRef = useRef("");
   const savingRef = useRef(false);
@@ -573,12 +572,28 @@ export function AnimeWatchPanel({
 
   const trackProgress = useCallback(
     (payload: ProgressPayload) => {
+      const previous = liveProgressRef.current;
+      const episodeChanged =
+        previous.seasonNumber !== payload.seasonNumber ||
+        previous.episodeNumber !== payload.episodeNumber;
       liveProgressRef.current = payload;
       setPlayerEpisode((prev) =>
         prev.seasonNumber === payload.seasonNumber && prev.episodeNumber === payload.episodeNumber
           ? prev
           : { seasonNumber: payload.seasonNumber, episodeNumber: payload.episodeNumber },
       );
+      if (payload.source === "time") {
+        const nearEnd =
+          playback.durationSeconds > 0 &&
+          payload.positionSeconds >=
+            Math.max(0, playback.durationSeconds - EPISODE_END_CANDIDATE_WINDOW_SECONDS);
+
+        if (nearEnd && !episodeChanged) {
+          episodeEndCandidateRef.current = payload;
+        } else if (!nearEnd || payload.positionSeconds < EPISODE_END_CANDIDATE_WINDOW_SECONDS) {
+          episodeEndCandidateRef.current = null;
+        }
+      }
       const wasPaused = isPausedRef.current;
       isPausedRef.current = false;
       syncProgress({ ...payload, paused: false });
@@ -588,7 +603,7 @@ export function AnimeWatchPanel({
       if (payload.positionSeconds < MIN_SAVE_POSITION_SECONDS) return;
       latestProgressRef.current = payload;
     },
-    [markPlaying, syncProgress],
+    [markPlaying, playback.durationSeconds, syncProgress],
   );
 
   const switchTranslationWithResume = useCallback(
@@ -1518,6 +1533,7 @@ export function AnimeWatchPanel({
     ) {
       return;
     }
+    episodeEndCandidateRef.current = null;
     const resume: KodikPlayerResume = {
       seasonNumber,
       episodeNumber,
@@ -1534,6 +1550,7 @@ export function AnimeWatchPanel({
       if (nextEpisode < 1) return;
       if (episodesTotal != null && nextEpisode > episodesTotal) return;
 
+      episodeEndCandidateRef.current = null;
       isPausedRef.current = false;
       playerRef.current?.seekTo(
         {
@@ -1547,12 +1564,13 @@ export function AnimeWatchPanel({
     [episodesTotal],
   );
 
-  const handlePlayerEnded = useCallback(() => {
-    const current = liveProgressRef.current;
+  const handlePlayerEnded = useCallback((endedProgress?: ProgressPayload | null) => {
+    const current = endedProgress ?? episodeEndCandidateRef.current ?? liveProgressRef.current;
     const nextEpisode = current.episodeNumber + 1;
 
     if (episodesTotal != null && nextEpisode > episodesTotal) return;
 
+    episodeEndCandidateRef.current = null;
     playerRef.current?.seekTo(
       {
         seasonNumber: current.seasonNumber,
@@ -1703,14 +1721,15 @@ export function AnimeWatchPanel({
       return;
     }
     const current = liveProgressRef.current;
-    const nextEpisode = current.episodeNumber + 1;
-    handlePlayerEnded();
+    const endedProgress = episodeEndCandidateRef.current ?? current;
+    const nextEpisode = endedProgress.episodeNumber + 1;
+    handlePlayerEnded(endedProgress);
     if (episodesTotal != null && nextEpisode > episodesTotal) return;
     if (!applyingWatchPartyCommandRef.current) {
       watchParty.sendCommand(
         "episode",
         makeWatchPartyState({
-          seasonNumber: current.seasonNumber,
+          seasonNumber: endedProgress.seasonNumber,
           episodeNumber: nextEpisode,
           positionSeconds: 0,
           isPlaying: true,
