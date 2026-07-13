@@ -352,6 +352,9 @@ export function AnimeWatchPanel({
   const translationIntroOffsetsRef = useRef(settings.translationIntroOffsets);
   const forcedIntroOffsetsRef = useRef(forcedIntroOffsets);
   const applyingWatchPartyCommandRef = useRef(false);
+  const playbackStateInitializedRef = useRef(false);
+  const suppressNextPlaybackBroadcastRef = useRef(false);
+  const sendWatchPartyPlaybackEventRef = useRef<(isPlaying: boolean) => void>(() => {});
 
   const playableByKodikId = useMemo(() => {
     const map = new Map<string, KodikTranslationDto>();
@@ -1123,7 +1126,21 @@ export function AnimeWatchPanel({
   }, [isNativeFullscreen]);
 
   const handlePlaybackStateChange = useCallback((state: KodikPlayerPlaybackState) => {
-    setPlayback(state);
+    setPlayback((previous) => {
+      const initialized = playbackStateInitializedRef.current;
+      const playingChanged = initialized && previous.isPlaying !== state.isPlaying;
+      playbackStateInitializedRef.current = true;
+
+      if (playingChanged && !applyingWatchPartyCommandRef.current) {
+        if (suppressNextPlaybackBroadcastRef.current) {
+          suppressNextPlaybackBroadcastRef.current = false;
+        } else {
+          sendWatchPartyPlaybackEventRef.current(state.isPlaying);
+        }
+      }
+
+      return state;
+    });
   }, []);
 
   useEffect(() => {
@@ -1506,10 +1523,25 @@ export function AnimeWatchPanel({
     [getWatchPartyState],
   );
 
+  useEffect(() => {
+    sendWatchPartyPlaybackEventRef.current = (isPlaying: boolean) => {
+      if (!watchParty.isConnected || !watchParty.canPlayPause) return;
+      watchParty.sendCommand(
+        isPlaying ? "play" : "pause",
+        makeWatchPartyState({ isPlaying }),
+      );
+    };
+
+    return () => {
+      sendWatchPartyPlaybackEventRef.current = () => {};
+    };
+  }, [makeWatchPartyState, watchParty]);
+
   const handleRoomPlayPause = useCallback(() => {
     if (watchParty.isConnected && !watchParty.canPlayPause) return;
     setWatchPartyPlaybackUnlocked(true);
     const nextPlaying = !playback.isPlaying;
+    suppressNextPlaybackBroadcastRef.current = true;
     playerRef.current?.togglePlay();
     if (!applyingWatchPartyCommandRef.current) {
       watchParty.sendCommand(
@@ -1517,6 +1549,9 @@ export function AnimeWatchPanel({
         makeWatchPartyState({ isPlaying: nextPlaying }),
       );
     }
+    window.setTimeout(() => {
+      suppressNextPlaybackBroadcastRef.current = false;
+    }, 1_500);
   }, [makeWatchPartyState, playback.isPlaying, watchParty]);
 
   const handleRoomSeek = useCallback(
