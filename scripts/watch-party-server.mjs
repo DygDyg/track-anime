@@ -74,6 +74,7 @@ function serializeParticipants(room) {
     nickname: client.nickname,
     avatar: client.avatar,
     isMaster: client.id === room.masterParticipantId,
+    state: client.state,
   }));
 }
 
@@ -143,6 +144,7 @@ function handleJoin(ws, message) {
     avatar: participant.avatar,
     roomId,
     alive: true,
+    state,
   };
   ws.watchPartyClient = client;
   room.clients.set(client.id, client);
@@ -201,6 +203,14 @@ function handleMessage(ws, raw) {
     return;
   }
 
+  if (message.type === "presence") {
+    const incomingState = normalizeState(message.state);
+    if (!incomingState || incomingState.shikimoriId !== room.state.shikimoriId) return;
+    client.state = incomingState;
+    broadcastRoomState(room);
+    return;
+  }
+
   if (!["play", "pause", "seek", "episode", "translation", "state-sync"].includes(message.type)) {
     return;
   }
@@ -211,6 +221,7 @@ function handleMessage(ws, raw) {
 
   const incomingState = normalizeState(message.state);
   if (!incomingState || incomingState.shikimoriId !== room.state.shikimoriId) return;
+  client.state = incomingState;
 
   const isMaster = client.id === room.masterParticipantId;
   const advancedState = advanceRoomState(room.state);

@@ -4,6 +4,7 @@ export type WatchPartyParticipant = {
   nickname: string;
   avatar: string | null;
   isMaster: boolean;
+  state?: WatchPartyPlaybackState;
 };
 
 export type WatchPartyPlaybackState = {
@@ -41,6 +42,7 @@ export type WatchPartyClientMessage =
       allowParticipantControls: boolean;
       allowParticipantSeeking: boolean;
     }
+  | { type: "presence"; state: WatchPartyPlaybackState }
   | WatchPartyCommand;
 
 export type WatchPartyServerMessage =

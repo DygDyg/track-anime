@@ -340,6 +340,15 @@ export function useWatchParty({
     [canMasterControl, canPlayPause, canSeekAndSelectEpisodes, isConnected, send],
   );
 
+  const sendPresence = useCallback(
+    (state?: WatchPartyPlaybackState | null) => {
+      const nextState = state ?? getPlaybackStateRef.current();
+      if (!nextState || !isConnected) return false;
+      return send({ type: "presence", state: nextState });
+    },
+    [isConnected, send],
+  );
+
   useEffect(() => disconnect, [disconnect]);
 
   return {
@@ -366,5 +375,6 @@ export function useWatchParty({
     disconnect,
     setRoomPermissions,
     sendCommand,
+    sendPresence,
   };
 }

@@ -72,6 +72,8 @@ const PLAYER_SEEK_SKIP_SECONDS = PLAYER_SEEK_SKIP_LABEL_SECONDS;
 const MOBILE_TRANSLATIONS_SWIPE_THRESHOLD_PX = 56;
 const CONTINUE_LOADING_TIMEOUT_MS = 12_000;
 const AUTO_SKIP_CANCEL_SECONDS = 5;
+const WATCH_PARTY_SYNC_TIMEOUT_MS = 4_000;
+const WATCH_PARTY_LATENCY_COMPENSATION_SECONDS = 0.35;
 
 const DEFAULT_PLAYBACK_STATE: KodikPlayerPlaybackState = {
   isPlaying: false,
@@ -322,6 +324,7 @@ export function AnimeWatchPanel({
   const [skipTimesPopupPinned, setSkipTimesPopupPinned] = useState(false);
   const [pendingAutoSkip, setPendingAutoSkip] = useState<PendingAutoSkip | null>(null);
   const [watchPartyPlaybackUnlocked, setWatchPartyPlaybackUnlocked] = useState(false);
+  const [watchPartySyncing, setWatchPartySyncing] = useState(false);
   const [pendingWatchPartyCommand, setPendingWatchPartyCommand] =
     useState<WatchPartyCommand | null>(null);
   const playerExpandedHostRef = useRef<HTMLDivElement>(null);
@@ -342,6 +345,7 @@ export function AnimeWatchPanel({
   const lastSavedFingerprintRef = useRef("");
   const savingRef = useRef(false);
   const pendingContinueRef = useRef<KodikPlayerResume | null>(null);
+  const suppressContinueOverlayRef = useRef(false);
   const autoSkippedIntervalsRef = useRef(new Set<string>());
   const cancelledAutoSkipIntervalsRef = useRef(new Set<string>());
   const previousAutoSkipPositionRef = useRef(0);
@@ -374,6 +378,27 @@ export function AnimeWatchPanel({
       );
     },
     [playableByKodikId],
+  );
+  const localizeWatchPartyState = useCallback(
+    (state: WatchPartyPlaybackState): KodikPlayerResume | null => {
+      const currentKodikId = selectedIdRef.current || state.kodikId;
+      if (!currentKodikId) return null;
+
+      const elapsedSeconds = state.isPlaying
+        ? Math.max(0, (Date.now() - state.updatedAt) / 1000) + WATCH_PARTY_LATENCY_COMPENSATION_SECONDS
+        : 0;
+
+      return applyPositionOffset(
+        {
+          seasonNumber: state.seasonNumber,
+          episodeNumber: state.episodeNumber,
+          positionSeconds: Math.max(0, state.positionSeconds + elapsedSeconds),
+        },
+        currentKodikId,
+        state.kodikId,
+      );
+    },
+    [applyPositionOffset],
   );
 
   useEffect(() => {
@@ -685,11 +710,27 @@ export function AnimeWatchPanel({
   }, []);
 
   const handleContinueStateChange = useCallback((active: boolean) => {
+    if (suppressContinueOverlayRef.current) {
+      setWatchPartySyncing(active);
+      if (!active) suppressContinueOverlayRef.current = false;
+      return;
+    }
     setContinueLoading(active);
     if (!active) {
       setContinueTarget(null);
     }
   }, []);
+
+  useEffect(() => {
+    if (!watchPartySyncing) return;
+
+    const timeoutId = window.setTimeout(() => {
+      suppressContinueOverlayRef.current = false;
+      setWatchPartySyncing(false);
+    }, WATCH_PARTY_SYNC_TIMEOUT_MS);
+
+    return () => window.clearTimeout(timeoutId);
+  }, [watchPartySyncing]);
 
   useEffect(() => {
     if (!continueLoading) return;
@@ -788,34 +829,32 @@ export function AnimeWatchPanel({
   }, [playback.isPlaying, ready, selected?.kodikId, shikimoriId]);
   const applyWatchPartyState = useCallback(
     (state: WatchPartyPlaybackState, mode: KodikPlayerResumeMode) => {
-      const resume: KodikPlayerResume = {
-        seasonNumber: state.seasonNumber,
-        episodeNumber: state.episodeNumber,
-        positionSeconds: state.positionSeconds,
-      };
+      const resume = localizeWatchPartyState(state);
+      if (!resume) return;
 
       applyingWatchPartyCommandRef.current = true;
       isPausedRef.current = mode === "pause";
+      suppressContinueOverlayRef.current = true;
+      setWatchPartySyncing(true);
 
-      if (state.kodikId !== selectedIdRef.current) {
+      if (!playerRef.current) {
         pendingContinueRef.current = resume;
         pendingContinueModeRef.current = mode;
-        setContinueLoading(true);
-        setContinueTarget({ episodeNumber: resume.episodeNumber });
-        setBootResume(null);
-        setSelectedId(state.kodikId);
       } else {
         const sameEpisode =
           liveProgressRef.current.seasonNumber === resume.seasonNumber &&
           liveProgressRef.current.episodeNumber === resume.episodeNumber;
-        if (!sameEpisode) {
-          pendingContinueRef.current = resume;
-          pendingContinueModeRef.current = mode;
-          setContinueLoading(true);
-          setContinueTarget({ episodeNumber: resume.episodeNumber });
-          setPlayerResetNonce((nonce) => nonce + 1);
+
+        if (sameEpisode) {
+          playerRef.current.seekToPosition(resume.positionSeconds);
+          if (mode === "play") playerRef.current.play();
+          else playerRef.current.pause();
+          window.setTimeout(() => {
+            suppressContinueOverlayRef.current = false;
+            setWatchPartySyncing(false);
+          }, 350);
         } else {
-          playerRef.current?.seekTo(resume, mode);
+          playerRef.current.seekTo(resume, mode);
         }
       }
 
@@ -823,34 +862,26 @@ export function AnimeWatchPanel({
         applyingWatchPartyCommandRef.current = false;
       }, 1_200);
     },
-    [],
+    [localizeWatchPartyState],
   );
   const applyWatchPartySync = useCallback(
     (state: WatchPartyPlaybackState) => {
-      if (state.kodikId !== selectedIdRef.current) {
-        applyWatchPartyState(state, state.isPlaying ? "play" : "pause");
-        return;
-      }
-
-      const elapsedSeconds = state.isPlaying ? (Date.now() - state.updatedAt) / 1000 : 0;
-      const expectedPosition = Math.max(0, state.positionSeconds + elapsedSeconds);
+      const resume = localizeWatchPartyState(state);
+      if (!resume) return;
       const sameEpisode =
-        liveProgressRef.current.seasonNumber === state.seasonNumber &&
-        liveProgressRef.current.episodeNumber === state.episodeNumber;
-      const driftSeconds = Math.abs(liveProgressRef.current.positionSeconds - expectedPosition);
+        liveProgressRef.current.seasonNumber === resume.seasonNumber &&
+        liveProgressRef.current.episodeNumber === resume.episodeNumber;
+      const driftSeconds = Math.abs(liveProgressRef.current.positionSeconds - resume.positionSeconds);
 
       if (!sameEpisode || driftSeconds > 4) {
-        applyWatchPartyState(
-          { ...state, positionSeconds: expectedPosition, updatedAt: Date.now() },
-          state.isPlaying ? "play" : "pause",
-        );
+        applyWatchPartyState(state, state.isPlaying ? "play" : "pause");
         return;
       }
 
       if (state.isPlaying && !playback.isPlaying) playerRef.current?.play();
       if (!state.isPlaying && playback.isPlaying) playerRef.current?.pause();
     },
-    [applyWatchPartyState, playback.isPlaying],
+    [applyWatchPartyState, localizeWatchPartyState, playback.isPlaying],
   );
   const handleWatchPartyCommand = useCallback(
     (command: WatchPartyCommand) => {
@@ -859,7 +890,7 @@ export function AnimeWatchPanel({
         return;
       }
 
-      if (command.type === "state-sync") {
+      if (command.type === "state-sync" || command.type === "translation") {
         applyWatchPartySync(command.state);
         return;
       }
@@ -915,13 +946,30 @@ export function AnimeWatchPanel({
     return () => window.clearInterval(intervalId);
   }, [playback.isPlaying, watchParty.isConnected, watchParty.isMaster, watchParty.sendCommand]);
 
+  useEffect(() => {
+    if (!watchParty.isConnected) return;
+
+    watchParty.sendPresence();
+    const intervalId = window.setInterval(() => {
+      watchParty.sendPresence();
+    }, 15_000);
+
+    return () => window.clearInterval(intervalId);
+  }, [
+    playerEpisode.episodeNumber,
+    playerEpisode.seasonNumber,
+    selectedId,
+    watchParty.isConnected,
+    watchParty.sendPresence,
+  ]);
+
   const applyPendingWatchPartyStart = useCallback(() => {
     const command = pendingWatchPartyCommand;
     if (!command) return;
     setWatchPartyPlaybackUnlocked(true);
     setPendingWatchPartyCommand(null);
 
-    if (command.type === "state-sync") {
+    if (command.type === "state-sync" || command.type === "translation") {
       applyWatchPartySync(command.state);
       return;
     }
@@ -1544,11 +1592,9 @@ export function AnimeWatchPanel({
 
   const handleRoomTranslationSelect = useCallback(
     (kodikId: string) => {
-      if (watchParty.isConnected && !watchParty.canMasterControl) return;
-      setWatchPartyPlaybackUnlocked(true);
       handleTranslationSelect(kodikId);
-      if (!applyingWatchPartyCommandRef.current) {
-        watchParty.sendCommand("translation", makeWatchPartyState({ kodikId }));
+      if (watchParty.isConnected) {
+        watchParty.sendPresence(makeWatchPartyState({ kodikId }));
       }
     },
     [handleTranslationSelect, makeWatchPartyState, watchParty],
@@ -1687,7 +1733,7 @@ export function AnimeWatchPanel({
             <button
               type="button"
               onClick={() => handleRoomTranslationSelect(tr.kodikId)}
-                disabled={continueLoading || (watchParty.isConnected && !watchParty.canMasterControl)}
+              disabled={continueLoading}
               aria-pressed={active}
               data-studio={studioId ?? undefined}
               className={[
@@ -1722,6 +1768,14 @@ export function AnimeWatchPanel({
       })}
     </ul>
   );
+
+  const renderWatchPartySyncIndicator = () =>
+    watchPartySyncing ? (
+      <div className="pointer-events-none absolute right-3 top-3 z-40 inline-flex items-center gap-2 rounded-md border border-white/15 bg-black/70 px-2.5 py-1.5 text-xs font-medium text-white shadow-lg">
+        <IconPlayerRefresh spinning />
+        <span>Синхронизация</span>
+      </div>
+    ) : null;
 
   const renderWatchPartyPanel = () => {
     if (!betaChromeless || !ready || !selected?.playerLink) return null;
@@ -1845,19 +1899,41 @@ export function AnimeWatchPanel({
         ) : null}
 
         <ul className="mt-3 flex flex-wrap gap-2">
-          {watchParty.participants.map((participant) => (
-            <li
-              key={participant.id}
-              className="inline-flex max-w-full items-center gap-1.5 rounded-md border border-border bg-card px-2 py-1 text-muted"
-            >
-              <span className="truncate">{participant.nickname}</span>
-              {participant.isMaster ? (
-                <span className="rounded border border-amber-300/40 bg-amber-400/10 px-1 text-[10px] font-semibold uppercase text-amber-200">
-                  мастер
+          {watchParty.participants.map((participant) => {
+            const participantTranslation = participant.state
+              ? playableByKodikId.get(participant.state.kodikId)
+              : null;
+            const participantEpisode = participant.state
+              ? `S${participant.state.seasonNumber} · E${participant.state.episodeNumber}`
+              : null;
+            const participantWatchLabel = [
+              participantTranslation?.translationTitle ?? null,
+              participantEpisode,
+            ]
+              .filter(Boolean)
+              .join(" · ");
+
+            return (
+              <li
+                key={participant.id}
+                className="inline-flex max-w-full flex-col gap-0.5 rounded-md border border-border bg-card px-2 py-1 text-muted"
+              >
+                <span className="inline-flex min-w-0 items-center gap-1.5">
+                  <span className="truncate">{participant.nickname}</span>
+                  {participant.isMaster ? (
+                    <span className="shrink-0 rounded border border-amber-300/40 bg-amber-400/10 px-1 text-[10px] font-semibold uppercase text-amber-200">
+                      мастер
+                    </span>
+                  ) : null}
                 </span>
-              ) : null}
-            </li>
-          ))}
+                {participantWatchLabel ? (
+                  <span className="max-w-[15rem] truncate text-[11px] text-muted">
+                    {participantWatchLabel}
+                  </span>
+                ) : null}
+              </li>
+            );
+          })}
         </ul>
       </div>
     );
@@ -2184,6 +2260,7 @@ export function AnimeWatchPanel({
               ].join(" ")}
             >
               <div ref={playerExpandedHostRef} className="kodik-player-beta-player-host relative min-w-0">
+                {renderWatchPartySyncIndicator()}
                 <KodikPlayerBetaViewport
                   playerRef={playerRef}
                   playerKey={`${selected.kodikId}-${playerResetNonce}-beta-${playerSrc}`}
@@ -2275,6 +2352,7 @@ export function AnimeWatchPanel({
               playerExpanded ? "anime-player-expanded-host" : "",
             ].join(" ")}
           >
+            {renderWatchPartySyncIndicator()}
             <KodikPlayerBetaEpisodeStrip
               shikimoriId={shikimoriId}
               kodikId={selected.kodikId}
