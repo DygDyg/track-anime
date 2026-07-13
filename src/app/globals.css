@@ -1219,6 +1219,16 @@ html[data-card-size="compact"] .release-card-title {
   outline: none;
 }
 
+.anime-player-loading-image {
+  animation: anime-player-loading-spin 4.5s linear infinite;
+}
+
+@keyframes anime-player-loading-spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+
 .kodik-player-beta-ui-top {
   background: transparent;
 }

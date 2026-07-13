@@ -1,5 +1,6 @@
 "use client";
 
+import Image from "next/image";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useAuth } from "@/components/auth/AuthProvider";
 import { useSiteSettings } from "@/components/SiteSettingsProvider";
@@ -85,6 +86,33 @@ function IconSkipTimesFound() {
       <path d="M7 5.5v13l10-6.5-10-6.5z" />
       <path d="M18 5h2v14h-2V5z" />
     </svg>
+  );
+}
+
+function PlayerLoadingOverlay({
+  episodeNumber,
+  fallbackEpisodeNumber,
+}: {
+  episodeNumber?: number;
+  fallbackEpisodeNumber?: number;
+}) {
+  return (
+    <div className="pointer-events-none absolute inset-0 z-30 flex items-center justify-center rounded-lg bg-black/60">
+      <div className="flex flex-col items-center gap-3 rounded-lg border border-white/15 bg-black/70 px-5 py-4 text-center text-sm text-white shadow-lg">
+        <Image
+          src="/loading.webp"
+          alt=""
+          aria-hidden="true"
+          width={160}
+          height={160}
+          className="anime-player-loading-image h-40 w-40 object-contain drop-shadow-[0_0_22px_rgba(255,255,255,0.2)] sm:h-48 sm:w-48"
+          unoptimized
+        />
+        <span>
+          Серия {episodeNumber ?? fallbackEpisodeNumber ?? "…"} · загрузка плеера…
+        </span>
+      </div>
+    </div>
   );
 }
 
@@ -727,6 +755,53 @@ export function AnimeWatchPanel({
     episodesTotal != null && playerEpisode.episodeNumber >= episodesTotal;
   const selected = playable.find((tr) => tr.kodikId === selectedId) ?? playable[0];
   const selectedPlayerLink = selected?.playerLink ?? null;
+  const hasExplicitAutoSkipTranslations =
+    Object.keys(settings.autoSkipTranslationIds).length > 0;
+  const isTranslationAutoSkipEnabled = useCallback(
+    (translationId: number) =>
+      settings.autoSkipTranslationIds[String(translationId)] === true ||
+      (!hasExplicitAutoSkipTranslations && settings.autoSkipOpeningsEndings),
+    [
+      hasExplicitAutoSkipTranslations,
+      settings.autoSkipOpeningsEndings,
+      settings.autoSkipTranslationIds,
+    ],
+  );
+  const selectedAutoSkipEnabled = selected
+    ? isTranslationAutoSkipEnabled(selected.translationId)
+    : false;
+  const setSelectedAutoSkip = useCallback(
+    (enabled: boolean) => {
+      if (!selected) return;
+
+      const next = { ...settings.autoSkipTranslationIds };
+      if (!hasExplicitAutoSkipTranslations && settings.autoSkipOpeningsEndings) {
+        for (const tr of playable) {
+          next[String(tr.translationId)] = true;
+        }
+      }
+      const key = String(selected.translationId);
+
+      if (enabled) {
+        next[key] = true;
+      } else {
+        delete next[key];
+      }
+
+      updateSettings({
+        autoSkipOpeningsEndings: false,
+        autoSkipTranslationIds: next,
+      });
+    },
+    [
+      hasExplicitAutoSkipTranslations,
+      playable,
+      selected,
+      settings.autoSkipOpeningsEndings,
+      settings.autoSkipTranslationIds,
+      updateSettings,
+    ],
+  );
   const selectedIntroOffsetSeconds = selected
     ? resolveTranslationIntroOffsetSec(
         selected.translationTitle,
@@ -842,7 +917,7 @@ export function AnimeWatchPanel({
 
   useEffect(() => {
     if (
-      !settings.autoSkipOpeningsEndings ||
+      !selectedAutoSkipEnabled ||
       seekSkipDisabled ||
       !selectedId ||
       pendingAutoSkipTimes.length === 0
@@ -866,12 +941,12 @@ export function AnimeWatchPanel({
     pendingAutoSkip?.key,
     seekSkipDisabled,
     selectedId,
-    settings.autoSkipOpeningsEndings,
+    selectedAutoSkipEnabled,
   ]);
 
   useEffect(() => {
     if (!pendingAutoSkip) return;
-    if (!selectedId || seekSkipDisabled || !settings.autoSkipOpeningsEndings) {
+    if (!selectedId || seekSkipDisabled || !selectedAutoSkipEnabled) {
       setPendingAutoSkip(null);
       return;
     }
@@ -895,7 +970,7 @@ export function AnimeWatchPanel({
     playback.positionSeconds,
     seekSkipDisabled,
     selectedId,
-    settings.autoSkipOpeningsEndings,
+    selectedAutoSkipEnabled,
   ]);
 
   const cancelPendingAutoSkip = useCallback(() => {
@@ -1204,6 +1279,32 @@ export function AnimeWatchPanel({
     shikimoriId,
   ]);
 
+  const renderPlayerRefreshButton = () => (
+    <button
+      type="button"
+      onClick={handlePlayerRefresh}
+      disabled={seekSkipDisabled}
+      aria-busy={continueLoading}
+      aria-label="Перезапустить плеер с текущей позиции"
+      title="Перезапустить плеер с текущей позиции"
+      className="inline-flex h-8 w-8 items-center justify-center rounded-md border border-border bg-background text-foreground transition hover:border-accent/40 hover:bg-surface-dim disabled:cursor-not-allowed disabled:opacity-50"
+    >
+      <IconPlayerRefresh spinning={continueLoading} />
+    </button>
+  );
+
+  const renderAutoSkipControl = () => (
+    <label className="inline-flex cursor-pointer items-center gap-2 rounded-md border border-border bg-background px-2.5 py-1.5 text-xs font-medium text-foreground transition hover:border-accent/40 hover:bg-surface-dim">
+      <input
+        type="checkbox"
+        checked={selectedAutoSkipEnabled}
+        onChange={(event) => setSelectedAutoSkip(event.target.checked)}
+        className="h-4 w-4 rounded border-border accent-accent"
+      />
+      Автопропуск OP/ED
+    </label>
+  );
+
   const renderTranslationButtons = () => (
     <ul className="grid grid-cols-[repeat(auto-fill,minmax(9.5rem,1fr))] items-stretch gap-2">
       {playable.map((tr) => {
@@ -1211,6 +1312,7 @@ export function AnimeWatchPanel({
         const progress = formatEpisodeProgress(tr.lastSeason, tr.lastEpisode);
         const seasonsBadge = formatKodikSeasonsBadge(tr.availableSeasons);
         const studioId = resolveTranslationStudioId(tr.translationTitle);
+        const autoSkipEnabled = isTranslationAutoSkipEnabled(tr.translationId);
         return (
           <li key={tr.kodikId} className="flex min-w-0">
             <button
@@ -1220,7 +1322,7 @@ export function AnimeWatchPanel({
               aria-pressed={active}
               data-studio={studioId ?? undefined}
               className={[
-                "translation-btn flex h-full w-full flex-col items-center justify-center rounded-lg border px-3 py-1.5 text-center text-xs transition disabled:cursor-wait disabled:opacity-50",
+                "translation-btn relative flex h-full w-full flex-col items-center justify-center rounded-lg border px-3 py-1.5 text-center text-xs transition disabled:cursor-wait disabled:opacity-50",
                 active ? "translation-btn--active" : "",
                 studioId
                   ? active
@@ -1238,6 +1340,11 @@ export function AnimeWatchPanel({
               {seasonsBadge ? (
                 <span className="mt-1 rounded border border-white/20 bg-black/20 px-1.5 py-0.5 text-[10px] font-semibold leading-tight text-white/90">
                   {seasonsBadge}
+                </span>
+              ) : null}
+              {autoSkipEnabled ? (
+                <span className="pointer-events-none absolute bottom-1 left-1 rounded border border-emerald-300/55 bg-black/45 px-1 text-[9px] font-black leading-3 text-emerald-100 shadow-sm">
+                  AP
                 </span>
               ) : null}
             </button>
@@ -1302,7 +1409,7 @@ export function AnimeWatchPanel({
       </button>
     ) : null;
 
-  const betaSkipAction = pendingAutoSkip ? (
+  const betaPrimarySkipAction = pendingAutoSkip ? (
     <button
       type="button"
       onClick={cancelPendingAutoSkip}
@@ -1337,6 +1444,8 @@ export function AnimeWatchPanel({
       </span>
     </button>
   ) : null;
+
+  const betaSkipAction = betaPrimarySkipAction;
 
   return (
     <section
@@ -1394,7 +1503,7 @@ export function AnimeWatchPanel({
 
       <div className="flex flex-col gap-2">
         {ready && selected?.playerLink ? (
-          <div className="flex flex-wrap items-center justify-between gap-2">
+          <div className="flex flex-wrap items-center gap-2">
             <div className="flex flex-wrap items-center gap-2">
               <label className="inline-flex cursor-pointer items-center gap-2 rounded-md border border-border bg-background px-2.5 py-1.5 text-xs font-medium text-foreground transition hover:border-accent/40 hover:bg-surface-dim">
                 <input
@@ -1409,17 +1518,6 @@ export function AnimeWatchPanel({
                 >
                   β-плеер
                 </span>
-              </label>
-              <label className="inline-flex cursor-pointer items-center gap-2 rounded-md border border-border bg-background px-2.5 py-1.5 text-xs font-medium text-foreground transition hover:border-accent/40 hover:bg-surface-dim">
-                <input
-                  type="checkbox"
-                  checked={settings.autoSkipOpeningsEndings}
-                  onChange={(event) =>
-                    updateSettings({ autoSkipOpeningsEndings: event.target.checked })
-                  }
-                  className="h-4 w-4 rounded border-border accent-accent"
-                />
-                Автопропуск OP/ED
               </label>
               {user?.isAdmin && ready && selected?.playerLink ? (
                 <div className="group relative">
@@ -1561,17 +1659,6 @@ export function AnimeWatchPanel({
                 </div>
               ) : null}
             </div>
-            <button
-              type="button"
-              onClick={handlePlayerRefresh}
-              disabled={seekSkipDisabled}
-              aria-busy={continueLoading}
-              aria-label="Перезапустить плеер с текущей позиции"
-              title="Перезапустить плеер с текущей позиции"
-              className="inline-flex h-8 w-8 items-center justify-center rounded-md border border-border bg-background text-foreground transition hover:border-accent/40 hover:bg-surface-dim disabled:cursor-not-allowed disabled:opacity-50"
-            >
-              <IconPlayerRefresh spinning={continueLoading} />
-            </button>
           </div>
         ) : null}
         {!ready ? (
@@ -1608,18 +1695,10 @@ export function AnimeWatchPanel({
                   skipAction={betaSkipAction}
                   continueOverlay={
                     continueLoading ? (
-                      <div className="pointer-events-none absolute inset-0 z-30 flex items-center justify-center bg-black/55">
-                        <div className="flex items-center gap-2 rounded-lg border border-white/15 bg-black/70 px-4 py-2 text-sm text-white shadow-lg">
-                          <span
-                            aria-hidden
-                            className="inline-block h-4 w-4 animate-spin rounded-full border-2 border-white border-r-transparent"
-                          />
-                          <span>
-                            Серия {continueTarget?.episodeNumber ?? continueProgress?.episodeNumber ?? "…"} ·
-                            загрузка плеера…
-                          </span>
-                        </div>
-                      </div>
+                      <PlayerLoadingOverlay
+                        episodeNumber={continueTarget?.episodeNumber}
+                        fallbackEpisodeNumber={continueProgress?.episodeNumber}
+                      />
                     ) : null
                   }
                   onReady={handlePlayerReady}
@@ -1661,7 +1740,13 @@ export function AnimeWatchPanel({
                 onMouseLeave={() => setFullscreenTranslationsHovered(false)}
                 className="kodik-player-beta-translations border-t border-border bg-card p-4"
               >
-                <p className="mb-2 text-xs font-medium uppercase tracking-wide text-muted">Озвучка</p>
+                <div className="mb-2 flex flex-wrap items-center justify-between gap-2">
+                  <div className="flex flex-wrap items-center gap-2">
+                    <p className="text-xs font-medium uppercase tracking-wide text-muted">Озвучка</p>
+                    {renderAutoSkipControl()}
+                  </div>
+                  {renderPlayerRefreshButton()}
+                </div>
                 {renderTranslationButtons()}
               </div>
             </div>
@@ -1682,17 +1767,10 @@ export function AnimeWatchPanel({
               onSelect={handleEpisodeSelect}
             />
             {continueLoading ? (
-              <div className="pointer-events-none absolute inset-0 z-10 flex items-center justify-center rounded-lg bg-black/55">
-                <div className="flex items-center gap-2 rounded-lg border border-white/15 bg-black/70 px-4 py-2 text-sm text-white shadow-lg">
-                  <span
-                    aria-hidden
-                    className="inline-block h-4 w-4 animate-spin rounded-full border-2 border-white border-r-transparent"
-                  />
-                  <span>
-                    Серия {continueTarget?.episodeNumber ?? continueProgress?.episodeNumber ?? "…"} · загрузка плеера…
-                  </span>
-                </div>
-              </div>
+              <PlayerLoadingOverlay
+                episodeNumber={continueTarget?.episodeNumber}
+                fallbackEpisodeNumber={continueProgress?.episodeNumber}
+              />
             ) : null}
             <KodikPlayer
               ref={playerRef}
@@ -1764,7 +1842,13 @@ export function AnimeWatchPanel({
 
       {!betaChromeless ? (
       <div className="mt-4">
-        <p className="mb-2 text-xs font-medium uppercase tracking-wide text-muted">Озвучка</p>
+        <div className="mb-2 flex flex-wrap items-center justify-between gap-2">
+          <div className="flex flex-wrap items-center gap-2">
+            <p className="text-xs font-medium uppercase tracking-wide text-muted">Озвучка</p>
+            {renderAutoSkipControl()}
+          </div>
+          {renderPlayerRefreshButton()}
+        </div>
         {renderTranslationButtons()}
       </div>
       ) : null}

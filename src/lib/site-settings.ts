@@ -28,6 +28,8 @@ export type HomeTranslationFilter = null | string[];
 /** null = без фона; строка = URL выбранного изображения */
 export type SiteBackgroundImageUrl = string | null;
 
+export type AutoSkipTranslationIds = Record<string, true>;
+
 export const HOVER_TRAILER_DELAY_MIN_SEC = 1;
 export const HOVER_TRAILER_DELAY_MAX_SEC = 15;
 export const HOVER_TRAILER_DELAY_DEFAULT_SEC = 2;
@@ -72,8 +74,10 @@ export type SiteSettings = {
   avatarDecorationScale: number;
   /** Beta: обрезка панелей Kodik, видео 16:9, iframe кликабелен */
   betaChromelessPlayer: boolean;
-  /** Автоматически пропускать найденные AniSkip OP/ED интервалы */
+  /** Legacy: старый глобальный флаг автопропуска OP/ED */
   autoSkipOpeningsEndings: boolean;
+  /** Kodik translationId -> автоматический пропуск найденных AniSkip OP/ED интервалов */
+  autoSkipTranslationIds: AutoSkipTranslationIds;
   /** Видимость полосы прогресса, когда beta-интерфейс скрыт; 0 = выключена */
   betaHiddenProgressOpacity: number;
   /** Локально для устройства: навигация стрелками по карточкам сайта */
@@ -107,6 +111,7 @@ export const DEFAULT_SITE_SETTINGS: SiteSettings = {
   avatarDecorationScale: AVATAR_DECORATION_SCALE_DEFAULT,
   betaChromelessPlayer: false,
   autoSkipOpeningsEndings: false,
+  autoSkipTranslationIds: {},
   betaHiddenProgressOpacity: BETA_HIDDEN_PROGRESS_OPACITY_DEFAULT,
   tvNavigationEnabled: true,
 };
@@ -205,6 +210,17 @@ export function normalizeAvatarDecorationScale(value: unknown): number {
   );
 }
 
+function parseAutoSkipTranslationIds(value: unknown): AutoSkipTranslationIds {
+  if (!isRecord(value)) return {};
+  const result: AutoSkipTranslationIds = {};
+  for (const [key, enabled] of Object.entries(value)) {
+    if (enabled !== true) continue;
+    const normalizedKey = key.trim();
+    if (normalizedKey.length > 0) result[normalizedKey] = true;
+  }
+  return result;
+}
+
 function normalizeBetaHiddenProgressOpacity(value: unknown): number {
   const parsed = typeof value === "number" ? value : Number(value);
   if (!Number.isFinite(parsed)) return BETA_HIDDEN_PROGRESS_OPACITY_DEFAULT;
@@ -271,6 +287,7 @@ export function normalizeSiteSettings(raw: unknown): SiteSettings {
     avatarDecorationScale: normalizeAvatarDecorationScale(raw.avatarDecorationScale),
     betaChromelessPlayer: raw.betaChromelessPlayer === true,
     autoSkipOpeningsEndings: raw.autoSkipOpeningsEndings === true,
+    autoSkipTranslationIds: parseAutoSkipTranslationIds(raw.autoSkipTranslationIds),
     betaHiddenProgressOpacity: normalizeBetaHiddenProgressOpacity(raw.betaHiddenProgressOpacity),
     tvNavigationEnabled: raw.tvNavigationEnabled !== false,
   };
