@@ -31,7 +31,7 @@ ta_new/
 | `search/` | Search results |
 | `favorites/` | User anime lists and bookmarks |
 | `history/` | Watch history |
-| `calendar/` | Ongoing anime schedule |
+| `calendar/` | Ongoing anime schedule with Kodik/Shikimori source switch |
 | `profile/` | Current user profile |
 | `user/[shikimoriId]/` | Public user profile |
 | `login/` | Shikimori OAuth login |
@@ -90,6 +90,13 @@ ta_new/
 | `settings/defaults` | Public site setting defaults |
 | `settings/intro-offsets` | Public translation intro offsets |
 | `settings/translations` | Translation catalog |
+| `settings/watch-party` | Public global settings for beta-плеер совместный просмотр |
+
+### Realtime
+
+| Process | Purpose |
+|---------|---------|
+| `scripts/watch-party-server.mjs` | WebSocket server for ephemeral beta-плеер совместный просмотр rooms (`/watch-party-ws` by default) |
 
 ### Notifications (`api/notifications/`)
 
@@ -107,7 +114,7 @@ ta_new/
 
 ### Admin (`api/admin/`)
 
-`stats`, `anime/[shikimoriId]/skip-times-prefetch`, `import/status`, `import/episodes`, `import/pending-materials`, `sync`, `sync/settings`, `sync/history`, `backfill-dates`, `brand-rotation/settings`, `cover-cache/settings`, `discord/settings`, `notifications/settings`, `notifications/test`, `notifications/generate-vapid`, `search/settings`, `shikimori/settings`, `shikimori/anons-sync`, `shikimori/mal-id-sync`, `site-settings-defaults`, `translation-intro-offsets`, `watch-history/settings`, `users`, `db/search`, `todos`, `todos/[id]`
+`stats`, `anime/[shikimoriId]/skip-times-prefetch`, `import/status`, `import/episodes`, `import/pending-materials`, `sync`, `sync/settings`, `sync/history`, `backfill-dates`, `brand-rotation/settings`, `cover-cache/settings`, `discord/settings`, `notifications/settings`, `notifications/test`, `notifications/generate-vapid`, `search/settings`, `shikimori/settings`, `shikimori/anons-sync`, `shikimori/mal-id-sync`, `site-settings-defaults`, `translation-intro-offsets`, `watch-history/settings`, `watch-party/settings`, `users`, `db/search`, `todos`, `todos/[id]`
 
 ## `src/lib/` — Core Modules
 
@@ -153,6 +160,7 @@ ta_new/
 | `site-settings-defaults.ts` | Global site setting defaults |
 | `translation-intro-offsets.ts` | Translation intro offset admin |
 | `watch-history-settings.ts` | Watch history admin settings |
+| `watch-party-settings.ts` | Beta-плеер совместный просмотр global admin settings |
 | `db-explorer.ts` | Admin DB search |
 | `stats.ts`, `storage-stats.ts` | Dashboard metrics |
 | `todos.ts` | Dev todo list |
@@ -169,11 +177,12 @@ ta_new/
 | `favorites-sync.ts` | Shikimori list sync |
 | `watch-history.ts` | Watch progress CRUD |
 | `history-new-episodes.ts` | Home history block |
-| `calendar.ts` | Release calendar |
+| `calendar.ts` | Release calendar, Shikimori/Kodik ongoing sources and anons grouping |
 | `cover-cache.ts` | Poster caching |
 | `image-cache.ts`, `image-cache-url.ts` | Studio logo/screenshot server cache + URL helper |
 | `poster.ts`, `poster-fallback.ts` | Poster resolution chain |
 | `kodik-player-api.ts` | Kodik iframe postMessage |
+| `watch-party/types.ts` | Shared WebSocket room message and state types |
 | `aniskip.ts` | AniSkip client + `AnimeEpisodeSkipTime` cache |
 | `notifications/*` | Notification preferences, links, payloads, channels, worker helpers |
 | `prisma.ts` | DB client singleton |
@@ -228,8 +237,12 @@ Error page asset: `public/404.webm` is used by the custom App Router 404 page.
 | `shikimori-malid-stats.ts` | `shikimori:malid-stats` | MAL ID mapping coverage and optional refresh |
 | `sync-brand-assets.mjs` | `brand:sync` | Logo hash generation |
 | `write-build-info.mjs` | (build hook) | Build number |
+| `backup-db.ps1` | `db:backup` | Local Docker PostgreSQL dump |
+| `pull-prod-db.ps1` | `db:pull-prod`, `db:restore-prod` | Download production DB dump and optionally restore local dev DB |
+| `start-dev.bat` | — | Windows one-click dev startup: Docker/PostgreSQL, Prisma schema, watch-party WebSocket and Next.js |
 | `deploy.ps1`, `server-deploy.sh` | — | Deployment |
 | `notification-worker.ts` | `notifications:worker` | Background notification delivery |
+| `watch-party-server.mjs` | `watch-party:server` | WebSocket rooms for beta-плеер совместный просмотр |
 | `telegram-notification-bot.ts` | `notifications:telegram-bot` | Telegram notification link bot |
 | `vk-notification-bot.ts` | `notifications:vk-bot` | VK notification link bot |
 | `generate-vapid-keys.ts` | `notifications:generate-vapid` | VAPID key generation |
@@ -248,5 +261,5 @@ Error page asset: `public/404.webm` is used by the custom App Router 404 page.
 | `UserAnimeListEntry`, `UserAnimeBookmark` | Shikimori list cache |
 | `UserWatchProgress` | Watch position |
 | `UserNotificationPreferences`, `UserNotificationLink`, `NotificationDelivery` | Notification settings, links, delivery log |
-| `DiscordSettings`, `NotificationSettings`, `SiteSettingsDefaults`, `TranslationIntroSettings`, `WatchHistorySettings` | Admin-configurable settings |
+| `DiscordSettings`, `NotificationSettings`, `SiteSettingsDefaults`, `TranslationIntroSettings`, `WatchHistorySettings`, `WatchPartySettings` | Admin-configurable settings |
 | `KodikImportJob`, `KodikSyncRun`, `KodikSyncSettings` | Import/sync state |

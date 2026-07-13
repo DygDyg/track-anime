@@ -1,7 +1,14 @@
 "use client";
 
 import Image from "next/image";
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import {
+  useCallback,
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+  type TouchEvent as ReactTouchEvent,
+} from "react";
 import { useAuth } from "@/components/auth/AuthProvider";
 import { useSiteSettings } from "@/components/SiteSettingsProvider";
 import {
@@ -13,7 +20,10 @@ import {
 } from "@/components/anime/KodikPlayer";
 import { KodikPlayerBetaViewport } from "@/components/anime/KodikPlayerBetaViewport";
 import { KodikPlayerBetaEpisodeStrip } from "@/components/anime/KodikPlayerBetaEpisodeStrip";
-import type { KodikPlayerBetaTheaterMode } from "@/components/anime/KodikPlayerBetaControls";
+import type {
+  KodikPlayerBetaTheaterMode,
+  KodikPlayerTimelineSegment,
+} from "@/components/anime/KodikPlayerBetaControls";
 import type { KodikTranslationDto } from "@/lib/anime-page";
 import { formatEpisodeProgress } from "@/lib/anime-labels";
 import { resolveTranslationStudioId } from "@/lib/translation-colors";
@@ -21,8 +31,10 @@ import { formatWatchPosition, formatEpisodeOfTotal, type WatchProgressDto } from
 import { useDiscordConfig } from "@/hooks/useDiscordConfig";
 import { useDiscordPresence } from "@/hooks/useDiscordPresence";
 import { useForcedTranslationIntroOffsets } from "@/hooks/useForcedTranslationIntroOffsets";
+import { useWatchParty } from "@/hooks/useWatchParty";
 import { coverCacheUrl } from "@/lib/poster";
 import { applyIntroOffset, resolveTranslationIntroOffsetSec } from "@/lib/translation-intro-offset";
+import type { WatchPartyCommand, WatchPartyPlaybackState } from "@/lib/watch-party/types";
 
 type Props = {
   shikimoriId: number;
@@ -57,6 +69,7 @@ const SAVE_INTERVAL_MS = 30_000;
 const MIN_SAVE_POSITION_SECONDS = 60;
 const PLAYER_SEEK_SKIP_LABEL_SECONDS = 90;
 const PLAYER_SEEK_SKIP_SECONDS = PLAYER_SEEK_SKIP_LABEL_SECONDS;
+const MOBILE_TRANSLATIONS_SWIPE_THRESHOLD_PX = 56;
 const CONTINUE_LOADING_TIMEOUT_MS = 12_000;
 const AUTO_SKIP_CANCEL_SECONDS = 5;
 
@@ -308,9 +321,13 @@ export function AnimeWatchPanel({
   const [adminSkipPrefetchLoading, setAdminSkipPrefetchLoading] = useState(false);
   const [skipTimesPopupPinned, setSkipTimesPopupPinned] = useState(false);
   const [pendingAutoSkip, setPendingAutoSkip] = useState<PendingAutoSkip | null>(null);
+  const [watchPartyPlaybackUnlocked, setWatchPartyPlaybackUnlocked] = useState(false);
+  const [pendingWatchPartyCommand, setPendingWatchPartyCommand] =
+    useState<WatchPartyCommand | null>(null);
   const playerExpandedHostRef = useRef<HTMLDivElement>(null);
   const betaFullscreenRef = useRef<HTMLDivElement>(null);
   const betaTranslationsRef = useRef<HTMLDivElement>(null);
+  const betaTranslationsTouchRef = useRef<{ startX: number; startY: number } | null>(null);
 
   const playerRef = useRef<KodikPlayerHandle>(null);
   const selectedIdRef = useRef("");
@@ -330,6 +347,7 @@ export function AnimeWatchPanel({
   const previousAutoSkipPositionRef = useRef(0);
   const translationIntroOffsetsRef = useRef(settings.translationIntroOffsets);
   const forcedIntroOffsetsRef = useRef(forcedIntroOffsets);
+  const applyingWatchPartyCommandRef = useRef(false);
 
   const playableByKodikId = useMemo(() => {
     const map = new Map<string, KodikTranslationDto>();
@@ -755,6 +773,154 @@ export function AnimeWatchPanel({
     episodesTotal != null && playerEpisode.episodeNumber >= episodesTotal;
   const selected = playable.find((tr) => tr.kodikId === selectedId) ?? playable[0];
   const selectedPlayerLink = selected?.playerLink ?? null;
+  const getWatchPartyState = useCallback((): WatchPartyPlaybackState | null => {
+    const kodikId = selectedIdRef.current || selected?.kodikId;
+    if (!kodikId || !ready) return null;
+    return {
+      shikimoriId,
+      kodikId,
+      seasonNumber: liveProgressRef.current.seasonNumber,
+      episodeNumber: liveProgressRef.current.episodeNumber,
+      positionSeconds: Math.max(0, liveProgressRef.current.positionSeconds),
+      isPlaying: playback.isPlaying,
+      updatedAt: Date.now(),
+    };
+  }, [playback.isPlaying, ready, selected?.kodikId, shikimoriId]);
+  const applyWatchPartyState = useCallback(
+    (state: WatchPartyPlaybackState, mode: KodikPlayerResumeMode) => {
+      const resume: KodikPlayerResume = {
+        seasonNumber: state.seasonNumber,
+        episodeNumber: state.episodeNumber,
+        positionSeconds: state.positionSeconds,
+      };
+
+      applyingWatchPartyCommandRef.current = true;
+      isPausedRef.current = mode === "pause";
+
+      if (state.kodikId !== selectedIdRef.current) {
+        pendingContinueRef.current = resume;
+        pendingContinueModeRef.current = mode;
+        setContinueLoading(true);
+        setContinueTarget({ episodeNumber: resume.episodeNumber });
+        setBootResume(null);
+        setSelectedId(state.kodikId);
+      } else {
+        playerRef.current?.seekTo(resume, mode);
+      }
+
+      window.setTimeout(() => {
+        applyingWatchPartyCommandRef.current = false;
+      }, 1_200);
+    },
+    [],
+  );
+  const applyWatchPartySync = useCallback(
+    (state: WatchPartyPlaybackState) => {
+      if (state.kodikId !== selectedIdRef.current) {
+        applyWatchPartyState(state, state.isPlaying ? "play" : "pause");
+        return;
+      }
+
+      const elapsedSeconds = state.isPlaying ? (Date.now() - state.updatedAt) / 1000 : 0;
+      const expectedPosition = Math.max(0, state.positionSeconds + elapsedSeconds);
+      const sameEpisode =
+        liveProgressRef.current.seasonNumber === state.seasonNumber &&
+        liveProgressRef.current.episodeNumber === state.episodeNumber;
+      const driftSeconds = Math.abs(liveProgressRef.current.positionSeconds - expectedPosition);
+
+      if (!sameEpisode || driftSeconds > 4) {
+        applyWatchPartyState(
+          { ...state, positionSeconds: expectedPosition, updatedAt: Date.now() },
+          state.isPlaying ? "play" : "pause",
+        );
+        return;
+      }
+
+      if (state.isPlaying && !playback.isPlaying) playerRef.current?.play();
+      if (!state.isPlaying && playback.isPlaying) playerRef.current?.pause();
+    },
+    [applyWatchPartyState, playback.isPlaying],
+  );
+  const handleWatchPartyCommand = useCallback(
+    (command: WatchPartyCommand) => {
+      if (command.state.isPlaying && !watchPartyPlaybackUnlocked) {
+        setPendingWatchPartyCommand(command);
+        return;
+      }
+
+      if (command.type === "state-sync") {
+        applyWatchPartySync(command.state);
+        return;
+      }
+      applyWatchPartyState(command.state, command.state.isPlaying ? "play" : "pause");
+    },
+    [applyWatchPartyState, applyWatchPartySync, watchPartyPlaybackUnlocked],
+  );
+  const watchParty = useWatchParty({
+    user,
+    shikimoriId,
+    getPlaybackState: getWatchPartyState,
+    onCommand: handleWatchPartyCommand,
+  });
+  const [watchPartyInviteCopied, setWatchPartyInviteCopied] = useState(false);
+  useEffect(() => {
+    if (
+      !watchParty.urlRoomId ||
+      watchParty.status !== "idle" ||
+      watchParty.settingsLoading ||
+      !watchParty.settings.enabled ||
+      (!user && !watchParty.settings.allowGuests) ||
+      watchParty.isConnected ||
+      !ready ||
+      !selected?.kodikId
+    ) {
+      return;
+    }
+    watchParty.joinRoom(watchParty.urlRoomId);
+  }, [
+    ready,
+    selected?.kodikId,
+    user,
+    watchParty.isConnected,
+    watchParty.joinRoom,
+    watchParty.settings.allowGuests,
+    watchParty.settings.enabled,
+    watchParty.settingsLoading,
+    watchParty.status,
+    watchParty.urlRoomId,
+  ]);
+
+  useEffect(() => {
+    if (!watchPartyInviteCopied) return;
+    const timer = window.setTimeout(() => setWatchPartyInviteCopied(false), 1_500);
+    return () => window.clearTimeout(timer);
+  }, [watchPartyInviteCopied]);
+
+  useEffect(() => {
+    if (!watchParty.isConnected || !watchParty.isMaster || !playback.isPlaying) return;
+    const intervalId = window.setInterval(() => {
+      watchParty.sendCommand("state-sync");
+    }, 8_000);
+    return () => window.clearInterval(intervalId);
+  }, [playback.isPlaying, watchParty.isConnected, watchParty.isMaster, watchParty.sendCommand]);
+
+  const applyPendingWatchPartyStart = useCallback(() => {
+    const command = pendingWatchPartyCommand;
+    if (!command) return;
+    setWatchPartyPlaybackUnlocked(true);
+    setPendingWatchPartyCommand(null);
+
+    if (command.type === "state-sync") {
+      applyWatchPartySync(command.state);
+      return;
+    }
+    applyWatchPartyState(command.state, command.state.isPlaying ? "play" : "pause");
+  }, [
+    applyWatchPartyState,
+    applyWatchPartySync,
+    pendingWatchPartyCommand,
+  ]);
+
   const hasExplicitAutoSkipTranslations =
     Object.keys(settings.autoSkipTranslationIds).length > 0;
   const isTranslationAutoSkipEnabled = useCallback(
@@ -840,6 +1006,15 @@ export function AnimeWatchPanel({
       ),
     [displaySkipTimes, playback.positionSeconds],
   );
+  const timelineSkipSegments = useMemo<KodikPlayerTimelineSegment[]>(
+    () =>
+      displaySkipTimes.filter(isOpeningOrEndingSkipTime).map((skipTime) => ({
+        type: skipTime.skipType,
+        startTime: skipTime.startTime,
+        endTime: skipTime.endTime,
+      })),
+    [displaySkipTimes],
+  );
 
   const setBetaChromeless = useCallback(
     (enabled: boolean) => {
@@ -862,6 +1037,9 @@ export function AnimeWatchPanel({
     updateSettings({ betaChromelessPlayer: true });
     setBetaConfirmOpen(false);
   }, [updateSettings]);
+
+  const roomSeekDisabled =
+    seekSkipDisabled || (watchParty.isConnected && !watchParty.canSeekAndSelectEpisodes);
 
   const cycleBetaTheaterMode = useCallback(() => {
     if (isNativeFullscreen) return;
@@ -1104,6 +1282,49 @@ export function AnimeWatchPanel({
     }
   }, []);
 
+  const handleBetaTranslationsTouchStart = useCallback(
+    (event: ReactTouchEvent<HTMLDivElement>) => {
+      const touch = event.touches[0];
+      betaTranslationsTouchRef.current =
+        touch && isNativeFullscreen && fullscreenTranslationsOpen
+          ? { startX: touch.clientX, startY: touch.clientY }
+          : null;
+    },
+    [fullscreenTranslationsOpen, isNativeFullscreen],
+  );
+
+  const handleBetaTranslationsTouchMove = useCallback((event: ReactTouchEvent<HTMLDivElement>) => {
+    const gesture = betaTranslationsTouchRef.current;
+    const touch = event.touches[0];
+    if (!gesture || !touch) return;
+
+    const deltaX = touch.clientX - gesture.startX;
+    const deltaY = touch.clientY - gesture.startY;
+    if (
+      deltaY > MOBILE_TRANSLATIONS_SWIPE_THRESHOLD_PX &&
+      Math.abs(deltaY) > Math.abs(deltaX) * 1.2
+    ) {
+      event.preventDefault();
+    }
+  }, []);
+
+  const handleBetaTranslationsTouchEnd = useCallback((event: ReactTouchEvent<HTMLDivElement>) => {
+    const gesture = betaTranslationsTouchRef.current;
+    betaTranslationsTouchRef.current = null;
+    const touch = event.changedTouches[0];
+    if (!gesture || !touch) return;
+
+    const deltaX = touch.clientX - gesture.startX;
+    const deltaY = touch.clientY - gesture.startY;
+    if (
+      deltaY > MOBILE_TRANSLATIONS_SWIPE_THRESHOLD_PX &&
+      Math.abs(deltaY) > Math.abs(deltaX) * 1.2
+    ) {
+      setFullscreenTranslationsHovered(false);
+      setFullscreenTranslationsOpen(false);
+    }
+  }, []);
+
   useEffect(() => {
     const onFullscreenChange = () => {
       const active = document.fullscreenElement === betaFullscreenRef.current;
@@ -1217,6 +1438,137 @@ export function AnimeWatchPanel({
     );
   }, [episodesTotal]);
 
+  const makeWatchPartyState = useCallback(
+    (patch: Partial<WatchPartyPlaybackState> = {}): WatchPartyPlaybackState | null => {
+      const base = getWatchPartyState();
+      if (!base) return null;
+      return { ...base, ...patch, updatedAt: Date.now() };
+    },
+    [getWatchPartyState],
+  );
+
+  const handleRoomPlayPause = useCallback(() => {
+    if (watchParty.isConnected && !watchParty.canPlayPause) return;
+    setWatchPartyPlaybackUnlocked(true);
+    const nextPlaying = !playback.isPlaying;
+    playerRef.current?.togglePlay();
+    if (!applyingWatchPartyCommandRef.current) {
+      watchParty.sendCommand(
+        nextPlaying ? "play" : "pause",
+        makeWatchPartyState({ isPlaying: nextPlaying }),
+      );
+    }
+  }, [makeWatchPartyState, playback.isPlaying, watchParty]);
+
+  const handleRoomSeek = useCallback(
+    (seconds: number) => {
+      if (watchParty.isConnected && !watchParty.canSeekAndSelectEpisodes) return;
+      setWatchPartyPlaybackUnlocked(true);
+      playerRef.current?.seekToPosition(seconds);
+      if (!applyingWatchPartyCommandRef.current) {
+        watchParty.sendCommand("seek", makeWatchPartyState({ positionSeconds: seconds }));
+      }
+    },
+    [makeWatchPartyState, watchParty],
+  );
+
+  const handleRoomSeekSkip = useCallback(
+    (deltaSeconds: number) => {
+      if (watchParty.isConnected && !watchParty.canSeekAndSelectEpisodes) return;
+      setWatchPartyPlaybackUnlocked(true);
+      const duration = playback.durationSeconds;
+      const nextRaw = liveProgressRef.current.positionSeconds + deltaSeconds;
+      const next = duration > 0 ? Math.min(duration, Math.max(0, nextRaw)) : Math.max(0, nextRaw);
+      playerRef.current?.seekBy(deltaSeconds);
+      if (!applyingWatchPartyCommandRef.current) {
+        watchParty.sendCommand("seek", makeWatchPartyState({ positionSeconds: next }));
+      }
+    },
+    [makeWatchPartyState, playback.durationSeconds, watchParty],
+  );
+
+  const handleRoomEpisodeSelect = useCallback(
+    (seasonNumber: number, episodeNumber: number) => {
+      if (watchParty.isConnected && !watchParty.canSeekAndSelectEpisodes) return;
+      setWatchPartyPlaybackUnlocked(true);
+      handleEpisodeSelect(seasonNumber, episodeNumber);
+      if (!applyingWatchPartyCommandRef.current) {
+        watchParty.sendCommand(
+          "episode",
+          makeWatchPartyState({
+            seasonNumber,
+            episodeNumber,
+            positionSeconds: 0,
+            isPlaying: true,
+          }),
+        );
+      }
+    },
+    [handleEpisodeSelect, makeWatchPartyState, watchParty],
+  );
+
+  const handleRoomAdjacentEpisode = useCallback(
+    (delta: -1 | 1) => {
+      if (watchParty.isConnected && !watchParty.canSeekAndSelectEpisodes) return;
+      setWatchPartyPlaybackUnlocked(true);
+      const current = liveProgressRef.current;
+      const nextEpisode = current.episodeNumber + delta;
+      if (nextEpisode < 1) return;
+      if (episodesTotal != null && nextEpisode > episodesTotal) return;
+      handleAdjacentEpisode(delta);
+      if (!applyingWatchPartyCommandRef.current) {
+        watchParty.sendCommand(
+          "episode",
+          makeWatchPartyState({
+            seasonNumber: current.seasonNumber,
+            episodeNumber: nextEpisode,
+            positionSeconds: 0,
+            isPlaying: true,
+          }),
+        );
+      }
+    },
+    [episodesTotal, handleAdjacentEpisode, makeWatchPartyState, watchParty],
+  );
+
+  const handleRoomTranslationSelect = useCallback(
+    (kodikId: string) => {
+      if (watchParty.isConnected && !watchParty.canMasterControl) return;
+      setWatchPartyPlaybackUnlocked(true);
+      handleTranslationSelect(kodikId);
+      if (!applyingWatchPartyCommandRef.current) {
+        watchParty.sendCommand("translation", makeWatchPartyState({ kodikId }));
+      }
+    },
+    [handleTranslationSelect, makeWatchPartyState, watchParty],
+  );
+
+  const handleRoomPlayerEnded = useCallback(() => {
+    if (watchParty.isConnected && !watchParty.canMasterControl) return;
+    const current = liveProgressRef.current;
+    const nextEpisode = current.episodeNumber + 1;
+    handlePlayerEnded();
+    if (episodesTotal != null && nextEpisode > episodesTotal) return;
+    if (!applyingWatchPartyCommandRef.current) {
+      watchParty.sendCommand(
+        "episode",
+        makeWatchPartyState({
+          seasonNumber: current.seasonNumber,
+          episodeNumber: nextEpisode,
+          positionSeconds: 0,
+          isPlaying: true,
+        }),
+      );
+    }
+  }, [episodesTotal, handlePlayerEnded, makeWatchPartyState, watchParty]);
+
+  const handleRoomSkipTime = useCallback(
+    (skipTime: DisplaySkipTimeDto) => {
+      handleRoomSeek(skipTime.endTime);
+    },
+    [handleRoomSeek],
+  );
+
   useEffect(() => {
     if (typeof window === "undefined" || !("MediaMetadata" in window)) return;
 
@@ -1241,21 +1593,25 @@ export function AnimeWatchPanel({
     });
     mediaSession.playbackState = playback.isPlaying ? "playing" : "paused";
 
-    mediaSession.setActionHandler("play", () => playerRef.current?.play());
-    mediaSession.setActionHandler("pause", () => playerRef.current?.pause());
+    mediaSession.setActionHandler("play", () => {
+      if (!playback.isPlaying) handleRoomPlayPause();
+    });
+    mediaSession.setActionHandler("pause", () => {
+      if (playback.isPlaying) handleRoomPlayPause();
+    });
     mediaSession.setActionHandler(
       "previoustrack",
-      previousEpisodeDisabled ? null : () => handleAdjacentEpisode(-1),
+      previousEpisodeDisabled ? null : () => handleRoomAdjacentEpisode(-1),
     );
     mediaSession.setActionHandler(
       "nexttrack",
-      nextEpisodeDisabled ? null : () => handleAdjacentEpisode(1),
+      nextEpisodeDisabled ? null : () => handleRoomAdjacentEpisode(1),
     );
     mediaSession.setActionHandler("seekbackward", () =>
-      playerRef.current?.seekBy(-PLAYER_SEEK_SKIP_SECONDS),
+      handleRoomSeekSkip(-PLAYER_SEEK_SKIP_SECONDS),
     );
     mediaSession.setActionHandler("seekforward", () =>
-      playerRef.current?.seekBy(PLAYER_SEEK_SKIP_SECONDS),
+      handleRoomSeekSkip(PLAYER_SEEK_SKIP_SECONDS),
     );
 
     return () => {
@@ -1269,7 +1625,9 @@ export function AnimeWatchPanel({
   }, [
     animeTitle,
     episodesTotal,
-    handleAdjacentEpisode,
+    handleRoomAdjacentEpisode,
+    handleRoomPlayPause,
+    handleRoomSeekSkip,
     nextEpisodeDisabled,
     playback.isPlaying,
     playerEpisode.episodeNumber,
@@ -1317,8 +1675,8 @@ export function AnimeWatchPanel({
           <li key={tr.kodikId} className="flex min-w-0">
             <button
               type="button"
-              onClick={() => handleTranslationSelect(tr.kodikId)}
-              disabled={continueLoading}
+              onClick={() => handleRoomTranslationSelect(tr.kodikId)}
+                disabled={continueLoading || (watchParty.isConnected && !watchParty.canMasterControl)}
               aria-pressed={active}
               data-studio={studioId ?? undefined}
               className={[
@@ -1353,6 +1711,146 @@ export function AnimeWatchPanel({
       })}
     </ul>
   );
+
+  const renderWatchPartyPanel = () => {
+    if (!betaChromeless || !ready || !selected?.playerLink) return null;
+    if (watchParty.settingsLoading) return null;
+    if (!watchParty.settings.enabled) return null;
+
+    if (!watchParty.isConnected) {
+      const guestsBlocked = !user && !watchParty.settings.allowGuests;
+      return (
+        <div className="flex flex-wrap items-center gap-2 rounded-lg border border-border bg-background px-3 py-2 text-xs text-muted">
+          <button
+            type="button"
+            onClick={watchParty.createRoom}
+            disabled={watchParty.status === "connecting" || guestsBlocked}
+            className="rounded-md border border-accent/45 bg-accent/10 px-2.5 py-1.5 font-medium text-accent transition hover:border-accent hover:bg-accent/15 disabled:cursor-not-allowed disabled:opacity-50"
+          >
+            {watchParty.status === "connecting" ? "Подключение…" : "Создать комнату"}
+          </button>
+          <span>
+            {watchParty.error ??
+              (guestsBlocked
+                ? "Вход гостям в совместный просмотр выключен."
+                : user
+                  ? "Совместный просмотр."
+                  : `Вы войдёте как ${watchParty.guestNickname}.`)}
+          </span>
+        </div>
+      );
+    }
+
+    return (
+      <div className="rounded-lg border border-border bg-background p-3 text-xs text-foreground">
+        <div className="flex flex-wrap items-center justify-between gap-2">
+          <div>
+            <p className="font-semibold">Комната совместного просмотра</p>
+            <p className="mt-0.5 text-muted">
+              {watchParty.isMaster
+                ? "Вы мастер комнаты"
+                : watchParty.canSeekAndSelectEpisodes
+                  ? "Мастер разрешил перемотку и серии"
+                  : watchParty.canPlayPause
+                    ? "Мастер разрешил play/pause"
+                  : "Управляет мастер комнаты"}
+            </p>
+          </div>
+          <button
+            type="button"
+            onClick={watchParty.disconnect}
+            className="rounded-md border border-border bg-card px-2.5 py-1.5 font-medium text-muted transition hover:border-accent/40 hover:text-foreground"
+          >
+            Выйти
+          </button>
+        </div>
+
+        {watchParty.inviteUrl ? (
+          <div className="mt-3 flex flex-col gap-2 sm:flex-row">
+            <input
+              readOnly
+              value={watchParty.inviteUrl}
+              className="min-w-0 flex-1 rounded-md border border-border bg-card px-2.5 py-1.5 text-muted outline-none"
+              aria-label="Ссылка приглашения"
+              onFocus={(event) => event.currentTarget.select()}
+            />
+            <button
+              type="button"
+              onClick={() => {
+                void navigator.clipboard?.writeText(watchParty.inviteUrl);
+                setWatchPartyInviteCopied(true);
+              }}
+              className="rounded-md border border-border bg-card px-2.5 py-1.5 font-medium text-foreground transition hover:border-accent/40 hover:bg-surface-dim"
+            >
+              {watchPartyInviteCopied ? "Скопировано" : "Копировать"}
+            </button>
+          </div>
+        ) : null}
+
+        {pendingWatchPartyCommand ? (
+          <div className="mt-3 flex flex-wrap items-center gap-2 rounded-md border border-accent/35 bg-accent/10 p-2 text-accent">
+            <span className="text-xs font-medium">
+              Нажмите один раз, чтобы браузер разрешил запуск плеера в комнате.
+            </span>
+            <button
+              type="button"
+              onClick={applyPendingWatchPartyStart}
+              className="rounded-md border border-accent/45 bg-background px-2.5 py-1.5 font-medium transition hover:border-accent hover:bg-surface-dim"
+            >
+              Запустить
+            </button>
+          </div>
+        ) : null}
+
+        {watchParty.isMaster ? (
+          <div className="mt-3 flex flex-col gap-2">
+            <label className="inline-flex cursor-pointer items-center gap-2 text-muted">
+              <input
+                type="checkbox"
+                checked={watchParty.allowParticipantControls}
+                onChange={(event) =>
+                  watchParty.setRoomPermissions({
+                    allowParticipantControls: event.target.checked,
+                  })
+                }
+                className="h-4 w-4 rounded border-border accent-accent"
+              />
+              Разрешить участникам ставить и снимать с паузы
+            </label>
+            <label className="inline-flex cursor-pointer items-center gap-2 text-muted">
+              <input
+                type="checkbox"
+                checked={watchParty.allowParticipantSeeking}
+                onChange={(event) =>
+                  watchParty.setRoomPermissions({
+                    allowParticipantSeeking: event.target.checked,
+                  })
+                }
+                className="h-4 w-4 rounded border-border accent-accent"
+              />
+              Разрешить участникам перемотку и выбор серий
+            </label>
+          </div>
+        ) : null}
+
+        <ul className="mt-3 flex flex-wrap gap-2">
+          {watchParty.participants.map((participant) => (
+            <li
+              key={participant.id}
+              className="inline-flex max-w-full items-center gap-1.5 rounded-md border border-border bg-card px-2 py-1 text-muted"
+            >
+              <span className="truncate">{participant.nickname}</span>
+              {participant.isMaster ? (
+                <span className="rounded border border-amber-300/40 bg-amber-400/10 px-1 text-[10px] font-semibold uppercase text-amber-200">
+                  мастер
+                </span>
+              ) : null}
+            </li>
+          ))}
+        </ul>
+      </div>
+    );
+  };
 
   if (playable.length === 0) {
     return (
@@ -1428,8 +1926,8 @@ export function AnimeWatchPanel({
   ) : actionableSkipTimes[0] ? (
     <button
       type="button"
-      onClick={() => handleSkipTime(actionableSkipTimes[0])}
-      disabled={seekSkipDisabled}
+      onClick={() => handleRoomSkipTime(actionableSkipTimes[0])}
+      disabled={roomSeekDisabled}
       className={[
         "inline-flex max-w-full items-center gap-2 rounded-md border border-emerald-300/45",
         "bg-emerald-500/20 px-[clamp(0.55rem,0.46vw,0.85rem)] py-[clamp(0.28rem,0.24vw,0.45rem)]",
@@ -1661,6 +2159,7 @@ export function AnimeWatchPanel({
             </div>
           </div>
         ) : null}
+        {renderWatchPartyPanel()}
         {!ready ? (
           <div className="aspect-video animate-pulse rounded-lg bg-surface-dim" />
         ) : selected?.playerLink ? (
@@ -1686,6 +2185,7 @@ export function AnimeWatchPanel({
                   seasonNumber={playerEpisode.seasonNumber}
                   currentEpisode={playerEpisode.episodeNumber}
                   playback={playback}
+                  timelineSegments={timelineSkipSegments}
                   fullscreenActive={isNativeFullscreen}
                   theaterMode={isNativeFullscreen ? "normal" : betaTheaterMode}
                   seekSkipLabelSeconds={PLAYER_SEEK_SKIP_LABEL_SECONDS}
@@ -1707,14 +2207,14 @@ export function AnimeWatchPanel({
                   onPause={handlePause}
                   onTranslationChange={handlePlayerTranslationChange}
                   onPlaybackStateChange={handlePlaybackStateChange}
-                  onEpisodeSelect={handleEpisodeSelect}
-                  onPlayPause={() => playerRef.current?.togglePlay()}
-                  onPreviousEpisode={() => handleAdjacentEpisode(-1)}
-                  onNextEpisode={() => handleAdjacentEpisode(1)}
+                  onEpisodeSelect={handleRoomEpisodeSelect}
+                  onPlayPause={handleRoomPlayPause}
+                  onPreviousEpisode={() => handleRoomAdjacentEpisode(-1)}
+                  onNextEpisode={() => handleRoomAdjacentEpisode(1)}
                   previousEpisodeDisabled={previousEpisodeDisabled}
                   nextEpisodeDisabled={nextEpisodeDisabled}
-                  onSeek={(seconds) => playerRef.current?.seekToPosition(seconds)}
-                  onSeekSkip={(delta) => playerRef.current?.seekBy(delta)}
+                  onSeek={handleRoomSeek}
+                  onSeekSkip={handleRoomSeekSkip}
                   onVolumeChange={(volume) => {
                     playerRef.current?.setVolume(volume);
                     if (volume > 0 && playback.muted) playerRef.current?.unmute();
@@ -1727,7 +2227,7 @@ export function AnimeWatchPanel({
                   onFullscreenToggle={() => void toggleBetaFullscreen()}
                   onFullscreenTranslationsIntent={setFullscreenTranslationsOpen}
                   fullscreenTranslationsOpen={fullscreenTranslationsOpen}
-                  onEnded={handlePlayerEnded}
+                  onEnded={handleRoomPlayerEnded}
                 />
               </div>
               <div
@@ -1738,6 +2238,12 @@ export function AnimeWatchPanel({
                   setFullscreenTranslationsOpen(true);
                 }}
                 onMouseLeave={() => setFullscreenTranslationsHovered(false)}
+                onTouchStart={handleBetaTranslationsTouchStart}
+                onTouchMove={handleBetaTranslationsTouchMove}
+                onTouchEnd={handleBetaTranslationsTouchEnd}
+                onTouchCancel={() => {
+                  betaTranslationsTouchRef.current = null;
+                }}
                 className="kodik-player-beta-translations border-t border-border bg-card p-4"
               >
                 <div className="mb-2 flex flex-wrap items-center justify-between gap-2">
@@ -1763,8 +2269,8 @@ export function AnimeWatchPanel({
               kodikId={selected.kodikId}
               seasonNumber={playerEpisode.seasonNumber}
               currentEpisode={playerEpisode.episodeNumber}
-              disabled={seekSkipDisabled}
-              onSelect={handleEpisodeSelect}
+              disabled={roomSeekDisabled}
+              onSelect={handleRoomEpisodeSelect}
             />
             {continueLoading ? (
               <PlayerLoadingOverlay
@@ -1785,7 +2291,7 @@ export function AnimeWatchPanel({
               onPause={handlePause}
               onTranslationChange={handlePlayerTranslationChange}
               onPlaybackStateChange={handlePlaybackStateChange}
-              onEnded={handlePlayerEnded}
+              onEnded={handleRoomPlayerEnded}
             />
           </div>
           )
@@ -1806,8 +2312,8 @@ export function AnimeWatchPanel({
               <button
                 key={`${skipTime.skipType}:${skipTime.startTime}:${skipTime.endTime}`}
                 type="button"
-                onClick={() => handleSkipTime(skipTime)}
-                disabled={seekSkipDisabled}
+                onClick={() => handleRoomSkipTime(skipTime)}
+                disabled={roomSeekDisabled}
                 className="flex-1 rounded-md border border-accent/40 bg-accent/10 px-3 py-2 text-sm font-medium text-accent transition hover:border-accent hover:bg-accent/15 disabled:cursor-not-allowed disabled:opacity-50 sm:flex-none sm:px-2.5 sm:py-1 sm:text-xs"
               >
                 {skipTimeLabel(skipTime.skipType)}
@@ -1820,8 +2326,8 @@ export function AnimeWatchPanel({
             ) : null}
             <button
               type="button"
-              onClick={() => handleSeekSkip(-PLAYER_SEEK_SKIP_SECONDS)}
-              disabled={seekSkipDisabled}
+              onClick={() => handleRoomSeekSkip(-PLAYER_SEEK_SKIP_SECONDS)}
+              disabled={roomSeekDisabled}
               aria-label={`Назад ${PLAYER_SEEK_SKIP_LABEL_SECONDS} секунд`}
               className="flex-1 rounded-md border border-border bg-background px-3 py-2 text-sm font-medium text-foreground transition hover:border-accent/40 hover:bg-surface-dim disabled:cursor-not-allowed disabled:opacity-50 sm:flex-none sm:px-2.5 sm:py-1 sm:text-xs"
             >
@@ -1829,8 +2335,8 @@ export function AnimeWatchPanel({
             </button>
             <button
               type="button"
-              onClick={() => handleSeekSkip(PLAYER_SEEK_SKIP_SECONDS)}
-              disabled={seekSkipDisabled}
+              onClick={() => handleRoomSeekSkip(PLAYER_SEEK_SKIP_SECONDS)}
+              disabled={roomSeekDisabled}
               aria-label={`Вперёд ${PLAYER_SEEK_SKIP_LABEL_SECONDS} секунд`}
               className="flex-1 rounded-md border border-border bg-background px-3 py-2 text-sm font-medium text-foreground transition hover:border-accent/40 hover:bg-surface-dim disabled:cursor-not-allowed disabled:opacity-50 sm:flex-none sm:px-2.5 sm:py-1 sm:text-xs"
             >

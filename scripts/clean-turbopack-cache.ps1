@@ -11,6 +11,7 @@ $ProjectRoot = (Resolve-Path (Join-Path $PSScriptRoot "..")).Path
 $Port = 3000
 $DevDir = Join-Path $ProjectRoot ".next\dev"
 $NextDir = Join-Path $ProjectRoot ".next"
+$DeployTempDir = Join-Path $ProjectRoot "temp\deploy"
 
 Set-Location $ProjectRoot
 
@@ -50,9 +51,25 @@ function Show-NextSizes {
     }
 }
 
+function Show-DeployTempSize {
+    if (-not (Test-Path $DeployTempDir)) {
+        Write-Host "  temp\deploy: net"
+        return
+    }
+    Write-Host ("  temp\deploy: {0} GB" -f (Get-DirSizeGb $DeployTempDir))
+}
+
 Write-Host "============================================================"
 Write-Host "  Track Anime - ochistka kesha Turbopack"
 Write-Host "============================================================"
+Write-Host ""
+Write-CacheStep "Razmery deploy-temp do ochistki:"
+Show-DeployTempSize
+if (Test-Path $DeployTempDir) {
+    Write-CacheStep "Udalenie temp\deploy (deploy archives/chunks)..."
+    Remove-Item -LiteralPath $DeployTempDir -Recurse -Force -ErrorAction Stop
+    Write-CacheStep "temp\deploy udalena."
+}
 Write-Host ""
 
 if (-not (Test-Path $NextDir)) {
@@ -93,6 +110,7 @@ else {
 
 Write-Host ""
 Show-NextSizes "Razmery posle ochistki:"
+Show-DeployTempSize
 Write-Host ""
 Write-CacheStep "Gotovo. Sleduyushchiy npm run dev peresozdast kesh."
 Write-CacheStep "Podskazka: clean-turbopack-cache.bat --full - udalit vsyu .next"

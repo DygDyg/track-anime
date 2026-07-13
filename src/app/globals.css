@@ -993,25 +993,28 @@ html[data-reduce-motion="true"] *::after {
   box-shadow: none;
 }
 
+.release-card-hover-panel {
+  opacity: 0;
+  visibility: hidden;
+  pointer-events: none;
+  transform: translateX(calc(-50% + var(--hover-panel-x, 0px))) translateY(6px) scale(0.97);
+  transform-origin: top center;
+}
+
 /* Hover-карточка релиза (desktop, как у Яндекс.Видео) */
 @media (min-width: 768px) and (hover: hover) {
-  .release-card-hover-panel {
-    opacity: 0;
-    visibility: hidden;
-    pointer-events: none;
-    transform: translateX(calc(-50% + var(--hover-panel-x, 0px))) translateY(6px) scale(0.97);
-    transform-origin: top center;
-    transition:
-      opacity 160ms ease-out,
-      transform 160ms ease-out,
-      visibility 160ms ease-out;
-  }
-
   .release-card-hover-panel.is-visible {
     opacity: 1;
     visibility: visible;
     pointer-events: auto;
     transform: translateX(calc(-50% + var(--hover-panel-x, 0px))) translateY(0) scale(1);
+  }
+
+  .release-card-hover-panel {
+    transition:
+      opacity 160ms ease-out,
+      transform 160ms ease-out,
+      visibility 160ms ease-out;
   }
 
   .release-card-hover-trailer-wrap {
@@ -1254,6 +1257,12 @@ html[data-card-size="compact"] .release-card-title {
   overscroll-behavior: contain;
 }
 
+.kodik-player-beta-controls-row,
+.kodik-player-beta-controls-actions,
+.kodik-player-beta-volume-group {
+  min-width: 0;
+}
+
 .kodik-player-beta-episodes::-webkit-scrollbar {
   display: none;
 }
@@ -1432,13 +1441,17 @@ html[data-card-size="compact"] .release-card-title {
 
 .kodik-player-beta-range.site-range {
   --range-track: rgba(255, 255, 255, 0.22);
-  background: linear-gradient(
-    to right,
-    var(--accent) 0%,
-    var(--accent) var(--range-fill, 0%),
-    var(--range-track) var(--range-fill, 0%),
-    var(--range-track) 100%
-  );
+  --range-skip-segments: linear-gradient(transparent, transparent);
+  background:
+    var(--range-skip-segments),
+    linear-gradient(
+      to right,
+      var(--accent) 0%,
+      var(--accent) var(--range-fill, 0%),
+      transparent var(--range-fill, 0%),
+      transparent 100%
+    ),
+    linear-gradient(to right, var(--range-track), var(--range-track));
 }
 
 .kodik-player-beta-range.site-range::-moz-range-track {
@@ -1455,6 +1468,107 @@ html[data-card-size="compact"] .release-card-title {
 
 .kodik-player-beta-controls .site-range {
   accent-color: var(--accent);
+}
+
+@media (max-width: 639px) {
+  .kodik-player-beta-stage {
+    border-radius: 0.5rem;
+  }
+
+  .kodik-player-beta-episodes-shell {
+    padding: 0.375rem;
+  }
+
+  .kodik-player-beta-episodes--overlay {
+    padding: 0.375rem;
+  }
+
+  .kodik-player-beta-episodes select,
+  .kodik-player-beta-episodes button {
+    height: 2rem;
+    min-width: 2rem;
+  }
+
+  .kodik-player-beta-controls--overlay {
+    margin: 0 0.375rem 0.375rem;
+    padding: 0.375rem;
+    border-radius: 0.625rem;
+  }
+
+  .kodik-player-beta-controls-row {
+    display: grid;
+    grid-template-columns: repeat(4, minmax(0, 1fr));
+    align-items: center;
+    gap: 0.25rem;
+  }
+
+  .kodik-player-beta-controls-actions,
+  .kodik-player-beta-volume-group {
+    display: contents;
+  }
+
+  .kodik-player-beta-controls-row button {
+    width: 100%;
+    min-width: 0;
+  }
+
+  .kodik-player-beta-seek-button {
+    padding-inline: 0.25rem;
+  }
+
+  .kodik-player-beta-kodik-ui-toggle {
+    max-width: 5.5rem;
+    white-space: nowrap;
+  }
+
+  .kodik-player-beta-translations-toggle {
+    bottom: 0.25rem;
+    min-height: 1.75rem;
+  }
+}
+
+@media (max-width: 639px) and (orientation: landscape) {
+  .kodik-player-beta-ui-top {
+    display: none;
+  }
+
+  .kodik-player-beta-mobile-time {
+    display: none;
+  }
+
+  .kodik-player-beta-controls-row {
+    grid-template-columns: repeat(8, minmax(0, 1fr));
+  }
+
+  .kodik-player-beta-controls--overlay {
+    margin-inline: 0.25rem;
+    padding-block: 0.25rem;
+  }
+}
+
+@media (max-width: 639px) {
+  .kodik-player-beta-stage:fullscreen {
+    --kodik-beta-translations-peek: min(48dvh, 20rem);
+  }
+
+  .kodik-player-beta-stage:fullscreen .kodik-player-beta-ui-bottom {
+    padding-bottom: env(safe-area-inset-bottom, 0px);
+  }
+
+  .kodik-player-beta-stage:fullscreen .kodik-player-beta-translations {
+    inset-inline: 0;
+    max-height: calc(var(--kodik-beta-translations-peek) + env(safe-area-inset-bottom, 0px));
+    border-right: 0;
+    border-bottom: 0;
+    border-left: 0;
+    border-radius: 1rem 1rem 0 0;
+    padding-bottom: calc(1rem + env(safe-area-inset-bottom, 0px));
+  }
+
+  .kodik-player-beta-stage:fullscreen.kodik-player-beta-stage--translations-open
+    .kodik-player-beta-translations {
+    border-radius: 1rem 1rem 0 0;
+  }
 }
 
 .translation-btn {

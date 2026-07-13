@@ -57,6 +57,7 @@ flowchart LR
 | 📱 **PWA** | Установка как приложение, офлайн-страница |
 | 🔔 **Уведомления** | Browser push, in-app лента, Discord/Telegram/VK привязки |
 | 🎮 **Discord RPC** | Статус «смотрю» через локальный tray-приложение |
+| 👥 **Совместный просмотр** | Настраиваемые WebSocket-комнаты beta-плеера с invite-ссылкой, мастером и гостевыми именами |
 | ⚙️ **Админка** | Импорт Kodik, sync, настройки, DB explorer |
 
 ---
@@ -133,11 +134,16 @@ http://localhost:3000/api/auth/callback/shikimori
 | Команда | Описание |
 |---------|----------|
 | `npm run dev` | Dev-сервер Next.js (`0.0.0.0`, удобно с телефона в LAN) |
+| `start-dev.bat` | Windows-запуск dev: Docker/PostgreSQL, Prisma schema, WebSocket-комнаты и Next.js |
 | `npm run build` | Production-сборка |
 | `npm run start` | Запуск production |
 | `npm run db:studio` | Prisma Studio |
+| `npm run db:backup` | Dump локальной PostgreSQL БД из Docker в `backups/db` |
+| `npm run db:pull-prod` | Скачать dump production БД в `backups/db` |
+| `npm run db:restore-prod` | Скачать production dump и перезаписать локальную dev БД |
 | `npm run kodik:sync` | Sync новых материалов Kodik |
 | `npm run kodik:sync:scheduled` | Sync для cron |
+| `npm run watch-party:server` | WebSocket-сервер комнат совместного просмотра |
 | `npm run deploy` | Деплой на production (Windows) |
 
 Полный список скриптов — в [`package.json`](package.json).
@@ -154,6 +160,7 @@ http://localhost:3000/api/auth/callback/shikimori
 | `SHIKIMORI_CLIENT_SECRET` | OAuth client secret |
 | `AUTH_URL` | Базовый URL сайта (для OAuth redirect) |
 | `ADMIN_SHIKIMORI_IDS` | Shikimori ID админов через запятую |
+| `WATCH_PARTY_PORT` / `NEXT_PUBLIC_WATCH_PARTY_WS_URL` | Порт и публичный URL WebSocket-сервера совместного просмотра |
 
 Подробные комментарии и опциональные переменные — в [`.env.example`](.env.example).
 
@@ -197,6 +204,7 @@ npm run deploy:release      # деплой + пересборка Discord RPC ex
 | [`AI_CONTEXT.md`](AI_CONTEXT.md) | Быстрый контекст для Codex/Cursor |
 | [`ARCHITECTURE.md`](ARCHITECTURE.md) | Архитектура и потоки данных |
 | [`CODEBASE_MAP.md`](CODEBASE_MAP.md) | Карта кодовой базы |
+| [`docs/WINDOWS_REINSTALL.md`](docs/WINDOWS_REINSTALL.md) | Переустановка Windows / новый ПК для разработки |
 | [`docs/SERVER.md`](docs/SERVER.md) | Production-сервер |
 | [`docs/DEPLOY.md`](docs/DEPLOY.md) | Деплой с Windows |
 | [`docs/kodik-api/`](docs/kodik-api/) | Справочник Kodik API |

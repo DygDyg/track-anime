@@ -42,9 +42,11 @@ npm run deploy
 Скрипт:
 1. Публикует `TrackAnimeDiscordRPC.exe` в `public/downloads/`
 2. Упаковывает исходники в `tar.gz` (без `node_modules`, `.next`, `.env`, `scripts/discord-rpc-tray`)
-3. Загружает на сервер через `scp`
+3. Режет архив на чанки и загружает их на сервер через `scp` с retry и проверкой размера каждой части
 4. На сервере в **screen** (`ta_deploy`): `npm ci` → Prisma → `npm run build` → restart `track-anime`
 5. Проверяет HTTP 200 на https://track-anime.dygdyg.ru/
+
+Локальный архив и временные чанки создаются в `temp/deploy/`; папка исключена из git и чистится через `clean-turbopack-cache.bat`.
 
 Деплой идёт в screen-сессии — если SSH оборвётся, сборка **не остановится**. Можно подключиться:
 
@@ -52,6 +54,12 @@ npm run deploy
 ssh -t root@195.26.230.35 screen -r ta_deploy
 # или
 ssh root@195.26.230.35 tail -f /tmp/ta_deploy.log
+```
+
+Если screen уже завершился, результат деплоя хранится в `/tmp/ta_deploy.exit`:
+
+```bash
+ssh root@195.26.230.35 "cat /tmp/ta_deploy.exit; tail -80 /tmp/ta_deploy.log; screen -list"
 ```
 
 **Время:** ~50–60 секунд.
@@ -87,6 +95,9 @@ ssh -i "$env:USERPROFILE\.ssh\id_rsa" root@195.26.230.35 "echo ok"
 
 # Другой SSH-ключ
 .\scripts\deploy.ps1 -SshKey "C:\Users\you\.ssh\custom_key"
+
+# Меньше чанки для нестабильного интернета
+.\scripts\deploy.ps1 -UploadChunkSizeMB 24
 ```
 
 | Параметр | По умолчанию | Описание |
@@ -94,6 +105,7 @@ ssh -i "$env:USERPROFILE\.ssh\id_rsa" root@195.26.230.35 "echo ok"
 | `-Remote` | `root@195.26.230.35` | SSH-хост |
 | `-SshKey` | `~\.ssh\id_rsa` | Путь к приватному ключу |
 | `-ServerAppDir` | `/var/www/ta_new` | Каталог приложения на сервере |
+| `-UploadChunkSizeMB` | `48` | Размер частей архива для `scp`; меньше = устойчивее на плохом интернете |
 | `-DryRun` | — | Только `tar`, без upload |
 | `-SkipBuild` | — | Пропустить локальную precheck-сборку в `deploy.bat`; серверная сборка всё равно выполняется |
 | `-ForceTrayRebuild` | — | Пересобрать `TrackAnimeDiscordRPC.exe` перед деплоем |
@@ -106,7 +118,7 @@ ssh -i "$env:USERPROFILE\.ssh\id_rsa" root@195.26.230.35 "echo ok"
 
 ```
 extract tar
-  → npm ci (quiet: deprecated warnings suppressed, errors visible)
+  → npm ci (quiet: deprecated warnings suppressed, errors visible, heartbeat каждые 15 секунд, timeout 10 минут)
   → prisma generate + db push
   → increment .build-number
   → cleanup stale source files from older deploys
@@ -128,15 +140,16 @@ extract tar
 
 ```powershell
 cd E:\GitHub\ta_new
+New-Item -ItemType Directory -Force temp\deploy | Out-Null
 
-tar -czf $env:TEMP\ta_deploy.tar.gz `
+tar -czf temp\deploy\ta_deploy.tar.gz `
   --exclude=node_modules --exclude=.next --exclude=.git `
-  --exclude=.env --exclude=.build-number --exclude=tmp `
+  --exclude=.env --exclude=.build-number --exclude=tmp --exclude=temp `
   --exclude=scripts/discord-rpc-tray `
   --exclude="*.tar.gz" --exclude="*.mp4" .
 
 scp -i $env:USERPROFILE\.ssh\id_rsa `
-  $env:TEMP\ta_deploy.tar.gz root@195.26.230.35:/tmp/ta_deploy.tar.gz
+  temp\deploy\ta_deploy.tar.gz root@195.26.230.35:/tmp/ta_deploy.tar.gz
 
 ssh -i $env:USERPROFILE\.ssh\id_rsa root@195.26.230.35 `
   "cd /var/www/ta_new && sed -i 's/\r$//' scripts/*.sh && bash scripts/server-deploy.sh"

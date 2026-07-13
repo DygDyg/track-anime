@@ -10,6 +10,7 @@ data/cover-cache/*
 data/image-cache/*
 !data/image-cache/.gitkeep
 tmp/
+temp/
 
 # Local scratch/design files
 .cursorignore

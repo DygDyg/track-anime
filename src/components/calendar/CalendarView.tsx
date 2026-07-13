@@ -6,7 +6,13 @@ import { ReleaseCard } from "@/components/ReleaseCard";
 import { CalendarScrollToToday } from "@/components/calendar/CalendarScrollToToday";
 import { headerControl } from "@/components/header/header-styles";
 import { BrandLoadingOverlay } from "@/components/ui/BrandLoading";
-import type { CalendarDay, CalendarItemDto, CalendarMonth, CalendarTab } from "@/lib/calendar";
+import type {
+  CalendarDay,
+  CalendarItemDto,
+  CalendarMonth,
+  CalendarOngoingSource,
+  CalendarTab,
+} from "@/lib/calendar";
 import { calendarItemToReleaseDto, splitAnonsMonthsBySchedule } from "@/lib/calendar";
 import {
   homeFeedGridClassName,
@@ -32,8 +38,17 @@ const TAB_META: { id: CalendarTab; label: string; emptyText: string; syncHint: s
   },
 ];
 
-function calendarTabHref(tab: CalendarTab): string {
-  return tab === "ongoing" ? "/calendar" : "/calendar?tab=anons";
+const ONGOING_SOURCE_META: { id: CalendarOngoingSource; label: string }[] = [
+  { id: "kodik", label: "TA" },
+  { id: "shikimori", label: "Календарь шики" },
+];
+
+function calendarHref(tab: CalendarTab, source: CalendarOngoingSource): string {
+  const params = new URLSearchParams();
+  if (tab === "anons") params.set("tab", "anons");
+  if (tab === "ongoing" && source === "shikimori") params.set("source", "shikimori");
+  const query = params.toString();
+  return query ? `/calendar?${query}` : "/calendar";
 }
 
 function formatCountLabel(count: number): string {
@@ -322,19 +337,23 @@ export function CalendarView({
   anonsMonths,
   todayDayOfWeek,
   initialTab,
+  initialOngoingSource,
 }: {
   ongoingDays: CalendarDay[];
   anonsMonths: CalendarMonth[];
   todayDayOfWeek: number;
   initialTab: CalendarTab;
+  initialOngoingSource: CalendarOngoingSource;
 }) {
   const router = useRouter();
   const [tab, setTab] = useState<CalendarTab>(initialTab);
+  const [ongoingSource, setOngoingSource] = useState<CalendarOngoingSource>(initialOngoingSource);
   const [isPending, startTransition] = useTransition();
 
   useEffect(() => {
     setTab(initialTab);
-  }, [initialTab]);
+    setOngoingSource(initialOngoingSource);
+  }, [initialOngoingSource, initialTab]);
 
   const counts = useMemo(
     () => ({
@@ -352,10 +371,22 @@ export function CalendarView({
       if (next === tab) return;
       setTab(next);
       startTransition(() => {
-        router.replace(calendarTabHref(next), { scroll: false });
+        router.replace(calendarHref(next, ongoingSource), { scroll: false });
       });
     },
-    [router, tab],
+    [ongoingSource, router, tab],
+  );
+
+  const handleOngoingSourceChange = useCallback(
+    (next: CalendarOngoingSource) => {
+      if (next === ongoingSource && tab === "ongoing") return;
+      setTab("ongoing");
+      setOngoingSource(next);
+      startTransition(() => {
+        router.replace(calendarHref("ongoing", next), { scroll: false });
+      });
+    },
+    [ongoingSource, router, tab],
   );
 
   return (
@@ -366,7 +397,7 @@ export function CalendarView({
         <section className="home-history-section relative rounded-xl border border-border">
           <SectionBackdrop />
           <div
-            className={`site-header-text relative flex h-14 flex-wrap items-center justify-between gap-2 sm:h-16 ${homeHistoryInnerPadX}`}
+            className={`site-header-text relative flex min-h-14 flex-wrap items-center justify-between gap-2 py-2 sm:min-h-16 ${homeHistoryInnerPadX}`}
           >
             <div className="flex min-w-0 items-center gap-2">
               <span className={`${headerControl.icon} pointer-events-none shrink-0 text-accent`}>
@@ -396,6 +427,24 @@ export function CalendarView({
                 );
               })}
             </div>
+
+            {tab === "ongoing" ? (
+              <div className="flex flex-wrap items-center gap-1" role="group" aria-label="Источник календаря онгоингов">
+                {ONGOING_SOURCE_META.map((item) => {
+                  const active = ongoingSource === item.id;
+                  return (
+                    <button
+                      key={item.id}
+                      type="button"
+                      onClick={() => handleOngoingSourceChange(item.id)}
+                      className={headerControl.nav(active)}
+                    >
+                      {item.label}
+                    </button>
+                  );
+                })}
+              </div>
+            ) : null}
           </div>
         </section>
       </div>

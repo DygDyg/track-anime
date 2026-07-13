@@ -20,6 +20,7 @@ import {
 import {
   KodikPlayerBetaControls,
   type KodikPlayerBetaTheaterMode,
+  type KodikPlayerTimelineSegment,
 } from "@/components/anime/KodikPlayerBetaControls";
 import { KodikPlayerBetaEpisodeStrip } from "@/components/anime/KodikPlayerBetaEpisodeStrip";
 import { SiteClock } from "@/components/SiteClock";
@@ -57,6 +58,7 @@ type Props = {
   seasonNumber: number;
   currentEpisode: number;
   playback: KodikPlayerPlaybackState;
+  timelineSegments?: KodikPlayerTimelineSegment[];
   fullscreenActive: boolean;
   theaterMode: KodikPlayerBetaTheaterMode;
   seekSkipLabelSeconds: number;
@@ -108,6 +110,7 @@ export function KodikPlayerBetaViewport({
   seasonNumber,
   currentEpisode,
   playback,
+  timelineSegments = [],
   fullscreenActive,
   theaterMode,
   seekSkipLabelSeconds,
@@ -679,9 +682,10 @@ export function KodikPlayerBetaViewport({
           <button
             type="button"
             onClick={toggleKodikUiAccess}
-            className="pointer-events-auto inline-flex rounded-md border border-white/10 bg-black/35 px-[clamp(0.5rem,0.42vw,0.8rem)] py-[clamp(0.25rem,0.21vw,0.4rem)] text-[clamp(11px,0.58vw,15px)] font-medium text-white/85 backdrop-blur-sm transition hover:bg-black/50 hover:text-white"
+            className="kodik-player-beta-kodik-ui-toggle pointer-events-auto inline-flex rounded-md border border-white/10 bg-black/35 px-[clamp(0.5rem,0.42vw,0.8rem)] py-[clamp(0.25rem,0.21vw,0.4rem)] text-[clamp(11px,0.58vw,15px)] font-medium text-white/85 backdrop-blur-sm transition hover:bg-black/50 hover:text-white"
           >
-            Shift — интерфейс TA
+            <span className="hidden sm:inline">Shift — интерфейс TA</span>
+            <span className="sm:hidden">TA UI</span>
           </button>
         </div>
       ) : null}
@@ -714,14 +718,17 @@ export function KodikPlayerBetaViewport({
             uiInteractive ? "pointer-events-auto" : "pointer-events-none",
           ].join(" ")}
         >
-          <div className="kodik-player-beta-bottom-stack space-y-2 px-2 pb-1 sm:px-3">
+          <div className="kodik-player-beta-bottom-stack space-y-1 px-2 pb-1 sm:space-y-2 sm:px-3">
             <div className="flex items-center justify-between gap-2">
               <button
                 type="button"
                 onClick={toggleKodikUiAccess}
-                className="inline-flex rounded-md border border-white/10 bg-black/35 px-[clamp(0.5rem,0.42vw,0.8rem)] py-[clamp(0.25rem,0.21vw,0.4rem)] text-[clamp(11px,0.58vw,15px)] font-medium text-white/85 backdrop-blur-sm transition hover:bg-black/50 hover:text-white"
+                className="kodik-player-beta-kodik-ui-toggle inline-flex rounded-md border border-white/10 bg-black/35 px-[clamp(0.5rem,0.42vw,0.8rem)] py-[clamp(0.25rem,0.21vw,0.4rem)] text-[clamp(11px,0.58vw,15px)] font-medium text-white/85 backdrop-blur-sm transition hover:bg-black/50 hover:text-white"
               >
-                Shift — {kodikUiAccess ? "интерфейс TA" : "интерфейс Kodik"}
+                <span className="hidden sm:inline">
+                  Shift — {kodikUiAccess ? "интерфейс TA" : "интерфейс Kodik"}
+                </span>
+                <span className="sm:hidden">{kodikUiAccess ? "TA UI" : "Kodik UI"}</span>
               </button>
               {continueAction ? (
                 <div className="flex min-w-0 flex-1 flex-wrap justify-center gap-2">
@@ -734,6 +741,7 @@ export function KodikPlayerBetaViewport({
           <KodikPlayerBetaControls
             disabled={controlsDisabled}
             playback={playback}
+            timelineSegments={timelineSegments}
             fullscreenActive={fullscreenActive}
             seekSkipLabelSeconds={seekSkipLabelSeconds}
             overlay

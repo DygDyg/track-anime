@@ -20,7 +20,9 @@ Next.js anime streaming site with Shikimori OAuth + Kodik player. Data lives in 
 |------|------------|
 | Fix auth/login | `src/lib/auth/shikimori-oauth.ts`, `src/app/api/auth/callback/shikimori/route.ts` |
 | Fix player | `src/components/anime/KodikPlayer.tsx`, `src/lib/kodik-player-api.ts` |
+| Fix watch party | `src/hooks/useWatchParty.ts`, `scripts/watch-party-server.mjs`, `src/components/anime/AnimeWatchPanel.tsx` |
 | Fix home feed | `src/lib/releases.ts`, `src/components/ReleaseFeed.tsx` |
+| Fix calendar | `src/lib/calendar.ts`, `src/components/calendar/CalendarView.tsx`, `src/lib/shikimori/calendar-api.ts` |
 | Fix history cards | `src/components/history/HistoryWatchCard.tsx`, `src/lib/history-watch-card.ts` — единый UI для /history и «Новое в вашей истории» |
 | Fix anime page | `src/lib/anime-page.ts`, `src/app/anime/[shikimoriId]/page.tsx` |
 | Fix lists/favorites | `src/lib/favorites-sync.ts`, `src/lib/shikimori/user-list-mutations.ts` |
@@ -80,10 +82,11 @@ Details: `DECISIONS.md`, если файл присутствует. Если ф
 ```
 Home:  KodikEpisodeRelease → releases.ts → ReleaseFeed
 Anime: shikimoriId → anime-page.ts → Shikimori API + KodikMaterial DB
-Player: playerLink → KodikPlayer iframe → postMessage → watch-history API
+Player: playerLink → KodikPlayer iframe → postMessage → watch-history API; beta watch party → `useWatchParty` → WebSocket server
 Skip times: AnimeWatchPanel → /api/anime/[shikimoriId]/skip-times → aniskip.ts → AniSkip + DB cache → manual/auto OP/ED skip
 Lists: favorites-sync.ts → Shikimori user_rates → UserAnimeListEntry
 Notifications: preferences + links → notification-worker.ts → browser/Discord/Telegram/VK + in-app feed
+Calendar: `/calendar` → calendar.ts → local Kodik DB or Shikimori `/api/calendar` → CalendarView
 ```
 
 ## Environment Variables (must-know)
@@ -95,6 +98,7 @@ Notifications: preferences + links → notification-worker.ts → browser/Discor
 | `SHIKIMORI_CLIENT_ID/SECRET` | OAuth |
 | `AUTH_URL` | Public site URL for OAuth redirects |
 | `ADMIN_SHIKIMORI_IDS` | Bootstrap admin users |
+| `WATCH_PARTY_PORT` / `NEXT_PUBLIC_WATCH_PARTY_WS_URL` | Optional WebSocket room server port / public client URL for beta совместный просмотр |
 
 ## Frequent Pitfalls
 
@@ -133,6 +137,7 @@ node scripts/debug-user-rates.mjs
 node scripts/debug-history-new.mjs
 tsx scripts/check-poster.ts <shikimoriId>
 npm run shikimori:malid-stats -- --refresh --limit=100
+npm run watch-party:server
 ```
 
 **Import job status:** `KodikImportJob` where `id = "full"`.
@@ -157,6 +162,7 @@ npm run shikimori:malid-stats -- --refresh --limit=100
 - `KodikMaterial.shikimoriId` — link to Shikimori
 - `User.shikimoriId` — unique, from OAuth
 - `UserWatchProgress` — unique (userId, shikimoriId)
+- `WatchPartySettings` — global beta-плеер совместный просмотр toggles
 - `KodikEpisodeRelease` — home feed source
 - `UserNotificationPreferences`, `UserNotificationLink`, `NotificationDelivery` — notifications state
 - `AnimeExternalIdMap` — server-side external ID cache (`shikimoriId -> malId`)

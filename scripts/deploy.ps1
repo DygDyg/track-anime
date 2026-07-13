@@ -14,6 +14,7 @@ param(
     [string]$Remote = "root@195.26.230.35",
     [string]$SshKey = "$env:USERPROFILE\.ssh\id_rsa",
     [string]$ServerAppDir = "/var/www/ta_new",
+    [int]$UploadChunkSizeMB = 48,
     [switch]$DryRun,
     [switch]$ForceTrayRebuild,
     [switch]$SkipBuild
@@ -22,7 +23,8 @@ param(
 $ErrorActionPreference = "Stop"
 
 $ProjectRoot = (Resolve-Path (Join-Path $PSScriptRoot "..")).Path
-$TarPath = Join-Path $env:TEMP ("ta_deploy_{0:yyyyMMddHHmmss}.tar.gz" -f (Get-Date))
+$DeployTempDir = Join-Path $ProjectRoot "temp\deploy"
+$TarPath = Join-Path $DeployTempDir ("ta_deploy_{0:yyyyMMddHHmmss}.tar.gz" -f (Get-Date))
 $ProgressIdPack = 1
 $ProgressIdUpload = 2
 $ProgressIdServer = 3
@@ -133,7 +135,7 @@ function Invoke-ScpWithRetry {
         [string]$Key,
         [string]$ArchivePath,
         [string]$Target,
-        [int]$MaxAttempts = 3,
+        [int]$MaxAttempts = 5,
         [string]$Step = "scp upload"
     )
 
@@ -168,6 +170,53 @@ function Invoke-ScpWithRetry {
     throw "$Step failed after $MaxAttempts attempts (exit $lastExit)"
 }
 
+function Split-FileIntoChunks {
+    param(
+        [string]$InputPath,
+        [string]$ChunkDir,
+        [long]$ChunkSizeBytes
+    )
+
+    if (Test-Path $ChunkDir) {
+        Remove-Item $ChunkDir -Recurse -Force
+    }
+    New-Item -ItemType Directory -Path $ChunkDir | Out-Null
+
+    $bufferSize = 1MB
+    $buffer = New-Object byte[] $bufferSize
+    $inputStream = [System.IO.File]::OpenRead($InputPath)
+    $chunks = New-Object System.Collections.Generic.List[string]
+
+    try {
+        $part = 0
+        while ($inputStream.Position -lt $inputStream.Length) {
+            $chunkPath = Join-Path $ChunkDir ("part_{0:D4}" -f $part)
+            $outputStream = [System.IO.File]::Create($chunkPath)
+            try {
+                $remaining = $ChunkSizeBytes
+                while ($remaining -gt 0 -and $inputStream.Position -lt $inputStream.Length) {
+                    $toRead = [int][math]::Min($buffer.Length, $remaining)
+                    $read = $inputStream.Read($buffer, 0, $toRead)
+                    if ($read -le 0) {
+                        break
+                    }
+                    $outputStream.Write($buffer, 0, $read)
+                    $remaining -= $read
+                }
+            } finally {
+                $outputStream.Dispose()
+            }
+
+            $chunks.Add($chunkPath)
+            $part += 1
+        }
+    } finally {
+        $inputStream.Dispose()
+    }
+
+    return $chunks.ToArray()
+}
+
 function Test-DeployExcludedFile {
     param([string]$Name)
     return (
@@ -186,7 +235,7 @@ function Get-DeploySourceBytes {
     param([string]$Root)
 
     $excludedTop = [System.Collections.Generic.HashSet[string]]::new(
-        [string[]]@("node_modules", ".next", ".git", "tmp", ".cursor", ".kilo", ".roo"),
+        [string[]]@("node_modules", ".next", ".git", "tmp", "temp", ".cursor", ".kilo", ".roo"),
         [StringComparer]::OrdinalIgnoreCase
     )
     $total = [int64]0
@@ -294,69 +343,93 @@ function Invoke-UploadWithProgress {
     )
 
     $localMb = Format-Megabytes $LocalBytes
-    Write-DeployProgress -Id $ProgressIdUpload -Activity "Upload" -Status "0 / $localMb MB" -PercentComplete 0
-
     $remotePath = "/tmp/ta_deploy.tar.gz"
-    $uploadPs = [powershell]::Create()
-    [void]$uploadPs.AddScript({
-        param($Key, $Archive, $Target)
-        $scpOpts = @(
-            "-i", $Key,
-            "-o", "ConnectTimeout=30",
-            "-o", "ConnectionAttempts=1",
-            "-o", "ServerAliveInterval=15",
-            "-o", "ServerAliveCountMax=8"
-        )
-        & scp @scpOpts $Archive $Target
-        if ($LASTEXITCODE -ne 0) {
-            throw "scp exit $LASTEXITCODE"
-        }
-    }).AddArgument($Key).AddArgument($ArchivePath).AddArgument("${RemoteHost}:${remotePath}")
+    $remoteChunkDir = "/tmp/ta_deploy_parts"
+    $chunkSizeBytes = [int64]([math]::Max(4, $UploadChunkSizeMB) * 1MB)
+    $chunkDir = Join-Path $DeployTempDir ("ta_deploy_parts_{0:yyyyMMddHHmmss}" -f (Get-Date))
 
-    $uploadAsync = $uploadPs.BeginInvoke()
-    $remoteCmd = "if [ -f '$remotePath' ]; then wc -c < '$remotePath'; else echo 0; fi"
-    $uploadPollSec = 5
-
-    while (-not $uploadAsync.IsCompleted) {
-        $remoteBytes = [int64]0
-        $poll = Invoke-SshQuiet -Key $Key -RemoteHost $RemoteHost -Command $remoteCmd
-        if ($poll.ExitCode -eq 0 -and $poll.Output) {
-            $remoteBytes = [int64]$poll.Output.Trim()
-        }
-
-        $pct = if ($LocalBytes -gt 0) {
-            [math]::Min(99, [math]::Round(100 * $remoteBytes / $LocalBytes))
-        } else {
-            0
-        }
-        $remoteMb = Format-Megabytes $remoteBytes
-        Write-DeployProgress -Id $ProgressIdUpload -Activity "Upload" -Status "$remoteMb / $localMb MB" -PercentComplete $pct
-        Start-Sleep -Seconds $uploadPollSec
-    }
+    Write-DeployProgress -Id $ProgressIdUpload -Activity "Upload" -Status "Splitting archive..." -PercentComplete 0
+    $chunks = @(Split-FileIntoChunks -InputPath $ArchivePath -ChunkDir $chunkDir -ChunkSizeBytes $chunkSizeBytes)
+    $chunkCount = $chunks.Count
+    $chunkSizeMb = Format-Megabytes $chunkSizeBytes
+    Write-Step "upload chunks: $chunkCount x ~$chunkSizeMb MB"
 
     try {
-        $uploadPs.EndInvoke($uploadAsync)
-        if ($uploadPs.HadErrors) {
-            $detail = ($uploadPs.Streams.Error | ForEach-Object { $_.ToString() }) -join "; "
-            throw "scp upload failed ($detail)"
+        Invoke-SshWithRetry `
+            -Key $Key `
+            -RemoteHost $RemoteHost `
+            -Command "rm -rf '$remoteChunkDir' '$remotePath' && mkdir -p '$remoteChunkDir'" `
+            -Step "prepare remote upload dir" | Out-Null
+
+        $uploadedBytes = [int64]0
+        for ($i = 0; $i -lt $chunkCount; $i++) {
+            $chunk = $chunks[$i]
+            $chunkName = Split-Path $chunk -Leaf
+            $chunkBytes = (Get-Item -LiteralPath $chunk).Length
+            $chunkMb = Format-Megabytes $chunkBytes
+            $partLabel = "$($i + 1)/$chunkCount $chunkName"
+            $target = "${RemoteHost}:${remoteChunkDir}/${chunkName}"
+
+            Write-DeployProgress `
+                -Id $ProgressIdUpload `
+                -Activity "Upload" `
+                -Status "$partLabel ($chunkMb MB)" `
+                -PercentComplete ([math]::Min(99, [math]::Round(100 * $uploadedBytes / $LocalBytes)))
+
+            Invoke-ScpWithRetry `
+                -Key $Key `
+                -ArchivePath $chunk `
+                -Target $target `
+                -MaxAttempts 5 `
+                -Step "scp $partLabel"
+
+            $verifyCmd = "stat -c%s '$remoteChunkDir/$chunkName'"
+            $remoteChunkSize = [int64](Invoke-SshWithRetry `
+                -Key $Key `
+                -RemoteHost $RemoteHost `
+                -Command $verifyCmd `
+                -Step "verify $partLabel").Output.Trim()
+
+            if ($remoteChunkSize -ne $chunkBytes) {
+                throw "chunk size mismatch for $chunkName ($remoteChunkSize / $chunkBytes bytes)"
+            }
+
+            $uploadedBytes += $chunkBytes
+            $uploadedMb = Format-Megabytes $uploadedBytes
+            Write-DeployProgress `
+                -Id $ProgressIdUpload `
+                -Activity "Upload" `
+                -Status "$uploadedMb / $localMb MB" `
+                -PercentComplete ([math]::Min(99, [math]::Round(100 * $uploadedBytes / $LocalBytes)))
         }
+
+        Write-DeployProgress -Id $ProgressIdUpload -Activity "Upload" -Status "Assembling archive on server..." -PercentComplete 99
+        $assembleCmd = "cd '$remoteChunkDir' && cat part_* > '$remotePath' && stat -c%s '$remotePath'"
+        $remoteSizeBytes = [int64](Invoke-SshWithRetry `
+            -Key $Key `
+            -RemoteHost $RemoteHost `
+            -Command $assembleCmd `
+            -Step "assemble remote archive").Output.Trim()
+
+        if ($remoteSizeBytes -ne $LocalBytes) {
+            throw "assembled archive size mismatch ($remoteSizeBytes / $LocalBytes bytes)"
+        }
+
+        Invoke-SshWithRetry `
+            -Key $Key `
+            -RemoteHost $RemoteHost `
+            -Command "rm -rf '$remoteChunkDir'" `
+            -Step "cleanup remote upload chunks" | Out-Null
+
+        Write-DeployProgress -Id $ProgressIdUpload -Activity "Upload" -Status "$localMb MB uploaded" -PercentComplete 100
+        Start-Sleep -Milliseconds 200
+        Write-Progress -Id $ProgressIdUpload -Activity "Upload" -Completed
     } catch {
         Complete-DeployProgress -Ids @($ProgressIdUpload)
-        Write-Step "scp job failed, retrying full upload..." -Color Yellow
-        Invoke-ScpWithRetry -Key $Key -ArchivePath $ArchivePath -Target "${RemoteHost}:${remotePath}"
+        throw
     } finally {
-        $uploadPs.Dispose()
+        Remove-Item $chunkDir -Recurse -Force -ErrorAction SilentlyContinue
     }
-
-    $remoteSize = (Invoke-SshWithRetry -Key $Key -RemoteHost $RemoteHost -Command $remoteCmd -Step "verify upload size").Output.Trim()
-    $remoteSizeBytes = [int64]$remoteSize
-    if ($remoteSizeBytes -lt $LocalBytes) {
-        throw "upload incomplete on server ($((Format-Megabytes $remoteSizeBytes)) MB / $localMb MB)"
-    }
-
-    Write-DeployProgress -Id $ProgressIdUpload -Activity "Upload" -Status "$localMb MB uploaded" -PercentComplete 100
-    Start-Sleep -Milliseconds 200
-    Write-Progress -Id $ProgressIdUpload -Activity "Upload" -Completed
 }
 
 function Write-ServerDeployLogDelta {
@@ -407,9 +480,11 @@ if (-not (Test-Path $SshKey)) {
 }
 
 Set-Location $ProjectRoot
+New-Item -ItemType Directory -Path $DeployTempDir -Force | Out-Null
 Write-Step "project: $ProjectRoot"
 Write-Step "remote:  $Remote"
 Write-Step "app dir: $ServerAppDir"
+Write-Step "local temp: $DeployTempDir"
 
 Write-Step "discord tray publish..."
 $distExe = Join-Path $ProjectRoot "scripts\discord-rpc-tray\dist\TrackAnimeDiscordRPC.exe"
@@ -428,6 +503,7 @@ $tarExcludes = @(
     "--exclude=.env",
     "--exclude=.build-number",
     "--exclude=tmp",
+    "--exclude=temp",
     "--exclude=scripts/discord-rpc-tray",
     "--exclude=.cursor",
     "--exclude=.kilo",
@@ -499,6 +575,29 @@ function Invoke-RemoteDeploy {
     $pollSec = 4
     $unknownPolls = 0
     $maxUnknownPolls = 30
+    $sshFailurePolls = 0
+    $maxSshFailurePolls = 45
+
+    function Complete-RemoteDeployFromLog {
+        param([string]$LogText)
+
+        $okMatch = [regex]::Match($LogText, "\[deploy-bg\] finished ok\b")
+        if ($okMatch.Success) {
+            Write-Step "server deploy finished ok (from log)" -Color Green
+            Write-DeployProgress -Id $ProgressIdServer -Activity "Server" -Status "Done" -PercentComplete 100
+            Start-Sleep -Milliseconds 200
+            Write-Progress -Id $ProgressIdServer -Activity "Server" -Completed
+            return $true
+        }
+
+        $errorMatch = [regex]::Match($LogText, "\[deploy-bg\] finished with error (?<code>\d+)\b")
+        if ($errorMatch.Success) {
+            Complete-DeployProgress -Ids @($ProgressIdServer)
+            throw "server deploy failed (exit $($errorMatch.Groups["code"].Value), from log)"
+        }
+
+        return $false
+    }
 
     while ($true) {
         try {
@@ -509,6 +608,9 @@ function Invoke-RemoteDeploy {
                 $deltaPoll = Invoke-SshWithRetry -Key $Key -RemoteHost $RemoteHost -Command "tail -c +$($logOffset + 1) '$logFile'" -MaxAttempts 3 -Step "read deploy log chunk"
                 Write-ServerDeployLogDelta -Delta $deltaPoll.Output
                 $logOffset = $size
+                if (Complete-RemoteDeployFromLog -LogText ($deltaPoll.Output -join "`n")) {
+                    return
+                }
             }
 
             $statusCmd = @'
@@ -516,6 +618,7 @@ if screen -list 2>/dev/null | grep -qE '[[:space:]][0-9]+\.SESSION[[:space:]]'; 
 '@.Replace('SESSION', $screenSession)
             $statusPoll = Invoke-SshWithRetry -Key $Key -RemoteHost $RemoteHost -Command $statusCmd -MaxAttempts 3 -Step "read deploy status"
             $state = $statusPoll.Output.Trim()
+            $sshFailurePolls = 0
 
             if ($sshDropped) {
                 Write-Step "SSH reconnected" -Color Green
@@ -556,6 +659,19 @@ if screen -list 2>/dev/null | grep -qE '[[:space:]][0-9]+\.SESSION[[:space:]]'; 
                 Write-Step "Attach: ssh -t $RemoteHost screen -r $screenSession" -Color Yellow
                 Write-Step "Tail log: ssh $RemoteHost tail -f $logFile" -Color Yellow
                 $sshDropped = $true
+            }
+            $sshFailurePolls++
+            Write-DeployProgress `
+                -Id $ProgressIdServer `
+                -Activity "Server" `
+                -Status "Reconnecting SSH... $sshFailurePolls/$maxSshFailurePolls" `
+                -PercentComplete 90
+            if ($sshFailurePolls -ge $maxSshFailurePolls) {
+                Complete-DeployProgress -Ids @($ProgressIdServer)
+                Write-Step "SSH did not reconnect after $($maxSshFailurePolls * $pollSec)s; server deploy may still have finished." -Color Yellow
+                Write-Step "Check from your local terminal: ssh $RemoteHost `"cat /tmp/ta_deploy.exit; tail -80 $logFile; screen -list`"" -Color Yellow
+                Write-Step "If you are already inside SSH, run without quotes: cat /tmp/ta_deploy.exit; tail -80 $logFile; screen -list" -Color Yellow
+                throw "server deploy watcher lost SSH before final status"
             }
             Start-Sleep -Seconds $pollSec
         }

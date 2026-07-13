@@ -11,6 +11,22 @@
   --admin-error-text: #fee2e2;
 }
 
+.admin-nav-section {
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+}
+
+.admin-nav-section-title {
+  padding: 0 0.5rem;
+  font-size: 0.6875rem;
+  font-weight: 700;
+  line-height: 1rem;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--muted);
+}
+
 .admin-badge {
   display: inline-flex;
   border-radius: 9999px;

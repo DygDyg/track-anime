@@ -5,12 +5,16 @@ import { toDate, toIsoString } from "@/lib/dates";
 import { prisma } from "@/lib/prisma";
 import { resolveMaterialPosterUrl, type MaterialPosterSource } from "@/lib/material-poster";
 import { pickScreenshotUrl } from "@/lib/screenshots";
+import { fetchShikimoriCalendar } from "@/lib/shikimori/calendar-api";
+import { animeBriefPosterUrl, animeBriefTitle } from "@/lib/shikimori/anime-brief";
 import { SHIKIMORI_FULL_ANIME_KINDS } from "@/lib/shikimori/full-anime-kinds";
 import type { ReleaseItemDto } from "@/lib/releases";
 
 export type CalendarScheduleSource = "next_episode" | "premiere";
 
 export type CalendarTab = "ongoing" | "anons";
+
+export type CalendarOngoingSource = "kodik" | "shikimori";
 
 export type CalendarItem = {
   shikimoriId: number;
@@ -294,6 +298,10 @@ export function parseCalendarTab(raw?: string): CalendarTab {
   return raw === "anons" ? "anons" : "ongoing";
 }
 
+export function parseCalendarOngoingSource(raw?: string): CalendarOngoingSource {
+  return raw === "shikimori" ? "shikimori" : "kodik";
+}
+
 export type CalendarPageData = {
   ongoingDays: CalendarDay[];
   anonsMonths: CalendarMonth[];
@@ -328,11 +336,17 @@ export function formatCalendarMonthLabel(year: number, month: number): string {
   }).format(labelDate);
 }
 
-export async function getCalendarPageData(): Promise<CalendarPageData> {
+export async function getCalendarPageData(
+  ongoingSource: CalendarOngoingSource = "kodik",
+): Promise<CalendarPageData> {
   return unstable_cache(
     async () => {
+      const ongoingPromise =
+        ongoingSource === "shikimori"
+          ? getShikimoriOngoingCalendarItems()
+          : getOngoingCalendarItems();
       const [ongoingItems, anonsItems] = await Promise.all([
-        getOngoingCalendarItems(),
+        ongoingPromise,
         getAnonsCalendarItems(),
       ]);
       return {
@@ -340,9 +354,42 @@ export async function getCalendarPageData(): Promise<CalendarPageData> {
         anonsMonths: groupCalendarByMonth(anonsItems),
       };
     },
-    ["calendar-page-v5"],
+    ["calendar-page-v6", ongoingSource],
     { revalidate: 300, tags: ["calendar"] },
   )();
+}
+
+export async function getShikimoriOngoingCalendarItems(): Promise<CalendarItem[]> {
+  const entries = await fetchShikimoriCalendar();
+
+  return entries
+    .map((entry): CalendarItem | null => {
+      if (entry.anime.status !== "ongoing") return null;
+      if (!entry.next_episode_at) return null;
+
+      const scheduleAt = new Date(entry.next_episode_at);
+      if (Number.isNaN(scheduleAt.getTime())) return null;
+
+      return {
+        shikimoriId: entry.anime.id,
+        animeTitle: animeBriefTitle(entry.anime),
+        posterUrl: animeBriefPosterUrl(entry.anime.image),
+        screenshotUrl: null,
+        seasonNumber: 1,
+        episodeNumber: entry.next_episode,
+        translationName: "Shikimori",
+        playerLink: null,
+        description: null,
+        genres: [],
+        scheduleAt,
+        scheduleSource: "next_episode",
+        dayOfWeek: getMoscowDayOfWeek(scheduleAt),
+        status: entry.anime.status,
+        score: entry.anime.score,
+      };
+    })
+    .filter((item): item is CalendarItem => item != null)
+    .sort((a, b) => a.dayOfWeek - b.dayOfWeek || a.animeTitle.localeCompare(b.animeTitle, "ru"));
 }
 
 export async function getOngoingCalendarItems(): Promise<CalendarItem[]> {

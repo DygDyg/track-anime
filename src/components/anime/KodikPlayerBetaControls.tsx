@@ -12,9 +12,16 @@ import { formatWatchPosition } from "@/lib/watch-history";
 
 export type KodikPlayerBetaTheaterMode = "normal" | "height";
 
+export type KodikPlayerTimelineSegment = {
+  type: "op" | "ed" | "mixed-op" | "mixed-ed";
+  startTime: number;
+  endTime: number;
+};
+
 type Props = {
   disabled?: boolean;
   playback: KodikPlayerPlaybackState;
+  timelineSegments?: KodikPlayerTimelineSegment[];
   fullscreenActive: boolean;
   seekSkipLabelSeconds: number;
   onPlayPause: () => void;
@@ -36,6 +43,11 @@ type Props = {
   onFullscreenTranslationsToggle?: () => void;
   fullscreenTranslationsOpen?: boolean;
   overlay?: boolean;
+};
+
+type RangeStyle = CSSProperties & {
+  "--range-fill"?: string;
+  "--range-skip-segments"?: string;
 };
 
 function IconPlay() {
@@ -157,12 +169,14 @@ function ControlButton({
   disabled,
   onClick,
   pressed,
+  className = "",
 }: {
   children: ReactNode;
   label: string;
   disabled?: boolean;
   onClick: () => void;
   pressed?: boolean;
+  className?: string;
 }) {
   return (
     <button
@@ -174,9 +188,10 @@ function ControlButton({
       onMouseDown={(event) => event.preventDefault()}
       onClick={onClick}
       className={[
-        "inline-flex h-9 w-9 shrink-0 items-center justify-center rounded-md text-white/90 transition",
+        "inline-flex h-10 w-10 shrink-0 items-center justify-center rounded-md text-white/90 transition sm:h-9 sm:w-9",
         "select-none hover:bg-white/15 active:scale-95 disabled:cursor-not-allowed disabled:opacity-40",
         pressed ? "bg-white/15" : "",
+        className,
       ].join(" ")}
     >
       {children}
@@ -184,9 +199,48 @@ function ControlButton({
   );
 }
 
+function timelineSegmentColor(type: KodikPlayerTimelineSegment["type"]): string {
+  switch (type) {
+    case "op":
+    case "mixed-op":
+      return "rgba(52, 211, 153, 0.56)";
+    case "ed":
+    case "mixed-ed":
+      return "rgba(251, 191, 36, 0.6)";
+  }
+}
+
+function buildTimelineSegmentBackground(
+  segments: KodikPlayerTimelineSegment[],
+  duration: number,
+): string | undefined {
+  if (duration <= 0 || segments.length === 0) return undefined;
+
+  const gradients = segments
+    .map((segment) => {
+      const start = Math.max(0, Math.min(duration, segment.startTime));
+      const end = Math.max(0, Math.min(duration, segment.endTime));
+      if (end <= start) return null;
+
+      const startPercent = (start / duration) * 100;
+      const endPercent = (end / duration) * 100;
+      return [
+        "linear-gradient(to right,",
+        `transparent 0%, transparent ${startPercent.toFixed(3)}%,`,
+        `${timelineSegmentColor(segment.type)} ${startPercent.toFixed(3)}%,`,
+        `${timelineSegmentColor(segment.type)} ${endPercent.toFixed(3)}%,`,
+        `transparent ${endPercent.toFixed(3)}%, transparent 100%)`,
+      ].join(" ");
+    })
+    .filter(Boolean);
+
+  return gradients.length > 0 ? gradients.join(", ") : undefined;
+}
+
 export function KodikPlayerBetaControls({
   disabled = false,
   playback,
+  timelineSegments = [],
   fullscreenActive,
   seekSkipLabelSeconds,
   onPlayPause,
@@ -223,6 +277,13 @@ export function KodikPlayerBetaControls({
   const progressFill = `${progressPercent}%`;
   const volumeValue = playback.muted ? 0 : playback.volume;
   const volumeFill = `${volumeValue * 100}%`;
+  const timelineSegmentBackground = buildTimelineSegmentBackground(timelineSegments, duration);
+  const progressRangeStyle: RangeStyle = timelineSegmentBackground
+    ? {
+        "--range-fill": progressFill,
+        "--range-skip-segments": timelineSegmentBackground,
+      }
+    : { "--range-fill": progressFill };
   const theaterLabel =
     theaterMode === "normal"
       ? "По высоте экрана"
@@ -325,13 +386,19 @@ export function KodikPlayerBetaControls({
             onKeyUp={commitProgressDrag}
             onChange={(event) => handleProgressChange(Number(event.target.value))}
             onWheel={handleProgressWheel}
-            style={{ "--range-fill": progressFill } as CSSProperties}
+            style={progressRangeStyle}
             className="kodik-player-beta-range kodik-player-beta-progress site-range h-1.5 w-full cursor-pointer disabled:cursor-not-allowed disabled:opacity-45"
           />
         </div>
       </div>
+      {progressReady ? (
+        <div className="kodik-player-beta-mobile-time mb-1 flex justify-between text-[11px] font-medium tabular-nums text-white/70 sm:hidden">
+          <span>{formatWatchPosition(position)}</span>
+          <span>{formatWatchPosition(duration)}</span>
+        </div>
+      ) : null}
 
-      <div className="flex flex-wrap items-center gap-1 sm:gap-2">
+      <div className="kodik-player-beta-controls-row flex items-center gap-1 sm:gap-2">
         <ControlButton
           label={playback.isPlaying ? "Пауза" : "Воспроизведение"}
           disabled={disabled}
@@ -355,7 +422,7 @@ export function KodikPlayerBetaControls({
           disabled={disabled}
           onMouseDown={(event) => event.preventDefault()}
           onClick={() => handleSeekSkipButton(-seekSkipLabelSeconds)}
-          className="select-none rounded-md px-2 py-1 text-xs font-medium text-white/90 transition hover:bg-white/15 disabled:cursor-not-allowed disabled:opacity-40"
+          className="kodik-player-beta-seek-button h-10 select-none rounded-md px-2 py-1 text-xs font-medium text-white/90 transition hover:bg-white/15 disabled:cursor-not-allowed disabled:opacity-40 sm:h-auto"
         >
           −{seekSkipLabelSeconds}
         </button>
@@ -364,7 +431,7 @@ export function KodikPlayerBetaControls({
           disabled={disabled}
           onMouseDown={(event) => event.preventDefault()}
           onClick={() => handleSeekSkipButton(seekSkipLabelSeconds)}
-          className="select-none rounded-md px-2 py-1 text-xs font-medium text-white/90 transition hover:bg-white/15 disabled:cursor-not-allowed disabled:opacity-40"
+          className="kodik-player-beta-seek-button h-10 select-none rounded-md px-2 py-1 text-xs font-medium text-white/90 transition hover:bg-white/15 disabled:cursor-not-allowed disabled:opacity-40 sm:h-auto"
         >
           +{seekSkipLabelSeconds}
         </button>
@@ -385,8 +452,11 @@ export function KodikPlayerBetaControls({
           </span>
         ) : null}
 
-        <div className="ml-auto flex items-center gap-1 sm:gap-2">
-          <div className="flex items-center gap-1 sm:gap-2" onWheel={handleVolumeGroupWheel}>
+        <div className="kodik-player-beta-controls-actions ml-auto flex items-center gap-1 sm:gap-2">
+          <div
+            className="kodik-player-beta-volume-group flex items-center gap-1 sm:gap-2"
+            onWheel={handleVolumeGroupWheel}
+          >
             <ControlButton
               label={playback.muted ? "Включить звук" : "Выключить звук"}
               disabled={disabled}
@@ -430,6 +500,7 @@ export function KodikPlayerBetaControls({
             disabled={disabled}
             pressed={theaterMode !== "normal"}
             onClick={onTheaterToggle}
+            className="kodik-player-beta-theater-button"
           >
             <IconTheater mode={theaterMode} />
           </ControlButton>
@@ -439,6 +510,7 @@ export function KodikPlayerBetaControls({
             disabled={disabled}
             pressed={fullscreenActive}
             onClick={onFullscreenToggle}
+            className="kodik-player-beta-fullscreen-button"
           >
             <IconFullscreen active={fullscreenActive} />
           </ControlButton>

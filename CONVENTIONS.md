@@ -119,6 +119,7 @@ Long-running operations (import, sync) track state in Prisma models (`KodikImpor
 
 ```json
 "build": "node scripts/sync-brand-assets.mjs && next build && node scripts/write-build-info.mjs"
+"watch-party:server": "node scripts/watch-party-server.mjs"
 ```
 
 - `postinstall`: `prisma generate`

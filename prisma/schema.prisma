@@ -90,6 +90,14 @@ model WatchHistorySettings {
   updatedAt                   DateTime @updatedAt
 }
 
+/// Глобальные настройки совместного просмотра beta-плеера
+model WatchPartySettings {
+  id          String   @id @default("default")
+  enabled     Boolean  @default(true)
+  allowGuests Boolean  @default(true)
+  updatedAt   DateTime @updatedAt
+}
+
 /// Настройки поиска на сайте
 model SearchSettings {
   id                     String   @id @default("default")

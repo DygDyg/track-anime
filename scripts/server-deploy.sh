@@ -6,6 +6,7 @@ set -euo pipefail
 APP_DIR="${APP_DIR:-/var/www/ta_new}"
 SITE_URL="${SITE_URL:-https://track-anime.dygdyg.ru/}"
 SERVICE_NAME="${SERVICE_NAME:-track-anime}"
+NPM_CI_TIMEOUT="${NPM_CI_TIMEOUT:-10m}"
 DEPLOY_PROGRESS_TOTAL=10
 
 deploy_progress() {
@@ -13,6 +14,37 @@ deploy_progress() {
   local label="$2"
   echo "[deploy:progress] ${step}/${DEPLOY_PROGRESS_TOTAL} ${label}"
   echo "[deploy] ${label}..."
+}
+
+run_with_heartbeat() {
+  local label="$1"
+  local interval_sec="$2"
+  shift 2
+
+  "$@" &
+  local pid=$!
+  local elapsed=0
+
+  while kill -0 "$pid" 2>/dev/null; do
+    sleep 1
+    elapsed=$((elapsed + 1))
+    if [ $((elapsed % interval_sec)) -eq 0 ] && kill -0 "$pid" 2>/dev/null; then
+      echo "[deploy] ${label} still running (${elapsed}s)"
+    fi
+  done
+
+  set +e
+  wait "$pid"
+  local status=$?
+  set -e
+
+  if [ "$status" -eq 0 ]; then
+    echo "[deploy] ${label} done (${elapsed}s)"
+  else
+    echo "[deploy] ERROR: ${label} failed after ${elapsed}s (exit ${status})" >&2
+  fi
+
+  return "$status"
 }
 
 cd "$APP_DIR"
@@ -28,15 +60,14 @@ done
 
 # Удаляем устаревшие файлы, которые tar не перезаписывает при удалении из репозитория
 rm -f server.ts
-rm -rf src/components/watch-party src/lib/watch-party src/app/api/watch-party
+rm -rf src/components/watch-party src/app/api/watch-party
 rm -f src/server/watch-party-ws.ts src/lib/kodik-player-control.ts
 rm -f scripts/ws-create-test.mjs scripts/test-ws.mjs scripts/fix-nginx-ws.sh
 rm -f src/middleware.ts src/src/middleware.ts src/src/proxy.ts
 
 deploy_progress 2 "npm ci"
-echo "[deploy] npm ci uses quiet output; errors remain visible"
-npm ci --no-audit --no-fund --progress=false --loglevel=error
-echo "[deploy] npm ci done"
+echo "[deploy] npm ci uses quiet output; errors remain visible; timeout ${NPM_CI_TIMEOUT}"
+run_with_heartbeat "npm ci" 15 timeout "$NPM_CI_TIMEOUT" npm ci --no-audit --no-fund --progress=false --loglevel=error
 
 deploy_progress 3 "prisma generate"
 npx prisma generate

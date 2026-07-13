@@ -60,13 +60,25 @@ GET /api/calendar
 ### Альтернатива: Kodik API
 
 Kodik тоже даёт `next_episode_at` через `with_material_data=true` в `/list`.
+Также есть dump `https://dumps.kodikres.com/calendar.json?token=...`, который возвращает
+календарь в формате, близком к Shikimori `/api/calendar`: `next_episode`,
+`next_episode_at`, `duration`, `anime`, `kind`, `score`, `status`, `episodes`,
+`episodes_aired`, `aired_on`, `released_on`. В отличие от Shikimori API,
+`anime.id` в dump приходит строкой, а `next_episode_at` — UTC ISO (`Z`).
 
 | Источник | Плюсы |
 |----------|-------|
 | **Shikimori** `/api/calendar` | Официальное расписание, без Kodik-токена |
 | **Kodik** `/list` | + ссылки на плеер, озвучки |
+| **Kodik** `calendar.json` | Готовый альтернативный календарь Shikimori из базы Kodik |
 
 Рекомендация: **Shikimori для расписания**, **Kodik для плеера** — связка через `anime.id` = `shikimori_id`.
+
+Для `/calendar` в Track Anime Shikimori `/api/calendar` подключён как альтернативный
+серверный source для вкладки «Онгоинги»: кнопка «Календарь шики» выставляет
+`source=shikimori`, данные нормализуются в существующий `CalendarItem` и кэшируются
+через `unstable_cache` с tag `calendar`. Карточки Shikimori-source могут быть без
+`playerLink`, но сохраняют переход на `/anime/[shikimoriId]`.
 
 ## Связанные разделы
 

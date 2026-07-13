@@ -91,6 +91,8 @@ NODE_ENV="production"
 | `KODIK_USER_AGENT` | нет | User-Agent для запросов к Kodik |
 | `SHIKIMORI_REQUEST_TIMEOUT_MS` | нет | Таймаут одной публичной попытки Shikimori API (по умолчанию 8000 мс) |
 | `SHIKIMORI_TOTAL_TIMEOUT_MS` | нет | Общий бюджет публичного Shikimori API-запроса с retry (по умолчанию 15000 мс) |
+| `WATCH_PARTY_PORT` | нет | Порт отдельного WebSocket-сервера совместного просмотра (по умолчанию 3001) |
+| `NEXT_PUBLIC_WATCH_PARTY_WS_URL` | нет | Публичный WebSocket URL, если `/watch-party-ws` не проксируется на том же origin |
 | `NODE_ENV` | для prod | `production` при `npm run start` |
 
 **Токен Kodik:** получите в [bd.kodikres.com](https://bd.kodikres.com) → API. Без токена скрипты `kodik:*` завершатся с ошибкой `KODIK_API_TOKEN не задан в .env`.
@@ -182,6 +184,40 @@ sudo systemctl status track-anime
 journalctl -u track-anime -f
 ```
 
+### systemd-сервис WebSocket-комнат
+
+Совместный просмотр beta-плеера работает через отдельный in-memory WebSocket-процесс.
+
+```bash
+sudo nano /etc/systemd/system/track-anime-watch-party.service
+```
+
+```ini
+[Unit]
+Description=Track Anime Watch Party WebSocket
+After=network.target track-anime.service
+Wants=track-anime.service
+
+[Service]
+Type=simple
+User=www-data
+Group=www-data
+WorkingDirectory=/opt/track-anime
+EnvironmentFile=/opt/track-anime/.env
+ExecStart=/usr/bin/npm run watch-party:server
+Restart=on-failure
+RestartSec=5
+
+[Install]
+WantedBy=multi-user.target
+```
+
+```bash
+sudo systemctl daemon-reload
+sudo systemctl enable track-anime-watch-party
+sudo systemctl start track-anime-watch-party
+```
+
 ---
 
 ## 6. Nginx + HTTPS
@@ -199,6 +235,17 @@ server {
 
     location / {
         proxy_pass http://127.0.0.1:3000;
+        proxy_http_version 1.1;
+        proxy_set_header Host $host;
+        proxy_set_header X-Real-IP $remote_addr;
+        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+        proxy_set_header X-Forwarded-Proto $scheme;
+        proxy_set_header Upgrade $http_upgrade;
+        proxy_set_header Connection "upgrade";
+    }
+
+    location /watch-party-ws {
+        proxy_pass http://127.0.0.1:3001;
         proxy_http_version 1.1;
         proxy_set_header Host $host;
         proxy_set_header X-Real-IP $remote_addr;
@@ -385,6 +432,9 @@ sudo systemctl restart track-anime
 | `npm run docker:down` | Остановить PostgreSQL |
 | `npm run db:push` | Применить схему Prisma к БД |
 | `npm run db:generate` | Перегенерировать Prisma Client |
+| `npm run db:backup` | Сохранить dump локальной Docker/PostgreSQL БД в `backups/db` |
+| `npm run db:pull-prod` | Скачать dump production БД в `backups/db` |
+| `npm run db:restore-prod` | Скачать production dump и перезаписать локальную dev БД |
 | `npm run db:studio` | Веб-UI для просмотра БД |
 | `npm run kodik:import` | Полный импорт Kodik |
 | `npm run kodik:import:resume` | Продолжить импорт после прерывания |

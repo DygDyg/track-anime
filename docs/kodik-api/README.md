@@ -13,6 +13,7 @@
 | `/qualities/v2` | [qualities.md](./qualities.md) | ✅ |
 | `/translations/v2` | [translations.md](./translations.md) | ✅ |
 | `/list` | [list.md](./list.md) | ✅ |
+| Calendar dump | [calendar.md](./calendar.md) | ✅ |
 | API плеера | [player-api.md](./player-api.md) | ✅ |
 | `/search` | [search.md](./search.md) | ✅ |
 

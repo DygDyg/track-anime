@@ -76,7 +76,17 @@ AnimeWatchPanel (client)
   → KodikPlayer iframe (playerLink)
   → postMessage: kodik_player_time_update, kodik_player_current_episode
   → PUT /api/user/watch-history/[shikimoriId]
+
+Beta watch party
+  → /api/settings/watch-party (global settings)
+  → useWatchParty (client WebSocket)
+  → scripts/watch-party-server.mjs (in-memory rooms)
+  → room commands: play/pause/seek/episode/translation/state-sync
 ```
+
+Комнаты совместного просмотра не сохраняются в БД: при рестарте WebSocket-процесса они исчезают.
+Если мастер отключается, сервер назначает мастером следующего участника комнаты.
+Глобальные переключатели фичи и гостевого входа хранятся в `WatchPartySettings`.
 
 ## Integrations
 
@@ -91,6 +101,7 @@ AnimeWatchPanel (client)
 | Kodik player | iframe + `src/lib/kodik-player-api.ts` | — | — |
 | Browser push | `src/lib/notifications/*` | VAPID keys | worker dispatch |
 | Discord/Telegram/VK notifications | `src/lib/notifications/channels/*` | User channel links | worker dispatch |
+| Watch party rooms | `src/hooks/useWatchParty.ts` + `scripts/watch-party-server.mjs` | App session on UI, WebSocket participant payload | in-memory process |
 
 Shikimori host (`shikimori.io` / `shikimori.one`) настраивается в `ShikimoriSettings` (админка).
 
@@ -174,6 +185,7 @@ Shikimori host (`shikimori.io` / `shikimori.one`) настраивается в 
 |------|----------|
 | Anime page | `revalidate = 3600` |
 | Home feed | `revalidate = 300` |
+| Calendar | `unstable_cache`, `revalidate = 300`, tag `calendar`; ongoing source can be local Kodik DB or Shikimori `/api/calendar` |
 | Shikimori anime | DB cache + `unstable_cache` |
 | Posters | Disk cache via `/api/cover` |
 | Search | No cache (live DB query) |
