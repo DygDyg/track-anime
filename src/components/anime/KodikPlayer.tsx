@@ -39,6 +39,7 @@ export type KodikPlayerHandle = {
   pause: () => void;
   togglePlay: () => void;
   seekToPosition: (seconds: number) => void;
+  syncToPosition: (seconds: number, mode: KodikPlayerResumeMode) => void;
   setVolume: (volume: number) => void;
   mute: () => void;
   unmute: () => void;
@@ -429,6 +430,32 @@ export const KodikPlayer = forwardRef<KodikPlayerHandle, Props>(function KodikPl
       positionRef.current = next;
       patchPlayback({ positionSeconds: next });
       sendKodikCommand(iframeRef.current, { method: "seek", seconds: next });
+    },
+    syncToPosition(seconds: number, mode: KodikPlayerResumeMode) {
+      if (!iframeRef.current || !Number.isFinite(seconds)) return;
+      clearBufferedSeek();
+      const duration = playbackRef.current.durationSeconds;
+      const nextRaw = Math.max(0, seconds);
+      const next = duration > 0 ? Math.min(duration, nextRaw) : nextRaw;
+      positionRef.current = next;
+      patchPlayback({ positionSeconds: next, isPlaying: mode === "play" });
+      sendKodikCommand(iframeRef.current, { method: "seek", seconds: next });
+
+      if (mode === "play") {
+        window.setTimeout(() => {
+          if (!iframeRef.current) return;
+          sendKodikCommand(iframeRef.current, { method: "play" });
+        }, 80);
+        return;
+      }
+
+      sendKodikCommand(iframeRef.current, { method: "pause" });
+      for (const delay of [120, 350, 800]) {
+        window.setTimeout(() => {
+          if (!iframeRef.current) return;
+          sendKodikCommand(iframeRef.current, { method: "pause" });
+        }, delay);
+      }
     },
     setVolume(volume: number) {
       if (!iframeRef.current || !Number.isFinite(volume)) return;

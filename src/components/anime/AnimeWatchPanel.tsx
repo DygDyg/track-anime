@@ -834,9 +834,7 @@ export function AnimeWatchPanel({
           liveProgressRef.current.episodeNumber === resume.episodeNumber;
 
         if (sameEpisode) {
-          playerRef.current.seekToPosition(resume.positionSeconds);
-          if (mode === "play") playerRef.current.play();
-          else playerRef.current.pause();
+          playerRef.current.syncToPosition(resume.positionSeconds, mode);
           window.setTimeout(() => {
             suppressContinueOverlayRef.current = false;
             setWatchPartySyncing(false);
