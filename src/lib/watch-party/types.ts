@@ -25,6 +25,14 @@ export type WatchPartyCommand =
   | { type: "translation"; state: WatchPartyPlaybackState }
   | { type: "state-sync"; state: WatchPartyPlaybackState };
 
+export type WatchPartyRoomPermissions = {
+  allowParticipantControls: boolean;
+  allowParticipantSeeking: boolean;
+  allowParticipantEpisodeSelection: boolean;
+  allowParticipantTranslationSelection: boolean;
+  syncTranslations: boolean;
+};
+
 export type WatchPartyClientMessage =
   | {
       type: "join";
@@ -37,24 +45,18 @@ export type WatchPartyClientMessage =
       state: WatchPartyPlaybackState;
     }
   | { type: "leave" }
-  | {
-      type: "set-permissions";
-      allowParticipantControls: boolean;
-      allowParticipantSeeking: boolean;
-    }
+  | ({ type: "set-permissions" } & WatchPartyRoomPermissions)
   | { type: "presence"; state: WatchPartyPlaybackState }
   | WatchPartyCommand;
 
 export type WatchPartyServerMessage =
-  | {
+  | ({
       type: "room-state";
       roomId: string;
       participantId: string;
       masterParticipantId: string;
-      allowParticipantControls: boolean;
-      allowParticipantSeeking: boolean;
       participants: WatchPartyParticipant[];
       state: WatchPartyPlaybackState;
-    }
+    } & WatchPartyRoomPermissions)
   | { type: "command"; fromParticipantId: string; command: WatchPartyCommand }
   | { type: "error"; message: string };

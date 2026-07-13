@@ -6,6 +6,7 @@ import type {
   WatchPartyCommand,
   WatchPartyParticipant,
   WatchPartyPlaybackState,
+  WatchPartyRoomPermissions,
   WatchPartyServerMessage,
 } from "@/lib/watch-party/types";
 
@@ -117,6 +118,11 @@ export function useWatchParty({
   const [masterParticipantId, setMasterParticipantId] = useState<string | null>(null);
   const [allowParticipantControls, setAllowParticipantControlsState] = useState(false);
   const [allowParticipantSeeking, setAllowParticipantSeekingState] = useState(false);
+  const [allowParticipantEpisodeSelection, setAllowParticipantEpisodeSelectionState] =
+    useState(false);
+  const [allowParticipantTranslationSelection, setAllowParticipantTranslationSelectionState] =
+    useState(false);
+  const [syncTranslations, setSyncTranslationsState] = useState(true);
   const [participants, setParticipants] = useState<WatchPartyParticipant[]>([]);
   const [settings, setSettings] = useState<WatchPartyRuntimeSettings>({
     enabled: true,
@@ -143,7 +149,10 @@ export function useWatchParty({
   const isConnected = status === "connected";
   const isMaster = Boolean(participantId && participantId === masterParticipantId);
   const canPlayPause = isConnected && (isMaster || allowParticipantControls);
-  const canSeekAndSelectEpisodes = isConnected && (isMaster || allowParticipantSeeking);
+  const canSeek = isConnected && (isMaster || allowParticipantSeeking);
+  const canSelectEpisodes = isConnected && (isMaster || allowParticipantEpisodeSelection);
+  const canSelectTranslations =
+    isConnected && syncTranslations && (isMaster || allowParticipantTranslationSelection);
   const canMasterControl = isConnected && isMaster;
   const inviteUrl = useMemo(() => buildInviteUrl(roomId), [roomId]);
 
@@ -196,6 +205,9 @@ export function useWatchParty({
     setMasterParticipantId(null);
     setAllowParticipantControlsState(false);
     setAllowParticipantSeekingState(false);
+    setAllowParticipantEpisodeSelectionState(false);
+    setAllowParticipantTranslationSelectionState(false);
+    setSyncTranslationsState(true);
     setParticipants([]);
     setError(null);
     initialRoomStateAppliedRef.current = false;
@@ -263,6 +275,13 @@ export function useWatchParty({
           setMasterParticipantId(parsed.masterParticipantId);
           setAllowParticipantControlsState(parsed.allowParticipantControls);
           setAllowParticipantSeekingState(parsed.allowParticipantSeeking);
+          setAllowParticipantEpisodeSelectionState(
+            parsed.allowParticipantEpisodeSelection ?? parsed.allowParticipantSeeking,
+          );
+          setAllowParticipantTranslationSelectionState(
+            parsed.allowParticipantTranslationSelection ?? false,
+          );
+          setSyncTranslationsState(parsed.syncTranslations ?? true);
           setParticipants(parsed.participants);
           setError(null);
           if (
@@ -309,19 +328,38 @@ export function useWatchParty({
   const joinRoom = useCallback((targetRoomId: string) => connect(targetRoomId), [connect]);
 
   const setRoomPermissions = useCallback(
-    (patch: { allowParticipantControls?: boolean; allowParticipantSeeking?: boolean }) => {
+    (patch: Partial<WatchPartyRoomPermissions>) => {
       if (!isMaster) return;
       const nextControls = patch.allowParticipantControls ?? allowParticipantControls;
       const nextSeeking = patch.allowParticipantSeeking ?? allowParticipantSeeking;
+      const nextEpisodeSelection =
+        patch.allowParticipantEpisodeSelection ?? allowParticipantEpisodeSelection;
+      const nextTranslationSelection =
+        patch.allowParticipantTranslationSelection ?? allowParticipantTranslationSelection;
+      const nextSyncTranslations = patch.syncTranslations ?? syncTranslations;
       setAllowParticipantControlsState(nextControls);
       setAllowParticipantSeekingState(nextSeeking);
+      setAllowParticipantEpisodeSelectionState(nextEpisodeSelection);
+      setAllowParticipantTranslationSelectionState(nextTranslationSelection);
+      setSyncTranslationsState(nextSyncTranslations);
       send({
         type: "set-permissions",
         allowParticipantControls: nextControls,
         allowParticipantSeeking: nextSeeking,
+        allowParticipantEpisodeSelection: nextEpisodeSelection,
+        allowParticipantTranslationSelection: nextTranslationSelection,
+        syncTranslations: nextSyncTranslations,
       });
     },
-    [allowParticipantControls, allowParticipantSeeking, isMaster, send],
+    [
+      allowParticipantControls,
+      allowParticipantEpisodeSelection,
+      allowParticipantSeeking,
+      allowParticipantTranslationSelection,
+      isMaster,
+      send,
+      syncTranslations,
+    ],
   );
 
   const sendCommand = useCallback(
@@ -330,14 +368,26 @@ export function useWatchParty({
       if (!nextState || !isConnected) return false;
       if (type === "play" || type === "pause") {
         if (!canPlayPause) return false;
-      } else if (type === "seek" || type === "episode") {
-        if (!canSeekAndSelectEpisodes) return false;
+      } else if (type === "seek") {
+        if (!canSeek) return false;
+      } else if (type === "episode") {
+        if (!canSelectEpisodes) return false;
+      } else if (type === "translation") {
+        if (!canSelectTranslations) return false;
       } else if (!canMasterControl) {
         return false;
       }
       return send({ type, state: nextState } as WatchPartyClientMessage);
     },
-    [canMasterControl, canPlayPause, canSeekAndSelectEpisodes, isConnected, send],
+    [
+      canMasterControl,
+      canPlayPause,
+      canSeek,
+      canSelectEpisodes,
+      canSelectTranslations,
+      isConnected,
+      send,
+    ],
   );
 
   const sendPresence = useCallback(
@@ -362,10 +412,15 @@ export function useWatchParty({
     settingsLoading,
     allowParticipantControls,
     allowParticipantSeeking,
+    allowParticipantEpisodeSelection,
+    allowParticipantTranslationSelection,
+    syncTranslations,
     isConnected,
     isMaster,
     canPlayPause,
-    canSeekAndSelectEpisodes,
+    canSeek,
+    canSelectEpisodes,
+    canSelectTranslations,
     canMasterControl,
     error,
     guestNickname: guest.nickname,

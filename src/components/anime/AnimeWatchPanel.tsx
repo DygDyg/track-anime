@@ -73,6 +73,7 @@ const MOBILE_TRANSLATIONS_SWIPE_THRESHOLD_PX = 56;
 const CONTINUE_LOADING_TIMEOUT_MS = 12_000;
 const AUTO_SKIP_CANCEL_SECONDS = 5;
 const WATCH_PARTY_SYNC_TIMEOUT_MS = 4_000;
+const WATCH_PARTY_TRANSLATION_SYNC_STORAGE_KEY = "ta.watchParty.translationSync";
 
 const DEFAULT_PLAYBACK_STATE: KodikPlayerPlaybackState = {
   isPlaying: false,
@@ -135,6 +136,11 @@ type ProgressPayload = {
   episodeNumber: number;
   positionSeconds: number;
 };
+
+function readWatchPartyTranslationSyncEnabled() {
+  if (typeof window === "undefined") return true;
+  return window.localStorage.getItem(WATCH_PARTY_TRANSLATION_SYNC_STORAGE_KEY) !== "false";
+}
 
 type SkipTimeDto = {
   skipType: "op" | "ed" | "mixed-op" | "mixed-ed";
@@ -324,6 +330,9 @@ export function AnimeWatchPanel({
   const [pendingAutoSkip, setPendingAutoSkip] = useState<PendingAutoSkip | null>(null);
   const [watchPartyPlaybackUnlocked, setWatchPartyPlaybackUnlocked] = useState(false);
   const [watchPartySyncing, setWatchPartySyncing] = useState(false);
+  const [watchPartyTranslationSyncEnabled, setWatchPartyTranslationSyncEnabled] = useState(
+    readWatchPartyTranslationSyncEnabled,
+  );
   const [pendingWatchPartyCommand, setPendingWatchPartyCommand] =
     useState<WatchPartyCommand | null>(null);
   const playerExpandedHostRef = useRef<HTMLDivElement>(null);
@@ -353,6 +362,7 @@ export function AnimeWatchPanel({
   const applyingWatchPartyCommandRef = useRef(false);
   const playbackStateInitializedRef = useRef(false);
   const suppressNextPlaybackBroadcastRef = useRef(false);
+  const watchPartyTranslationSyncActiveRef = useRef(true);
   const sendWatchPartyPlaybackEventRef = useRef<(isPlaying: boolean) => void>(() => {});
 
   const playableByKodikId = useMemo(() => {
@@ -393,6 +403,13 @@ export function AnimeWatchPanel({
   useEffect(() => {
     selectedIdRef.current = selectedId;
   }, [selectedId]);
+
+  useEffect(() => {
+    window.localStorage.setItem(
+      WATCH_PARTY_TRANSLATION_SYNC_STORAGE_KEY,
+      String(watchPartyTranslationSyncEnabled),
+    );
+  }, [watchPartyTranslationSyncEnabled]);
 
   useEffect(() => {
     translationIntroOffsetsRef.current = settings.translationIntroOffsets;
@@ -817,8 +834,13 @@ export function AnimeWatchPanel({
     };
   }, [playback.isPlaying, ready, selected?.kodikId, shikimoriId]);
   const applyWatchPartyState = useCallback(
-    (state: WatchPartyPlaybackState, mode: KodikPlayerResumeMode) => {
+    (
+      state: WatchPartyPlaybackState,
+      mode: KodikPlayerResumeMode,
+      options: { syncTranslation?: boolean } = {},
+    ) => {
       const resume = watchPartyStateToResume(state);
+      const syncTranslation = options.syncTranslation ?? true;
 
       applyingWatchPartyCommandRef.current = true;
       isPausedRef.current = mode === "pause";
@@ -828,7 +850,7 @@ export function AnimeWatchPanel({
       if (!playerRef.current) {
         pendingContinueRef.current = resume;
         pendingContinueModeRef.current = mode;
-      } else if (state.kodikId !== selectedIdRef.current) {
+      } else if (syncTranslation && state.kodikId !== selectedIdRef.current) {
         if (!playableByKodikId.has(state.kodikId)) {
           setWatchPartySyncing(false);
           suppressContinueOverlayRef.current = false;
@@ -862,10 +884,11 @@ export function AnimeWatchPanel({
     [playableByKodikId, watchPartyStateToResume],
   );
   const applyWatchPartySync = useCallback(
-    (state: WatchPartyPlaybackState) => {
+    (state: WatchPartyPlaybackState, options: { syncTranslation?: boolean } = {}) => {
       const resume = watchPartyStateToResume(state);
-      if (state.kodikId !== selectedIdRef.current) {
-        applyWatchPartyState(state, state.isPlaying ? "play" : "pause");
+      const syncTranslation = options.syncTranslation ?? true;
+      if (syncTranslation && state.kodikId !== selectedIdRef.current) {
+        applyWatchPartyState(state, state.isPlaying ? "play" : "pause", options);
         return;
       }
       const sameEpisode =
@@ -874,7 +897,7 @@ export function AnimeWatchPanel({
       const driftSeconds = Math.abs(liveProgressRef.current.positionSeconds - resume.positionSeconds);
 
       if (!sameEpisode || driftSeconds > 4) {
-        applyWatchPartyState(state, state.isPlaying ? "play" : "pause");
+        applyWatchPartyState(state, state.isPlaying ? "play" : "pause", options);
         return;
       }
 
@@ -890,11 +913,14 @@ export function AnimeWatchPanel({
         return;
       }
 
+      const syncTranslation = watchPartyTranslationSyncActiveRef.current;
       if (command.type === "state-sync" || command.type === "translation") {
-        applyWatchPartySync(command.state);
+        applyWatchPartySync(command.state, { syncTranslation });
         return;
       }
-      applyWatchPartyState(command.state, command.state.isPlaying ? "play" : "pause");
+      applyWatchPartyState(command.state, command.state.isPlaying ? "play" : "pause", {
+        syncTranslation,
+      });
     },
     [applyWatchPartyState, applyWatchPartySync, watchPartyPlaybackUnlocked],
   );
@@ -905,6 +931,11 @@ export function AnimeWatchPanel({
     onCommand: handleWatchPartyCommand,
   });
   const [watchPartyInviteCopied, setWatchPartyInviteCopied] = useState(false);
+  const watchPartyTranslationSyncActive =
+    watchParty.syncTranslations && watchPartyTranslationSyncEnabled;
+  useEffect(() => {
+    watchPartyTranslationSyncActiveRef.current = watchPartyTranslationSyncActive;
+  }, [watchPartyTranslationSyncActive]);
   useEffect(() => {
     if (
       !watchParty.urlRoomId ||
@@ -969,11 +1000,14 @@ export function AnimeWatchPanel({
     setWatchPartyPlaybackUnlocked(true);
     setPendingWatchPartyCommand(null);
 
+    const syncTranslation = watchPartyTranslationSyncActiveRef.current;
     if (command.type === "state-sync" || command.type === "translation") {
-      applyWatchPartySync(command.state);
+      applyWatchPartySync(command.state, { syncTranslation });
       return;
     }
-    applyWatchPartyState(command.state, command.state.isPlaying ? "play" : "pause");
+    applyWatchPartyState(command.state, command.state.isPlaying ? "play" : "pause", {
+      syncTranslation,
+    });
   }, [
     applyWatchPartyState,
     applyWatchPartySync,
@@ -1097,8 +1131,12 @@ export function AnimeWatchPanel({
     setBetaConfirmOpen(false);
   }, [updateSettings]);
 
-  const roomSeekDisabled =
-    seekSkipDisabled || (watchParty.isConnected && !watchParty.canSeekAndSelectEpisodes);
+  const roomSeekDisabled = seekSkipDisabled || (watchParty.isConnected && !watchParty.canSeek);
+  const roomEpisodeSelectionDisabled =
+    seekSkipDisabled || (watchParty.isConnected && !watchParty.canSelectEpisodes);
+  const roomTranslationSelectionDisabled =
+    continueLoading ||
+    (watchParty.isConnected && watchPartyTranslationSyncActive && !watchParty.canSelectTranslations);
 
   const cycleBetaTheaterMode = useCallback(() => {
     if (isNativeFullscreen) return;
@@ -1553,7 +1591,7 @@ export function AnimeWatchPanel({
 
   const handleRoomSeek = useCallback(
     (seconds: number) => {
-      if (watchParty.isConnected && !watchParty.canSeekAndSelectEpisodes) return;
+      if (watchParty.isConnected && !watchParty.canSeek) return;
       setWatchPartyPlaybackUnlocked(true);
       playerRef.current?.seekToPosition(seconds);
       if (!applyingWatchPartyCommandRef.current) {
@@ -1565,7 +1603,7 @@ export function AnimeWatchPanel({
 
   const handleRoomSeekSkip = useCallback(
     (deltaSeconds: number) => {
-      if (watchParty.isConnected && !watchParty.canSeekAndSelectEpisodes) return;
+      if (watchParty.isConnected && !watchParty.canSeek) return;
       setWatchPartyPlaybackUnlocked(true);
       const duration = playback.durationSeconds;
       const nextRaw = liveProgressRef.current.positionSeconds + deltaSeconds;
@@ -1580,7 +1618,7 @@ export function AnimeWatchPanel({
 
   const handleRoomEpisodeSelect = useCallback(
     (seasonNumber: number, episodeNumber: number) => {
-      if (watchParty.isConnected && !watchParty.canSeekAndSelectEpisodes) return;
+      if (watchParty.isConnected && !watchParty.canSelectEpisodes) return;
       setWatchPartyPlaybackUnlocked(true);
       handleEpisodeSelect(seasonNumber, episodeNumber);
       if (!applyingWatchPartyCommandRef.current) {
@@ -1600,7 +1638,7 @@ export function AnimeWatchPanel({
 
   const handleRoomAdjacentEpisode = useCallback(
     (delta: -1 | 1) => {
-      if (watchParty.isConnected && !watchParty.canSeekAndSelectEpisodes) return;
+      if (watchParty.isConnected && !watchParty.canSelectEpisodes) return;
       setWatchPartyPlaybackUnlocked(true);
       const current = liveProgressRef.current;
       const nextEpisode = current.episodeNumber + delta;
@@ -1624,14 +1662,15 @@ export function AnimeWatchPanel({
 
   const handleRoomTranslationSelect = useCallback(
     (kodikId: string) => {
-      if (watchParty.isConnected && !watchParty.canMasterControl) return;
+      const shouldBroadcastTranslation = watchParty.isConnected && watchPartyTranslationSyncActive;
+      if (shouldBroadcastTranslation && !watchParty.canSelectTranslations) return;
       setWatchPartyPlaybackUnlocked(true);
       handleTranslationSelect(kodikId);
-      if (!applyingWatchPartyCommandRef.current) {
+      if (shouldBroadcastTranslation && !applyingWatchPartyCommandRef.current) {
         watchParty.sendCommand("translation", makeWatchPartyState({ kodikId }));
       }
     },
-    [handleTranslationSelect, makeWatchPartyState, watchParty],
+    [handleTranslationSelect, makeWatchPartyState, watchParty, watchPartyTranslationSyncActive],
   );
 
   const handleRoomPlayerEnded = useCallback(() => {
@@ -1780,7 +1819,7 @@ export function AnimeWatchPanel({
             <button
               type="button"
               onClick={() => handleRoomTranslationSelect(tr.kodikId)}
-              disabled={continueLoading || (watchParty.isConnected && !watchParty.canMasterControl)}
+              disabled={roomTranslationSelectionDisabled}
               aria-pressed={active}
               data-studio={studioId ?? undefined}
               className={[
@@ -1879,8 +1918,8 @@ export function AnimeWatchPanel({
             <p className="mt-0.5 text-muted">
               {watchParty.isMaster
                 ? "Вы мастер комнаты"
-                : watchParty.canSeekAndSelectEpisodes
-                  ? "Мастер разрешил перемотку и серии"
+                : watchParty.canSeek || watchParty.canSelectEpisodes || watchParty.canSelectTranslations
+                  ? "Мастер выдал дополнительные права"
                   : watchParty.canPlayPause
                     ? "Мастер разрешил play/pause"
                   : "Управляет мастер комнаты"}
@@ -1943,10 +1982,60 @@ export function AnimeWatchPanel({
                 }
                 className="h-4 w-4 rounded border-border accent-accent"
               />
-              Разрешить участникам перемотку и выбор серий
+              Разрешить участникам перемотку
+            </label>
+            <label className="inline-flex cursor-pointer items-center gap-2 text-muted">
+              <input
+                type="checkbox"
+                checked={watchParty.allowParticipantEpisodeSelection}
+                onChange={(event) =>
+                  watchParty.setRoomPermissions({
+                    allowParticipantEpisodeSelection: event.target.checked,
+                  })
+                }
+                className="h-4 w-4 rounded border-border accent-accent"
+              />
+              Разрешить участникам выбор серий
+            </label>
+            <label className="inline-flex cursor-pointer items-center gap-2 text-muted">
+              <input
+                type="checkbox"
+                checked={watchParty.allowParticipantTranslationSelection}
+                onChange={(event) =>
+                  watchParty.setRoomPermissions({
+                    allowParticipantTranslationSelection: event.target.checked,
+                  })
+                }
+                className="h-4 w-4 rounded border-border accent-accent"
+              />
+              Разрешить участникам смену озвучек
+            </label>
+            <label className="inline-flex cursor-pointer items-center gap-2 text-muted">
+              <input
+                type="checkbox"
+                checked={watchParty.syncTranslations}
+                onChange={(event) =>
+                  watchParty.setRoomPermissions({
+                    syncTranslations: event.target.checked,
+                  })
+                }
+                className="h-4 w-4 rounded border-border accent-accent"
+              />
+              Синхронизировать выбор озвучек
             </label>
           </div>
         ) : null}
+
+        <label className="mt-3 inline-flex cursor-pointer items-center gap-2 text-muted">
+          <input
+            type="checkbox"
+            checked={watchPartyTranslationSyncEnabled && watchParty.syncTranslations}
+            disabled={!watchParty.syncTranslations}
+            onChange={(event) => setWatchPartyTranslationSyncEnabled(event.target.checked)}
+            className="h-4 w-4 rounded border-border accent-accent disabled:cursor-not-allowed disabled:opacity-60"
+          />
+          Синхронизировать выбор озвучек у меня
+        </label>
 
         <ul className="mt-3 flex flex-wrap gap-2">
           {watchParty.participants.map((participant) => {
@@ -2350,8 +2439,8 @@ export function AnimeWatchPanel({
                   onPlayPause={handleRoomPlayPause}
                   onPreviousEpisode={() => handleRoomAdjacentEpisode(-1)}
                   onNextEpisode={() => handleRoomAdjacentEpisode(1)}
-                  previousEpisodeDisabled={previousEpisodeDisabled}
-                  nextEpisodeDisabled={nextEpisodeDisabled}
+                  previousEpisodeDisabled={previousEpisodeDisabled || roomEpisodeSelectionDisabled}
+                  nextEpisodeDisabled={nextEpisodeDisabled || roomEpisodeSelectionDisabled}
                   onSeek={handleRoomSeek}
                   onSeekSkip={handleRoomSeekSkip}
                   onVolumeChange={(volume) => {
@@ -2410,7 +2499,7 @@ export function AnimeWatchPanel({
               kodikId={selected.kodikId}
               seasonNumber={playerEpisode.seasonNumber}
               currentEpisode={playerEpisode.episodeNumber}
-              disabled={roomSeekDisabled}
+              disabled={roomEpisodeSelectionDisabled}
               onSelect={handleRoomEpisodeSelect}
             />
             {continueLoading ? (

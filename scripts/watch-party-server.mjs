@@ -93,6 +93,9 @@ function broadcastRoomState(room) {
       masterParticipantId: room.masterParticipantId,
       allowParticipantControls: room.allowParticipantControls,
       allowParticipantSeeking: room.allowParticipantSeeking,
+      allowParticipantEpisodeSelection: room.allowParticipantEpisodeSelection,
+      allowParticipantTranslationSelection: room.allowParticipantTranslationSelection,
+      syncTranslations: room.syncTranslations,
       participants,
       state: room.state,
     });
@@ -104,7 +107,16 @@ function canSendCommand(room, client, commandType) {
   if (room.allowParticipantControls && (commandType === "play" || commandType === "pause")) {
     return true;
   }
-  return room.allowParticipantSeeking && (commandType === "seek" || commandType === "episode");
+  if (commandType === "seek") {
+    return room.allowParticipantSeeking;
+  }
+  if (commandType === "episode") {
+    return room.allowParticipantEpisodeSelection;
+  }
+  if (commandType === "translation") {
+    return room.syncTranslations && room.allowParticipantTranslationSelection;
+  }
+  return false;
 }
 
 function handleJoin(ws, message) {
@@ -126,6 +138,9 @@ function handleJoin(ws, message) {
       state,
       allowParticipantControls: false,
       allowParticipantSeeking: false,
+      allowParticipantEpisodeSelection: false,
+      allowParticipantTranslationSelection: false,
+      syncTranslations: true,
       masterParticipantId: "",
       clients: new Map(),
     };
@@ -197,8 +212,21 @@ function handleMessage(ws, raw) {
 
   if (message.type === "set-permissions") {
     if (client.id !== room.masterParticipantId) return;
-    room.allowParticipantControls = message.allowParticipantControls === true;
-    room.allowParticipantSeeking = message.allowParticipantSeeking === true;
+    if (typeof message.allowParticipantControls === "boolean") {
+      room.allowParticipantControls = message.allowParticipantControls;
+    }
+    if (typeof message.allowParticipantSeeking === "boolean") {
+      room.allowParticipantSeeking = message.allowParticipantSeeking;
+    }
+    if (typeof message.allowParticipantEpisodeSelection === "boolean") {
+      room.allowParticipantEpisodeSelection = message.allowParticipantEpisodeSelection;
+    }
+    if (typeof message.allowParticipantTranslationSelection === "boolean") {
+      room.allowParticipantTranslationSelection = message.allowParticipantTranslationSelection;
+    }
+    if (typeof message.syncTranslations === "boolean") {
+      room.syncTranslations = message.syncTranslations;
+    }
     broadcastRoomState(room);
     return;
   }
@@ -238,6 +266,10 @@ function handleMessage(ws, raw) {
             message.type === "seek" || message.type === "episode"
               ? incomingState.positionSeconds
               : advancedState.positionSeconds,
+          kodikId:
+            message.type === "translation" && room.syncTranslations
+              ? incomingState.kodikId
+              : advancedState.kodikId,
           isPlaying:
             message.type === "play"
               ? true
