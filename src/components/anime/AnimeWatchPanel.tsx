@@ -931,6 +931,8 @@ export function AnimeWatchPanel({
     onCommand: handleWatchPartyCommand,
   });
   const [watchPartyInviteCopied, setWatchPartyInviteCopied] = useState(false);
+  const [watchPartyKeyCopied, setWatchPartyKeyCopied] = useState(false);
+  const [watchPartyJoinKey, setWatchPartyJoinKey] = useState("");
   const watchPartyTranslationSyncActive =
     watchParty.syncTranslations && watchPartyTranslationSyncEnabled;
   useEffect(() => {
@@ -968,6 +970,18 @@ export function AnimeWatchPanel({
     const timer = window.setTimeout(() => setWatchPartyInviteCopied(false), 1_500);
     return () => window.clearTimeout(timer);
   }, [watchPartyInviteCopied]);
+
+  useEffect(() => {
+    if (!watchPartyKeyCopied) return;
+    const timer = window.setTimeout(() => setWatchPartyKeyCopied(false), 1_500);
+    return () => window.clearTimeout(timer);
+  }, [watchPartyKeyCopied]);
+
+  const handleWatchPartyJoinByKey = useCallback(() => {
+    const roomKey = watchPartyJoinKey.trim();
+    if (!roomKey) return;
+    watchParty.joinRoom(roomKey);
+  }, [watchParty, watchPartyJoinKey]);
 
   useEffect(() => {
     if (!watchParty.isConnected || !watchParty.isMaster || !playback.isPlaying) return;
@@ -1889,15 +1903,42 @@ export function AnimeWatchPanel({
     if (!watchParty.isConnected) {
       const guestsBlocked = !user && !watchParty.settings.allowGuests;
       return (
-        <div className="flex flex-wrap items-center gap-2 rounded-lg border border-border bg-background px-3 py-2 text-xs text-muted">
-          <button
-            type="button"
-            onClick={watchParty.createRoom}
-            disabled={watchParty.status === "connecting" || guestsBlocked}
-            className="rounded-md border border-accent/45 bg-accent/10 px-2.5 py-1.5 font-medium text-accent transition hover:border-accent hover:bg-accent/15 disabled:cursor-not-allowed disabled:opacity-50"
-          >
-            {watchParty.status === "connecting" ? "Подключение…" : "Создать комнату"}
-          </button>
+        <div className="rounded-lg border border-border bg-background px-3 py-2 text-xs text-muted">
+          <div className="flex flex-wrap items-center gap-2">
+            <button
+              type="button"
+              onClick={watchParty.createRoom}
+              disabled={watchParty.status === "connecting" || guestsBlocked}
+              className="rounded-md border border-accent/45 bg-accent/10 px-2.5 py-1.5 font-medium text-accent transition hover:border-accent hover:bg-accent/15 disabled:cursor-not-allowed disabled:opacity-50"
+            >
+              {watchParty.status === "connecting" ? "Подключение…" : "Создать комнату"}
+            </button>
+            <form
+              className="flex min-w-0 flex-1 flex-col gap-2 sm:flex-row"
+              onSubmit={(event) => {
+                event.preventDefault();
+                handleWatchPartyJoinByKey();
+              }}
+            >
+              <input
+                value={watchPartyJoinKey}
+                onChange={(event) => setWatchPartyJoinKey(event.target.value)}
+                disabled={watchParty.status === "connecting" || guestsBlocked}
+                placeholder="Ключ комнаты"
+                className="min-w-0 flex-1 rounded-md border border-border bg-card px-2.5 py-1.5 text-foreground outline-none placeholder:text-muted disabled:cursor-not-allowed disabled:opacity-50"
+                aria-label="Ключ комнаты"
+              />
+              <button
+                type="submit"
+                disabled={
+                  watchParty.status === "connecting" || guestsBlocked || !watchPartyJoinKey.trim()
+                }
+                className="rounded-md border border-border bg-card px-2.5 py-1.5 font-medium text-foreground transition hover:border-accent/40 hover:bg-surface-dim disabled:cursor-not-allowed disabled:opacity-50"
+              >
+                Подключиться
+              </button>
+            </form>
+          </div>
           <span>
             {watchParty.error ??
               (guestsBlocked
@@ -1935,24 +1976,47 @@ export function AnimeWatchPanel({
         </div>
 
         {watchParty.inviteUrl ? (
-          <div className="mt-3 flex flex-col gap-2 sm:flex-row">
-            <input
-              readOnly
-              value={watchParty.inviteUrl}
-              className="min-w-0 flex-1 rounded-md border border-border bg-card px-2.5 py-1.5 text-muted outline-none"
-              aria-label="Ссылка приглашения"
-              onFocus={(event) => event.currentTarget.select()}
-            />
-            <button
-              type="button"
-              onClick={() => {
-                void navigator.clipboard?.writeText(watchParty.inviteUrl);
-                setWatchPartyInviteCopied(true);
-              }}
-              className="rounded-md border border-border bg-card px-2.5 py-1.5 font-medium text-foreground transition hover:border-accent/40 hover:bg-surface-dim"
-            >
-              {watchPartyInviteCopied ? "Скопировано" : "Копировать"}
-            </button>
+          <div className="mt-3 flex flex-col gap-2">
+            <div className="flex flex-col gap-2 sm:flex-row">
+              <input
+                readOnly
+                value={watchParty.roomId ?? ""}
+                className="min-w-0 flex-1 rounded-md border border-border bg-card px-2.5 py-1.5 text-muted outline-none"
+                aria-label="Ключ комнаты"
+                onFocus={(event) => event.currentTarget.select()}
+              />
+              <button
+                type="button"
+                onClick={() => {
+                  if (!watchParty.roomId) return;
+                  void navigator.clipboard?.writeText(watchParty.roomId);
+                  setWatchPartyKeyCopied(true);
+                }}
+                disabled={!watchParty.roomId}
+                className="rounded-md border border-border bg-card px-2.5 py-1.5 font-medium text-foreground transition hover:border-accent/40 hover:bg-surface-dim disabled:cursor-not-allowed disabled:opacity-50"
+              >
+                {watchPartyKeyCopied ? "Скопировано" : "Скопировать ключ"}
+              </button>
+            </div>
+            <div className="flex flex-col gap-2 sm:flex-row">
+              <input
+                readOnly
+                value={watchParty.inviteUrl}
+                className="min-w-0 flex-1 rounded-md border border-border bg-card px-2.5 py-1.5 text-muted outline-none"
+                aria-label="Ссылка приглашения"
+                onFocus={(event) => event.currentTarget.select()}
+              />
+              <button
+                type="button"
+                onClick={() => {
+                  void navigator.clipboard?.writeText(watchParty.inviteUrl);
+                  setWatchPartyInviteCopied(true);
+                }}
+                className="rounded-md border border-border bg-card px-2.5 py-1.5 font-medium text-foreground transition hover:border-accent/40 hover:bg-surface-dim"
+              >
+                {watchPartyInviteCopied ? "Скопировано" : "Копировать"}
+              </button>
+            </div>
           </div>
         ) : null}
 
