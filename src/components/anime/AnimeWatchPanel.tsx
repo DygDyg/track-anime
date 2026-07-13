@@ -73,7 +73,6 @@ const MOBILE_TRANSLATIONS_SWIPE_THRESHOLD_PX = 56;
 const CONTINUE_LOADING_TIMEOUT_MS = 12_000;
 const AUTO_SKIP_CANCEL_SECONDS = 5;
 const WATCH_PARTY_SYNC_TIMEOUT_MS = 4_000;
-const WATCH_PARTY_LATENCY_COMPENSATION_SECONDS = 0.35;
 
 const DEFAULT_PLAYBACK_STATE: KodikPlayerPlaybackState = {
   isPlaying: false,
@@ -382,26 +381,13 @@ export function AnimeWatchPanel({
     },
     [playableByKodikId],
   );
-  const localizeWatchPartyState = useCallback(
-    (state: WatchPartyPlaybackState): KodikPlayerResume | null => {
-      const currentKodikId = selectedIdRef.current || state.kodikId;
-      if (!currentKodikId) return null;
-
-      const elapsedSeconds = state.isPlaying
-        ? Math.max(0, (Date.now() - state.updatedAt) / 1000) + WATCH_PARTY_LATENCY_COMPENSATION_SECONDS
-        : 0;
-
-      return applyPositionOffset(
-        {
-          seasonNumber: state.seasonNumber,
-          episodeNumber: state.episodeNumber,
-          positionSeconds: Math.max(0, state.positionSeconds + elapsedSeconds),
-        },
-        currentKodikId,
-        state.kodikId,
-      );
-    },
-    [applyPositionOffset],
+  const watchPartyStateToResume = useCallback(
+    (state: WatchPartyPlaybackState): KodikPlayerResume => ({
+      seasonNumber: state.seasonNumber,
+      episodeNumber: state.episodeNumber,
+      positionSeconds: Math.max(0, state.positionSeconds),
+    }),
+    [],
   );
 
   useEffect(() => {
@@ -832,8 +818,7 @@ export function AnimeWatchPanel({
   }, [playback.isPlaying, ready, selected?.kodikId, shikimoriId]);
   const applyWatchPartyState = useCallback(
     (state: WatchPartyPlaybackState, mode: KodikPlayerResumeMode) => {
-      const resume = localizeWatchPartyState(state);
-      if (!resume) return;
+      const resume = watchPartyStateToResume(state);
 
       applyingWatchPartyCommandRef.current = true;
       isPausedRef.current = mode === "pause";
@@ -865,12 +850,11 @@ export function AnimeWatchPanel({
         applyingWatchPartyCommandRef.current = false;
       }, 1_200);
     },
-    [localizeWatchPartyState],
+    [watchPartyStateToResume],
   );
   const applyWatchPartySync = useCallback(
     (state: WatchPartyPlaybackState) => {
-      const resume = localizeWatchPartyState(state);
-      if (!resume) return;
+      const resume = watchPartyStateToResume(state);
       const sameEpisode =
         liveProgressRef.current.seasonNumber === resume.seasonNumber &&
         liveProgressRef.current.episodeNumber === resume.episodeNumber;
@@ -884,7 +868,7 @@ export function AnimeWatchPanel({
       if (state.isPlaying && !playback.isPlaying) playerRef.current?.play();
       if (!state.isPlaying && playback.isPlaying) playerRef.current?.pause();
     },
-    [applyWatchPartyState, localizeWatchPartyState, playback.isPlaying],
+    [applyWatchPartyState, playback.isPlaying, watchPartyStateToResume],
   );
   const handleWatchPartyCommand = useCallback(
     (command: WatchPartyCommand) => {
