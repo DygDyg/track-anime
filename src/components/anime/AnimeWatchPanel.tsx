@@ -1922,10 +1922,15 @@ export function AnimeWatchPanel({
             >
               <input
                 value={watchPartyJoinKey}
-                onChange={(event) => setWatchPartyJoinKey(event.target.value)}
+                onChange={(event) =>
+                  setWatchPartyJoinKey(event.target.value.replace(/\D/g, "").slice(0, 5))
+                }
                 disabled={watchParty.status === "connecting" || guestsBlocked}
                 placeholder="Ключ комнаты"
-                className="min-w-0 flex-1 rounded-md border border-border bg-card px-2.5 py-1.5 text-foreground outline-none placeholder:text-muted disabled:cursor-not-allowed disabled:opacity-50"
+                inputMode="numeric"
+                maxLength={5}
+                pattern="[0-9]{5}"
+                className="w-[7.5rem] rounded-md border border-border bg-card px-2.5 py-1.5 text-center font-mono text-foreground outline-none placeholder:text-muted disabled:cursor-not-allowed disabled:opacity-50"
                 aria-label="Ключ комнаты"
               />
               <button
