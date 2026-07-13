@@ -555,8 +555,8 @@ export const KodikPlayer = forwardRef<KodikPlayerHandle, Props>(function KodikPl
       }
 
       if (event.data.key === "kodik_player_video_ended") {
-        patchPlayback({ isPlaying: false });
         onEndedRef.current?.();
+        patchPlayback({ isPlaying: false });
       }
     };
 
