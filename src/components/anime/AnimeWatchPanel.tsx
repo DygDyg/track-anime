@@ -805,7 +805,18 @@ export function AnimeWatchPanel({
         setBootResume(null);
         setSelectedId(state.kodikId);
       } else {
-        playerRef.current?.seekTo(resume, mode);
+        const sameEpisode =
+          liveProgressRef.current.seasonNumber === resume.seasonNumber &&
+          liveProgressRef.current.episodeNumber === resume.episodeNumber;
+        if (!sameEpisode) {
+          pendingContinueRef.current = resume;
+          pendingContinueModeRef.current = mode;
+          setContinueLoading(true);
+          setContinueTarget({ episodeNumber: resume.episodeNumber });
+          setPlayerResetNonce((nonce) => nonce + 1);
+        } else {
+          playerRef.current?.seekTo(resume, mode);
+        }
       }
 
       window.setTimeout(() => {

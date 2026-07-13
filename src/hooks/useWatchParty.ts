@@ -129,6 +129,7 @@ export function useWatchParty({
   const wsRef = useRef<WebSocket | null>(null);
   const onCommandRef = useRef(onCommand);
   const getPlaybackStateRef = useRef(getPlaybackState);
+  const initialRoomStateAppliedRef = useRef(false);
   const participant = user ?? { id: guest.id, nickname: guest.nickname, avatar: null };
 
   useEffect(() => {
@@ -197,6 +198,7 @@ export function useWatchParty({
     setAllowParticipantSeekingState(false);
     setParticipants([]);
     setError(null);
+    initialRoomStateAppliedRef.current = false;
   }, []);
 
   const connect = useCallback(
@@ -219,6 +221,7 @@ export function useWatchParty({
       wsRef.current?.close();
       setStatus("connecting");
       setError(null);
+      initialRoomStateAppliedRef.current = false;
 
       const ws = new WebSocket(wsUrl);
       wsRef.current = ws;
@@ -262,6 +265,13 @@ export function useWatchParty({
           setAllowParticipantSeekingState(parsed.allowParticipantSeeking);
           setParticipants(parsed.participants);
           setError(null);
+          if (
+            !initialRoomStateAppliedRef.current &&
+            parsed.participantId !== parsed.masterParticipantId
+          ) {
+            initialRoomStateAppliedRef.current = true;
+            onCommandRef.current({ type: "state-sync", state: parsed.state });
+          }
           return;
         }
 
