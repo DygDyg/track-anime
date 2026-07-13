@@ -59,4 +59,4 @@ export type WatchPartyServerMessage =
       state: WatchPartyPlaybackState;
     } & WatchPartyRoomPermissions)
   | { type: "command"; fromParticipantId: string; command: WatchPartyCommand }
-  | { type: "error"; message: string };
+  | { type: "error"; message: string; roomId?: string; shikimoriId?: number };

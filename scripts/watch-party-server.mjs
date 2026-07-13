@@ -150,7 +150,12 @@ function handleJoin(ws, message) {
     };
     rooms.set(roomId, room);
   } else if (room.state.shikimoriId !== state.shikimoriId) {
-    send(ws, { type: "error", message: "Комната создана для другого тайтла." });
+    send(ws, {
+      type: "error",
+      message: "Комната создана для другого тайтла.",
+      roomId: room.id,
+      shikimoriId: room.state.shikimoriId,
+    });
     ws.close(1008, "Anime mismatch");
     return;
   }

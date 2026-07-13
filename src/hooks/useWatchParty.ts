@@ -102,6 +102,13 @@ function buildInviteUrl(roomId: string | null): string {
   return url.toString();
 }
 
+function buildRoomRedirectUrl(shikimoriId: number, roomId: string): string {
+  const url = new URL(`/anime/${shikimoriId}`, window.location.origin);
+  url.searchParams.set("watchRoom", roomId);
+  url.hash = "player";
+  return url.toString();
+}
+
 function isServerMessage(value: unknown): value is WatchPartyServerMessage {
   return value != null && typeof value === "object" && "type" in value;
 }
@@ -263,6 +270,16 @@ export function useWatchParty({
         if (!isServerMessage(parsed)) return;
 
         if (parsed.type === "error") {
+          if (
+            typeof window !== "undefined" &&
+            parsed.roomId &&
+            parsed.shikimoriId &&
+            parsed.shikimoriId !== shikimoriId
+          ) {
+            setError("Комната открыта для другого тайтла. Переходим...");
+            window.location.assign(buildRoomRedirectUrl(parsed.shikimoriId, parsed.roomId));
+            return;
+          }
           setError(parsed.message);
           setStatus("error");
           return;
@@ -320,6 +337,7 @@ export function useWatchParty({
       participant.nickname,
       settings.allowGuests,
       settings.enabled,
+      shikimoriId,
       user,
     ],
   );
