@@ -9,7 +9,11 @@ const rooms = new Map();
 const WebSocketServer = wsPackage.WebSocketServer ?? wsPackage.Server;
 
 function createRoomId() {
-  return randomUUID().replaceAll("-", "").slice(0, 10);
+  for (let attempt = 0; attempt < 100; attempt += 1) {
+    const roomId = String(Math.floor(10_000 + Math.random() * 90_000));
+    if (!rooms.has(roomId)) return roomId;
+  }
+  return randomUUID().replace(/\D/g, "").padEnd(5, "0").slice(0, 5);
 }
 
 function isRecord(value) {
