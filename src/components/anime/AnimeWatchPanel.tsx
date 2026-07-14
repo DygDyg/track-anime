@@ -1016,7 +1016,14 @@ export function AnimeWatchPanel({
     if (!watchParty.isConnected) {
       watchPartyEpisodeTransitionRef.current = null;
       handledEpisodeEndRef.current = null;
+      return;
     }
+    suppressContinueOverlayRef.current = true;
+    pendingContinueRef.current = null;
+    setBootResume(null);
+    setContinueLoading(false);
+    setContinueTarget(null);
+    playerRef.current?.abortContinue();
   }, [watchParty.isConnected]);
   useEffect(() => {
     watchPartyTranslationSyncActiveRef.current = watchPartyTranslationSyncActive;
@@ -2283,10 +2290,17 @@ export function AnimeWatchPanel({
   const continueTranslation = continueProgress
     ? playable.find((tr) => tr.kodikId === continueProgress.kodikId)
     : null;
-  const initialResume = bootResume;
+  const initialResume = watchParty.isConnected ? null : bootResume;
+  const watchPartyEpisodeLock = watchParty.isConnected
+    ? {
+        seasonNumber: playerEpisode.seasonNumber,
+        episodeNumber: playerEpisode.episodeNumber,
+      }
+    : null;
 
   const showContinue =
     user &&
+    !watchParty.isConnected &&
     continueProgress &&
     !playback.isPlaying &&
     continueProgress.positionSeconds >= MIN_SAVE_POSITION_SECONDS &&
@@ -2607,6 +2621,8 @@ export function AnimeWatchPanel({
                   fullscreenActive={isNativeFullscreen}
                   theaterMode={isNativeFullscreen ? "normal" : betaTheaterMode}
                   seekSkipLabelSeconds={PLAYER_SEEK_SKIP_LABEL_SECONDS}
+                  lockedEpisode={watchPartyEpisodeLock}
+                  strictEpisodeSync={watchParty.isConnected}
                   controlsDisabled={seekSkipDisabled}
                   keepUiVisible={betaTranslationsHoverEnabled && fullscreenTranslationsHovered}
                   continueAction={betaContinueAction}
@@ -2705,6 +2721,8 @@ export function AnimeWatchPanel({
               title={`${animeTitle} — ${selected.translationTitle}`}
               sizeMode={playerExpanded ? "viewport" : "default"}
               initialResume={initialResume}
+              lockedEpisode={watchPartyEpisodeLock}
+              strictEpisodeSync={watchParty.isConnected}
               onReady={handlePlayerReady}
               onContinueStateChange={handleContinueStateChange}
               onProgress={trackProgress}

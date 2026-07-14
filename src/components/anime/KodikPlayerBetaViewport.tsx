@@ -54,6 +54,8 @@ type Props = {
   title: string;
   sizeMode: "default" | "viewport";
   initialResume?: KodikPlayerResume | null;
+  lockedEpisode?: { seasonNumber: number; episodeNumber: number } | null;
+  strictEpisodeSync?: boolean;
   shikimoriId: number;
   kodikId: string;
   seasonNumber: number;
@@ -102,6 +104,8 @@ export function KodikPlayerBetaViewport({
   title,
   sizeMode,
   initialResume,
+  lockedEpisode,
+  strictEpisodeSync = false,
   shikimoriId,
   kodikId,
   seasonNumber,
@@ -629,6 +633,8 @@ export function KodikPlayerBetaViewport({
         sizeMode={sizeMode}
         chromelessBeta
         initialResume={initialResume}
+        lockedEpisode={lockedEpisode}
+        strictEpisodeSync={strictEpisodeSync}
         onReady={onReady}
         onContinueStateChange={onContinueStateChange}
         onProgress={onProgress}
