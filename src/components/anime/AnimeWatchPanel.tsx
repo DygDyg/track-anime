@@ -390,12 +390,7 @@ export function AnimeWatchPanel({
     (progress: Pick<ProgressPayload, "seasonNumber" | "episodeNumber">) => {
       const previous = handledEpisodeEndRef.current;
       const now = Date.now();
-      if (
-        previous != null &&
-        previous.expiresAt >= now &&
-        previous.seasonNumber === progress.seasonNumber &&
-        previous.episodeNumber === progress.episodeNumber
-      ) {
+      if (previous != null && previous.expiresAt >= now) {
         return false;
       }
 
@@ -1816,9 +1811,15 @@ export function AnimeWatchPanel({
     const endedProgress = episodeEndCandidateRef.current ?? current;
     if (!markEpisodeEndHandled(endedProgress)) return;
     const nextEpisode = endedProgress.episodeNumber + 1;
+    if (watchParty.isConnected) {
+      suppressNextPlaybackBroadcastRef.current = true;
+      window.setTimeout(() => {
+        suppressNextPlaybackBroadcastRef.current = false;
+      }, 1_500);
+    }
     handlePlayerEnded(endedProgress);
     if (episodesTotal != null && nextEpisode > episodesTotal) return;
-    if (!applyingWatchPartyCommandRef.current) {
+    if (watchParty.isConnected && !applyingWatchPartyCommandRef.current) {
       watchParty.sendCommand(
         "episode",
         makeWatchPartyState({
