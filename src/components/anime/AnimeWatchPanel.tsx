@@ -44,6 +44,12 @@ type Props = {
   episodesTotal?: number | null;
 };
 
+type WatchPartyEpisodeTransition = {
+  seasonNumber: number;
+  episodeNumber: number;
+  expiresAt: number;
+};
+
 type LockableScreenOrientation = ScreenOrientation & {
   lock?: (orientation: "landscape" | "landscape-primary" | "landscape-secondary") => Promise<void>;
 };
@@ -76,6 +82,8 @@ const AUTO_SKIP_CANCEL_SECONDS = 5;
 const WATCH_PARTY_SYNC_TIMEOUT_MS = 4_000;
 const WATCH_PARTY_TRANSLATION_SYNC_STORAGE_KEY = "ta.watchParty.translationSync";
 const EPISODE_END_CANDIDATE_WINDOW_SECONDS = 20;
+const EPISODE_END_DEBOUNCE_MS = 6_000;
+const WATCH_PARTY_EPISODE_TRANSITION_WINDOW_MS = 12_000;
 
 const DEFAULT_PLAYBACK_STATE: KodikPlayerPlaybackState = {
   isPlaying: false,
@@ -361,8 +369,45 @@ export function AnimeWatchPanel({
   const applyingWatchPartyCommandRef = useRef(false);
   const playbackStateInitializedRef = useRef(false);
   const suppressNextPlaybackBroadcastRef = useRef(false);
+  const watchPartyConnectedRef = useRef(false);
   const watchPartyTranslationSyncActiveRef = useRef(true);
+  const watchPartyEpisodeTransitionRef = useRef<WatchPartyEpisodeTransition | null>(null);
+  const handledEpisodeEndRef = useRef<WatchPartyEpisodeTransition | null>(null);
   const sendWatchPartyPlaybackEventRef = useRef<(isPlaying: boolean) => void>(() => {});
+
+  const allowWatchPartyEpisodeTransition = useCallback(
+    (resume: Pick<KodikPlayerResume, "seasonNumber" | "episodeNumber">) => {
+      watchPartyEpisodeTransitionRef.current = {
+        seasonNumber: resume.seasonNumber,
+        episodeNumber: resume.episodeNumber,
+        expiresAt: Date.now() + WATCH_PARTY_EPISODE_TRANSITION_WINDOW_MS,
+      };
+    },
+    [],
+  );
+
+  const markEpisodeEndHandled = useCallback(
+    (progress: Pick<ProgressPayload, "seasonNumber" | "episodeNumber">) => {
+      const previous = handledEpisodeEndRef.current;
+      const now = Date.now();
+      if (
+        previous != null &&
+        previous.expiresAt >= now &&
+        previous.seasonNumber === progress.seasonNumber &&
+        previous.episodeNumber === progress.episodeNumber
+      ) {
+        return false;
+      }
+
+      handledEpisodeEndRef.current = {
+        seasonNumber: progress.seasonNumber,
+        episodeNumber: progress.episodeNumber,
+        expiresAt: now + EPISODE_END_DEBOUNCE_MS,
+      };
+      return true;
+    },
+    [],
+  );
 
   const playableByKodikId = useMemo(() => {
     const map = new Map<string, KodikTranslationDto>();
@@ -576,6 +621,20 @@ export function AnimeWatchPanel({
       const episodeChanged =
         previous.seasonNumber !== payload.seasonNumber ||
         previous.episodeNumber !== payload.episodeNumber;
+
+      if (watchPartyConnectedRef.current && episodeChanged) {
+        const allowedTransition = watchPartyEpisodeTransitionRef.current;
+        const transitionAllowed =
+          allowedTransition != null &&
+          allowedTransition.expiresAt >= Date.now() &&
+          allowedTransition.seasonNumber === payload.seasonNumber &&
+          allowedTransition.episodeNumber === payload.episodeNumber;
+
+        if (!transitionAllowed) return;
+
+        watchPartyEpisodeTransitionRef.current = null;
+      }
+
       liveProgressRef.current = payload;
       setPlayerEpisode((prev) =>
         prev.seasonNumber === payload.seasonNumber && prev.episodeNumber === payload.episodeNumber
@@ -862,6 +921,12 @@ export function AnimeWatchPanel({
       suppressContinueOverlayRef.current = true;
       episodeEndCandidateRef.current = null;
       setWatchPartySyncing(true);
+      if (
+        liveProgressRef.current.seasonNumber !== resume.seasonNumber ||
+        liveProgressRef.current.episodeNumber !== resume.episodeNumber
+      ) {
+        allowWatchPartyEpisodeTransition(resume);
+      }
 
       if (!playerRef.current) {
         pendingContinueRef.current = resume;
@@ -897,7 +962,7 @@ export function AnimeWatchPanel({
         applyingWatchPartyCommandRef.current = false;
       }, 1_200);
     },
-    [playableByKodikId, watchPartyStateToResume],
+    [allowWatchPartyEpisodeTransition, playableByKodikId, watchPartyStateToResume],
   );
   const applyWatchPartySync = useCallback(
     (state: WatchPartyPlaybackState, options: { syncTranslation?: boolean } = {}) => {
@@ -951,6 +1016,13 @@ export function AnimeWatchPanel({
   const [watchPartyJoinKey, setWatchPartyJoinKey] = useState("");
   const watchPartyTranslationSyncActive =
     watchParty.syncTranslations && watchPartyTranslationSyncEnabled;
+  useEffect(() => {
+    watchPartyConnectedRef.current = watchParty.isConnected;
+    if (!watchParty.isConnected) {
+      watchPartyEpisodeTransitionRef.current = null;
+      handledEpisodeEndRef.current = null;
+    }
+  }, [watchParty.isConnected]);
   useEffect(() => {
     watchPartyTranslationSyncActiveRef.current = watchPartyTranslationSyncActive;
   }, [watchPartyTranslationSyncActive]);
@@ -1541,8 +1613,9 @@ export function AnimeWatchPanel({
       positionSeconds: 0,
     };
     isPausedRef.current = false;
+    allowWatchPartyEpisodeTransition(resume);
     playerRef.current?.seekTo(resume, "play");
-  }, []);
+  }, [allowWatchPartyEpisodeTransition]);
 
   const handleAdjacentEpisode = useCallback(
     (delta: -1 | 1) => {
@@ -1552,6 +1625,10 @@ export function AnimeWatchPanel({
       if (episodesTotal != null && nextEpisode > episodesTotal) return;
 
       episodeEndCandidateRef.current = null;
+      allowWatchPartyEpisodeTransition({
+        seasonNumber: current.seasonNumber,
+        episodeNumber: nextEpisode,
+      });
       isPausedRef.current = false;
       playerRef.current?.seekTo(
         {
@@ -1562,7 +1639,7 @@ export function AnimeWatchPanel({
         "play",
       );
     },
-    [episodesTotal],
+    [allowWatchPartyEpisodeTransition, episodesTotal],
   );
 
   const handlePlayerEnded = useCallback((endedProgress?: ProgressPayload | null) => {
@@ -1572,6 +1649,10 @@ export function AnimeWatchPanel({
     if (episodesTotal != null && nextEpisode > episodesTotal) return;
 
     episodeEndCandidateRef.current = null;
+    allowWatchPartyEpisodeTransition({
+      seasonNumber: current.seasonNumber,
+      episodeNumber: nextEpisode,
+    });
     playerRef.current?.seekTo(
       {
         seasonNumber: current.seasonNumber,
@@ -1580,7 +1661,7 @@ export function AnimeWatchPanel({
       },
       "play",
     );
-  }, [episodesTotal]);
+  }, [allowWatchPartyEpisodeTransition, episodesTotal]);
 
   const makeWatchPartyState = useCallback(
     (patch: Partial<WatchPartyPlaybackState> = {}): WatchPartyPlaybackState | null => {
@@ -1709,9 +1790,11 @@ export function AnimeWatchPanel({
   const handleRoomPlayerEnded = useCallback(() => {
     if (watchParty.isConnected && !watchParty.isMaster) {
       const endedProgress = episodeEndCandidateRef.current ?? liveProgressRef.current;
+      if (!markEpisodeEndHandled(endedProgress)) return;
       applyingWatchPartyCommandRef.current = true;
       suppressNextPlaybackBroadcastRef.current = true;
       isPausedRef.current = true;
+      allowWatchPartyEpisodeTransition(endedProgress);
       playerRef.current?.seekTo(
         {
           seasonNumber: endedProgress.seasonNumber,
@@ -1731,6 +1814,7 @@ export function AnimeWatchPanel({
     }
     const current = liveProgressRef.current;
     const endedProgress = episodeEndCandidateRef.current ?? current;
+    if (!markEpisodeEndHandled(endedProgress)) return;
     const nextEpisode = endedProgress.episodeNumber + 1;
     handlePlayerEnded(endedProgress);
     if (episodesTotal != null && nextEpisode > episodesTotal) return;
@@ -1745,7 +1829,15 @@ export function AnimeWatchPanel({
         }),
       );
     }
-  }, [episodesTotal, handlePlayerEnded, makeWatchPartyState, playback.durationSeconds, watchParty]);
+  }, [
+    allowWatchPartyEpisodeTransition,
+    episodesTotal,
+    handlePlayerEnded,
+    makeWatchPartyState,
+    markEpisodeEndHandled,
+    playback.durationSeconds,
+    watchParty,
+  ]);
 
   const handleRoomSkipTime = useCallback(
     (skipTime: DisplaySkipTimeDto) => {
