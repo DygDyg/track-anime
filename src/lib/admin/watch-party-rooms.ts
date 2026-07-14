@@ -59,36 +59,43 @@ type RawRoomsResponse = {
   error?: string;
 };
 
-function getWatchPartyRoomsUrl(): string {
+function getWatchPartyRoomsUrls(): string[] {
   const configured = process.env.WATCH_PARTY_ROOMS_URL ?? process.env.WATCH_PARTY_INTERNAL_URL;
-  if (configured) return configured;
+  if (configured) return [configured];
 
-  const port = process.env.WATCH_PARTY_PORT ?? "3001";
-  return `http://127.0.0.1:${port}/watch-party-rooms`;
+  const ports = [process.env.WATCH_PARTY_PORT ?? "3002", "3002", "3001"];
+  return [...new Set(ports)].map((port) => `http://127.0.0.1:${port}/watch-party-rooms`);
 }
 
 async function fetchRoomsSnapshot(): Promise<RawRoomsResponse> {
-  const controller = new AbortController();
-  const timeoutId = setTimeout(() => controller.abort(), 2_500);
+  let lastError = "Не удалось получить список комнат";
 
-  try {
-    const res = await fetch(getWatchPartyRoomsUrl(), {
-      cache: "no-store",
-      signal: controller.signal,
-    });
-    if (!res.ok) {
-      return { generatedAt: new Date().toISOString(), rooms: [], error: `HTTP ${res.status}` };
+  for (const url of getWatchPartyRoomsUrls()) {
+    const controller = new AbortController();
+    const timeoutId = setTimeout(() => controller.abort(), 2_500);
+
+    try {
+      const res = await fetch(url, {
+        cache: "no-store",
+        signal: controller.signal,
+      });
+      if (!res.ok) {
+        lastError = `${url}: HTTP ${res.status}`;
+        continue;
+      }
+      return (await res.json()) as RawRoomsResponse;
+    } catch (error) {
+      lastError = error instanceof Error ? `${url}: ${error.message}` : `${url}: ошибка сети`;
+    } finally {
+      clearTimeout(timeoutId);
     }
-    return (await res.json()) as RawRoomsResponse;
-  } catch (error) {
-    return {
-      generatedAt: new Date().toISOString(),
-      rooms: [],
-      error: error instanceof Error ? error.message : "Не удалось получить список комнат",
-    };
-  } finally {
-    clearTimeout(timeoutId);
   }
+
+  return {
+    generatedAt: new Date().toISOString(),
+    rooms: [],
+    error: lastError,
+  };
 }
 
 export async function getWatchPartyRoomsDto(): Promise<WatchPartyRoomsDto> {
