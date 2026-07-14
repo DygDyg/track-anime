@@ -582,7 +582,7 @@ export function AnimeWatchPanel({
           ? prev
           : { seasonNumber: payload.seasonNumber, episodeNumber: payload.episodeNumber },
       );
-      if (payload.source === "time") {
+      if (payload.source === "time" && !episodeChanged) {
         const nearEnd =
           playback.durationSeconds > 0 &&
           payload.positionSeconds >=
@@ -860,6 +860,7 @@ export function AnimeWatchPanel({
       applyingWatchPartyCommandRef.current = true;
       isPausedRef.current = mode === "pause";
       suppressContinueOverlayRef.current = true;
+      episodeEndCandidateRef.current = null;
       setWatchPartySyncing(true);
 
       if (!playerRef.current) {
@@ -1707,13 +1708,21 @@ export function AnimeWatchPanel({
 
   const handleRoomPlayerEnded = useCallback(() => {
     if (watchParty.isConnected && !watchParty.isMaster) {
+      const endedProgress = episodeEndCandidateRef.current ?? liveProgressRef.current;
       applyingWatchPartyCommandRef.current = true;
       suppressNextPlaybackBroadcastRef.current = true;
       isPausedRef.current = true;
-      playerRef.current?.pause();
-      if (playback.durationSeconds > 1) {
-        playerRef.current?.seekToPosition(Math.max(0, playback.durationSeconds - 0.5));
-      }
+      playerRef.current?.seekTo(
+        {
+          seasonNumber: endedProgress.seasonNumber,
+          episodeNumber: endedProgress.episodeNumber,
+          positionSeconds:
+            playback.durationSeconds > 1
+              ? Math.max(0, playback.durationSeconds - 0.5)
+              : Math.max(0, endedProgress.positionSeconds),
+        },
+        "pause",
+      );
       window.setTimeout(() => {
         applyingWatchPartyCommandRef.current = false;
         suppressNextPlaybackBroadcastRef.current = false;

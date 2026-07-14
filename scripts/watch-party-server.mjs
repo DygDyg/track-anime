@@ -1,5 +1,6 @@
 import "dotenv/config";
 import { randomUUID } from "node:crypto";
+import { createServer } from "node:http";
 import wsPackage from "ws";
 
 const port = Number(process.env.WATCH_PARTY_PORT ?? 3001);
@@ -82,6 +83,38 @@ function serializeParticipants(room) {
   }));
 }
 
+function serializeAdminRoom(room) {
+  return {
+    id: room.id,
+    createdAt: room.createdAt,
+    masterParticipantId: room.masterParticipantId,
+    allowParticipantControls: room.allowParticipantControls,
+    allowParticipantSeeking: room.allowParticipantSeeking,
+    allowParticipantEpisodeSelection: room.allowParticipantEpisodeSelection,
+    allowParticipantTranslationSelection: room.allowParticipantTranslationSelection,
+    syncTranslations: room.syncTranslations,
+    state: advanceRoomState(room.state),
+    participants: serializeParticipants(room),
+  };
+}
+
+function isLoopbackAddress(address) {
+  return (
+    address === "127.0.0.1" ||
+    address === "::1" ||
+    address === "::ffff:127.0.0.1" ||
+    address === undefined
+  );
+}
+
+function sendJsonResponse(response, statusCode, payload) {
+  response.writeHead(statusCode, {
+    "Content-Type": "application/json; charset=utf-8",
+    "Cache-Control": "no-store",
+  });
+  response.end(JSON.stringify(payload));
+}
+
 function send(ws, message) {
   if (ws.readyState !== 1) return;
   ws.send(JSON.stringify(message));
@@ -139,6 +172,7 @@ function handleJoin(ws, message) {
   if (!room) {
     room = {
       id: roomId,
+      createdAt: new Date().toISOString(),
       state,
       allowParticipantControls: false,
       allowParticipantSeeking: false,
@@ -296,7 +330,25 @@ function handleMessage(ws, raw) {
   }
 }
 
-const wss = new WebSocketServer({ port, path });
+const server = createServer((request, response) => {
+  if (!isLoopbackAddress(request.socket.remoteAddress)) {
+    sendJsonResponse(response, 403, { error: "Forbidden" });
+    return;
+  }
+
+  const requestUrl = new URL(request.url ?? "/", `http://${request.headers.host ?? "127.0.0.1"}`);
+  if (request.method === "GET" && requestUrl.pathname === "/watch-party-rooms") {
+    sendJsonResponse(response, 200, {
+      generatedAt: new Date().toISOString(),
+      rooms: [...rooms.values()].map(serializeAdminRoom),
+    });
+    return;
+  }
+
+  sendJsonResponse(response, 404, { error: "Not found" });
+});
+
+const wss = new WebSocketServer({ server, path });
 
 wss.on("connection", (ws) => {
   ws.isAlive = true;
@@ -321,4 +373,6 @@ const heartbeat = setInterval(() => {
 
 wss.on("close", () => clearInterval(heartbeat));
 
-console.log(`Watch party WebSocket server listening on ws://0.0.0.0:${port}${path}`);
+server.listen(port, () => {
+  console.log(`Watch party WebSocket server listening on ws://0.0.0.0:${port}${path}`);
+});
