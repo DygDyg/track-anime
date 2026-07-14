@@ -1009,11 +1009,13 @@ export function AnimeWatchPanel({
   const [watchPartyInviteCopied, setWatchPartyInviteCopied] = useState(false);
   const [watchPartyKeyCopied, setWatchPartyKeyCopied] = useState(false);
   const [watchPartyJoinKey, setWatchPartyJoinKey] = useState("");
+  const watchPartyRoomActive =
+    watchParty.isConnected || watchParty.status === "connecting" || Boolean(watchParty.urlRoomId);
   const watchPartyTranslationSyncActive =
     watchParty.syncTranslations && watchPartyTranslationSyncEnabled;
   useEffect(() => {
     watchPartyConnectedRef.current = watchParty.isConnected;
-    if (!watchParty.isConnected) {
+    if (!watchPartyRoomActive) {
       watchPartyEpisodeTransitionRef.current = null;
       handledEpisodeEndRef.current = null;
       return;
@@ -1024,7 +1026,7 @@ export function AnimeWatchPanel({
     setContinueLoading(false);
     setContinueTarget(null);
     playerRef.current?.abortContinue();
-  }, [watchParty.isConnected]);
+  }, [watchParty.isConnected, watchPartyRoomActive]);
   useEffect(() => {
     watchPartyTranslationSyncActiveRef.current = watchPartyTranslationSyncActive;
   }, [watchPartyTranslationSyncActive]);
@@ -2290,8 +2292,8 @@ export function AnimeWatchPanel({
   const continueTranslation = continueProgress
     ? playable.find((tr) => tr.kodikId === continueProgress.kodikId)
     : null;
-  const initialResume = watchParty.isConnected ? null : bootResume;
-  const watchPartyEpisodeLock = watchParty.isConnected
+  const initialResume = watchPartyRoomActive ? null : bootResume;
+  const watchPartyEpisodeLock = watchPartyRoomActive
     ? {
         seasonNumber: playerEpisode.seasonNumber,
         episodeNumber: playerEpisode.episodeNumber,
@@ -2300,7 +2302,7 @@ export function AnimeWatchPanel({
 
   const showContinue =
     user &&
-    !watchParty.isConnected &&
+    !watchPartyRoomActive &&
     continueProgress &&
     !playback.isPlaying &&
     continueProgress.positionSeconds >= MIN_SAVE_POSITION_SECONDS &&
@@ -2622,7 +2624,7 @@ export function AnimeWatchPanel({
                   theaterMode={isNativeFullscreen ? "normal" : betaTheaterMode}
                   seekSkipLabelSeconds={PLAYER_SEEK_SKIP_LABEL_SECONDS}
                   lockedEpisode={watchPartyEpisodeLock}
-                  strictEpisodeSync={watchParty.isConnected}
+                  strictEpisodeSync={watchPartyRoomActive}
                   controlsDisabled={seekSkipDisabled}
                   keepUiVisible={betaTranslationsHoverEnabled && fullscreenTranslationsHovered}
                   continueAction={betaContinueAction}
@@ -2722,7 +2724,7 @@ export function AnimeWatchPanel({
               sizeMode={playerExpanded ? "viewport" : "default"}
               initialResume={initialResume}
               lockedEpisode={watchPartyEpisodeLock}
-              strictEpisodeSync={watchParty.isConnected}
+              strictEpisodeSync={watchPartyRoomActive}
               onReady={handlePlayerReady}
               onContinueStateChange={handleContinueStateChange}
               onProgress={trackProgress}
