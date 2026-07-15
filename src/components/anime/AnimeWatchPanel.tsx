@@ -193,6 +193,12 @@ type SkipTimesResponse = {
   skipTimes?: SkipTimesDto;
 };
 
+type EpisodeLinkDto = {
+  episodeNumber: number;
+  seasonNumber: number;
+  playerLink: string | null;
+};
+
 type AdminSkipTimesPrefetchDto = {
   checked: number;
   failed: number;
@@ -320,6 +326,9 @@ export function AnimeWatchPanel({
   const [continueTarget, setContinueTarget] = useState<{ episodeNumber: number } | null>(null);
   const [playerExpanded, setPlayerExpanded] = useState(false);
   const [playerSrc, setPlayerSrc] = useState("");
+  const [watchPartyEpisodePlayerSrc, setWatchPartyEpisodePlayerSrc] = useState<string | null>(null);
+  const [watchPartyEpisodePlayerSrcLoading, setWatchPartyEpisodePlayerSrcLoading] =
+    useState(false);
   const [playback, setPlayback] = useState<KodikPlayerPlaybackState>(DEFAULT_PLAYBACK_STATE);
   const [playerResetNonce, setPlayerResetNonce] = useState(0);
   const [isNativeFullscreen, setIsNativeFullscreen] = useState(false);
@@ -1036,6 +1045,57 @@ export function AnimeWatchPanel({
     watchParty.isConnected || watchParty.status === "connecting" || Boolean(watchParty.urlRoomId);
   const watchPartyTranslationSyncActive =
     watchParty.syncTranslations && watchPartyTranslationSyncEnabled;
+  useEffect(() => {
+    if (!watchPartyRoomActive || !selected?.kodikId) {
+      setWatchPartyEpisodePlayerSrc(null);
+      setWatchPartyEpisodePlayerSrcLoading(false);
+      return;
+    }
+
+    const controller = new AbortController();
+    setWatchPartyEpisodePlayerSrcLoading(true);
+
+    void (async () => {
+      try {
+        const params = new URLSearchParams({
+          kodikId: selected.kodikId,
+          season: String(playerEpisode.seasonNumber),
+          exactSeason: "1",
+        });
+        const res = await fetch(`/api/anime/${shikimoriId}/episodes?${params.toString()}`, {
+          cache: "no-store",
+          signal: controller.signal,
+        });
+        if (!res.ok) throw new Error("episodes load failed");
+        const data = (await res.json()) as { episodes?: EpisodeLinkDto[] };
+        const link =
+          data.episodes?.find(
+            (episode) =>
+              episode.seasonNumber === playerEpisode.seasonNumber &&
+              episode.episodeNumber === playerEpisode.episodeNumber,
+          )?.playerLink ?? null;
+        if (!controller.signal.aborted) {
+          setWatchPartyEpisodePlayerSrc(link);
+        }
+      } catch {
+        if (!controller.signal.aborted) {
+          setWatchPartyEpisodePlayerSrc(null);
+        }
+      } finally {
+        if (!controller.signal.aborted) {
+          setWatchPartyEpisodePlayerSrcLoading(false);
+        }
+      }
+    })();
+
+    return () => controller.abort();
+  }, [
+    playerEpisode.episodeNumber,
+    playerEpisode.seasonNumber,
+    selected?.kodikId,
+    shikimoriId,
+    watchPartyRoomActive,
+  ]);
   useEffect(() => {
     watchPartyConnectedRef.current = watchParty.isConnected;
     if (!watchPartyRoomActive) {
@@ -2333,6 +2393,10 @@ export function AnimeWatchPanel({
     ? playable.find((tr) => tr.kodikId === continueProgress.kodikId)
     : null;
   const initialResume = watchPartyRoomActive ? null : bootResume;
+  const effectivePlayerSrc = watchPartyRoomActive
+    ? (watchPartyEpisodePlayerSrcLoading ? "" : (watchPartyEpisodePlayerSrc ?? playerSrc))
+    : playerSrc;
+  const canRenderPlayer = Boolean(selected?.playerLink && effectivePlayerSrc);
   const watchPartyEpisodeLock = watchPartyRoomActive
     ? {
         seasonNumber: playerEpisode.seasonNumber,
@@ -2634,7 +2698,7 @@ export function AnimeWatchPanel({
         {renderWatchPartyPanel()}
         {!ready ? (
           <div className="aspect-video animate-pulse rounded-lg bg-surface-dim" />
-        ) : selected?.playerLink ? (
+        ) : selected && canRenderPlayer ? (
           betaChromeless ? (
             <div
               ref={betaFullscreenRef}
@@ -2649,8 +2713,8 @@ export function AnimeWatchPanel({
                 {renderWatchPartyStartOverlay()}
                 <KodikPlayerBetaViewport
                   playerRef={playerRef}
-                  playerKey={`${selected.kodikId}-${playerResetNonce}-beta-${playerSrc}`}
-                  src={playerSrc}
+                  playerKey={`${selected.kodikId}-${playerResetNonce}-beta-${effectivePlayerSrc}`}
+                  src={effectivePlayerSrc}
                   title={`${animeTitle} — ${selected.translationTitle}`}
                   sizeMode={isNativeFullscreen || betaTheaterExpanded ? "viewport" : "default"}
                   initialResume={initialResume}
@@ -2758,8 +2822,8 @@ export function AnimeWatchPanel({
             ) : null}
             <KodikPlayer
               ref={playerRef}
-              key={`${selected.kodikId}-${playerResetNonce}-std`}
-              src={playerSrc}
+              key={`${selected.kodikId}-${playerResetNonce}-std-${effectivePlayerSrc}`}
+              src={effectivePlayerSrc}
               title={`${animeTitle} — ${selected.translationTitle}`}
               sizeMode={playerExpanded ? "viewport" : "default"}
               initialResume={initialResume}
