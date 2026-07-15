@@ -13,47 +13,31 @@ type SeasonItemDto = {
   title: string | null;
 };
 
-type EpisodeItemDto = {
-  episodeNumber: number;
-  seasonNumber: number;
-  playerLink: string | null;
-};
-
 function parseShikimoriId(raw: string): number | null {
   const id = Number(raw);
   if (!Number.isInteger(id) || id <= 0) return null;
   return id;
 }
 
-function normalizePlayerLink(link: string | null | undefined): string | null {
-  if (!link) return null;
-  if (link.startsWith("//")) return `https:${link}`;
-  return link;
-}
-
-function parseKodikEpisodeLink(value: KodikEpisodeValue): string | null {
-  if (typeof value === "string") return normalizePlayerLink(value.trim());
-  return normalizePlayerLink(value?.link);
+function parseKodikEpisode(value: KodikEpisodeValue): boolean {
+  if (typeof value === "string") return value.trim().length > 0;
+  return Boolean(value?.link);
 }
 
 function mapLiveSeasonEpisodes(
   seasonNumber: number,
   season: KodikSeason | undefined,
-): EpisodeItemDto[] {
+): Array<{ episodeNumber: number; seasonNumber: number }> {
   if (!season?.episodes) return [];
 
   return Object.entries(season.episodes)
     .map(([episodeKey, episodeValue]) => ({
       episodeNumber: Number(episodeKey),
-      playerLink: parseKodikEpisodeLink(episodeValue),
+      valid: parseKodikEpisode(episodeValue),
     }))
-    .filter((episode) => Number.isInteger(episode.episodeNumber) && episode.episodeNumber > 0 && episode.playerLink)
+    .filter((episode) => Number.isInteger(episode.episodeNumber) && episode.episodeNumber > 0 && episode.valid)
     .sort((a, b) => a.episodeNumber - b.episodeNumber)
-    .map((episode) => ({
-      episodeNumber: episode.episodeNumber,
-      seasonNumber,
-      playerLink: episode.playerLink,
-    }));
+    .map((episode) => ({ episodeNumber: episode.episodeNumber, seasonNumber }));
 }
 
 async function loadLiveKodikSeasons(
@@ -157,17 +141,14 @@ export async function GET(request: NextRequest, { params }: RouteParams) {
   const dbEpisodes = await prisma.kodikEpisode.findMany({
     where: { materialId: kodikId, seasonNumber },
     orderBy: { episodeNumber: "asc" },
-    select: { episodeNumber: true, seasonNumber: true, playerLink: true },
+    select: { episodeNumber: true, seasonNumber: true },
   });
 
   if (dbEpisodes.length > 0) {
     return NextResponse.json({
       seasonNumber,
       seasons,
-      episodes: dbEpisodes.map((episode) => ({
-        ...episode,
-        playerLink: normalizePlayerLink(episode.playerLink),
-      })),
+      episodes: dbEpisodes,
     });
   }
 
@@ -185,7 +166,6 @@ export async function GET(request: NextRequest, { params }: RouteParams) {
   const episodes = Array.from({ length: Math.max(0, count) }, (_, index) => ({
     episodeNumber: index + 1,
     seasonNumber,
-    playerLink: null,
   }));
 
   return NextResponse.json({ seasonNumber, seasons, episodes });

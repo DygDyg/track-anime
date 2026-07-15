@@ -54,7 +54,6 @@ export type KodikPlayerHandle = {
 
 const CONTINUE_HARD_TIMEOUT_MS = 15_000;
 const SEEK_BY_FLUSH_DELAY_MS = 120;
-const PLAY_AFTER_SEEK_DELAYS_MS = [120, 350, 900] as const;
 
 const DEFAULT_PLAYBACK_STATE: KodikPlayerPlaybackState = {
   isPlaying: false,
@@ -68,8 +67,6 @@ type Props = {
   src: string;
   title: string;
   initialResume?: KodikPlayerResume | null;
-  lockedEpisode?: EpisodeState | null;
-  strictEpisodeSync?: boolean;
   /** viewport — по высоте окна (минус шапка), с сохранением 16:9 */
   sizeMode?: "default" | "viewport";
   /** Beta: внешний кадр 16:9, внутренний iframe 16:9 на всю область (настройка crop в CSS) */
@@ -113,21 +110,9 @@ function episodeMatches(resume: KodikPlayerResume, current: EpisodeState): boole
   );
 }
 
-function sameEpisode(a: EpisodeState, b: EpisodeState): boolean {
-  return a.seasonNumber === b.seasonNumber && a.episodeNumber === b.episodeNumber;
-}
-
 function clearContinueFlow(flow: ContinueFlow | null): void {
   if (!flow) return;
   for (const id of flow.timers) window.clearTimeout(id);
-}
-
-function sendPlayAfterSeek(iframe: HTMLIFrameElement): void {
-  for (const delay of PLAY_AFTER_SEEK_DELAYS_MS) {
-    window.setTimeout(() => {
-      sendKodikCommand(iframe, { method: "play" });
-    }, delay);
-  }
 }
 
 function applyInitialSeek(
@@ -182,9 +167,7 @@ function finishContinueSeek(
     sendKodikCommand(iframe, { method: "seek", seconds: flow.resume.positionSeconds });
   }
 
-  if (flow.autoplay) {
-    sendPlayAfterSeek(iframe);
-  } else {
+  if (!flow.autoplay) {
     window.setTimeout(() => {
       sendKodikCommand(iframe, { method: "pause" });
     }, 350);
@@ -290,8 +273,6 @@ export const KodikPlayer = forwardRef<KodikPlayerHandle, Props>(function KodikPl
     src,
     title,
     initialResume,
-    lockedEpisode,
-    strictEpisodeSync = false,
     sizeMode = "default",
     chromelessBeta = false,
     onReady,
@@ -312,9 +293,6 @@ export const KodikPlayer = forwardRef<KodikPlayerHandle, Props>(function KodikPl
   const resumeAppliedRef = useRef(false);
   const playerReadyRef = useRef(false);
   const continueFlowRef = useRef<ContinueFlow | null>(null);
-  const lockedEpisodeRef = useRef<EpisodeState | null>(lockedEpisode ?? null);
-  const strictEpisodeSyncRef = useRef(strictEpisodeSync);
-  const lastStrictEpisodeCorrectionRef = useRef(0);
   const bufferedSeekTargetRef = useRef<number | null>(null);
   const bufferedSeekTimerRef = useRef<number | null>(null);
   const onProgressRef = useRef(onProgress);
@@ -385,14 +363,6 @@ export const KodikPlayer = forwardRef<KodikPlayerHandle, Props>(function KodikPl
   useEffect(() => {
     onEndedRef.current = onEnded;
   }, [onEnded]);
-
-  useEffect(() => {
-    lockedEpisodeRef.current = lockedEpisode ?? null;
-  }, [lockedEpisode]);
-
-  useEffect(() => {
-    strictEpisodeSyncRef.current = strictEpisodeSync;
-  }, [strictEpisodeSync]);
 
   const markPlayerReady = () => {
     if (playerReadyRef.current) return;
@@ -475,7 +445,10 @@ export const KodikPlayer = forwardRef<KodikPlayerHandle, Props>(function KodikPl
       sendKodikCommand(iframeRef.current, { method: "seek", seconds: next });
 
       if (mode === "play") {
-        sendPlayAfterSeek(iframeRef.current);
+        window.setTimeout(() => {
+          if (!iframeRef.current) return;
+          sendKodikCommand(iframeRef.current, { method: "play" });
+        }, 80);
         return;
       }
 
@@ -530,26 +503,7 @@ export const KodikPlayer = forwardRef<KodikPlayerHandle, Props>(function KodikPl
       if (event.data.key === "kodik_player_current_episode" && event.data.value) {
         markPlayerReady();
         const currentEpisode = event.data.value as KodikCurrentEpisode;
-        const nextEpisode = normalizeEpisode(currentEpisode);
-        const locked = lockedEpisodeRef.current;
-        const flow = continueFlowRef.current;
-        const isAllowedByLock = locked == null || sameEpisode(locked, nextEpisode);
-        const isAllowedByFlow = flow != null && episodeMatches(flow.resume, nextEpisode);
-
-        if (strictEpisodeSyncRef.current && !isAllowedByLock && !isAllowedByFlow) {
-          const now = Date.now();
-          if (iframeRef.current && locked && now - lastStrictEpisodeCorrectionRef.current > 500) {
-            lastStrictEpisodeCorrectionRef.current = now;
-            sendKodikCommand(iframeRef.current, {
-              method: "change_episode",
-              season: commandSeason(locked.seasonNumber),
-              episode: locked.episodeNumber,
-            });
-          }
-          return;
-        }
-
-        episodeRef.current = nextEpisode;
+        episodeRef.current = normalizeEpisode(currentEpisode);
         applyInitialResume();
 
         onProgressRef.current?.({
@@ -606,7 +560,6 @@ export const KodikPlayer = forwardRef<KodikPlayerHandle, Props>(function KodikPl
       }
 
       if (event.data.key === "kodik_player_video_ended") {
-        if (continueFlowRef.current) return;
         onEndedRef.current?.();
         patchPlayback({ isPlaying: false });
       }

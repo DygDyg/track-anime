@@ -94,14 +94,6 @@ function parseWatchRoomFromLocation(): string | null {
   return params.get("watchRoom");
 }
 
-function clearWatchRoomFromLocation(): void {
-  if (typeof window === "undefined") return;
-  const url = new URL(window.location.href);
-  if (!url.searchParams.has("watchRoom")) return;
-  url.searchParams.delete("watchRoom");
-  window.history.replaceState(window.history.state, "", url.toString());
-}
-
 function buildInviteUrl(roomId: string | null): string {
   if (typeof window === "undefined" || !roomId) return "";
   const url = new URL(window.location.href);
@@ -145,7 +137,7 @@ export function useWatchParty({
   });
   const [settingsLoading, setSettingsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
-  const [urlRoomId, setUrlRoomId] = useState(() => parseWatchRoomFromLocation());
+  const [urlRoomId] = useState(() => parseWatchRoomFromLocation());
   const [guest] = useState(readGuestIdentity);
   const wsRef = useRef<WebSocket | null>(null);
   const onCommandRef = useRef(onCommand);
@@ -205,7 +197,7 @@ export function useWatchParty({
     return true;
   }, []);
 
-  const disconnectSocket = useCallback((options: { clearUrlRoom?: boolean } = {}) => {
+  const disconnect = useCallback(() => {
     const ws = wsRef.current;
     wsRef.current = null;
     if (ws && ws.readyState === WebSocket.OPEN) {
@@ -225,16 +217,8 @@ export function useWatchParty({
     setSyncTranslationsState(true);
     setParticipants([]);
     setError(null);
-    if (options.clearUrlRoom) {
-      setUrlRoomId(null);
-      clearWatchRoomFromLocation();
-    }
     initialRoomStateAppliedRef.current = false;
   }, []);
-
-  const disconnect = useCallback(() => {
-    disconnectSocket({ clearUrlRoom: true });
-  }, [disconnectSocket]);
 
   const connect = useCallback(
     (targetRoomId: string | null) => {
@@ -433,7 +417,7 @@ export function useWatchParty({
     [isConnected, send],
   );
 
-  useEffect(() => () => disconnectSocket(), [disconnectSocket]);
+  useEffect(() => disconnect, [disconnect]);
 
   return {
     status,
