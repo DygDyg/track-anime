@@ -87,6 +87,8 @@ const WATCH_PARTY_EPISODE_TRANSITION_WINDOW_MS = 12_000;
 const WATCH_PARTY_STATE_SYNC_INTERVAL_MS = 2_000;
 const WATCH_PARTY_PAUSE_RESYNC_DELAY_MS = 350;
 const WATCH_PARTY_PLAY_RESYNC_DELAYS_MS = [120, 350, 900, 1_600, 2_600] as const;
+const WATCH_PARTY_PLAYER_WATCHDOG_MS = 1_500;
+const WATCH_PARTY_EPISODE_CORRECTION_COOLDOWN_MS = 3_000;
 
 const DEFAULT_PLAYBACK_STATE: KodikPlayerPlaybackState = {
   isPlaying: false,
@@ -384,6 +386,11 @@ export function AnimeWatchPanel({
     resume: KodikPlayerResume;
     mode: KodikPlayerResumeMode;
   } | null>(null);
+  const kodikEpisodeRef = useRef<Pick<ProgressPayload, "seasonNumber" | "episodeNumber"> | null>(
+    null,
+  );
+  const kodikIsPlayingRef = useRef(false);
+  const lastWatchPartyEpisodeCorrectionAtRef = useRef(0);
   const suppressContinueOverlayRef = useRef(false);
   const autoSkippedIntervalsRef = useRef(new Set<string>());
   const cancelledAutoSkipIntervalsRef = useRef(new Set<string>());
@@ -658,7 +665,18 @@ export function AnimeWatchPanel({
           : payload;
 
       if (watchPartyRoomActiveRef.current && payload.source === "episode") {
+        kodikEpisodeRef.current = {
+          seasonNumber: payload.seasonNumber,
+          episodeNumber: payload.episodeNumber,
+        };
         return;
+      }
+
+      if (payload.source === "episode") {
+        kodikEpisodeRef.current = {
+          seasonNumber: payload.seasonNumber,
+          episodeNumber: payload.episodeNumber,
+        };
       }
 
       const previous = liveProgressRef.current;
@@ -795,6 +813,17 @@ export function AnimeWatchPanel({
           }
         : payload;
 
+      if (watchPartyRoomActiveRef.current && !isPausedRef.current) {
+        liveProgressRef.current = normalizedPayload;
+        setPlayback((previous) => ({
+          ...previous,
+          positionSeconds: normalizedPayload.positionSeconds,
+          isPlaying: true,
+        }));
+        scheduleWatchPartyPlayResync();
+        return;
+      }
+
       liveProgressRef.current = normalizedPayload;
       setPlayerEpisode({
         seasonNumber: normalizedPayload.seasonNumber,
@@ -808,7 +837,7 @@ export function AnimeWatchPanel({
       }
       void saveProgressNow(normalizedPayload, selectedIdRef.current);
     },
-    [markPaused, saveProgressNow, syncProgress],
+    [markPaused, saveProgressNow, scheduleWatchPartyPlayResync, syncProgress],
   );
 
   useEffect(() => {
@@ -1195,6 +1224,8 @@ export function AnimeWatchPanel({
     if (!watchPartyRoomActive) {
       watchPartyEpisodeTransitionRef.current = null;
       handledEpisodeEndRef.current = null;
+      kodikEpisodeRef.current = null;
+      kodikIsPlayingRef.current = false;
       return;
     }
     suppressContinueOverlayRef.current = true;
@@ -1204,6 +1235,54 @@ export function AnimeWatchPanel({
     setContinueTarget(null);
     playerRef.current?.abortContinue();
   }, [watchParty.isConnected, watchPartyRoomActive]);
+
+  useEffect(() => {
+    if (!watchPartyRoomActive) return;
+
+    const intervalId = window.setInterval(() => {
+      const desired = liveProgressRef.current;
+      const actualEpisode = kodikEpisodeRef.current;
+      const desiredMode: KodikPlayerResumeMode = isPausedRef.current ? "pause" : "play";
+      const episodeMismatch =
+        actualEpisode != null &&
+        (actualEpisode.seasonNumber !== desired.seasonNumber ||
+          actualEpisode.episodeNumber !== desired.episodeNumber);
+      const now = Date.now();
+
+      if (
+        episodeMismatch &&
+        now - lastWatchPartyEpisodeCorrectionAtRef.current >
+          WATCH_PARTY_EPISODE_CORRECTION_COOLDOWN_MS
+      ) {
+        lastWatchPartyEpisodeCorrectionAtRef.current = now;
+        pendingContinueRef.current = null;
+        pendingWatchPartySyncRef.current = {
+          resume: {
+            seasonNumber: desired.seasonNumber,
+            episodeNumber: desired.episodeNumber,
+            positionSeconds: Math.max(0, desired.positionSeconds),
+          },
+          mode: desiredMode,
+        };
+        suppressContinueOverlayRef.current = true;
+        setWatchPartySyncing(true);
+        setPlayerResetNonce((nonce) => nonce + 1);
+        return;
+      }
+
+      if (desiredMode === "play" && !kodikIsPlayingRef.current) {
+        playerRef.current?.play();
+        scheduleWatchPartyPlayResync();
+        return;
+      }
+
+      if (desiredMode === "pause" && kodikIsPlayingRef.current) {
+        playerRef.current?.pause();
+      }
+    }, WATCH_PARTY_PLAYER_WATCHDOG_MS);
+
+    return () => window.clearInterval(intervalId);
+  }, [scheduleWatchPartyPlayResync, watchPartyRoomActive]);
   useEffect(() => {
     watchPartyTranslationSyncActiveRef.current = watchPartyTranslationSyncActive;
   }, [watchPartyTranslationSyncActive]);
@@ -1444,22 +1523,39 @@ export function AnimeWatchPanel({
   }, [isNativeFullscreen]);
 
   const handlePlaybackStateChange = useCallback((state: KodikPlayerPlaybackState) => {
+    kodikIsPlayingRef.current = state.isPlaying;
     setPlayback((previous) => {
+      const nextState = watchPartyRoomActiveRef.current
+        ? { ...state, isPlaying: !isPausedRef.current }
+        : state;
       const initialized = playbackStateInitializedRef.current;
-      const playingChanged = initialized && previous.isPlaying !== state.isPlaying;
+      const playingChanged = initialized && previous.isPlaying !== nextState.isPlaying;
       playbackStateInitializedRef.current = true;
 
-      if (playingChanged && !applyingWatchPartyCommandRef.current) {
+      if (
+        playingChanged &&
+        !applyingWatchPartyCommandRef.current &&
+        !watchPartyRoomActiveRef.current
+      ) {
         if (suppressNextPlaybackBroadcastRef.current) {
           suppressNextPlaybackBroadcastRef.current = false;
         } else {
-          sendWatchPartyPlaybackEventRef.current(state.isPlaying);
+          sendWatchPartyPlaybackEventRef.current(nextState.isPlaying);
         }
       }
 
-      return state;
+      if (watchPartyRoomActiveRef.current) {
+        if (!state.isPlaying && !isPausedRef.current) {
+          scheduleWatchPartyPlayResync();
+        }
+        if (state.isPlaying && isPausedRef.current) {
+          playerRef.current?.pause();
+        }
+      }
+
+      return nextState;
     });
-  }, []);
+  }, [scheduleWatchPartyPlayResync]);
 
   useEffect(() => {
     autoSkippedIntervalsRef.current.clear();
