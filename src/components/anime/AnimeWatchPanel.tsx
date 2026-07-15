@@ -74,6 +74,7 @@ const MOBILE_TRANSLATIONS_SWIPE_THRESHOLD_PX = 56;
 const CONTINUE_LOADING_TIMEOUT_MS = 12_000;
 const AUTO_SKIP_CANCEL_SECONDS = 5;
 const WATCH_PARTY_SYNC_TIMEOUT_MS = 4_000;
+const WATCH_PARTY_SYNC_DRIFT_SECONDS = 1;
 const WATCH_PARTY_TRANSLATION_SYNC_STORAGE_KEY = "ta.watchParty.translationSync";
 const EPISODE_END_CANDIDATE_WINDOW_SECONDS = 20;
 
@@ -362,6 +363,9 @@ export function AnimeWatchPanel({
   const playbackStateInitializedRef = useRef(false);
   const suppressNextPlaybackBroadcastRef = useRef(false);
   const watchPartyTranslationSyncActiveRef = useRef(true);
+  const waitingForHostEpisodeRef = useRef<Pick<ProgressPayload, "seasonNumber" | "episodeNumber"> | null>(
+    null,
+  );
   const sendWatchPartyPlaybackEventRef = useRef<(isPlaying: boolean) => void>(() => {});
 
   const playableByKodikId = useMemo(() => {
@@ -911,7 +915,7 @@ export function AnimeWatchPanel({
         liveProgressRef.current.episodeNumber === resume.episodeNumber;
       const driftSeconds = Math.abs(liveProgressRef.current.positionSeconds - resume.positionSeconds);
 
-      if (!sameEpisode || driftSeconds > 4) {
+      if (!sameEpisode || driftSeconds > WATCH_PARTY_SYNC_DRIFT_SECONDS) {
         applyWatchPartyState(state, state.isPlaying ? "play" : "pause", options);
         return;
       }
@@ -923,6 +927,19 @@ export function AnimeWatchPanel({
   );
   const handleWatchPartyCommand = useCallback(
     (command: WatchPartyCommand) => {
+      const waitingForHostEpisode = waitingForHostEpisodeRef.current;
+      if (waitingForHostEpisode) {
+        const sameWaitingEpisode =
+          waitingForHostEpisode.seasonNumber === command.state.seasonNumber &&
+          waitingForHostEpisode.episodeNumber === command.state.episodeNumber;
+
+        if (sameWaitingEpisode && command.type !== "episode") {
+          return;
+        }
+
+        waitingForHostEpisodeRef.current = null;
+      }
+
       if (command.state.isPlaying && !watchPartyPlaybackUnlocked) {
         setPendingWatchPartyCommand(command);
         return;
@@ -997,14 +1014,6 @@ export function AnimeWatchPanel({
     if (!roomKey) return;
     watchParty.joinRoom(roomKey);
   }, [watchParty, watchPartyJoinKey]);
-
-  useEffect(() => {
-    if (!watchParty.isConnected || !watchParty.isMaster || !playback.isPlaying) return;
-    const intervalId = window.setInterval(() => {
-      watchParty.sendCommand("state-sync");
-    }, 8_000);
-    return () => window.clearInterval(intervalId);
-  }, [playback.isPlaying, watchParty.isConnected, watchParty.isMaster, watchParty.sendCommand]);
 
   useEffect(() => {
     if (!watchParty.isConnected) return;
@@ -1652,6 +1661,7 @@ export function AnimeWatchPanel({
     (seasonNumber: number, episodeNumber: number) => {
       if (watchParty.isConnected && !watchParty.canSelectEpisodes) return;
       setWatchPartyPlaybackUnlocked(true);
+      waitingForHostEpisodeRef.current = null;
       handleEpisodeSelect(seasonNumber, episodeNumber);
       if (!applyingWatchPartyCommandRef.current) {
         watchParty.sendCommand(
@@ -1676,6 +1686,7 @@ export function AnimeWatchPanel({
       const nextEpisode = current.episodeNumber + delta;
       if (nextEpisode < 1) return;
       if (episodesTotal != null && nextEpisode > episodesTotal) return;
+      waitingForHostEpisodeRef.current = null;
       handleAdjacentEpisode(delta);
       if (!applyingWatchPartyCommandRef.current) {
         watchParty.sendCommand(
@@ -1710,6 +1721,10 @@ export function AnimeWatchPanel({
       applyingWatchPartyCommandRef.current = true;
       suppressNextPlaybackBroadcastRef.current = true;
       isPausedRef.current = true;
+      waitingForHostEpisodeRef.current = {
+        seasonNumber: liveProgressRef.current.seasonNumber,
+        episodeNumber: liveProgressRef.current.episodeNumber,
+      };
       playerRef.current?.pause();
       if (playback.durationSeconds > 1) {
         playerRef.current?.seekToPosition(Math.max(0, playback.durationSeconds - 0.5));

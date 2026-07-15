@@ -5,6 +5,7 @@ import wsPackage from "ws";
 const port = Number(process.env.WATCH_PARTY_PORT ?? 3001);
 const path = process.env.WATCH_PARTY_WS_PATH ?? "/watch-party-ws";
 const heartbeatMs = 30_000;
+const stateSyncMs = 2_000;
 const rooms = new Map();
 const WebSocketServer = wsPackage.WebSocketServer ?? wsPackage.Server;
 
@@ -103,6 +104,13 @@ function broadcastRoomState(room) {
       participants,
       state: room.state,
     });
+  }
+}
+
+function broadcastRoomCommand(room, command, fromParticipantId = "server", options = {}) {
+  for (const client of room.clients.values()) {
+    if (client.id === options.skipParticipantId) continue;
+    send(client.ws, { type: "command", fromParticipantId, command });
   }
 }
 
@@ -296,6 +304,15 @@ function handleMessage(ws, raw) {
   }
 }
 
+const stateSync = setInterval(() => {
+  for (const room of rooms.values()) {
+    room.state = advanceRoomState(room.state);
+    broadcastRoomCommand(room, { type: "state-sync", state: room.state }, "server", {
+      skipParticipantId: room.masterParticipantId,
+    });
+  }
+}, stateSyncMs);
+
 const wss = new WebSocketServer({ port, path });
 
 wss.on("connection", (ws) => {
@@ -319,6 +336,9 @@ const heartbeat = setInterval(() => {
   }
 }, heartbeatMs);
 
-wss.on("close", () => clearInterval(heartbeat));
+wss.on("close", () => {
+  clearInterval(heartbeat);
+  clearInterval(stateSync);
+});
 
 console.log(`Watch party WebSocket server listening on ws://0.0.0.0:${port}${path}`);

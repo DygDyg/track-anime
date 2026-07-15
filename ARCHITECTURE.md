@@ -82,6 +82,7 @@ Beta watch party
   → useWatchParty (client WebSocket)
   → scripts/watch-party-server.mjs (in-memory rooms)
   → room commands: play/pause/seek/episode/translation/state-sync
+  → server state-sync every 2s with room playback state
 ```
 
 Комнаты совместного просмотра не сохраняются в БД: при рестарте WebSocket-процесса они исчезают.
