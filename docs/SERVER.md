@@ -92,7 +92,7 @@ NODE_ENV="production"
 | `SHIKIMORI_REQUEST_TIMEOUT_MS` | нет | Таймаут одной публичной попытки Shikimori API (по умолчанию 8000 мс) |
 | `SHIKIMORI_TOTAL_TIMEOUT_MS` | нет | Общий бюджет публичного Shikimori API-запроса с retry (по умолчанию 15000 мс) |
 | `WATCH_PARTY_PORT` | нет | Порт отдельного WebSocket-сервера совместного просмотра (по умолчанию 3001) |
-| `WATCH_PARTY_ROOMS_URL` | нет | Внутренний HTTP URL списка активных комнат для админки (по умолчанию `http://127.0.0.1:${WATCH_PARTY_PORT}/watch-party-rooms`) |
+| `WATCH_PARTY_ROOMS_URL` | нет | Внутренний HTTP URL списка активных комнат для админки. Если не задан, админка пробует `WATCH_PARTY_PORT`, затем локальные `3001`/`3002`. |
 | `NEXT_PUBLIC_WATCH_PARTY_WS_URL` | нет | Публичный WebSocket URL, если `/watch-party-ws` не проксируется на том же origin |
 | `NODE_ENV` | для prod | `production` при `npm run start` |
 

@@ -83,6 +83,10 @@ function watchPartyRoomUrls(): string[] {
     urls.add("http://127.0.0.1:3001/watch-party-rooms");
   }
 
+  if (port !== "3002") {
+    urls.add("http://127.0.0.1:3002/watch-party-rooms");
+  }
+
   const fromPublicWs = deriveRoomsUrlFromPublicWsUrl(process.env.NEXT_PUBLIC_WATCH_PARTY_WS_URL);
   if (fromPublicWs) urls.add(fromPublicWs);
 
