@@ -96,7 +96,7 @@ ta_new/
 
 | Process | Purpose |
 |---------|---------|
-| `scripts/watch-party-server.mjs` | WebSocket server for ephemeral beta-плеер совместный просмотр rooms (`/watch-party-ws` by default) |
+| `scripts/watch-party-server.mjs` | WebSocket server for ephemeral beta-плеер совместный просмотр rooms (`/watch-party-ws` by default), plus read-only `/watch-party-rooms` for admin room overview |
 
 ### Notifications (`api/notifications/`)
 
@@ -114,7 +114,7 @@ ta_new/
 
 ### Admin (`api/admin/`)
 
-`stats`, `anime/[shikimoriId]/skip-times-prefetch`, `import/status`, `import/episodes`, `import/pending-materials`, `sync`, `sync/settings`, `sync/history`, `backfill-dates`, `brand-rotation/settings`, `cover-cache/settings`, `discord/settings`, `notifications/settings`, `notifications/test`, `notifications/generate-vapid`, `search/settings`, `shikimori/settings`, `shikimori/anons-sync`, `shikimori/mal-id-sync`, `site-settings-defaults`, `translation-intro-offsets`, `watch-history/settings`, `watch-party/settings`, `users`, `db/search`, `todos`, `todos/[id]`
+`stats`, `anime/[shikimoriId]/skip-times-prefetch`, `import/status`, `import/episodes`, `import/pending-materials`, `sync`, `sync/settings`, `sync/history`, `backfill-dates`, `brand-rotation/settings`, `cover-cache/settings`, `discord/settings`, `notifications/settings`, `notifications/test`, `notifications/generate-vapid`, `search/settings`, `shikimori/settings`, `shikimori/anons-sync`, `shikimori/mal-id-sync`, `site-settings-defaults`, `translation-intro-offsets`, `watch-history/settings`, `watch-party/settings`, `watch-party/rooms`, `users`, `db/search`, `todos`, `todos/[id]`
 
 ## `src/lib/` — Core Modules
 
@@ -161,6 +161,7 @@ ta_new/
 | `translation-intro-offsets.ts` | Translation intro offset admin |
 | `watch-history-settings.ts` | Watch history admin settings |
 | `watch-party-settings.ts` | Beta-плеер совместный просмотр global admin settings |
+| `watch-party-rooms.ts` | Read-only active room overview for admin page, enriched with Kodik title/translation metadata |
 | `db-explorer.ts` | Admin DB search |
 | `stats.ts`, `storage-stats.ts` | Dashboard metrics |
 | `todos.ts` | Dev todo list |

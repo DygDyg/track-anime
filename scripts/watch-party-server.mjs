@@ -1,5 +1,6 @@
 import "dotenv/config";
 import { randomUUID } from "node:crypto";
+import { createServer } from "node:http";
 import wsPackage from "ws";
 
 const port = Number(process.env.WATCH_PARTY_PORT ?? 3001);
@@ -81,6 +82,21 @@ function serializeParticipants(room) {
     isMaster: client.id === room.masterParticipantId,
     state: client.state,
   }));
+}
+
+function serializeRoom(room) {
+  room.state = advanceRoomState(room.state);
+  return {
+    id: room.id,
+    masterParticipantId: room.masterParticipantId,
+    allowParticipantControls: room.allowParticipantControls,
+    allowParticipantSeeking: room.allowParticipantSeeking,
+    allowParticipantEpisodeSelection: room.allowParticipantEpisodeSelection,
+    allowParticipantTranslationSelection: room.allowParticipantTranslationSelection,
+    syncTranslations: room.syncTranslations,
+    state: room.state,
+    participants: serializeParticipants(room),
+  };
 }
 
 function send(ws, message) {
@@ -313,7 +329,21 @@ const stateSync = setInterval(() => {
   }
 }, stateSyncMs);
 
-const wss = new WebSocketServer({ port, path });
+const server = createServer((req, res) => {
+  if (req.method !== "GET" || req.url?.split("?")[0] !== "/watch-party-rooms") {
+    res.writeHead(404, { "Content-Type": "application/json; charset=utf-8" });
+    res.end(JSON.stringify({ error: "not_found" }));
+    return;
+  }
+
+  res.writeHead(200, {
+    "Content-Type": "application/json; charset=utf-8",
+    "Cache-Control": "no-store",
+  });
+  res.end(JSON.stringify({ rooms: [...rooms.values()].map(serializeRoom) }));
+});
+
+const wss = new WebSocketServer({ server, path });
 
 wss.on("connection", (ws) => {
   ws.isAlive = true;
@@ -341,4 +371,6 @@ wss.on("close", () => {
   clearInterval(stateSync);
 });
 
-console.log(`Watch party WebSocket server listening on ws://0.0.0.0:${port}${path}`);
+server.listen(port, () => {
+  console.log(`Watch party WebSocket server listening on ws://0.0.0.0:${port}${path}`);
+});

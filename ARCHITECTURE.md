@@ -83,6 +83,7 @@ Beta watch party
   → scripts/watch-party-server.mjs (in-memory rooms)
   → room commands: play/pause/seek/episode/translation/state-sync
   → server state-sync every 2s with room playback state
+  → /api/admin/watch-party/rooms → internal /watch-party-rooms (read-only admin overview)
 ```
 
 Комнаты совместного просмотра не сохраняются в БД: при рестарте WebSocket-процесса они исчезают.
