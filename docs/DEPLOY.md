@@ -126,6 +126,7 @@ extract tar
   → npm run build
   → chown .next → www-data
   → systemctl restart track-anime
+  → systemctl restart track-anime-watch-party (если service установлен)
   → install-kodik-sync-cron.sh
   → curl https://track-anime.dygdyg.ru/ (ожидается 200)
 ```
@@ -239,7 +240,7 @@ Server /tmp/ta_deploy.tar.gz
 /var/www/ta_new
   ├── npm ci + prisma
   ├── npm run build → .next/
-  └── systemctl restart track-anime
+  └── systemctl restart track-anime + track-anime-watch-party
         └── nginx → https://track-anime.dygdyg.ru/
 ```
 

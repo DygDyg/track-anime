@@ -359,7 +359,7 @@ cd E:\GitHub\ta_new
 npm run deploy
 ```
 
-Скрипт упаковывает исходники (`tar`), заливает на сервер (`scp`) и запускает `scripts/server-deploy.sh`: `npm ci` → Prisma → `npm run build` → restart. **Сборка выполняется на сервере** — отдельный WSL не нужен.
+Скрипт упаковывает исходники (`tar`), заливает на сервер (`scp`) и запускает `scripts/server-deploy.sh`: `npm ci` → Prisma → `npm run build` → restart `track-anime` и, если установлен, `track-anime-watch-party`. **Сборка выполняется на сервере** — отдельный WSL не нужен.
 
 Параметры и ручные команды — в [DEPLOY.md](./DEPLOY.md).
 

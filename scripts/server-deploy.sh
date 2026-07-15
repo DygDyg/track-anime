@@ -6,6 +6,7 @@ set -euo pipefail
 APP_DIR="${APP_DIR:-/var/www/ta_new}"
 SITE_URL="${SITE_URL:-https://track-anime.dygdyg.ru/}"
 SERVICE_NAME="${SERVICE_NAME:-track-anime}"
+WATCH_PARTY_SERVICE_NAME="${WATCH_PARTY_SERVICE_NAME:-track-anime-watch-party}"
 NPM_CI_TIMEOUT="${NPM_CI_TIMEOUT:-10m}"
 DEPLOY_PROGRESS_TOTAL=10
 
@@ -100,6 +101,12 @@ chown -R www-data:www-data "$APP_DIR/.next"
 
 deploy_progress 8 "restart $SERVICE_NAME"
 systemctl restart "$SERVICE_NAME"
+if systemctl cat "$WATCH_PARTY_SERVICE_NAME" >/dev/null 2>&1; then
+  echo "[deploy] restart $WATCH_PARTY_SERVICE_NAME"
+  systemctl restart "$WATCH_PARTY_SERVICE_NAME"
+else
+  echo "[deploy] $WATCH_PARTY_SERVICE_NAME service not installed; skip"
+fi
 sleep 3
 
 deploy_progress 9 "cron and notification bots"
@@ -111,6 +118,14 @@ if ! systemctl is-active --quiet "$SERVICE_NAME"; then
   echo "[deploy] ERROR: $SERVICE_NAME is not active" >&2
   systemctl status "$SERVICE_NAME" --no-pager || true
   exit 1
+fi
+
+if systemctl cat "$WATCH_PARTY_SERVICE_NAME" >/dev/null 2>&1; then
+  if ! systemctl is-active --quiet "$WATCH_PARTY_SERVICE_NAME"; then
+    echo "[deploy] ERROR: $WATCH_PARTY_SERVICE_NAME is not active" >&2
+    systemctl status "$WATCH_PARTY_SERVICE_NAME" --no-pager || true
+    exit 1
+  fi
 fi
 
 deploy_progress 10 "site check"
@@ -141,6 +156,11 @@ echo "  [OK] Prisma generate + db push"
 echo "  [OK] Cover cache setup"
 echo "  [OK] Next.js production build"
 echo "  [OK] Service $SERVICE_NAME: $SERVICE_ACTIVE ($SERVICE_SUBSTATE)"
+if systemctl cat "$WATCH_PARTY_SERVICE_NAME" >/dev/null 2>&1; then
+  WATCH_PARTY_SERVICE_SUBSTATE=$(systemctl show "$WATCH_PARTY_SERVICE_NAME" -p SubState --value 2>/dev/null || echo "unknown")
+  WATCH_PARTY_SERVICE_ACTIVE=$(systemctl show "$WATCH_PARTY_SERVICE_NAME" -p ActiveState --value 2>/dev/null || echo "unknown")
+  echo "  [OK] Service $WATCH_PARTY_SERVICE_NAME: $WATCH_PARTY_SERVICE_ACTIVE ($WATCH_PARTY_SERVICE_SUBSTATE)"
+fi
 echo "  [OK] Kodik sync cron"
 echo "  [OK] Telegram bot service"
 echo "  [OK] VK bot service"
