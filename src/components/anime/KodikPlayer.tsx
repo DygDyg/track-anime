@@ -54,6 +54,7 @@ export type KodikPlayerHandle = {
 
 const CONTINUE_HARD_TIMEOUT_MS = 15_000;
 const SEEK_BY_FLUSH_DELAY_MS = 120;
+const PLAY_AFTER_SEEK_DELAYS_MS = [120, 350, 900] as const;
 
 const DEFAULT_PLAYBACK_STATE: KodikPlayerPlaybackState = {
   isPlaying: false,
@@ -121,6 +122,14 @@ function clearContinueFlow(flow: ContinueFlow | null): void {
   for (const id of flow.timers) window.clearTimeout(id);
 }
 
+function sendPlayAfterSeek(iframe: HTMLIFrameElement): void {
+  for (const delay of PLAY_AFTER_SEEK_DELAYS_MS) {
+    window.setTimeout(() => {
+      sendKodikCommand(iframe, { method: "play" });
+    }, delay);
+  }
+}
+
 function applyInitialSeek(
   iframe: HTMLIFrameElement,
   resume: KodikPlayerResume,
@@ -173,7 +182,9 @@ function finishContinueSeek(
     sendKodikCommand(iframe, { method: "seek", seconds: flow.resume.positionSeconds });
   }
 
-  if (!flow.autoplay) {
+  if (flow.autoplay) {
+    sendPlayAfterSeek(iframe);
+  } else {
     window.setTimeout(() => {
       sendKodikCommand(iframe, { method: "pause" });
     }, 350);
@@ -464,10 +475,7 @@ export const KodikPlayer = forwardRef<KodikPlayerHandle, Props>(function KodikPl
       sendKodikCommand(iframeRef.current, { method: "seek", seconds: next });
 
       if (mode === "play") {
-        window.setTimeout(() => {
-          if (!iframeRef.current) return;
-          sendKodikCommand(iframeRef.current, { method: "play" });
-        }, 80);
+        sendPlayAfterSeek(iframeRef.current);
         return;
       }
 
