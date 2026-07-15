@@ -86,6 +86,7 @@ const EPISODE_END_DEBOUNCE_MS = 6_000;
 const WATCH_PARTY_EPISODE_TRANSITION_WINDOW_MS = 12_000;
 const WATCH_PARTY_STATE_SYNC_INTERVAL_MS = 2_000;
 const WATCH_PARTY_PAUSE_RESYNC_DELAY_MS = 350;
+const WATCH_PARTY_PLAY_RESYNC_DELAYS_MS = [120, 350, 900, 1_600, 2_600] as const;
 
 const DEFAULT_PLAYBACK_STATE: KodikPlayerPlaybackState = {
   isPlaying: false,
@@ -398,6 +399,17 @@ export function AnimeWatchPanel({
   const watchPartyEpisodeTransitionRef = useRef<WatchPartyEpisodeTransition | null>(null);
   const handledEpisodeEndRef = useRef<WatchPartyEpisodeTransition | null>(null);
   const sendWatchPartyPlaybackEventRef = useRef<(isPlaying: boolean) => void>(() => {});
+
+  const scheduleWatchPartyPlayResync = useCallback(() => {
+    if (!watchPartyRoomActiveRef.current) return;
+
+    for (const delay of WATCH_PARTY_PLAY_RESYNC_DELAYS_MS) {
+      window.setTimeout(() => {
+        if (!watchPartyRoomActiveRef.current || isPausedRef.current) return;
+        playerRef.current?.play();
+      }, delay);
+    }
+  }, []);
 
   const allowWatchPartyEpisodeTransition = useCallback(
     (resume: Pick<KodikPlayerResume, "seasonNumber" | "episodeNumber">) => {
@@ -856,6 +868,9 @@ export function AnimeWatchPanel({
       pendingWatchPartySyncRef.current = null;
       pendingContinueRef.current = null;
       playerRef.current?.syncToPosition(resume.positionSeconds, mode);
+      if (mode === "play") {
+        scheduleWatchPartyPlayResync();
+      }
       window.setTimeout(() => {
         suppressContinueOverlayRef.current = false;
         setWatchPartySyncing(false);
@@ -1038,6 +1053,9 @@ export function AnimeWatchPanel({
       } else {
         if (!episodeChanged) {
           playerRef.current.syncToPosition(resume.positionSeconds, mode);
+          if (mode === "play") {
+            scheduleWatchPartyPlayResync();
+          }
           window.setTimeout(() => {
             suppressContinueOverlayRef.current = false;
             setWatchPartySyncing(false);
@@ -1076,10 +1094,13 @@ export function AnimeWatchPanel({
         return;
       }
 
-      if (state.isPlaying && !playback.isPlaying) playerRef.current?.play();
+      if (state.isPlaying) {
+        playerRef.current?.play();
+        scheduleWatchPartyPlayResync();
+      }
       if (!state.isPlaying && playback.isPlaying) playerRef.current?.pause();
     },
-    [applyWatchPartyState, playback.isPlaying, watchPartyStateToResume],
+    [applyWatchPartyState, playback.isPlaying, scheduleWatchPartyPlayResync, watchPartyStateToResume],
   );
   const handleWatchPartyCommand = useCallback(
     (command: WatchPartyCommand) => {
@@ -1863,7 +1884,14 @@ export function AnimeWatchPanel({
     setWatchPartyPlaybackUnlocked(true);
     const nextPlaying = !playback.isPlaying;
     suppressNextPlaybackBroadcastRef.current = true;
-    playerRef.current?.togglePlay();
+    if (nextPlaying) {
+      isPausedRef.current = false;
+      playerRef.current?.play();
+      scheduleWatchPartyPlayResync();
+    } else {
+      isPausedRef.current = true;
+      playerRef.current?.pause();
+    }
     if (!applyingWatchPartyCommandRef.current) {
       const commandType = nextPlaying ? "play" : "pause";
       watchParty.sendCommand(commandType, makeWatchPartyState({ isPlaying: nextPlaying }));
@@ -1876,7 +1904,7 @@ export function AnimeWatchPanel({
     window.setTimeout(() => {
       suppressNextPlaybackBroadcastRef.current = false;
     }, 1_500);
-  }, [makeWatchPartyState, playback.isPlaying, watchParty]);
+  }, [makeWatchPartyState, playback.isPlaying, scheduleWatchPartyPlayResync, watchParty]);
 
   const handleRoomSeek = useCallback(
     (seconds: number) => {
