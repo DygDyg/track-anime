@@ -1810,14 +1810,17 @@ export function AnimeWatchPanel({
 
   useEffect(() => {
     handleWatchPartyEndGuardRef.current = (progress) => {
-      if (!watchParty.isConnected) return;
-      handleRoomPlayerEnded(progress);
+      if (watchParty.isConnected) {
+        handleRoomPlayerEnded(progress);
+        return;
+      }
+      handlePlayerEnded(progress);
     };
 
     return () => {
       handleWatchPartyEndGuardRef.current = () => {};
     };
-  }, [handleRoomPlayerEnded, watchParty.isConnected]);
+  }, [handlePlayerEnded, handleRoomPlayerEnded, watchParty.isConnected]);
 
   const handleRoomSkipTime = useCallback(
     (skipTime: DisplaySkipTimeDto) => {
