@@ -55,6 +55,7 @@ function mapMaterialToReleaseItem(
     all_genres?: unknown;
     genres?: unknown;
     anime_status?: string;
+    anime_kind?: string;
     screenshots?: unknown;
   };
 
@@ -76,6 +77,7 @@ function mapMaterialToReleaseItem(
     genres: parseGenres(data?.anime_genres ?? data?.all_genres ?? data?.genres),
     status: data?.anime_status?.trim() || null,
     score: extractScoreFromMaterialData(material.materialData),
+    kind: data?.anime_kind?.trim() || null,
   };
 }
 

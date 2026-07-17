@@ -20,6 +20,7 @@ export type ReleaseItem = {
   genres: string[];
   status: string | null;
   score: string | null;
+  kind: string | null;
 };
 
 /** Для передачи на клиент / в JSON */
@@ -69,6 +70,7 @@ function mapReleaseRow(row: RawReleaseRow): ReleaseItem {
     genres: parseGenres(row.genres),
     status: row.status,
     score: row.score,
+    kind: row.kind,
   };
 }
 
@@ -115,11 +117,14 @@ type RawReleaseRow = {
   genres: unknown;
   status: string | null;
   score: string | null;
+  kind: string | null;
 };
 
 const CATALOG_QUERY_BATCH_FACTOR = 4;
 const CATALOG_QUERY_MIN_BATCH = 96;
 const CATALOG_QUERY_MAX_BATCHES = 8;
+export const RELEASES_FEED_CACHE_SECONDS = 60 * 60;
+export const RELEASES_FEED_STALE_WHILE_REVALIDATE_SECONDS = 10 * 60;
 
 /** title_key тайтлов, у которых есть KodikEpisodeRelease (для исключения из каталога) */
 function releaseTitleKeysCte() {
@@ -165,6 +170,7 @@ async function queryFreshReleasesPerTitle(
         genres,
         status,
         score,
+        kind,
         "animeScreenshots",
         "episodeScreenshots"
       FROM (
@@ -203,6 +209,10 @@ async function queryFreshReleasesPerTitle(
             m."materialData"->>'shikimori_rating',
             m."materialData"->>'shikimori_score'
           )), '') AS score,
+          NULLIF(TRIM(COALESCE(
+            m."materialData"->>'anime_kind',
+            m."materialData"->'anime_full'->>'kind'
+          )), '') AS kind,
           m."materialData"->'screenshots' AS "animeScreenshots",
           e."screenshots" AS "episodeScreenshots"
         FROM "KodikEpisodeRelease" r
@@ -311,6 +321,10 @@ async function queryCatalogReleaseCandidates(
           m."materialData"->>'shikimori_rating',
           m."materialData"->>'shikimori_score'
         )), '') AS score,
+        NULLIF(TRIM(COALESCE(
+          m."materialData"->>'anime_kind',
+          m."materialData"->'anime_full'->>'kind'
+        )), '') AS kind,
         m."materialData"->'screenshots' AS "animeScreenshots",
         e."screenshots" AS "episodeScreenshots"
       FROM "KodikMaterial" m
@@ -478,7 +492,7 @@ export async function getRecentReleasesPage(pageSize: number, cursor?: ReleasesC
   return unstable_cache(
     async () => getRecentReleasesPageUncached(pageSize, cursor ?? null),
     ["recent-releases-page", String(pageSize), cacheKey],
-    { revalidate: 300, tags: ["releases"] },
+    { revalidate: RELEASES_FEED_CACHE_SECONDS, tags: ["releases"] },
   )();
 }
 

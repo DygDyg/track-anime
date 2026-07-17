@@ -7,6 +7,7 @@ type Option = {
   value: string;
   label: string;
   badgeClass: string | null;
+  description?: string | null;
 };
 
 type Props = {
@@ -74,6 +75,9 @@ export function SearchColoredSelect({ label, value, options, onChange }: Props) 
           />
         </svg>
       </button>
+      {selected.description ? (
+        <p className="mt-1.5 text-xs leading-relaxed text-muted">{selected.description}</p>
+      ) : null}
 
       {open ? (
         <ul
@@ -96,11 +100,14 @@ export function SearchColoredSelect({ label, value, options, onChange }: Props) 
                     setOpen(false);
                   }}
                   className={[
-                    "flex w-full items-center px-3 py-2 text-left transition",
+                    "!flex w-full flex-col items-start gap-1 px-3 py-2 text-left transition",
                     active ? siteClass.dropdownOptionActive : siteClass.dropdownOption,
                   ].join(" ")}
                 >
                   <OptionBadge label={option.label} badgeClass={option.badgeClass} />
+                  {option.description ? (
+                    <span className="text-xs leading-relaxed text-muted">{option.description}</span>
+                  ) : null}
                 </button>
               </li>
             );

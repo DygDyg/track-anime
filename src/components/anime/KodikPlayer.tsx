@@ -13,6 +13,10 @@ import {
   sendKodikCommand,
   type KodikCurrentEpisode,
 } from "@/lib/kodik-player-api";
+import {
+  readKodikPlayerVolumePreferences,
+  writeKodikPlayerVolumePreferences,
+} from "@/lib/kodik-player-volume-preferences";
 import { toKodikPlayerEmbedUrl } from "@/lib/player-url";
 
 export type KodikPlayerResume = {
@@ -54,6 +58,7 @@ export type KodikPlayerHandle = {
 
 const CONTINUE_HARD_TIMEOUT_MS = 15_000;
 const SEEK_BY_FLUSH_DELAY_MS = 120;
+const INITIAL_STATE_REQUEST_DELAYS_MS = [0, 250, 750, 1500] as const;
 
 const DEFAULT_PLAYBACK_STATE: KodikPlayerPlaybackState = {
   isPlaying: false,
@@ -113,6 +118,13 @@ function episodeMatches(resume: KodikPlayerResume, current: EpisodeState): boole
 function clearContinueFlow(flow: ContinueFlow | null): void {
   if (!flow) return;
   for (const id of flow.timers) window.clearTimeout(id);
+}
+
+function savePlaybackVolume(state: KodikPlayerPlaybackState): void {
+  writeKodikPlayerVolumePreferences({
+    volume: state.volume,
+    muted: state.muted,
+  });
 }
 
 function applyInitialSeek(
@@ -295,6 +307,7 @@ export const KodikPlayer = forwardRef<KodikPlayerHandle, Props>(function KodikPl
   const continueFlowRef = useRef<ContinueFlow | null>(null);
   const bufferedSeekTargetRef = useRef<number | null>(null);
   const bufferedSeekTimerRef = useRef<number | null>(null);
+  const stateRequestTimersRef = useRef<number[]>([]);
   const onProgressRef = useRef(onProgress);
   const onPauseRef = useRef(onPause);
   const onTranslationChangeRef = useRef(onTranslationChange);
@@ -318,6 +331,33 @@ export const KodikPlayer = forwardRef<KodikPlayerHandle, Props>(function KodikPl
       bufferedSeekTimerRef.current = null;
     }
     bufferedSeekTargetRef.current = null;
+  };
+
+  const clearStateRequestTimers = () => {
+    for (const id of stateRequestTimersRef.current) window.clearTimeout(id);
+    stateRequestTimersRef.current = [];
+  };
+
+  const hydratePlaybackVolumeFromStorage = () => {
+    const preferences = readKodikPlayerVolumePreferences();
+    if (!preferences) return;
+
+    playbackRef.current = {
+      ...playbackRef.current,
+      volume: preferences.volume,
+      muted: preferences.muted,
+    };
+    emitPlaybackState();
+  };
+
+  const requestInitialPlayerState = () => {
+    clearStateRequestTimers();
+    stateRequestTimersRef.current = INITIAL_STATE_REQUEST_DELAYS_MS.map((delay) =>
+      window.setTimeout(() => {
+        if (!iframeRef.current) return;
+        sendKodikCommand(iframeRef.current, { method: "get_time" });
+      }, delay),
+    );
   };
 
   const flushBufferedSeek = () => {
@@ -367,6 +407,7 @@ export const KodikPlayer = forwardRef<KodikPlayerHandle, Props>(function KodikPl
   const markPlayerReady = () => {
     if (playerReadyRef.current) return;
     playerReadyRef.current = true;
+    requestInitialPlayerState();
     onReadyRef.current?.();
   };
 
@@ -377,10 +418,12 @@ export const KodikPlayer = forwardRef<KodikPlayerHandle, Props>(function KodikPl
     positionRef.current = 0;
     playbackRef.current = { ...DEFAULT_PLAYBACK_STATE };
     emitPlaybackState();
+    hydratePlaybackVolumeFromStorage();
     translationIdRef.current = null;
     clearContinueFlow(continueFlowRef.current);
     continueFlowRef.current = null;
     clearBufferedSeek();
+    clearStateRequestTimers();
     onContinueStateChangeRef.current?.(false);
   }, [src]);
 
@@ -462,17 +505,30 @@ export const KodikPlayer = forwardRef<KodikPlayerHandle, Props>(function KodikPl
     },
     setVolume(volume: number) {
       if (!iframeRef.current || !Number.isFinite(volume)) return;
+      const nextVolume = Math.min(1, Math.max(0, volume));
+      const nextPlayback = { ...playbackRef.current, volume: nextVolume };
+      playbackRef.current = nextPlayback;
+      emitPlaybackState();
+      savePlaybackVolume(nextPlayback);
       sendKodikCommand(iframeRef.current, {
         method: "volume",
-        volume: Math.min(1, Math.max(0, volume)),
+        volume: nextVolume,
       });
     },
     mute() {
       if (!iframeRef.current) return;
+      const nextPlayback = { ...playbackRef.current, muted: true };
+      playbackRef.current = nextPlayback;
+      emitPlaybackState();
+      savePlaybackVolume(nextPlayback);
       sendKodikCommand(iframeRef.current, { method: "mute" });
     },
     unmute() {
       if (!iframeRef.current) return;
+      const nextPlayback = { ...playbackRef.current, muted: false };
+      playbackRef.current = nextPlayback;
+      emitPlaybackState();
+      savePlaybackVolume(nextPlayback);
       sendKodikCommand(iframeRef.current, { method: "unmute" });
     },
     abortContinue() {
@@ -534,6 +590,11 @@ export const KodikPlayer = forwardRef<KodikPlayerHandle, Props>(function KodikPl
         });
       }
 
+      if (event.data.key === "kodik_player_time" && typeof event.data.value === "number") {
+        positionRef.current = event.data.value;
+        patchPlayback({ positionSeconds: event.data.value });
+      }
+
       if (event.data.key === "kodik_player_play") {
         patchPlayback({ isPlaying: true });
       }
@@ -544,10 +605,14 @@ export const KodikPlayer = forwardRef<KodikPlayerHandle, Props>(function KodikPl
 
       if (event.data.key === "kodik_player_volume_change" && event.data.value) {
         const value = event.data.value as { muted?: boolean; volume?: number };
-        patchPlayback({
+        const nextPlayback = {
+          ...playbackRef.current,
           muted: value.muted === true,
           volume: typeof value.volume === "number" ? value.volume : playbackRef.current.volume,
-        });
+        };
+        playbackRef.current = nextPlayback;
+        emitPlaybackState();
+        savePlaybackVolume(nextPlayback);
       }
 
       if (event.data.key === "kodik_player_pause") {
@@ -571,6 +636,7 @@ export const KodikPlayer = forwardRef<KodikPlayerHandle, Props>(function KodikPl
       clearContinueFlow(continueFlowRef.current);
       continueFlowRef.current = null;
       clearBufferedSeek();
+      clearStateRequestTimers();
       onContinueStateChangeRef.current?.(false);
     };
   }, [initialResume, src]);

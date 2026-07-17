@@ -1,7 +1,9 @@
 import type { AnimePageDto } from "@/lib/anime-page";
+import { AnimeKindInfoLink } from "@/components/AnimeKindInfoLink";
 import { AnimeStudioLogos } from "@/components/anime/AnimeStudioLogos";
 import {
   formatDurationRu,
+  labelKind,
 } from "@/lib/anime-labels";
 import { GenreInfoLink } from "@/components/GenreInfoLink";
 
@@ -35,9 +37,20 @@ function GenreValue({ genres }: { genres: AnimePageDto["genres"] }) {
 
 export function AnimeMetadataList({ anime }: { anime: AnimePageDto }) {
   const durationValue = formatDurationRu(anime.duration);
+  const kindLabel = labelKind(anime.kind);
 
   return (
     <div className="mt-4 space-y-1">
+      <MetadataRow
+        label="Тип"
+        value={
+          anime.kind && kindLabel ? (
+            <AnimeKindInfoLink kind={anime.kind} className="transition hover:underline">
+              {kindLabel}
+            </AnimeKindInfoLink>
+          ) : null
+        }
+      />
       <MetadataRow label="Длительность" value={durationValue} />
       {anime.studios.length > 0 ? (
         <div className="text-sm leading-relaxed">

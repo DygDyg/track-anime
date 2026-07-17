@@ -3,6 +3,7 @@ import { AdvancedSearchForm } from "@/components/search/AdvancedSearchForm";
 import { QuickSearchForm } from "@/components/search/QuickSearchForm";
 import { SearchResultsInfiniteGrid } from "@/components/search/SearchResultsInfiniteGrid";
 import { siteClass } from "@/components/site/site-styles";
+import { homeFeedGutterX } from "@/lib/home-feed-layout";
 import {
   advancedFiltersSummary,
   hasAdvancedFilters,
@@ -62,7 +63,7 @@ export function SearchResultsView({ result }: Props) {
       : Boolean(result.query || parseGenreList(result.genre).length > 0);
 
   return (
-    <div className="mx-auto max-w-6xl px-4 py-6 sm:px-6 sm:py-10">
+    <div className={`${homeFeedGutterX} py-6 sm:py-10`}>
       <div className="mb-6 space-y-2">
         <p className={siteClass.pageEyebrow}>Track Anime</p>
         <h1 className={siteClass.pageTitle}>{title}</h1>

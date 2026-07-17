@@ -20,6 +20,7 @@ import { PwaProvider } from "@/components/PwaProvider";
 import { InAppNotificationsListener } from "@/components/InAppNotificationsListener";
 import { RecentAnimeOpensSync } from "@/components/anime/RecentAnimeOpensSync";
 import { NotificationUiLayer } from "@/components/NotificationUiLayer";
+import { ScrollToTopButton } from "@/components/ScrollToTopButton";
 import { TvNavigationProvider } from "@/components/TvNavigationProvider";
 import { PWA_THEME_COLOR } from "@/app/manifest";
 import { buildDefaultOpenGraph, defaultSiteDescription } from "@/lib/site-metadata";
@@ -127,6 +128,7 @@ export default async function RootLayout({ children }: { children: React.ReactNo
                     <Header logoSrc={brand.logoSrc} />
                     <DiscordSitePresence />
                     <main className="relative z-10">{children}</main>
+                    <ScrollToTopButton />
                     <SiteSettingsModal />
                     <PwaBottomNav />
                   </NavigationProgressProvider>

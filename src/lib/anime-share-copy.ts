@@ -5,7 +5,7 @@ import {
   labelRating,
   labelStatus,
 } from "@/lib/anime-labels";
-import { preferOriginalShikimoriImageUrl } from "@/lib/poster";
+import { coverCacheUrl } from "@/lib/poster";
 import { stripShikimoriBbcode } from "@/lib/shikimori-bbcode";
 import { shikimoriSiteUrl } from "@/lib/shikimori/endpoints";
 
@@ -93,8 +93,8 @@ function plainDescription(anime: AnimePageDto): string {
   return stripShikimoriBbcode(anime.description);
 }
 
-function sharePosterUrl(anime: AnimePageDto): string | null {
-  return preferOriginalShikimoriImageUrl(anime.posterUrl) ?? anime.posterUrl;
+function sharePosterUrl(anime: AnimePageDto, origin: string): string {
+  return absoluteUrl(origin, coverCacheUrl(anime.shikimoriId, "full"));
 }
 
 function truncateShareDescription(text: string, maxLen = VK_DESCRIPTION_MAX_LEN): string {
@@ -188,7 +188,7 @@ export function buildDiscordShareText(anime: AnimePageDto, origin: string): stri
   const pageUrl = getAnimePageUrl(origin, anime.shikimoriId);
   const shikimoriUrl = anime.shikimoriUrl ?? shikimoriSiteUrl(`/animes/${anime.shikimoriId}`);
   const relativeTime = discordRelativeTime(anime);
-  const posterUrl = sharePosterUrl(anime);
+  const posterUrl = sharePosterUrl(anime, origin);
 
   return `
 ~~                                                                                                                                                                                          ~~
@@ -216,7 +216,7 @@ export function buildTelegramShareText(anime: AnimePageDto, origin: string): str
   const pageUrl = getAnimePageUrl(origin, anime.shikimoriId);
   const shikimoriUrl = anime.shikimoriUrl ?? shikimoriSiteUrl(`/animes/${anime.shikimoriId}`);
   const description = plainDescription(anime);
-  const posterUrl = sharePosterUrl(anime);
+  const posterUrl = sharePosterUrl(anime, origin);
 
   return `
 
@@ -246,7 +246,7 @@ export function buildVkShareText(anime: AnimePageDto, origin: string): string {
   const shikimoriUrl = anime.shikimoriUrl ?? shikimoriSiteUrl(`/animes/${anime.shikimoriId}`);
   const description = plainDescription(anime);
   const hashtags = vkHashtags(anime);
-  const posterUrl = sharePosterUrl(anime);
+  const posterUrl = sharePosterUrl(anime, origin);
 
   const lines: string[] = [];
 
@@ -270,7 +270,7 @@ export function buildVkShareText(anime: AnimePageDto, origin: string): string {
 }
 
 export function buildVkShareUrl(anime: AnimePageDto, origin: string): string {
-  const posterUrl = sharePosterUrl(anime);
+  const posterUrl = sharePosterUrl(anime, origin);
   const url = new URL("https://vk.com/share.php");
   url.searchParams.set("url", getAnimePageUrl(origin, anime.shikimoriId));
   url.searchParams.set(

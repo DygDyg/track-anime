@@ -4,6 +4,7 @@ import Link from "next/link";
 import { useRouter, useSearchParams } from "next/navigation";
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, useTransition } from "react";
 import { AnimeCardHoverShell } from "@/components/AnimeCardHoverShell";
+import { AnimeKindCornerBadge } from "@/components/AnimeKindCornerBadge";
 import { AnimeLink } from "@/components/AnimeLink";
 import { AnimePoster } from "@/components/AnimePoster";
 import { AnimeScoreBadge } from "@/components/AnimeScoreBadge";
@@ -202,6 +203,7 @@ function FavoriteAnimeCard({
           score={item.userScore ?? item.score}
           className="absolute right-1 top-1 md:right-1.5 md:top-1.5"
         />
+        <AnimeKindCornerBadge kind={item.kind} className="absolute bottom-0 left-0 z-10" />
       </div>
 
       <div className="flex min-w-0 flex-1 flex-col justify-center gap-1 py-0.5 md:justify-start md:gap-0 md:p-3">

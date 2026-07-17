@@ -32,6 +32,7 @@ export type CalendarItem = {
   dayOfWeek: number;
   status: string | null;
   score: string | null;
+  kind: string | null;
   /** Для анонсов: false, если дата премьеры ещё неизвестна */
   hasScheduleDate?: boolean;
 };
@@ -90,6 +91,7 @@ type RawCalendarRow = {
   dayOfWeek: number;
   status: string | null;
   score: string | null;
+  kind: string | null;
 };
 
 function stripHtml(text: string): string {
@@ -143,6 +145,7 @@ function mapCalendarRow(row: RawCalendarRow): CalendarItem {
     dayOfWeek: row.dayOfWeek,
     status: row.status ?? "ongoing",
     score: row.score,
+    kind: row.kind,
   };
 }
 
@@ -162,6 +165,7 @@ export function calendarItemToReleaseDto(item: CalendarItemDto): ReleaseItemDto 
     genres: item.genres,
     status: item.status,
     score: item.score,
+    kind: item.kind,
   };
 }
 
@@ -386,6 +390,7 @@ export async function getShikimoriOngoingCalendarItems(): Promise<CalendarItem[]
         dayOfWeek: getMoscowDayOfWeek(scheduleAt),
         status: entry.anime.status,
         score: entry.anime.score,
+        kind: entry.anime.kind ?? null,
       };
     })
     .filter((item): item is CalendarItem => item != null)
@@ -408,7 +413,11 @@ export async function getOngoingCalendarItems(): Promise<CalendarItem[]> {
         NULLIF(TRIM(COALESCE(
           m."materialData"->>'shikimori_rating',
           m."materialData"->>'shikimori_score'
-        )), '') AS score
+        )), '') AS score,
+        NULLIF(TRIM(COALESCE(
+          m."materialData"->>'anime_kind',
+          m."materialData"->'anime_full'->>'kind'
+        )), '') AS kind
       FROM "KodikMaterial" m
       WHERE m."shikimoriId" IS NOT NULL
         AND m."materialData"->>'anime_status' = 'ongoing'
@@ -470,6 +479,7 @@ export async function getOngoingCalendarItems(): Promise<CalendarItem[]> {
         mm.description,
         mm.genres,
         om.score,
+        om.kind,
         om."nextEpisodeAt" AS "scheduleAt",
         'next_episode'::text AS "scheduleSource",
         'ongoing'::text AS status
@@ -498,6 +508,7 @@ export async function getOngoingCalendarItems(): Promise<CalendarItem[]> {
       cr."scheduleSource",
       cr.status,
       cr.score,
+      cr.kind,
       EXTRACT(ISODOW FROM cr."scheduleAt" AT TIME ZONE 'Europe/Moscow')::int AS "dayOfWeek",
       mat."animeScreenshots",
       ep."episodeScreenshots"
@@ -543,6 +554,7 @@ export async function getAnonsCalendarItems(): Promise<CalendarItem[]> {
       playerLink: string | null;
       translationName: string | null;
       nextEpisode: number | null;
+      kind: string | null;
     }[]
   >`
     WITH anons_entries AS (
@@ -553,6 +565,7 @@ export async function getAnonsCalendarItems(): Promise<CalendarItem[]> {
         e."scheduleAt",
         e."scheduleSource",
         e.score,
+        e.kind,
         e."nextEpisode"
       FROM "ShikimoriAnonsEntry" e
       WHERE e.kind IN (${Prisma.join(SHIKIMORI_FULL_ANIME_KINDS)})
@@ -584,6 +597,7 @@ export async function getAnonsCalendarItems(): Promise<CalendarItem[]> {
       ae."scheduleAt",
       ae."scheduleSource",
       ae.score,
+      ae.kind,
       km."playerLink",
       km."translationName",
       ae."nextEpisode"
@@ -618,6 +632,7 @@ export async function getAnonsCalendarItems(): Promise<CalendarItem[]> {
       dayOfWeek: 0,
       status: "anons",
       score: row.score,
+      kind: row.kind,
       hasScheduleDate: scheduleAt != null,
     };
   });

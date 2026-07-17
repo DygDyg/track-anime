@@ -1,6 +1,7 @@
 "use client";
 
 import { AnimeCardHoverShell } from "@/components/AnimeCardHoverShell";
+import { AnimeKindCornerBadge } from "@/components/AnimeKindCornerBadge";
 import { AnimeLink } from "@/components/AnimeLink";
 import { AnimePoster } from "@/components/AnimePoster";
 import { AnimeScoreBadge } from "@/components/AnimeScoreBadge";
@@ -132,6 +133,7 @@ export function ReleaseCard({
               score={release.score}
               className="absolute right-1 top-1 z-20 md:right-1.5 md:top-1.5"
             />
+            <AnimeKindCornerBadge kind={release.kind} className="absolute bottom-0 left-0 z-20" />
             <div className="pointer-events-none absolute bottom-0 right-0 z-20">
               <EpisodeNumberBadge episode={release.episodeNumber} status={release.status} />
             </div>

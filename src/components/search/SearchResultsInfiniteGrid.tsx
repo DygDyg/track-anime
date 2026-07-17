@@ -144,7 +144,7 @@ export function SearchResultsInfiniteGrid({
         {total > 0 ? ` из ${total.toLocaleString("ru-RU")}` : null}
       </p>
 
-      <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 xl:grid-cols-6">
+      <div className="search-results-grid flex flex-col gap-3">
         {items.map((item) => (
           <SearchResultCard key={item.shikimoriId} item={item} />
         ))}

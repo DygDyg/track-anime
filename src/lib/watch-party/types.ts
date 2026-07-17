@@ -47,6 +47,7 @@ export type WatchPartyClientMessage =
   | { type: "leave" }
   | ({ type: "set-permissions" } & WatchPartyRoomPermissions)
   | { type: "presence"; state: WatchPartyPlaybackState }
+  | { type: "request-sync" }
   | WatchPartyCommand;
 
 export type WatchPartyServerMessage =

@@ -14,6 +14,7 @@ export type HoverPanelRelease = {
   playerLink: string | null;
   description: string | null;
   genres: string[];
+  kind: string | null;
   status: string | null;
   score: string | null;
   /** Для каталожных карточек без номера серии */
@@ -27,6 +28,7 @@ function catalogHoverRelease(input: {
   animeTitle: string;
   posterUrl: string | null;
   screenshotUrl?: string | null;
+  kind?: string | null;
   status?: string | null;
   score?: string | null;
   catalogEpisodes?: number | null;
@@ -41,6 +43,7 @@ function catalogHoverRelease(input: {
     shikimoriId: input.shikimoriId,
     description: null,
     genres: [],
+    kind: input.kind ?? null,
     status: input.status ?? null,
     score: input.score ?? null,
     catalogEpisodes: input.catalogEpisodes ?? null,
@@ -53,6 +56,7 @@ export function searchResultToHoverRelease(item: SearchResultDto): HoverPanelRel
     animeTitle: item.title,
     posterUrl: item.posterUrl,
     screenshotUrl: item.screenshotUrl,
+    kind: item.kind,
     status: item.status,
     score: item.score,
     catalogEpisodes: item.episodes,
@@ -64,6 +68,7 @@ export function favoriteToHoverRelease(item: FavoriteAnimeItem): HoverPanelRelea
     shikimoriId: item.shikimoriId,
     animeTitle: item.title,
     posterUrl: item.posterUrl,
+    kind: item.kind,
     status: item.status,
     score: item.userScore?.toString() ?? item.score,
     catalogEpisodes: item.episodes,
@@ -76,6 +81,7 @@ export function relatedToHoverRelease(item: RelatedAnimeDto): HoverPanelRelease 
     animeTitle: item.title,
     posterUrl: item.posterUrl,
     screenshotUrl: item.screenshotUrl,
+    kind: item.kind,
     status: item.status,
     score: item.score,
     catalogEpisodes: item.episodes,

@@ -21,7 +21,8 @@ export type KodikPlayerCommand =
   | { method: "change_episode"; season?: number; episode: number }
   | { method: "volume"; volume: number }
   | { method: "mute" }
-  | { method: "unmute" };
+  | { method: "unmute" }
+  | { method: "get_time" };
 
 export function isKodikPlayerMessage(data: unknown): data is KodikPlayerEvent {
   if (!data || typeof data !== "object") return false;

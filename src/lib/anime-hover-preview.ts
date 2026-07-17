@@ -21,6 +21,7 @@ export async function buildAnimeHoverPreview(shikimoriId: number): Promise<Hover
     playerLink: null,
     description: anime.description,
     genres: anime.genres?.map((genre) => genre.russian?.trim() || genre.name) ?? [],
+    kind: anime.kind ?? null,
     status: anime.status,
     score: anime.score,
     catalogEpisodes: anime.episodes,

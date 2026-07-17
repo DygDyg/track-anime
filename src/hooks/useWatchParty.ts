@@ -102,6 +102,15 @@ function clearWatchRoomFromLocation(): void {
   window.history.replaceState(window.history.state, "", url.toString());
 }
 
+function setWatchRoomInLocation(roomId: string): void {
+  if (typeof window === "undefined") return;
+  const url = new URL(window.location.href);
+  if (url.searchParams.get("watchRoom") === roomId && url.hash === "#player") return;
+  url.searchParams.set("watchRoom", roomId);
+  url.hash = "player";
+  window.history.replaceState(window.history.state, "", url.toString());
+}
+
 function buildInviteUrl(roomId: string | null): string {
   if (typeof window === "undefined" || !roomId) return "";
   const url = new URL(window.location.href);
@@ -298,6 +307,8 @@ export function useWatchParty({
         if (parsed.type === "room-state") {
           setStatus("connected");
           setRoomId(parsed.roomId);
+          setUrlRoomId(parsed.roomId);
+          setWatchRoomInLocation(parsed.roomId);
           setParticipantId(parsed.participantId);
           setMasterParticipantId(parsed.masterParticipantId);
           setAllowParticipantControlsState(parsed.allowParticipantControls);
@@ -427,6 +438,11 @@ export function useWatchParty({
     [isConnected, send],
   );
 
+  const requestSync = useCallback(() => {
+    if (!isConnected) return false;
+    return send({ type: "request-sync" });
+  }, [isConnected, send]);
+
   useEffect(() => disconnect, [disconnect]);
 
   return {
@@ -459,5 +475,6 @@ export function useWatchParty({
     setRoomPermissions,
     sendCommand,
     sendPresence,
+    requestSync,
   };
 }

@@ -271,6 +271,7 @@ export function KodikPlayerBetaControls({
   const dragLatestPositionRef = useRef(position);
   const displayedPosition = dragPosition ?? position;
   const progressReady = duration > 0;
+  const volumeDisabled = disabled || !progressReady;
   const progressMax = duration > 0 ? duration : Math.max(position, 1);
   const volumeLow = !playback.muted && playback.volume < 0.5;
   const progressPercent = (displayedPosition / progressMax) * 100;
@@ -335,6 +336,7 @@ export function KodikPlayerBetaControls({
   const handleVolumeWheel = (event: ReactWheelEvent<HTMLInputElement>) => {
     event.preventDefault();
     event.stopPropagation();
+    if (volumeDisabled) return;
     const delta = wheelDirection(event);
     if (delta === 0) return;
     const next = volumeValue + (delta < 0 ? 0.05 : -0.05);
@@ -343,6 +345,7 @@ export function KodikPlayerBetaControls({
   const handleVolumeGroupWheel = (event: ReactWheelEvent<HTMLDivElement>) => {
     event.preventDefault();
     event.stopPropagation();
+    if (volumeDisabled) return;
     const delta = wheelDirection(event);
     if (delta === 0) return;
     const next = volumeValue + (delta < 0 ? 0.05 : -0.05);
@@ -352,7 +355,7 @@ export function KodikPlayerBetaControls({
   return (
     <div
       className={[
-        "kodik-player-beta-controls relative px-2 py-1.5 text-white sm:px-3",
+        "kodik-player-beta-controls pointer-events-auto relative px-2 py-1.5 text-white sm:px-3",
         overlay
           ? "kodik-player-beta-controls--overlay rounded-none border-0 pb-2"
           : "rounded-b-lg border border-t-0 border-border bg-[#0f0f0f]",
@@ -459,7 +462,7 @@ export function KodikPlayerBetaControls({
           >
             <ControlButton
               label={playback.muted ? "Включить звук" : "Выключить звук"}
-              disabled={disabled}
+              disabled={volumeDisabled}
               onClick={onMuteToggle}
             >
               <IconVolume muted={playback.muted} low={volumeLow} />
@@ -470,7 +473,7 @@ export function KodikPlayerBetaControls({
               max={1}
               step={0.05}
               value={volumeValue}
-              disabled={disabled}
+              disabled={volumeDisabled}
               aria-label="Громкость"
               onChange={(event) => onVolumeChange(Number(event.target.value))}
               onWheel={handleVolumeWheel}

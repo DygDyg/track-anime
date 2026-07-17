@@ -268,7 +268,20 @@ function handleMessage(ws, raw) {
     const incomingState = normalizeState(message.state);
     if (!incomingState || incomingState.shikimoriId !== room.state.shikimoriId) return;
     client.state = incomingState;
+    if (client.id === room.masterParticipantId) {
+      room.state = incomingState;
+    }
     broadcastRoomState(room);
+    return;
+  }
+
+  if (message.type === "request-sync") {
+    room.state = advanceRoomState(room.state);
+    send(ws, {
+      type: "command",
+      fromParticipantId: "server",
+      command: { type: "state-sync", state: room.state },
+    });
     return;
   }
 

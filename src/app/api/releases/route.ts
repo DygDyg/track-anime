@@ -1,5 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import {
+  RELEASES_FEED_CACHE_SECONDS,
+  RELEASES_FEED_STALE_WHILE_REVALIDATE_SECONDS,
   getRecentReleasesPage,
   getRecentReleasesPageLive,
   serializeRelease,
@@ -48,7 +50,9 @@ export async function GET(request: NextRequest) {
     },
     {
       headers: {
-        "Cache-Control": live ? "private, no-store" : "public, s-maxage=300, stale-while-revalidate=60",
+        "Cache-Control": live
+          ? "private, no-store"
+          : `public, s-maxage=${RELEASES_FEED_CACHE_SECONDS}, stale-while-revalidate=${RELEASES_FEED_STALE_WHILE_REVALIDATE_SECONDS}`,
       },
     },
   );

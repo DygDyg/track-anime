@@ -1,4 +1,5 @@
 import { labelKind, labelStatus, statusBadgeClass } from "@/lib/anime-labels";
+import { getAnimeKindDescription } from "@/lib/anime-kind-descriptions";
 import { kindBadgeClass } from "@/lib/anime-kind-theme";
 
 export const SEARCH_FIELD_PARAM_PREFIX = "f";
@@ -11,7 +12,7 @@ export const SEARCH_YEAR_MAX = new Date().getFullYear() + 1;
 export const SEARCH_RATING_MIN = 0;
 export const SEARCH_RATING_MAX = 10;
 
-const KIND_VALUES = ["tv", "movie", "ova", "ona", "special", "music", "tv_13", "tv_24", "tv_48"] as const;
+const KIND_VALUES = ["tv", "tv_13", "tv_24", "tv_48", "movie", "ova", "ona", "special", "music"] as const;
 const STATUS_VALUES = ["ongoing", "released", "anons", "latest"] as const;
 
 export type SearchFieldId =
@@ -35,12 +36,14 @@ export const SEARCH_KIND_OPTIONS: Array<{
   value: string;
   label: string;
   badgeClass: string | null;
+  description?: string | null;
 }> = [
   { value: "", label: "— любой —", badgeClass: null },
   ...KIND_VALUES.map((value) => ({
     value,
     label: labelKind(value) ?? value,
     badgeClass: kindBadgeClass(value),
+    description: getAnimeKindDescription(value),
   })),
 ];
 
@@ -48,6 +51,7 @@ export const SEARCH_STATUS_OPTIONS: Array<{
   value: string;
   label: string;
   badgeClass: string | null;
+  description?: string | null;
 }> = [
   { value: "", label: "— любой —", badgeClass: null },
   ...STATUS_VALUES.map((value) => ({

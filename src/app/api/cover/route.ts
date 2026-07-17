@@ -5,6 +5,7 @@ import {
   buildCachedCoverResponse,
   buildCoverBufferResponse,
   fetchAndCacheCover,
+  getExistingCoverCachePath,
   getFreshCoverCachePath,
   getFreshCoverThumbPath,
   readCoverCacheStats,
@@ -19,6 +20,8 @@ import { pickThumbDirectUrl } from "@/lib/poster";
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 export const maxDuration = 60;
+
+const STALE_BROWSER_CACHE_SEC = 60;
 
 async function respondCoverThumb(
   request: NextRequest,
@@ -40,6 +43,24 @@ async function respondCoverThumb(
         settings.browserCacheSec,
       );
     }
+  }
+
+  const staleMainPath = getExistingCoverCachePath(shikimoriId);
+  if (staleMainPath) {
+    scheduleCoverCacheFill({ shikimoriId, url, settings });
+    const thumbAsset = await resolveCoverThumbAsset(shikimoriId, staleMainPath, settings);
+    if (thumbAsset?.kind === "file") {
+      return buildCachedCoverResponse(thumbAsset.path, request, STALE_BROWSER_CACHE_SEC);
+    }
+    if (thumbAsset?.kind === "buffer") {
+      return buildCoverBufferResponse(
+        thumbAsset.buffer,
+        `${staleMainPath}:thumb`,
+        request,
+        STALE_BROWSER_CACHE_SEC,
+      );
+    }
+    return buildCachedCoverResponse(staleMainPath, request, STALE_BROWSER_CACHE_SEC);
   }
 
   scheduleCoverCacheFill({ shikimoriId, url, settings });
@@ -99,6 +120,12 @@ export async function GET(request: NextRequest) {
       const cachedMainPath = getFreshCoverCachePath(shikimoriId, settings);
       if (cachedMainPath) {
         return buildCachedCoverResponse(cachedMainPath, request, settings.browserCacheSec);
+      }
+
+      const staleMainPath = getExistingCoverCachePath(shikimoriId);
+      if (staleMainPath) {
+        scheduleCoverCacheFill({ shikimoriId, url, force, settings });
+        return buildCachedCoverResponse(staleMainPath, request, STALE_BROWSER_CACHE_SEC);
       }
 
       scheduleCoverCacheFill({ shikimoriId, url, force, settings });

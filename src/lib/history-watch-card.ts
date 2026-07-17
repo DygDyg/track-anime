@@ -23,6 +23,7 @@ export function watchHistoryItemToReleaseDto(item: WatchHistoryItemDto): Release
     genres: [],
     status: item.status,
     score: item.score,
+    kind: item.kind,
   };
 }
 

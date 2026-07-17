@@ -378,6 +378,11 @@ export function getFreshCoverCachePath(
   return destPath;
 }
 
+export function getExistingCoverCachePath(shikimoriId: number): string | null {
+  const destPath = coverCacheFileForId(shikimoriId);
+  return cacheFileExists(destPath) ? destPath : null;
+}
+
 export function getFreshCoverThumbPath(
   shikimoriId: number,
   mainPath: string,
@@ -467,13 +472,31 @@ export async function fetchAndCacheCover(options: {
   if (force && cacheFileExists(destPath)) {
     await fsPromises.unlink(/* turbopackIgnore: true */ destPath);
     if (shikimoriId) await removeCoverThumbIfExists(shikimoriId);
-  } else if (cacheState === "stale" && cacheFileExists(destPath)) {
-    await fsPromises.unlink(/* turbopackIgnore: true */ destPath);
-    if (shikimoriId) await removeCoverThumbIfExists(shikimoriId);
   }
 
-  const source = await downloadCoverFromSources({ shikimoriId, url, destPath, settings });
-  if (!source) return null;
+  const refreshExisting = !force && cacheState === "stale" && cacheFileExists(destPath);
+  const writePath = refreshExisting
+    ? `${destPath}.${process.pid}.${Date.now()}.tmp.webp`
+    : destPath;
+
+  const source = await downloadCoverFromSources({
+    shikimoriId,
+    url,
+    destPath: writePath,
+    settings,
+  });
+  if (!source) {
+    if (refreshExisting && cacheFileExists(writePath)) {
+      await fsPromises.unlink(/* turbopackIgnore: true */ writePath);
+    }
+    return null;
+  }
+
+  if (refreshExisting) {
+    await fsPromises.copyFile(/* turbopackIgnore: true */ writePath, destPath);
+    await fsPromises.unlink(/* turbopackIgnore: true */ writePath);
+    if (shikimoriId) await removeCoverThumbIfExists(shikimoriId);
+  }
 
   if (shikimoriId && cacheFileExists(destPath)) {
     await saveCoverThumbFromSource(destPath, coverCacheThumbFileForId(shikimoriId), settings);

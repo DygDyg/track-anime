@@ -35,6 +35,7 @@ export type WatchHistoryItemDto = WatchProgressDto & {
   episodesTotal: number | null;
   score: string | null;
   status: string | null;
+  kind: string | null;
 };
 
 const DEFAULT_EPISODE_SECONDS = 24 * 60;
@@ -252,6 +253,25 @@ type ShikimoriHistoryMeta = {
 };
 
 type KodikMaterialMetaRow = KodikMaterialEpisodesHint;
+
+function readHomeFeedAnimeTitle(materialData: unknown): string | null {
+  if (!materialData || typeof materialData !== "object") return null;
+  const title = (materialData as { anime_title?: unknown }).anime_title;
+  return typeof title === "string" ? title.trim() || null : null;
+}
+
+function readMaterialKind(materialData: unknown): string | null {
+  if (!materialData || typeof materialData !== "object") return null;
+  const record = materialData as { anime_kind?: unknown; anime_full?: unknown };
+  if (typeof record.anime_kind === "string" && record.anime_kind.trim()) {
+    return record.anime_kind.trim();
+  }
+  if (record.anime_full && typeof record.anime_full === "object") {
+    const kind = (record.anime_full as { kind?: unknown }).kind;
+    if (typeof kind === "string" && kind.trim()) return kind.trim();
+  }
+  return null;
+}
 
 function mapRow(row: {
   shikimoriId: number;
@@ -562,7 +582,12 @@ export async function getWatchHistory(userId: string, limit = 100): Promise<Watc
 
     items.push({
       ...mapRow(row),
-      animeTitle: material?.title ?? shikimoriAnime?.russian ?? shikimoriAnime?.name ?? `Аниме #${row.shikimoriId}`,
+      animeTitle:
+        readHomeFeedAnimeTitle(material?.materialData) ??
+        material?.title ??
+        shikimoriAnime?.russian ??
+        shikimoriAnime?.name ??
+        `Аниме #${row.shikimoriId}`,
       translationTitle: material?.translationTitle ?? "Озвучка",
       posterUrl,
       screenshotUrl,
@@ -573,6 +598,7 @@ export async function getWatchHistory(userId: string, limit = 100): Promise<Watc
         normalizeAnimeScore(shikimoriAnime?.score) ??
         extractScoreFromMaterialData(material?.materialData),
       status: shikimoriAnime?.status || materialData?.anime_status?.trim() || null,
+      kind: shikimoriAnime?.kind || readMaterialKind(material?.materialData),
     });
   }
 

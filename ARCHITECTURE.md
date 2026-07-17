@@ -124,6 +124,7 @@ Shikimori host (`shikimori.io` / `shikimori.one`) настраивается в 
 
 - `GET /api/cover` — прокси и кэш обложек (sharp resize)
 - Настройки в `CoverCacheSettings`
+- Просроченные файлы отдаются сразу и обновляются в фоне, чтобы карточки не показывали пустую обложку во время refresh
 
 ### Brand rotation (`src/lib/brand-rotation.ts`)
 
@@ -186,7 +187,7 @@ Shikimori host (`shikimori.io` / `shikimori.one`) настраивается в 
 | Data | Strategy |
 |------|----------|
 | Anime page | `revalidate = 3600` |
-| Home feed | `revalidate = 300` |
+| Home feed | page `revalidate = 300`; paginated `/api/releases` and server feed pages cache for 1 hour with tag `releases` |
 | Calendar | `unstable_cache`, `revalidate = 300`, tag `calendar`; ongoing source can be local Kodik DB or Shikimori `/api/calendar` |
 | Shikimori anime | DB cache + `unstable_cache` |
 | Posters | Disk cache via `/api/cover` |

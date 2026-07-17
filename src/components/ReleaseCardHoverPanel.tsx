@@ -4,6 +4,7 @@ import Link from "next/link";
 import { createPortal } from "react-dom";
 import { useEffect, useLayoutEffect, useRef, useState, type CSSProperties, type RefObject } from "react";
 import { AnimeLink } from "@/components/AnimeLink";
+import { AnimeKindInfoLink } from "@/components/AnimeKindInfoLink";
 import { AnimePoster } from "@/components/AnimePoster";
 import { AnimeScoreBadge } from "@/components/AnimeScoreBadge";
 import { FavoriteRewatchBadge } from "@/components/favorites/FavoriteRewatchBadge";
@@ -12,7 +13,8 @@ import { useUserListStatus } from "@/components/favorites/UserListStatusProvider
 import { ReleaseCardQuickActions } from "@/components/ReleaseCardQuickActions";
 import { TranslationBadge } from "@/components/TranslationBadge";
 import { LoadingSpinner } from "@/components/ui/LoadingSpinner";
-import { labelStatus, statusBadgeClass } from "@/lib/anime-labels";
+import { labelKind, labelStatus, statusBadgeClass } from "@/lib/anime-labels";
+import { kindBadgeClass } from "@/lib/anime-kind-theme";
 import {
   computeHoverPanelOffsetX,
   computeHoverPortalStyle,
@@ -87,6 +89,8 @@ function ReleaseRewatchBadge({
 }
 
 function ReleaseMetaRow({ release }: { release: HoverPanelReleaseInput }) {
+  const kindLabel = labelKind(release.kind);
+  const kindClass = kindBadgeClass(release.kind);
   const statusLabel = labelStatus(release.status);
   const statusClass = statusBadgeClass(release.status);
   const catalogEpisodes = "catalogEpisodes" in release ? release.catalogEpisodes : null;
@@ -102,6 +106,14 @@ function ReleaseMetaRow({ release }: { release: HoverPanelReleaseInput }) {
       {release.score ? <AnimeScoreBadge score={release.score} variant="inline" size="sm" /> : null}
       {episodeLabel ? (
         <span className="font-semibold tabular-nums text-foreground">{episodeLabel}</span>
+      ) : null}
+      {kindLabel && kindClass ? (
+        <>
+          <span className="text-muted/70">·</span>
+          <AnimeKindInfoLink kind={release.kind} className={kindClass}>
+            {kindLabel}
+          </AnimeKindInfoLink>
+        </>
       ) : null}
       {statusLabel && statusClass ? (
         <>
