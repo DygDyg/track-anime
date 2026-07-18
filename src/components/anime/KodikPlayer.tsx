@@ -197,18 +197,13 @@ function requestPlayThenSeek(
   episodeRef: MutableRefObject<EpisodeState>,
   onContinueStateChange?: (active: boolean) => void,
 ): void {
-  if (!flow.autoplay) {
-    finishContinueSeek(iframe, flow, continueFlowRef, episodeRef, onContinueStateChange);
-    return;
-  }
-
   flow.stage = "play";
   sendKodikCommand(iframe, { method: "play" });
 
   const fallbackId = window.setTimeout(() => {
     if (continueFlowRef.current !== flow || flow.stage !== "play") return;
     finishContinueSeek(iframe, flow, continueFlowRef, episodeRef, onContinueStateChange);
-  }, 5_000);
+  }, flow.autoplay ? 5_000 : 900);
   flow.timers.push(fallbackId);
 }
 
@@ -216,7 +211,7 @@ function startContinueFlow(
   iframe: HTMLIFrameElement,
   resume: KodikPlayerResume,
   autoplay: boolean,
-  _current: EpisodeState,
+  current: EpisodeState,
   continueFlowRef: MutableRefObject<ContinueFlow | null>,
   episodeRef: MutableRefObject<EpisodeState>,
   onContinueStateChange?: (active: boolean) => void,
@@ -236,7 +231,7 @@ function startContinueFlow(
   const episodeFallbackId = window.setTimeout(() => {
     if (continueFlowRef.current !== flow || flow.stage !== "episode") return;
     requestPlayThenSeek(iframe, flow, continueFlowRef, episodeRef, onContinueStateChange);
-  }, 1_800);
+  }, episodeMatches(resume, current) ? 450 : 1_800);
   flow.timers.push(episodeFallbackId);
 
   const hardTimeoutId = window.setTimeout(() => {
@@ -434,11 +429,24 @@ export const KodikPlayer = forwardRef<KodikPlayerHandle, Props>(function KodikPl
         return;
       }
       clearBufferedSeek();
+      const currentEpisode = episodeRef.current;
+      episodeRef.current = {
+        seasonNumber: resume.seasonNumber,
+        episodeNumber: resume.episodeNumber,
+      };
+      positionRef.current = Math.max(0, resume.positionSeconds);
+      patchPlayback({ positionSeconds: positionRef.current, isPlaying: mode === "play" });
+      onProgressRef.current?.({
+        seasonNumber: resume.seasonNumber,
+        episodeNumber: resume.episodeNumber,
+        positionSeconds: positionRef.current,
+        source: "episode",
+      });
       startContinueFlow(
         iframeRef.current,
         resume,
         mode === "play",
-        episodeRef.current,
+        currentEpisode,
         continueFlowRef,
         episodeRef,
         onContinueStateChangeRef.current,
@@ -559,7 +567,10 @@ export const KodikPlayer = forwardRef<KodikPlayerHandle, Props>(function KodikPl
       if (event.data.key === "kodik_player_current_episode" && event.data.value) {
         markPlayerReady();
         const currentEpisode = event.data.value as KodikCurrentEpisode;
-        episodeRef.current = normalizeEpisode(currentEpisode);
+        const nextEpisode = normalizeEpisode(currentEpisode);
+        const continueFlow = continueFlowRef.current;
+        if (continueFlow && !episodeMatches(continueFlow.resume, nextEpisode)) return;
+        episodeRef.current = nextEpisode;
         applyInitialResume();
 
         onProgressRef.current?.({
@@ -580,6 +591,7 @@ export const KodikPlayer = forwardRef<KodikPlayerHandle, Props>(function KodikPl
       }
 
       if (event.data.key === "kodik_player_time_update" && typeof event.data.value === "number") {
+        if (continueFlowRef.current) return;
         positionRef.current = event.data.value;
         patchPlayback({ positionSeconds: event.data.value });
         onProgressRef.current?.({
@@ -591,6 +603,7 @@ export const KodikPlayer = forwardRef<KodikPlayerHandle, Props>(function KodikPl
       }
 
       if (event.data.key === "kodik_player_time" && typeof event.data.value === "number") {
+        if (continueFlowRef.current) return;
         positionRef.current = event.data.value;
         patchPlayback({ positionSeconds: event.data.value });
       }

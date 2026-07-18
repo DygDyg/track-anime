@@ -81,6 +81,7 @@ const WATCH_PARTY_ACTIVE_PRESENCE_MS = 2_000;
 const EPISODE_END_CANDIDATE_WINDOW_SECONDS = 20;
 const WATCH_PARTY_END_GUARD_SECONDS = 1.25;
 const WATCH_PARTY_END_HOLD_OFFSET_SECONDS = 1.5;
+const PLAYER_RELOAD_COMPENSATION_SECONDS = 1;
 
 const DEFAULT_PLAYBACK_STATE: KodikPlayerPlaybackState = {
   isPlaying: false,
@@ -109,6 +110,13 @@ function IconSkipTimesFound() {
       <path d="M18 5h2v14h-2V5z" />
     </svg>
   );
+}
+
+function compensatePlayerReloadResume(resume: KodikPlayerResume): KodikPlayerResume {
+  return {
+    ...resume,
+    positionSeconds: Math.max(0, resume.positionSeconds - PLAYER_RELOAD_COMPENSATION_SECONDS),
+  };
 }
 
 function PlayerLoadingOverlay({
@@ -357,6 +365,7 @@ export function AnimeWatchPanel({
   const lastSavedFingerprintRef = useRef("");
   const savingRef = useRef(false);
   const pendingContinueRef = useRef<KodikPlayerResume | null>(null);
+  const silentContinueFlowRef = useRef(false);
   const suppressContinueOverlayRef = useRef(false);
   const autoSkippedIntervalsRef = useRef(new Set<string>());
   const cancelledAutoSkipIntervalsRef = useRef(new Set<string>());
@@ -468,13 +477,15 @@ export function AnimeWatchPanel({
           playable.some((tr) => tr.kodikId === savedKodikId)
         ) {
           setBootResume(
-            applyPositionOffset(
-              {
-                seasonNumber: progress.seasonNumber,
-                episodeNumber: progress.episodeNumber,
-                positionSeconds: progress.positionSeconds,
-              },
-              savedKodikId,
+            compensatePlayerReloadResume(
+              applyPositionOffset(
+                {
+                  seasonNumber: progress.seasonNumber,
+                  episodeNumber: progress.episodeNumber,
+                  positionSeconds: progress.positionSeconds,
+                },
+                savedKodikId,
+              ),
             ),
           );
         } else {
@@ -760,6 +771,10 @@ export function AnimeWatchPanel({
   }, []);
 
   const handleContinueStateChange = useCallback((active: boolean) => {
+    if (silentContinueFlowRef.current) {
+      if (!active) silentContinueFlowRef.current = false;
+      return;
+    }
     if (suppressContinueOverlayRef.current) {
       setWatchPartySyncing(active);
       if (!active) suppressContinueOverlayRef.current = false;
@@ -1574,13 +1589,25 @@ export function AnimeWatchPanel({
 
   const restartPlayerAtCurrentPosition = useCallback(() => {
     const resume = { ...liveProgressRef.current };
-    pendingContinueModeRef.current = isPausedRef.current ? "pause" : "play";
+    const mode: KodikPlayerResumeMode = isPausedRef.current ? "pause" : "play";
+    pendingContinueModeRef.current = mode;
     pendingContinueRef.current =
       resume.positionSeconds >= 1
         ? resume
         : { ...resume, positionSeconds: Math.max(playback.positionSeconds, 0) };
-    setContinueLoading(true);
-    setContinueTarget({ episodeNumber: pendingContinueRef.current.episodeNumber });
+    if (mode === "pause") {
+      silentContinueFlowRef.current = true;
+      window.setTimeout(() => {
+        silentContinueFlowRef.current = false;
+      }, 5_000);
+      pendingContinueRef.current = compensatePlayerReloadResume(pendingContinueRef.current);
+      setBootResume(pendingContinueRef.current);
+      setContinueLoading(false);
+      setContinueTarget(null);
+    } else {
+      setContinueLoading(true);
+      setContinueTarget({ episodeNumber: pendingContinueRef.current.episodeNumber });
+    }
     setPlayerResetNonce((nonce) => nonce + 1);
   }, [playback.positionSeconds]);
 
