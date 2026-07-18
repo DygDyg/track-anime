@@ -43,6 +43,7 @@ type Props = {
   onFullscreenTranslationsToggle?: () => void;
   fullscreenTranslationsOpen?: boolean;
   overlay?: boolean;
+  interactive?: boolean;
 };
 
 type RangeStyle = CSSProperties & {
@@ -262,6 +263,7 @@ export function KodikPlayerBetaControls({
   onFullscreenTranslationsToggle,
   fullscreenTranslationsOpen = false,
   overlay = false,
+  interactive = true,
 }: Props) {
   const duration = Math.max(playback.durationSeconds, 0);
   const position = Math.min(Math.max(playback.positionSeconds, 0), duration || playback.positionSeconds);
@@ -355,7 +357,8 @@ export function KodikPlayerBetaControls({
   return (
     <div
       className={[
-        "kodik-player-beta-controls pointer-events-auto relative px-2 py-1.5 text-white sm:px-3",
+        "kodik-player-beta-controls relative px-2 py-1.5 text-white sm:px-3",
+        interactive ? "pointer-events-auto" : "pointer-events-none",
         overlay
           ? "kodik-player-beta-controls--overlay rounded-none border-0 pb-2"
           : "rounded-b-lg border border-t-0 border-border bg-[#0f0f0f]",

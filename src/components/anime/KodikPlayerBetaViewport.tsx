@@ -711,9 +711,11 @@ export function KodikPlayerBetaViewport({
           <SiteClock className="border-white/10 bg-black/45 text-white/90" />
         </div>
       ) : null}
-      {skipAction ? (
+      {skipAction && !kodikUiAccess ? (
         <div className="pointer-events-none absolute inset-x-2 bottom-14 z-30 flex justify-center sm:bottom-16">
-          <div className="pointer-events-auto">{skipAction}</div>
+          <div className={uiInteractive ? "pointer-events-auto" : "pointer-events-none"}>
+            {skipAction}
+          </div>
         </div>
       ) : null}
       {seekFeedback.backward > 0 ? (
@@ -772,7 +774,10 @@ export function KodikPlayerBetaViewport({
               <button
                 type="button"
                 onClick={toggleKodikUiAccess}
-                className="kodik-player-beta-kodik-ui-toggle pointer-events-auto inline-flex rounded-md border border-white/10 bg-black/35 px-[clamp(0.5rem,0.42vw,0.8rem)] py-[clamp(0.25rem,0.21vw,0.4rem)] text-[clamp(11px,0.58vw,15px)] font-medium text-white/85 backdrop-blur-sm transition hover:bg-black/50 hover:text-white"
+                className={[
+                  "kodik-player-beta-kodik-ui-toggle inline-flex rounded-md border border-white/10 bg-black/35 px-[clamp(0.5rem,0.42vw,0.8rem)] py-[clamp(0.25rem,0.21vw,0.4rem)] text-[clamp(11px,0.58vw,15px)] font-medium text-white/85 backdrop-blur-sm transition hover:bg-black/50 hover:text-white",
+                  uiInteractive ? "pointer-events-auto" : "pointer-events-none",
+                ].join(" ")}
               >
                 <span className="hidden sm:inline">
                   Shift — {kodikUiAccess ? "интерфейс TA" : "интерфейс Kodik"}
@@ -780,7 +785,12 @@ export function KodikPlayerBetaViewport({
                 <span className="sm:hidden">{kodikUiAccess ? "TA UI" : "Kodik UI"}</span>
               </button>
               {continueAction ? (
-                <div className="pointer-events-auto flex min-w-0 flex-1 flex-wrap justify-center gap-2">
+                <div
+                  className={[
+                    "flex min-w-0 flex-1 flex-wrap justify-center gap-2",
+                    uiInteractive ? "pointer-events-auto" : "pointer-events-none",
+                  ].join(" ")}
+                >
                   {continueAction}
                 </div>
               ) : null}
@@ -814,6 +824,7 @@ export function KodikPlayerBetaViewport({
             onFullscreenTranslationsToggle={() =>
               onFullscreenTranslationsIntent?.(!fullscreenTranslationsOpen)
             }
+            interactive={uiInteractive}
           />
         </div>
       </div>
