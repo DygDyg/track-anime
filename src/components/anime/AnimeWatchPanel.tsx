@@ -382,6 +382,8 @@ export function AnimeWatchPanel({
   const sendWatchPartyPlaybackEventRef = useRef<(isPlaying: boolean) => void>(() => {});
   const watchPartyEndGuardKeyRef = useRef("");
   const handleWatchPartyEndGuardRef = useRef<(payload: ProgressPayload) => void>(() => {});
+  const suppressNextEndedRef = useRef(false);
+  const suppressNextEndedTimeoutRef = useRef<number | null>(null);
 
   const playableByKodikId = useMemo(() => {
     const map = new Map<string, KodikTranslationDto>();
@@ -630,6 +632,14 @@ export function AnimeWatchPanel({
           ].join(":");
           if (watchPartyEndGuardKeyRef.current !== guardKey) {
             watchPartyEndGuardKeyRef.current = guardKey;
+            suppressNextEndedRef.current = true;
+            if (suppressNextEndedTimeoutRef.current != null) {
+              window.clearTimeout(suppressNextEndedTimeoutRef.current);
+            }
+            suppressNextEndedTimeoutRef.current = window.setTimeout(() => {
+              suppressNextEndedRef.current = false;
+              suppressNextEndedTimeoutRef.current = null;
+            }, 5_000);
             handleWatchPartyEndGuardRef.current(payload);
           }
         }
@@ -1798,6 +1808,14 @@ export function AnimeWatchPanel({
   );
 
   const handleRoomPlayerEnded = useCallback((endedProgress?: ProgressPayload | null) => {
+    if (!endedProgress && suppressNextEndedRef.current) {
+      suppressNextEndedRef.current = false;
+      if (suppressNextEndedTimeoutRef.current != null) {
+        window.clearTimeout(suppressNextEndedTimeoutRef.current);
+        suppressNextEndedTimeoutRef.current = null;
+      }
+      return;
+    }
     const endProgress = endedProgress ?? episodeEndCandidateRef.current ?? liveProgressRef.current;
     if (watchParty.isConnected && !watchParty.isMaster) {
       applyingWatchPartyCommandRef.current = true;
