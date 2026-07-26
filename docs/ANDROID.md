@@ -29,7 +29,7 @@ APK будет создан в `android/app/build/outputs/apk/debug/`. Android-�
 .\scripts\deploy.ps1 -ApkPath "android\app\build\outputs\apk\release\app-release.apk"
 ```
 
-Деплой положит APK по `/downloads/TrackAnime.apk` и манифест `/downloads/TrackAnime.json` с версией и SHA-256. Вкладка «Приложение» в настройках сайта содержит кнопку загрузки, QR-код и версию из манифеста.
+Деплой положит APK по `/downloads/TrackAnime.apk` и манифест `/downloads/TrackAnime.json` с версией и SHA-256. Страница `/application` и вкладка «Приложение» в настройках используют один общий блок с кнопкой загрузки, QR-кодом и версией из манифеста.
 
 ## Поведение
 

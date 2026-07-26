@@ -2,7 +2,7 @@
 
 import { useEffect, useMemo, useState, Suspense } from "react";
 import { createPortal } from "react-dom";
-import QRCode from "qrcode";
+import { AndroidAppDownloadSection } from "@/components/AndroidAppDownloadSection";
 import { TranslationBadge } from "@/components/TranslationBadge";
 import { useAuth } from "@/components/auth/AuthProvider";
 import { AvatarWithDecoration } from "@/components/profile/AvatarWithDecoration";
@@ -55,63 +55,6 @@ function SectionTitle({ children }: { children: React.ReactNode }) {
 
 function SectionHint({ children }: { children: React.ReactNode }) {
   return <p className="mt-1 text-xs leading-relaxed text-muted">{children}</p>;
-}
-
-function ApplicationDownloadTab() {
-  const [qrCode, setQrCode] = useState<string | null>(null);
-  const [appVersion, setAppVersion] = useState<string | null>(null);
-
-  useEffect(() => {
-    const downloadUrl = new URL("/downloads/TrackAnime.apk", window.location.origin).href;
-    void QRCode.toDataURL(downloadUrl, { margin: 1, width: 256, errorCorrectionLevel: "M" })
-      .then(setQrCode)
-      .catch(() => setQrCode(null));
-  }, []);
-
-  useEffect(() => {
-    let cancelled = false;
-    void fetch("/downloads/TrackAnime.json", { cache: "no-store" })
-      .then(async (response) => {
-        if (!response.ok) throw new Error("manifest unavailable");
-        const manifest: { versionName?: unknown } = await response.json();
-        if (!cancelled && typeof manifest.versionName === "string") setAppVersion(manifest.versionName);
-      })
-      .catch(() => {
-        if (!cancelled) setAppVersion(null);
-      });
-    return () => { cancelled = true; };
-  }, []);
-
-  return (
-    <section className="space-y-4">
-      <div>
-        <SectionTitle>Приложение для Android</SectionTitle>
-        <SectionHint>
-          Установите приложение Track Anime на телефон, планшет или Android TV. QR-код ведёт на ту же
-          страницу загрузки.{appVersion ? ` Текущая версия: ${appVersion}.` : ""}
-        </SectionHint>
-      </div>
-      <div className="flex flex-col items-center gap-4 rounded-xl border border-border bg-foreground/[0.03] p-5 text-center sm:flex-row sm:text-left">
-        {qrCode ? (
-          <img src={qrCode} alt="QR-код для скачивания приложения Track Anime" className="h-40 w-40 rounded-lg bg-white p-2" />
-        ) : (
-          <div className="h-40 w-40 animate-pulse rounded-lg bg-foreground/10" aria-label="Создаём QR-код" />
-        )}
-        <div className="space-y-3">
-          <p className="text-sm leading-relaxed text-muted">
-            Отсканируйте код камерой телефона или скачайте APK прямо на устройстве.
-          </p>
-          <a
-            href="/downloads/TrackAnime.apk"
-            download
-            className="inline-flex rounded-lg bg-accent px-4 py-2 text-sm font-medium text-white transition hover:bg-accent/90"
-          >
-            Скачать APK
-          </a>
-        </div>
-      </div>
-    </section>
-  );
 }
 
 function OptionButton({
@@ -1037,7 +980,7 @@ export function SiteSettingsModal() {
                 updateLocalSettings={updateLocalSettings}
               />
             ) : null}
-            {tab === "application" ? <ApplicationDownloadTab /> : null}
+            {tab === "application" ? <AndroidAppDownloadSection /> : null}
             {tab === "notifications" && user ? (
               <Suspense fallback={<p className="text-sm text-muted">Загрузка…</p>}>
                 <NotificationsSettingsTab />
