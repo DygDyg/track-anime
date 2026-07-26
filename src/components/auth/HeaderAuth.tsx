@@ -3,14 +3,13 @@
 import { usePathname } from "next/navigation";
 import { useEffect, useRef, useState } from "react";
 import { useAuth } from "@/components/auth/AuthProvider";
-import { profileMenuItemClass, profileMenuLogoutClass } from "@/components/auth/profile-menu-styles";
-import { NavLink } from "@/components/NavLink";
 import { AvatarWithDecoration } from "@/components/profile/AvatarWithDecoration";
 import { useSiteSettings } from "@/components/SiteSettingsProvider";
 import { userProfilePath } from "@/lib/public-user";
 import { headerControl } from "@/components/header/header-styles";
 import { LoadingSpinner } from "@/components/ui/LoadingSpinner";
 import { QrCodeScanner } from "@/components/auth/QrCodeScanner";
+import { LocalCredentialWarningIcon, ProfileMenuItems } from "@/components/auth/ProfileMenuItems";
 
 function LoginIcon({ className = "h-5 w-5" }: { className?: string }) {
   return (
@@ -21,20 +20,11 @@ function LoginIcon({ className = "h-5 w-5" }: { className?: string }) {
   );
 }
 
-function LocalCredentialWarningIcon({ className = "absolute -right-1.5 -top-1.5 h-4 w-4 drop-shadow" }: { className?: string }) {
-  return (
-    <svg viewBox="0 0 24 24" className={className} aria-label="Настройте локальный вход" role="img">
-      <path d="M12 3.3 21 19.1a1.3 1.3 0 0 1-1.13 1.95H4.13A1.3 1.3 0 0 1 3 19.1L12 3.3Z" fill="#fbbf24" stroke="#fef3c7" strokeWidth="1" />
-      <path d="M12 8v6.2M12 17.2v.2" stroke="#422006" strokeWidth="2.1" strokeLinecap="round" />
-    </svg>
-  );
-}
-
 const profileMenuPanelClass =
   "site-header-bg absolute z-50 mt-1 w-[min(16rem,calc(100vw-2rem))] overflow-hidden rounded-xl border border-border/90 py-1 shadow-lg shadow-black/30 backdrop-blur-lg backdrop-saturate-150";
 
 function ProfileMenu({ compact = false }: { compact?: boolean }) {
-  const { user, logout, loggingOut } = useAuth();
+  const { user } = useAuth();
   const { settings } = useSiteSettings();
   const pathname = usePathname();
   const [open, setOpen] = useState(false);
@@ -120,70 +110,14 @@ function ProfileMenu({ compact = false }: { compact?: boolean }) {
           role="menu"
           className={[profileMenuPanelClass, compact ? "left-0 right-0" : "right-0"].join(" ")}
         >
-          <NavLink
-            href={profileHref}
-            role="menuitem"
-            className={profileMenuItemClass(pathname === profileHref, menuCentered)}
-            onClick={() => setOpen(false)}
-          >
-            <span className={`relative truncate rounded-md ${user.hasLocalCredential ? "" : "bg-amber-500/20 px-2 py-1 text-amber-100"}`}>
-              {user.nickname}{!user.hasLocalCredential ? <LocalCredentialWarningIcon className="absolute -right-2 -top-2 h-3.5 w-3.5 drop-shadow" /> : null}
-            </span>
-          </NavLink>
-          <NavLink
-            href="/history"
-            role="menuitem"
-            className={profileMenuItemClass(pathname === "/history", menuCentered)}
-            onClick={() => setOpen(false)}
-          >
-            История
-          </NavLink>
-          <NavLink
-            href="/favorites"
-            role="menuitem"
-            className={profileMenuItemClass(
-              pathname === "/favorites" || pathname.startsWith("/favorites/"),
-              menuCentered,
-            )}
-            onClick={() => setOpen(false)}
-          >
-            Избранное
-          </NavLink>
-          {user.isAdmin ? (
-            <NavLink
-              href="/admin"
-              role="menuitem"
-              className={profileMenuItemClass(pathname.startsWith("/admin"), menuCentered)}
-              onClick={() => setOpen(false)}
-            >
-              Админ
-            </NavLink>
-          ) : null}
-          <div className="my-1 border-t border-border/80" />
-          <button
-            type="button"
-            role="menuitem"
-            className={profileMenuItemClass(false, menuCentered)}
-            onClick={() => { setOpen(false); setScannerOpen(true); }}
-          >
-            Сканировать QR-код
-          </button>
-          <button
-            type="button"
-            role="menuitem"
-            disabled={loggingOut}
-            aria-busy={loggingOut || undefined}
-            className={[
-              profileMenuLogoutClass(menuCentered),
-              loggingOut ? "cursor-wait opacity-70" : "",
-            ].join(" ")}
-            onClick={() => {
+          <ProfileMenuItems
+            centered={menuCentered}
+            onNavigate={() => setOpen(false)}
+            onScanQr={() => {
               setOpen(false);
-              void logout();
+              setScannerOpen(true);
             }}
-          >
-            {loggingOut ? "Выход…" : "Выйти"}
-          </button>
+          />
         </div>
       ) : null}
       {scannerOpen ? <QrCodeScanner onClose={() => setScannerOpen(false)} onDetected={(code) => { window.location.href = `/login/qr?code=${encodeURIComponent(code)}`; }} /> : null}

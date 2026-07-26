@@ -2,8 +2,6 @@
 
 
 
-import { NavLink } from "@/components/NavLink";
-
 import { usePathname } from "next/navigation";
 
 import { useCallback, useEffect, useRef, useState } from "react";
@@ -12,8 +10,6 @@ import { createPortal } from "react-dom";
 
 import { useAuth } from "@/components/auth/AuthProvider";
 
-import { profileMenuItemClass, profileMenuLogoutClass } from "@/components/auth/profile-menu-styles";
-
 import { AvatarWithDecoration } from "@/components/profile/AvatarWithDecoration";
 
 import { useSiteSettings } from "@/components/SiteSettingsProvider";
@@ -21,6 +17,8 @@ import { useSiteSettings } from "@/components/SiteSettingsProvider";
 import { LoadingSpinner } from "@/components/ui/LoadingSpinner";
 
 import { userProfilePath } from "@/lib/public-user";
+import { QrCodeScanner } from "@/components/auth/QrCodeScanner";
+import { ProfileMenuItems } from "@/components/auth/ProfileMenuItems";
 
 
 
@@ -44,13 +42,14 @@ function LoginIcon({ className = "h-7 w-7" }: { className?: string }) {
 
 export function BottomNavProfileFab() {
 
-  const { user, logout, login, authNavigating, loggingOut } = useAuth();
+  const { user, login, authNavigating } = useAuth();
 
   const { settings } = useSiteSettings();
 
   const pathname = usePathname();
 
   const [open, setOpen] = useState(false);
+  const [scannerOpen, setScannerOpen] = useState(false);
 
   const [menuPos, setMenuPos] = useState<{ left: number; bottom: number } | null>(null);
 
@@ -211,107 +210,14 @@ export function BottomNavProfileFab() {
 
           >
 
-            <NavLink
-
-              href={profileHref}
-
-              role="menuitem"
-
-              className={profileMenuItemClass(pathname === profileHref, true)}
-
-              onClick={() => setOpen(false)}
-
-            >
-
-              <span className="truncate">{user.nickname}</span>
-
-            </NavLink>
-
-            <NavLink
-
-              href="/history"
-
-              role="menuitem"
-
-              className={profileMenuItemClass(pathname === "/history", true)}
-
-              onClick={() => setOpen(false)}
-
-            >
-
-              История
-
-            </NavLink>
-
-            <NavLink
-
-              href="/favorites"
-
-              role="menuitem"
-
-              className={profileMenuItemClass(
-
-                pathname === "/favorites" || pathname.startsWith("/favorites/"),
-
-                true,
-
-              )}
-
-              onClick={() => setOpen(false)}
-
-            >
-
-              Избранное
-
-            </NavLink>
-
-            {user.isAdmin ? (
-
-              <NavLink
-
-                href="/admin"
-
-                role="menuitem"
-
-                className={profileMenuItemClass(pathname.startsWith("/admin"), true)}
-
-                onClick={() => setOpen(false)}
-
-              >
-
-                Админ
-
-              </NavLink>
-
-            ) : null}
-
-            <div className="my-1 border-t border-border/80" />
-
-            <button
-
-              type="button"
-
-              role="menuitem"
-
-              disabled={loggingOut}
-
-              aria-busy={loggingOut || undefined}
-
-              className={[profileMenuLogoutClass(true), loggingOut ? "cursor-wait opacity-70" : ""].join(" ")}
-
-              onClick={() => {
-
+            <ProfileMenuItems
+              centered
+              onNavigate={() => setOpen(false)}
+              onScanQr={() => {
                 setOpen(false);
-
-                void logout();
-
+                setScannerOpen(true);
               }}
-
-            >
-
-              {loggingOut ? "Выход…" : "Выйти"}
-
-            </button>
+            />
 
           </div>,
 
@@ -404,6 +310,15 @@ export function BottomNavProfileFab() {
       <span className={labelClass}>{label}</span>
 
       {menu}
+
+      {scannerOpen ? (
+        <QrCodeScanner
+          onClose={() => setScannerOpen(false)}
+          onDetected={(code) => {
+            window.location.href = `/login/qr?code=${encodeURIComponent(code)}`;
+          }}
+        />
+      ) : null}
 
     </div>
 
