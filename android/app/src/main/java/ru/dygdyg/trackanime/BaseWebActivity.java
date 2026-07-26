@@ -1,6 +1,8 @@
 package ru.dygdyg.trackanime;
 
 import android.app.Activity;
+import android.Manifest;
+import android.content.pm.PackageManager;
 import android.content.Intent;
 import android.content.pm.ApplicationInfo;
 import android.content.pm.ActivityInfo;
@@ -19,6 +21,7 @@ import android.view.WindowInsetsController;
 import android.webkit.CookieManager;
 import android.webkit.ConsoleMessage;
 import android.webkit.DownloadListener;
+import android.webkit.PermissionRequest;
 import android.webkit.WebChromeClient;
 import android.webkit.WebResourceRequest;
 import android.webkit.WebResourceResponse;
@@ -40,6 +43,7 @@ abstract class BaseWebActivity extends Activity {
     private static final String SESSION_COOKIE_NAME = "ta.session";
     private static final String PREFERENCES_NAME = "track-anime-app";
     private static final String LAST_SESSION_HOST_KEY = "last-session-host";
+    private static final int CAMERA_PERMISSION_REQUEST_CODE = 11;
     private final Handler handler = new Handler(Looper.getMainLooper());
     private final Runnable mirrorFallback = this::loadNextMirrorIfNeeded;
     private WebView webView;
@@ -51,6 +55,7 @@ abstract class BaseWebActivity extends Activity {
     private String currentHost;
     private SharedPreferences preferences;
     private UpdateManager updateManager;
+    private PermissionRequest pendingCameraRequest;
 
     protected abstract boolean isTvMode();
 
@@ -98,6 +103,18 @@ abstract class BaseWebActivity extends Activity {
         }
         if (webView != null && webView.canGoBack()) { webView.goBack(); return; }
         super.onBackPressed();
+    }
+
+    @Override public void onRequestPermissionsResult(int requestCode, String[] permissions, int[] grantResults) {
+        super.onRequestPermissionsResult(requestCode, permissions, grantResults);
+        if (requestCode != CAMERA_PERMISSION_REQUEST_CODE || pendingCameraRequest == null) return;
+        PermissionRequest request = pendingCameraRequest;
+        pendingCameraRequest = null;
+        if (grantResults.length > 0 && grantResults[0] == PackageManager.PERMISSION_GRANTED) {
+            request.grant(new String[] { PermissionRequest.RESOURCE_VIDEO_CAPTURE });
+        } else {
+            request.deny();
+        }
     }
 
     private void enterCustomFullscreen(View view, WebChromeClient.CustomViewCallback callback) {
@@ -175,6 +192,30 @@ abstract class BaseWebActivity extends Activity {
             if (siteHost.equalsIgnoreCase(host)) return true;
         }
         return false;
+    }
+
+    private boolean isAllowedCameraRequest(PermissionRequest request) {
+        Uri origin = request.getOrigin();
+        if (!isAllowedSiteUrl(origin)) return false;
+        for (String resource : request.getResources()) {
+            if (PermissionRequest.RESOURCE_VIDEO_CAPTURE.equals(resource)) return true;
+        }
+        return false;
+    }
+
+    private void handleCameraPermissionRequest(PermissionRequest request) {
+        if (!isAllowedCameraRequest(request)) {
+            request.deny();
+            return;
+        }
+        if (Build.VERSION.SDK_INT < Build.VERSION_CODES.M
+                || checkSelfPermission(Manifest.permission.CAMERA) == PackageManager.PERMISSION_GRANTED) {
+            request.grant(new String[] { PermissionRequest.RESOURCE_VIDEO_CAPTURE });
+            return;
+        }
+        if (pendingCameraRequest != null) pendingCameraRequest.deny();
+        pendingCameraRequest = request;
+        requestPermissions(new String[] { Manifest.permission.CAMERA }, CAMERA_PERMISSION_REQUEST_CODE);
     }
 
     private void loadSite(String url) {
@@ -336,6 +377,14 @@ abstract class BaseWebActivity extends Activity {
 
         @Override public void onShowCustomView(View view, CustomViewCallback callback) {
             enterCustomFullscreen(view, callback);
+        }
+
+        @Override public void onPermissionRequest(PermissionRequest request) {
+            runOnUiThread(() -> handleCameraPermissionRequest(request));
+        }
+
+        @Override public void onPermissionRequestCanceled(PermissionRequest request) {
+            if (pendingCameraRequest == request) pendingCameraRequest = null;
         }
 
         @Override public void onHideCustomView() {
