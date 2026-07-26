@@ -1,12 +1,34 @@
 import type { Metadata } from "next";
 import { AndroidAppDownloadSection } from "@/components/AndroidAppDownloadSection";
-import { buildSitePageMetadata } from "@/lib/site-metadata";
+import { SITE_NAME } from "@/lib/site-brand";
+import { toAbsoluteUrl } from "@/lib/site-url";
 
-export const metadata: Metadata = buildSitePageMetadata({
-  title: "Приложение для Android",
-  description: "Скачайте Track Anime для телефона, планшета или Android TV.",
-  canonicalPath: "/app",
-});
+const title = "Приложение для Android";
+const description = "Страница загрузки приложения Track Anime для телефона, планшета и Android TV.";
+const qrImageUrl = toAbsoluteUrl("/app/qr");
+
+export const metadata: Metadata = {
+  title,
+  description,
+  alternates: { canonical: "/app" },
+  openGraph: {
+    type: "website",
+    title,
+    description,
+    url: "/app",
+    siteName: SITE_NAME,
+    locale: "ru_RU",
+    images: qrImageUrl
+      ? [{ url: qrImageUrl, width: 1024, height: 1024, alt: "QR-код страницы приложения Track Anime" }]
+      : undefined,
+  },
+  twitter: {
+    card: "summary_large_image",
+    title: `${title} — ${SITE_NAME}`,
+    description,
+    images: qrImageUrl ? [qrImageUrl] : undefined,
+  },
+};
 
 export default function AppPage() {
   return (
