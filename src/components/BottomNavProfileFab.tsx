@@ -18,6 +18,7 @@ import { LoadingSpinner } from "@/components/ui/LoadingSpinner";
 
 import { userProfilePath } from "@/lib/public-user";
 import { QrCodeScanner } from "@/components/auth/QrCodeScanner";
+import { QrLoginApprovalDialog } from "@/components/auth/QrLoginApprovalDialog";
 import { ProfileMenuItems } from "@/components/auth/ProfileMenuItems";
 
 
@@ -50,6 +51,7 @@ export function BottomNavProfileFab() {
 
   const [open, setOpen] = useState(false);
   const [scannerOpen, setScannerOpen] = useState(false);
+  const [approvalCode, setApprovalCode] = useState<string | null>(null);
 
   const [menuPos, setMenuPos] = useState<{ left: number; bottom: number } | null>(null);
 
@@ -315,10 +317,12 @@ export function BottomNavProfileFab() {
         <QrCodeScanner
           onClose={() => setScannerOpen(false)}
           onDetected={(code) => {
-            window.location.href = `/login/qr?code=${encodeURIComponent(code)}`;
+            setScannerOpen(false);
+            setApprovalCode(code);
           }}
         />
       ) : null}
+      {approvalCode ? <QrLoginApprovalDialog code={approvalCode} onClose={() => setApprovalCode(null)} /> : null}
 
     </div>
 

@@ -9,6 +9,7 @@ import { userProfilePath } from "@/lib/public-user";
 import { headerControl } from "@/components/header/header-styles";
 import { LoadingSpinner } from "@/components/ui/LoadingSpinner";
 import { QrCodeScanner } from "@/components/auth/QrCodeScanner";
+import { QrLoginApprovalDialog } from "@/components/auth/QrLoginApprovalDialog";
 import { LocalCredentialWarningIcon, ProfileMenuItems } from "@/components/auth/ProfileMenuItems";
 
 function LoginIcon({ className = "h-5 w-5" }: { className?: string }) {
@@ -29,6 +30,7 @@ function ProfileMenu({ compact = false }: { compact?: boolean }) {
   const pathname = usePathname();
   const [open, setOpen] = useState(false);
   const [scannerOpen, setScannerOpen] = useState(false);
+  const [approvalCode, setApprovalCode] = useState<string | null>(null);
   const rootRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
@@ -120,7 +122,8 @@ function ProfileMenu({ compact = false }: { compact?: boolean }) {
           />
         </div>
       ) : null}
-      {scannerOpen ? <QrCodeScanner onClose={() => setScannerOpen(false)} onDetected={(code) => { window.location.href = `/login/qr?code=${encodeURIComponent(code)}`; }} /> : null}
+      {scannerOpen ? <QrCodeScanner onClose={() => setScannerOpen(false)} onDetected={(code) => { setScannerOpen(false); setApprovalCode(code); }} /> : null}
+      {approvalCode ? <QrLoginApprovalDialog code={approvalCode} onClose={() => setApprovalCode(null)} /> : null}
     </div>
   );
 }
