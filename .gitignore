@@ -40,6 +40,7 @@ public/sw.js.map
 public/swe-worker-*.js
 public/downloads/TrackAnimeDiscordRPC.exe
 public/downloads/TrackAnime.apk
+public/downloads/TrackAnime.json
 
 # Backups
 backups/
