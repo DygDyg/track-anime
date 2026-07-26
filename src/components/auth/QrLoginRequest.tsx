@@ -1,20 +1,20 @@
 "use client";
 
 import QRCode from "qrcode";
-import { useEffect, useState } from "react";
-import { useRouter } from "next/navigation";
+import { useEffect, useRef, useState } from "react";
 
 type RequestData = { code: string; requesterSecret: string; expiresAt: string };
 
 export function QrLoginRequest({ autoStart = false }: { autoStart?: boolean }) {
-  const router = useRouter();
   const [request, setRequest] = useState<RequestData | null>(null);
   const [image, setImage] = useState<string | null>(null);
   const [message, setMessage] = useState<string | null>(null);
   const [creating, setCreating] = useState(false);
+  const claimingRef = useRef(false);
 
   async function create() {
     if (creating) return;
+    claimingRef.current = false;
     setCreating(true);
     setMessage(null);
     try {
@@ -39,6 +39,7 @@ export function QrLoginRequest({ autoStart = false }: { autoStart?: boolean }) {
 
   useEffect(() => {
     if (!request) return;
+    let active = true;
     const timer = window.setInterval(() => {
       void (async () => {
         const params = new URLSearchParams({ code: request.code, secret: request.requesterSecret });
@@ -46,8 +47,17 @@ export function QrLoginRequest({ autoStart = false }: { autoStart?: boolean }) {
         const data = (await response.json().catch(() => null)) as { status?: string } | null;
         if (!response.ok || !data?.status) return;
         if (data.status === "approved") {
+          if (claimingRef.current) return;
+          claimingRef.current = true;
+          window.clearInterval(timer);
           const claim = await fetch("/api/auth/qr/claim", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify(request) });
-          if (claim.ok) router.replace("/");
+          if (!active) return;
+          if (claim.ok) {
+            // A full navigation makes AuthProvider read the newly set session cookie.
+            window.location.assign("/");
+            return;
+          }
+          claimingRef.current = false;
           return;
         }
         if (data.status === "expired" || data.status === "rejected" || data.status === "consumed") {
@@ -57,8 +67,11 @@ export function QrLoginRequest({ autoStart = false }: { autoStart?: boolean }) {
         }
       })();
     }, 2000);
-    return () => window.clearInterval(timer);
-  }, [request, router]);
+    return () => {
+      active = false;
+      window.clearInterval(timer);
+    };
+  }, [request]);
 
   return (
     <section className="mt-6 border-t border-border pt-5 text-center">

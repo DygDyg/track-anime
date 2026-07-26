@@ -17,6 +17,7 @@ function codeFromQrValue(value: string): string | null {
 
 export function QrCodeScanner({ onClose, onDetected }: { onClose: () => void; onDetected: (code: string) => void }) {
   const videoRef = useRef<HTMLVideoElement>(null);
+  const detectedRef = useRef(false);
   const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
@@ -40,7 +41,10 @@ export function QrCodeScanner({ onClose, onDetected }: { onClose: () => void; on
           if (!videoRef.current) return;
           void detector.detect(videoRef.current).then((codes) => {
             const code = codes[0]?.rawValue ? codeFromQrValue(codes[0].rawValue) : null;
-            if (code) onDetected(code);
+            if (code && !detectedRef.current) {
+              detectedRef.current = true;
+              onDetected(code);
+            }
           }).catch(() => undefined);
         }, 350);
       } catch {
