@@ -7,8 +7,16 @@ android {
         applicationId = "ru.dygdyg.trackanime"
         minSdk = 26
         targetSdk = 35
-        versionCode = 5
-        versionName = "1.2.0"
+        versionCode = 6
+        versionName = "1.2.1"
+    }
+
+    buildTypes {
+        getByName("release") {
+            // Keeps local test releases compatible with the already installed debug APK.
+            signingConfig = signingConfigs.getByName("debug")
+            isMinifyEnabled = false
+        }
     }
 }
 
