@@ -21,6 +21,7 @@ import android.view.WindowInsetsController;
 import android.webkit.CookieManager;
 import android.webkit.ConsoleMessage;
 import android.webkit.DownloadListener;
+import android.webkit.HttpAuthHandler;
 import android.webkit.PermissionRequest;
 import android.webkit.WebChromeClient;
 import android.webkit.WebResourceRequest;
@@ -56,6 +57,8 @@ abstract class BaseWebActivity extends Activity {
     private SharedPreferences preferences;
     private UpdateManager updateManager;
     private PermissionRequest pendingCameraRequest;
+    private final ProxyFallback proxyFallback = new ProxyFallback();
+    private boolean proxyFallbackAttempted;
 
     protected abstract boolean isTvMode();
 
@@ -223,7 +226,7 @@ abstract class BaseWebActivity extends Activity {
         currentHost = targetHost;
         currentLoadStarted = false;
         handler.removeCallbacks(mirrorFallback);
-        if (getNextHost(targetHost) != null) handler.postDelayed(mirrorFallback, MIRROR_FALLBACK_DELAY_MS);
+        handler.postDelayed(mirrorFallback, MIRROR_FALLBACK_DELAY_MS);
         String sourceHost = preferences.getString(LAST_SESSION_HOST_KEY, null);
         copySessionCookie(sourceHost, targetHost, () -> {
             Log.d(LOG_TAG, "Loading: " + url);
@@ -240,14 +243,26 @@ abstract class BaseWebActivity extends Activity {
 
     private boolean loadNextMirror() {
         String nextHost = getNextHost(currentHost);
-        if (nextHost == null) return false;
-        Log.w(LOG_TAG, "Current host did not load; switching to " + nextHost + ".");
-        loadSite("https://" + nextHost + "/");
-        return true;
+        if (nextHost != null) {
+            Log.w(LOG_TAG, "Current host did not load; switching to " + nextHost + ".");
+            loadSite("https://" + nextHost + "/");
+            return true;
+        }
+        return false;
     }
 
     private void loadNextMirrorIfNeeded() {
-        if (!currentLoadStarted) loadNextMirror();
+        if (!currentLoadStarted && !loadNextMirror()) recoverWithProxyOrShowError("таймаут загрузки");
+    }
+
+    private void recoverWithProxyOrShowError(String reason) {
+        if (!proxyFallbackAttempted && proxyFallback.isConfigured()) {
+            proxyFallbackAttempted = true;
+            Log.w(LOG_TAG, "All direct mirrors failed; trying proxy fallback.");
+            proxyFallback.enable(() -> loadSite(SITE_URL));
+            return;
+        }
+        showLoadErrorPage(webView, reason);
     }
 
     /** Only the app session is mirrored; OAuth cookies stay host-scoped. */
@@ -338,17 +353,23 @@ abstract class BaseWebActivity extends Activity {
             if (!request.isForMainFrame()) return;
             CharSequence description = error.getDescription();
             Log.e(LOG_TAG, "Page load failed: " + error.getErrorCode() + " " + description);
-            if (!loadNextMirror()) {
-                showLoadErrorPage(view, description != null ? description.toString() : "ошибка сети");
-            }
+            if (!loadNextMirror()) recoverWithProxyOrShowError(description != null ? description.toString() : "ошибка сети");
         }
 
         @Override public void onReceivedHttpError(WebView view, WebResourceRequest request, WebResourceResponse response) {
             super.onReceivedHttpError(view, request, response);
             if (request.isForMainFrame()) {
                 Log.e(LOG_TAG, "Page HTTP error: " + response.getStatusCode() + " " + request.getUrl());
-                loadNextMirror();
+                if (!loadNextMirror()) recoverWithProxyOrShowError("HTTP " + response.getStatusCode());
             }
+        }
+
+        @Override public void onReceivedHttpAuthRequest(WebView view, HttpAuthHandler handler, String host, String realm) {
+            if (proxyFallback.isEnabled() && BuildConfig.FALLBACK_PROXY_HOST.equalsIgnoreCase(host)) {
+                handler.proceed(BuildConfig.FALLBACK_PROXY_USERNAME, BuildConfig.FALLBACK_PROXY_PASSWORD);
+                return;
+            }
+            handler.cancel();
         }
     }
 
