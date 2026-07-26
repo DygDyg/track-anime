@@ -34,7 +34,6 @@ export function PlayerSettingsTab({ settings, updateSettings, updateLocalSetting
   const [names, setNames] = useState<string[]>([]);
   const [loading, setLoading] = useState(true);
   const [query, setQuery] = useState("");
-  const [betaConfirmOpen, setBetaConfirmOpen] = useState(false);
 
   useEffect(() => {
     let cancelled = false;
@@ -78,36 +77,30 @@ export function PlayerSettingsTab({ settings, updateSettings, updateLocalSetting
     updateSettings({ translationIntroOffsets: next });
   };
 
-  const setBetaChromeless = (enabled: boolean) => {
-    if (enabled && !settings.betaChromelessPlayer) {
-      setBetaConfirmOpen(true);
-      return;
-    }
-    updateSettings({ betaChromelessPlayer: enabled });
-  };
-
   return (
     <div className="space-y-4">
       <section className="space-y-2 rounded-lg border border-amber-500/30 bg-amber-500/5 p-3">
         <div className="flex flex-wrap items-center justify-between gap-3">
           <div className="min-w-0">
-            <SectionTitle>Beta-плеер Kodik</SectionTitle>
+            <SectionTitle>TA-плеер</SectionTitle>
             <SectionHint>
-              Это тестовый режим плеера с собственной панелью управления. В нём могут быть баги:
-              некорректная перемотка, проблемы с полноэкранным режимом, PiP, трансляцией или
-              управлением Kodik.
+              Основной плеер сайта с собственной панелью управления, выбором серий и функциями TA.
+              Включите Kodik только если нужен его оригинальный интерфейс.
             </SectionHint>
           </div>
           <label className="flex shrink-0 cursor-pointer items-center gap-2 text-sm font-medium text-foreground">
             <input
               type="checkbox"
-              checked={settings.betaChromelessPlayer}
-              onChange={(event) => setBetaChromeless(event.target.checked)}
+              checked={settings.useLegacyKodikPlayer}
+              onChange={(event) => updateSettings({ useLegacyKodikPlayer: event.target.checked })}
               className="h-4 w-4 rounded border-border accent-accent"
             />
-            Включить
+            Kodik
           </label>
         </div>
+        <p className="text-xs leading-relaxed text-amber-200/90">
+          Kodik — оригинальный legacy-плеер. Некоторые функции сайта могут не работать в нём.
+        </p>
       </section>
 
       <section className="space-y-2 rounded-lg border border-border bg-background/60 p-3">
@@ -138,7 +131,7 @@ export function PlayerSettingsTab({ settings, updateSettings, updateLocalSetting
           <div className="min-w-0">
             <SectionTitle>Полоса прогресса при скрытом интерфейсе</SectionTitle>
             <SectionHint>
-              Видимость тонкой полосы внизу beta-плеера, когда панель управления исчезает.
+              Видимость тонкой полосы внизу TA-плеера, когда панель управления исчезает.
               0% — выключить.
             </SectionHint>
           </div>
@@ -214,47 +207,6 @@ export function PlayerSettingsTab({ settings, updateSettings, updateLocalSetting
       )}
       {remoteSaving ? <p className="text-xs text-muted">Сохраняем настройки…</p> : null}
 
-      {betaConfirmOpen ? (
-        <div className="fixed inset-0 z-[130] flex items-center justify-center bg-black/60 p-4">
-          <div
-            role="dialog"
-            aria-modal="true"
-            aria-labelledby="settings-beta-player-confirm-title"
-            className="w-full max-w-md rounded-xl border border-border bg-card p-5 shadow-2xl shadow-black/50"
-          >
-            <h3
-              id="settings-beta-player-confirm-title"
-              className="text-base font-semibold text-foreground"
-            >
-              Beta-плеер Kodik
-            </h3>
-            <p className="mt-2 text-sm leading-relaxed text-muted">
-              Это тестовый режим плеера с собственной панелью управления. В нём могут быть баги:
-              некорректная перемотка, проблемы с полноэкранным режимом, PiP, трансляцией или
-              управлением Kodik.
-            </p>
-            <div className="mt-5 flex justify-end gap-2">
-              <button
-                type="button"
-                onClick={() => setBetaConfirmOpen(false)}
-                className="rounded-lg border border-border bg-background px-3 py-2 text-sm font-medium text-foreground transition hover:bg-surface-dim"
-              >
-                Отмена
-              </button>
-              <button
-                type="button"
-                onClick={() => {
-                  updateSettings({ betaChromelessPlayer: true });
-                  setBetaConfirmOpen(false);
-                }}
-                className="rounded-lg border border-accent/50 bg-accent/15 px-3 py-2 text-sm font-medium text-accent transition hover:bg-accent/20"
-              >
-                Включить beta
-              </button>
-            </div>
-          </div>
-        </div>
-      ) : null}
     </div>
   );
 }

@@ -261,10 +261,11 @@ export function KodikPlayerBetaViewport({
     setKodikUiAccess((current) => {
       const next = !current;
       setUiVisible(!next);
+      if (next) onFullscreenTranslationsIntent?.(false);
       if (!next) scheduleHide();
       return next;
     });
-  }, [scheduleHide]);
+  }, [onFullscreenTranslationsIntent, scheduleHide]);
 
   const clearClickTimer = useCallback(() => {
     if (clickTimerRef.current != null) {
@@ -415,7 +416,7 @@ export function KodikPlayerBetaViewport({
 
       event.preventDefault();
       event.stopPropagation();
-      onFullscreenTranslationsIntent?.(delta > 0);
+      onFullscreenTranslationsIntent?.(delta < 0);
     },
     [fullscreenActive, onFullscreenTranslationsIntent],
   );
@@ -561,7 +562,18 @@ export function KodikPlayerBetaViewport({
       window.setTimeout(() => {
         if (document.activeElement instanceof HTMLIFrameElement) return;
         setKodikUiAccess(false);
+
+        if (!document.hasFocus()) {
+          clearHideTimer();
+          if (playbackRef.current.isPlaying && !controlsDisabled && !keepUiVisible) {
+            setUiVisible(false);
+            onFullscreenTranslationsIntent?.(false);
+          }
+          return;
+        }
+
         setUiVisible(true);
+        scheduleHide();
       }, 0);
     };
 
@@ -574,6 +586,8 @@ export function KodikPlayerBetaViewport({
     };
   }, [
     fullscreenActive,
+    clearHideTimer,
+    controlsDisabled,
     onFullscreenToggle,
     onMuteToggle,
     onPlayPause,
@@ -581,6 +595,8 @@ export function KodikPlayerBetaViewport({
     onTheaterToggle,
     onVolumeChange,
     onFullscreenTranslationsIntent,
+    keepUiVisible,
+    scheduleHide,
     toggleKodikUiAccess,
     volumeReady,
   ]);
@@ -694,17 +710,27 @@ export function KodikPlayerBetaViewport({
             height: KODIK_NATIVE_SKIP_PASSTHROUGH_HEIGHT,
           }}
         />
-        <div
-          onClick={handleViewportClick}
-          onDoubleClick={handleViewportDoubleClick}
-          className={clickLayerClass}
-          style={{
-            ...clickLayerStyle,
-            insetInline: 0,
-            bottom: 0,
-            height: KODIK_NATIVE_SKIP_PASSTHROUGH_BOTTOM,
-          }}
-        />
+        {fullscreenActive ? (
+          <div
+            className={[
+              "absolute inset-x-0 bottom-0 z-10",
+              clickLayerInteractive ? "pointer-events-auto" : "pointer-events-none",
+            ].join(" ")}
+            style={{ height: KODIK_NATIVE_SKIP_PASSTHROUGH_BOTTOM }}
+          />
+        ) : (
+          <div
+            onClick={handleViewportClick}
+            onDoubleClick={handleViewportDoubleClick}
+            className={clickLayerClass}
+            style={{
+              ...clickLayerStyle,
+              insetInline: 0,
+              bottom: 0,
+              height: KODIK_NATIVE_SKIP_PASSTHROUGH_BOTTOM,
+            }}
+          />
+        )}
       </div>
       {fullscreenActive && settings.showClock ? (
         <div className="pointer-events-none absolute right-2 top-2 z-30 sm:right-3 sm:top-3">

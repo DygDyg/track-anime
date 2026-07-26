@@ -74,7 +74,7 @@ type Props = {
   initialResume?: KodikPlayerResume | null;
   /** viewport — по высоте окна (минус шапка), с сохранением 16:9 */
   sizeMode?: "default" | "viewport";
-  /** Beta: внешний кадр 16:9, внутренний iframe 16:9 на всю область (настройка crop в CSS) */
+  /** TA-плеер: внешний кадр 16:9, внутренний iframe 16:9 на всю область (настройка crop в CSS) */
   chromelessBeta?: boolean;
   onReady?: () => void;
   onContinueStateChange?: (active: boolean) => void;

@@ -90,7 +90,7 @@ model WatchHistorySettings {
   updatedAt                   DateTime @updatedAt
 }
 
-/// Глобальные настройки совместного просмотра beta-плеера
+/// Глобальные настройки совместного просмотра TA-плеера
 model WatchPartySettings {
   id          String   @id @default("default")
   enabled     Boolean  @default(true)
@@ -463,7 +463,7 @@ model QrLoginRequest {
   requesterSecretHash String  @unique
   status             String   @default("pending")
   approvedByUserId   String?
-  approvedByUser      User?    @relation("QrLoginApprover", fields: [approvedByUserId], references: [id], onDelete: SetNull)
+  approvedByUser     User?    @relation("QrLoginApprover", fields: [approvedByUserId], references: [id], onDelete: SetNull)
   approvedSessionId  String?  @unique
   expiresAt          DateTime
   createdAt          DateTime @default(now())

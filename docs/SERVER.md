@@ -187,7 +187,7 @@ journalctl -u track-anime -f
 
 ### systemd-сервис WebSocket-комнат
 
-Совместный просмотр beta-плеера работает через отдельный in-memory WebSocket-процесс.
+Совместный просмотр TA-плеера работает через отдельный in-memory WebSocket-процесс.
 
 ```bash
 sudo nano /etc/systemd/system/track-anime-watch-party.service

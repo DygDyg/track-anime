@@ -8,6 +8,7 @@ import {
   useRef,
   useState,
   type TouchEvent as ReactTouchEvent,
+  type WheelEvent as ReactWheelEvent,
 } from "react";
 import { useAuth } from "@/components/auth/AuthProvider";
 import { useSiteSettings } from "@/components/SiteSettingsProvider";
@@ -330,7 +331,6 @@ export function AnimeWatchPanel({
   const [fullscreenTranslationsHovered, setFullscreenTranslationsHovered] = useState(false);
   const [betaTheaterMode, setBetaTheaterMode] =
     useState<KodikPlayerBetaTheaterMode>("normal");
-  const [betaConfirmOpen, setBetaConfirmOpen] = useState(false);
   const [playerEpisode, setPlayerEpisode] = useState({ seasonNumber: 1, episodeNumber: 1 });
   const [skipTimes, setSkipTimes] = useState<SkipTimeDto[]>([]);
   const [skipTimesInfo, setSkipTimesInfo] = useState<SkipTimesDto | null>(null);
@@ -880,7 +880,7 @@ export function AnimeWatchPanel({
   }, [scrollPlayerToTop]);
 
   const seekSkipDisabled = !ready || continueLoading;
-  const betaChromeless = settings.betaChromelessPlayer;
+  const betaChromeless = !settings.useLegacyKodikPlayer;
   const betaTheaterExpanded = betaTheaterMode !== "normal";
   const betaTranslationsHoverEnabled = isNativeFullscreen;
   const roundedEpisodeLength = Math.round(playback.durationSeconds);
@@ -1210,27 +1210,17 @@ export function AnimeWatchPanel({
     [displaySkipTimes],
   );
 
-  const setBetaChromeless = useCallback(
+  const setUseLegacyKodikPlayer = useCallback(
     (enabled: boolean) => {
-      if (enabled && !settings.betaChromelessPlayer) {
-        setBetaConfirmOpen(true);
-        return;
-      }
-
-      updateSettings({ betaChromelessPlayer: enabled });
-      if (!enabled) {
+      updateSettings({ useLegacyKodikPlayer: enabled });
+      if (enabled) {
         setBetaTheaterMode("normal");
         setFullscreenTranslationsOpen(false);
         setFullscreenTranslationsHovered(false);
       }
     },
-    [settings.betaChromelessPlayer, updateSettings],
+    [updateSettings],
   );
-
-  const confirmBetaChromeless = useCallback(() => {
-    updateSettings({ betaChromelessPlayer: true });
-    setBetaConfirmOpen(false);
-  }, [updateSettings]);
 
   const roomSeekDisabled = seekSkipDisabled || (watchParty.isConnected && !watchParty.canSeek);
   const roomEpisodeSelectionDisabled =
@@ -1514,11 +1504,11 @@ export function AnimeWatchPanel({
     (event: ReactTouchEvent<HTMLDivElement>) => {
       const touch = event.touches[0];
       betaTranslationsTouchRef.current =
-        touch && isNativeFullscreen && fullscreenTranslationsOpen
+        touch && isNativeFullscreen
           ? { startX: touch.clientX, startY: touch.clientY }
           : null;
     },
-    [fullscreenTranslationsOpen, isNativeFullscreen],
+    [isNativeFullscreen],
   );
 
   const handleBetaTranslationsTouchMove = useCallback((event: ReactTouchEvent<HTMLDivElement>) => {
@@ -1529,7 +1519,7 @@ export function AnimeWatchPanel({
     const deltaX = touch.clientX - gesture.startX;
     const deltaY = touch.clientY - gesture.startY;
     if (
-      deltaY > MOBILE_TRANSLATIONS_SWIPE_THRESHOLD_PX &&
+      Math.abs(deltaY) > MOBILE_TRANSLATIONS_SWIPE_THRESHOLD_PX &&
       Math.abs(deltaY) > Math.abs(deltaX) * 1.2
     ) {
       event.preventDefault();
@@ -1545,6 +1535,12 @@ export function AnimeWatchPanel({
     const deltaX = touch.clientX - gesture.startX;
     const deltaY = touch.clientY - gesture.startY;
     if (
+      deltaY < -MOBILE_TRANSLATIONS_SWIPE_THRESHOLD_PX &&
+      Math.abs(deltaY) > Math.abs(deltaX) * 1.2
+    ) {
+      setFullscreenTranslationsHovered(true);
+      setFullscreenTranslationsOpen(true);
+    } else if (
       deltaY > MOBILE_TRANSLATIONS_SWIPE_THRESHOLD_PX &&
       Math.abs(deltaY) > Math.abs(deltaX) * 1.2
     ) {
@@ -1552,6 +1548,22 @@ export function AnimeWatchPanel({
       setFullscreenTranslationsOpen(false);
     }
   }, []);
+
+  const handleBetaTranslationsWheel = useCallback(
+    (event: ReactWheelEvent<HTMLDivElement>) => {
+      if (!isNativeFullscreen) return;
+
+      const delta = Math.abs(event.deltaX) > Math.abs(event.deltaY) ? event.deltaX : event.deltaY;
+      if (delta === 0) return;
+
+      event.preventDefault();
+      event.stopPropagation();
+      const open = delta < 0;
+      setFullscreenTranslationsHovered(open);
+      setFullscreenTranslationsOpen(open);
+    },
+    [isNativeFullscreen],
+  );
 
   useEffect(() => {
     const onFullscreenChange = () => {
@@ -2459,17 +2471,22 @@ export function AnimeWatchPanel({
               <label className="inline-flex cursor-pointer items-center gap-2 rounded-md border border-border bg-background px-2.5 py-1.5 text-xs font-medium text-foreground transition hover:border-accent/40 hover:bg-surface-dim">
                 <input
                   type="checkbox"
-                  checked={settings.betaChromelessPlayer}
-                  onChange={(event) => setBetaChromeless(event.target.checked)}
+                  checked={settings.useLegacyKodikPlayer}
+                  onChange={(event) => setUseLegacyKodikPlayer(event.target.checked)}
                   className="h-4 w-4 rounded border-border accent-accent"
                 />
                 <span
-                  title="Beta-плеер"
+                  title="Оригинальный legacy-плеер Kodik. Некоторые функции сайта могут не работать в нём."
                   className="inline-flex h-5 items-center justify-center rounded-md border border-amber-300/35 bg-amber-400/10 px-1.5 text-xs font-black leading-none text-amber-200"
                 >
-                  β-плеер
+                  Kodik
                 </span>
               </label>
+              {settings.useLegacyKodikPlayer ? (
+                <span className="text-xs text-amber-200/90">
+                  Legacy: часть функций TA недоступна
+                </span>
+              ) : null}
               {user?.isAdmin && ready && selected?.playerLink ? (
                 <div className="group relative">
                   <button
@@ -2699,6 +2716,7 @@ export function AnimeWatchPanel({
                 onTouchCancel={() => {
                   betaTranslationsTouchRef.current = null;
                 }}
+                onWheel={handleBetaTranslationsWheel}
                 className="kodik-player-beta-translations border-t border-border bg-card p-4"
               >
                 <div className="mb-2 flex flex-wrap items-center justify-between gap-2">
@@ -2816,41 +2834,6 @@ export function AnimeWatchPanel({
       </div>
       ) : null}
 
-      {betaConfirmOpen ? (
-        <div className="fixed inset-0 z-[120] flex items-center justify-center bg-black/60 p-4">
-          <div
-            role="dialog"
-            aria-modal="true"
-            aria-labelledby="beta-player-confirm-title"
-            className="w-full max-w-md rounded-xl border border-border bg-card p-5 shadow-2xl shadow-black/50"
-          >
-            <h3 id="beta-player-confirm-title" className="text-base font-semibold text-foreground">
-              Beta-плеер Kodik
-            </h3>
-            <p className="mt-2 text-sm leading-relaxed text-muted">
-              Это тестовый режим плеера с собственной панелью управления. В нём могут быть баги:
-              некорректная перемотка, проблемы с полноэкранным режимом, PiP, трансляцией или
-              управлением Kodik.
-            </p>
-            <div className="mt-5 flex justify-end gap-2">
-              <button
-                type="button"
-                onClick={() => setBetaConfirmOpen(false)}
-                className="rounded-lg border border-border bg-background px-3 py-2 text-sm font-medium text-foreground transition hover:bg-surface-dim"
-              >
-                Отмена
-              </button>
-              <button
-                type="button"
-                onClick={confirmBetaChromeless}
-                className="rounded-lg border border-accent/50 bg-accent/15 px-3 py-2 text-sm font-medium text-accent transition hover:bg-accent/20"
-              >
-                Включить beta
-              </button>
-            </div>
-          </div>
-        </div>
-      ) : null}
     </section>
   );
 }

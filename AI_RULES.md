@@ -108,6 +108,7 @@ Shared rules for Codex, Cursor, and local model workflows. Codex should also rea
 При работе с проектом читай:
 
 * `AGENTS.md` — Codex entrypoint и ключевые project invariants
+* `.cursorrules` + `.cursor/rules/` — Cursor entrypoint и always-on helpers
 * `AI_CONTEXT.md` — quick reference для AI
 * `PROJECT_OVERVIEW.md` — назначение и user flows
 * `ARCHITECTURE.md` — модули, data flow, диаграммы

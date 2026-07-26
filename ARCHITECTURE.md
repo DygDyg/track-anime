@@ -2,6 +2,10 @@
 
 ## Architecture Layers
 
+### Android clients
+
+`android/` is a native WebView shell for the same production Next.js application. It has separate phone and Leanback launcher activities, but does not duplicate server logic or store external API credentials. The TV activity enables the existing browser-side D-pad navigation; Shikimori OAuth runs in the app WebView so the callback can create its session cookie there. Because `track-anime.dygdyg.ru`, `track-anime.duckdns.org`, and `ta.dygdyg.ru` do not share a cookie domain, the Android shell copies only the opaque `ta.session` cookie between these exact HTTPS hosts; OAuth cookies remain host-scoped and all hosts must share the session database. After page load, the shell checks same-host `/downloads/TrackAnime.json`, verifies the downloaded APK SHA-256 and hands installation to Android's system installer. `AdBlocker` intercepts WebView network requests and blocks video ad hosts / Kodik VAST manifests.
+
 ```
 ┌─────────────────────────────────────────────────────────┐
 │  Presentation (src/app, src/components)                 │
@@ -42,10 +46,19 @@ GET /api/auth/callback/shikimori?code=&state=
   → GET /api/users/whoami
   → upsert User + ShikimoriAccount
   → create Session, set ta.session cookie
+
+POST /api/auth/local-login
+  → check LocalCredential password hash
+  → create the same Session, set ta.session cookie
+
+QR login
+  → new device creates one-time QrLoginRequest and displays only its code
+  → phone opens the code, authenticates if necessary, then approves the request
+  → requesting browser claims its own session using a separate browser-only secret
 ```
 
-`src/proxy.ts` используется только для канонизации legacy host и редиректа legacy
-`?shikimori_id=` → `/anime/{id}`. Auth проверяется per-route через `getSession()` /
+`src/proxy.ts` используется только для редиректа legacy `?shikimori_id=` →
+`/anime/{id}`; доменные зеркала обрабатывает nginx. Auth проверяется per-route через `getSession()` /
 `requireAdmin()`.
 
 ### Kodik data pipeline
@@ -77,7 +90,7 @@ AnimeWatchPanel (client)
   → postMessage: kodik_player_time_update, kodik_player_current_episode
   → PUT /api/user/watch-history/[shikimoriId]
 
-Beta watch party
+TA player watch party
   → /api/settings/watch-party (global settings)
   → useWatchParty (client WebSocket)
   → scripts/watch-party-server.mjs (in-memory rooms)

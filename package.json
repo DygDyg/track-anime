@@ -11,6 +11,7 @@
     "dev:with-port": "node scripts/prisma-generate-safe.mjs && next dev -p $PORT",
     "build": "node scripts/sync-brand-assets.mjs && next build && node scripts/write-build-info.mjs",
     "brand:sync": "node scripts/sync-brand-assets.mjs",
+    "android:brand:sync": "node scripts/sync-android-brand-assets.mjs",
     "avatar-decorations:thumbs": "tsx scripts/generate-avatar-decoration-thumbs.ts",
     "start": "next start",
     "watch-party:server": "node scripts/watch-party-server.mjs",

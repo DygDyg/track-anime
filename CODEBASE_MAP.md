@@ -4,6 +4,7 @@
 
 ```
 ta_new/
+├── android/               # Native WebView shell: Android phone + Android TV launchers, update checker
 ├── prisma/schema.prisma     # DB schema
 ├── src/
 │   ├── app/                 # Next.js App Router (pages + API)
@@ -34,7 +35,7 @@ ta_new/
 | `calendar/` | Ongoing anime schedule with Kodik/Shikimori source switch |
 | `profile/` | Current user profile |
 | `user/[shikimoriId]/` | Public user profile |
-| `login/` | Shikimori OAuth login |
+| `login/` | Shikimori OAuth, локальный пароль и QR login |
 | `players/` | Player-related pages |
 | `admin/` | Admin dashboard (import, sync, users, db, todos, notifications, settings) |
 
@@ -90,13 +91,13 @@ ta_new/
 | `settings/defaults` | Public site setting defaults |
 | `settings/intro-offsets` | Public translation intro offsets |
 | `settings/translations` | Translation catalog |
-| `settings/watch-party` | Public global settings for beta-плеер совместный просмотр |
+| `settings/watch-party` | Public global settings for TA-плеер совместный просмотр |
 
 ### Realtime
 
 | Process | Purpose |
 |---------|---------|
-| `scripts/watch-party-server.mjs` | WebSocket server for ephemeral beta-плеер совместный просмотр rooms (`/watch-party-ws` by default), plus read-only `/watch-party-rooms` for admin room overview |
+| `scripts/watch-party-server.mjs` | WebSocket server for ephemeral TA-плеер совместный просмотр rooms (`/watch-party-ws` by default), plus read-only `/watch-party-rooms` for admin room overview |
 
 ### Notifications (`api/notifications/`)
 
@@ -114,7 +115,7 @@ ta_new/
 
 ### Admin (`api/admin/`)
 
-`stats`, `anime/[shikimoriId]/skip-times-prefetch`, `import/status`, `import/episodes`, `import/pending-materials`, `sync`, `sync/settings`, `sync/history`, `backfill-dates`, `brand-rotation/settings`, `cover-cache/settings`, `discord/settings`, `notifications/settings`, `notifications/test`, `notifications/generate-vapid`, `search/settings`, `shikimori/settings`, `shikimori/anons-sync`, `shikimori/mal-id-sync`, `site-settings-defaults`, `translation-intro-offsets`, `watch-history/settings`, `watch-party/settings`, `watch-party/rooms`, `users`, `db/search`, `todos`, `todos/[id]`
+`stats`, `anime/[shikimoriId]/skip-times-prefetch`, `anime-debug`, `import/status`, `import/episodes`, `import/pending-materials`, `sync`, `sync/settings`, `sync/history`, `backfill-dates`, `brand-rotation/settings`, `cover-cache/settings`, `discord/settings`, `notifications/settings`, `notifications/test`, `notifications/generate-vapid`, `search/settings`, `shikimori/settings`, `shikimori/anons-sync`, `shikimori/mal-id-sync`, `site-settings-defaults`, `translation-intro-offsets`, `watch-history/settings`, `watch-party/settings`, `watch-party/rooms`, `users`, `db/search`, `todos`, `todos/[id]`
 
 ## `src/lib/` — Core Modules
 
@@ -160,7 +161,7 @@ ta_new/
 | `site-settings-defaults.ts` | Global site setting defaults |
 | `translation-intro-offsets.ts` | Translation intro offset admin |
 | `watch-history-settings.ts` | Watch history admin settings |
-| `watch-party-settings.ts` | Beta-плеер совместный просмотр global admin settings |
+| `watch-party-settings.ts` | TA-плеер совместный просмотр global admin settings |
 | `watch-party-rooms.ts` | Read-only active room overview for admin page, enriched with Kodik title/translation metadata |
 | `db-explorer.ts` | Admin DB search |
 | `stats.ts`, `storage-stats.ts` | Dashboard metrics |
@@ -210,6 +211,7 @@ ta_new/
 | Folder | Key components |
 |--------|----------------|
 | `anime/` | `AnimePageView`, `AnimeWatchPanel`, `KodikPlayer`, `AnimeListActions` |
+| `admin/` | `AdminAnimeDebugButton` — защищённое окно данных тайтла/серии |
 | `auth/` | `AuthProvider` |
 | `header/` | `Header`, `HeaderSearch` |
 | `favorites/` | `FavoritesView`, `UserListStatusProvider` |
@@ -243,7 +245,7 @@ Error page asset: `public/404.webm` is used by the custom App Router 404 page.
 | `start-dev.bat` | — | Windows one-click dev startup: Docker/PostgreSQL, Prisma schema, watch-party WebSocket and Next.js |
 | `deploy.ps1`, `server-deploy.sh` | — | Deployment |
 | `notification-worker.ts` | `notifications:worker` | Background notification delivery |
-| `watch-party-server.mjs` | `watch-party:server` | WebSocket rooms for beta-плеер совместный просмотр |
+| `watch-party-server.mjs` | `watch-party:server` | WebSocket rooms for TA-плеер совместный просмотр |
 | `telegram-notification-bot.ts` | `notifications:telegram-bot` | Telegram notification link bot |
 | `vk-notification-bot.ts` | `notifications:vk-bot` | VK notification link bot |
 | `generate-vapid-keys.ts` | `notifications:generate-vapid` | VAPID key generation |
@@ -258,7 +260,7 @@ Error page asset: `public/404.webm` is used by the custom App Router 404 page.
 | `AnimeEpisodeSkipTime` | Cached AniSkip OP/ED/recap intervals |
 | `KodikEpisode` | Episode with player link |
 | `KodikEpisodeRelease` | Home feed entries |
-| `User`, `Session`, `ShikimoriAccount` | Auth |
+| `User`, `Session`, `ShikimoriAccount`, `LocalCredential`, `QrLoginRequest` | Auth |
 | `UserAnimeListEntry`, `UserAnimeBookmark` | Shikimori list cache |
 | `UserWatchProgress` | Watch position |
 | `UserNotificationPreferences`, `UserNotificationLink`, `NotificationDelivery` | Notification settings, links, delivery log |

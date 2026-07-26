@@ -1228,7 +1228,7 @@ html[data-card-size="compact"] .release-card-title {
   }
 }
 
-/* Beta Kodik: iframe занимает ровно внешний кадр, без выхода за окно. */
+/* TA-плеер: iframe занимает ровно внешний кадр, без выхода за окно. */
 .kodik-player-beta-frame {
   --kodik-beta-inner-aspect: 16 / 9;
   overflow: visible;

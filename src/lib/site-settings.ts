@@ -72,13 +72,13 @@ export type SiteSettings = {
   avatarDecorationId: string | null;
   /** Масштаб украшения (1 = по размеру аватарки) */
   avatarDecorationScale: number;
-  /** Beta: обрезка панелей Kodik, видео 16:9, iframe кликабелен */
-  betaChromelessPlayer: boolean;
+  /** Использовать оригинальный legacy-плеер Kodik вместо основного TA-плеера */
+  useLegacyKodikPlayer: boolean;
   /** Legacy: старый глобальный флаг автопропуска OP/ED */
   autoSkipOpeningsEndings: boolean;
   /** Kodik translationId -> автоматический пропуск найденных AniSkip OP/ED интервалов */
   autoSkipTranslationIds: AutoSkipTranslationIds;
-  /** Видимость полосы прогресса, когда beta-интерфейс скрыт; 0 = выключена */
+  /** Видимость полосы прогресса, когда интерфейс TA-плеера скрыт; 0 = выключена */
   betaHiddenProgressOpacity: number;
   /** Локально для устройства: навигация стрелками по карточкам сайта */
   tvNavigationEnabled: boolean;
@@ -109,7 +109,7 @@ export const DEFAULT_SITE_SETTINGS: SiteSettings = {
   translationIntroOffsets: {},
   avatarDecorationId: null,
   avatarDecorationScale: AVATAR_DECORATION_SCALE_DEFAULT,
-  betaChromelessPlayer: false,
+  useLegacyKodikPlayer: false,
   autoSkipOpeningsEndings: false,
   autoSkipTranslationIds: {},
   betaHiddenProgressOpacity: BETA_HIDDEN_PROGRESS_OPACITY_DEFAULT,
@@ -285,7 +285,7 @@ export function normalizeSiteSettings(raw: unknown): SiteSettings {
     translationIntroOffsets: parseTranslationIntroOffsets(raw.translationIntroOffsets),
     avatarDecorationId: normalizeAvatarDecorationId(raw.avatarDecorationId),
     avatarDecorationScale: normalizeAvatarDecorationScale(raw.avatarDecorationScale),
-    betaChromelessPlayer: raw.betaChromelessPlayer === true,
+    useLegacyKodikPlayer: raw.useLegacyKodikPlayer === true,
     autoSkipOpeningsEndings: raw.autoSkipOpeningsEndings === true,
     autoSkipTranslationIds: parseAutoSkipTranslationIds(raw.autoSkipTranslationIds),
     betaHiddenProgressOpacity: normalizeBetaHiddenProgressOpacity(raw.betaHiddenProgressOpacity),

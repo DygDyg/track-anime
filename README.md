@@ -54,10 +54,10 @@ flowchart LR
 | 📜 **История** | Сезон, серия, прогресс в секундах |
 | 📅 **Календарь** | Расписание выхода серий ongoing-аниме |
 | 👤 **Профили** | Публичные страницы пользователей по Shikimori ID |
-| 📱 **PWA** | Установка как приложение, офлайн-страница |
+| 📱 **PWA / Android** | Установка как PWA, а также Android-оболочка для телефона и Android TV |
 | 🔔 **Уведомления** | Browser push, in-app лента, Discord/Telegram/VK привязки |
 | 🎮 **Discord RPC** | Статус «смотрю» через локальный tray-приложение |
-| 👥 **Совместный просмотр** | Настраиваемые WebSocket-комнаты beta-плеера с invite-ссылкой, мастером и гостевыми именами |
+| 👥 **Совместный просмотр** | Настраиваемые WebSocket-комнаты TA-плеера с invite-ссылкой, мастером и гостевыми именами |
 | ⚙️ **Админка** | Импорт Kodik, sync, настройки, DB explorer |
 
 ---
@@ -148,6 +148,10 @@ http://localhost:3000/api/auth/callback/shikimori
 
 Полный список скриптов — в [`package.json`](package.json).
 
+## Android и Android TV
+
+Нативная Android-оболочка находится в [`android/`](android/). Она открывает production-сайт в защищённом WebView и имеет отдельный launcher для Android TV с D-pad-навигацией. Сборка и публикационные требования описаны в [`docs/ANDROID.md`](docs/ANDROID.md).
+
 ---
 
 ## Переменные окружения
@@ -207,6 +211,7 @@ npm run deploy:release      # деплой + пересборка Discord RPC ex
 | [`docs/WINDOWS_REINSTALL.md`](docs/WINDOWS_REINSTALL.md) | Переустановка Windows / новый ПК для разработки |
 | [`docs/SERVER.md`](docs/SERVER.md) | Production-сервер |
 | [`docs/DEPLOY.md`](docs/DEPLOY.md) | Деплой с Windows |
+| [`docs/ANDROID.md`](docs/ANDROID.md) | Сборка Android / Android TV оболочки |
 | [`docs/kodik-api/`](docs/kodik-api/) | Справочник Kodik API |
 | [`docs/shikimori-api/`](docs/shikimori-api/) | Справочник Shikimori API |
 

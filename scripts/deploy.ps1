@@ -7,6 +7,7 @@
 #   .\scripts\deploy.ps1 -ForceTrayRebuild
 #   .\scripts\deploy.ps1 -Remote "root@1.2.3.4"
 #   .\scripts\deploy.ps1 -SkipBuild
+#   .\scripts\deploy.ps1 -ApkPath "android\app\build\outputs\apk\release\app-release.apk"
 #
 # См. docs/DEPLOY.md
 
@@ -15,6 +16,7 @@ param(
     [string]$SshKey = "$env:USERPROFILE\.ssh\id_rsa",
     [string]$ServerAppDir = "/var/www/ta_new",
     [int]$UploadChunkSizeMB = 48,
+    [string]$ApkPath = "",
     [switch]$DryRun,
     [switch]$ForceTrayRebuild,
     [switch]$SkipBuild
@@ -68,6 +70,48 @@ function Complete-DeployProgress {
 function Format-Megabytes {
     param([long]$Bytes)
     return [math]::Round($Bytes / 1MB, 1)
+}
+
+function Publish-AndroidApk {
+    param([string]$SourcePath)
+
+    if (-not $SourcePath) {
+        Write-Step "Android APK: not specified, skip"
+        return
+    }
+
+    $resolvedSource = Resolve-Path -LiteralPath $SourcePath -ErrorAction SilentlyContinue
+    if (-not $resolvedSource -or -not (Test-Path -LiteralPath $resolvedSource -PathType Leaf)) {
+        throw "Android APK not found: $SourcePath"
+    }
+
+    $downloadsDir = Join-Path $ProjectRoot "public\downloads"
+    $targetPath = Join-Path $downloadsDir "TrackAnime.apk"
+    $manifestPath = Join-Path $downloadsDir "TrackAnime.json"
+    New-Item -ItemType Directory -Path $downloadsDir -Force | Out-Null
+    Copy-Item -LiteralPath $resolvedSource.Path -Destination $targetPath -Force
+    $sdkRoot = if ($env:ANDROID_HOME) { $env:ANDROID_HOME } else { Join-Path $env:LOCALAPPDATA "Android\Sdk" }
+    $aaptCandidates = Get-ChildItem -Path (Join-Path $sdkRoot "build-tools") -Filter "aapt.exe" -Recurse -ErrorAction SilentlyContinue |
+        Sort-Object FullName -Descending
+    if (-not $aaptCandidates) {
+        throw "Android Build Tools (aapt.exe) not found under $sdkRoot. Install Android SDK Build-Tools before deployment."
+    }
+    $badging = & $aaptCandidates[0].FullName dump badging $targetPath
+    $packageLine = $badging | Where-Object { $_ -like "package:*" } | Select-Object -First 1
+    if ($LASTEXITCODE -ne 0 -or -not $packageLine -or $packageLine -notmatch "versionCode='(?<code>\d+)'\s+versionName='(?<name>[^']*)'") {
+        throw "Could not read versionCode/versionName from Android APK: $targetPath"
+    }
+    $versionCode = [int64]$Matches["code"]
+    $versionName = $Matches["name"]
+    $sha256 = (Get-FileHash -Algorithm SHA256 -LiteralPath $targetPath).Hash.ToLowerInvariant()
+    [ordered]@{
+        versionCode = $versionCode
+        versionName = $versionName
+        apkUrl = "/downloads/TrackAnime.apk"
+        sha256 = $sha256
+    } | ConvertTo-Json | Set-Content -LiteralPath $manifestPath -Encoding utf8
+    $apkSizeMb = Format-Megabytes (Get-Item -LiteralPath $targetPath).Length
+    Write-Step "Android APK: published $targetPath ($apkSizeMb MB), manifest $manifestPath (v$versionName, code $versionCode)"
 }
 
 function Get-SshBaseOptions {
@@ -485,6 +529,8 @@ Write-Step "project: $ProjectRoot"
 Write-Step "remote:  $Remote"
 Write-Step "app dir: $ServerAppDir"
 Write-Step "local temp: $DeployTempDir"
+
+Publish-AndroidApk -SourcePath $ApkPath
 
 Write-Step "discord tray publish..."
 $distExe = Join-Path $ProjectRoot "scripts\discord-rpc-tray\dist\TrackAnimeDiscordRPC.exe"

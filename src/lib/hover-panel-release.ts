@@ -6,9 +6,11 @@ import type { SearchResultDto } from "@/lib/search-shared";
 /** Минимальные данные для hover-панели на любой карточке аниме */
 export type HoverPanelRelease = {
   animeTitle: string;
+  materialId?: string | null;
   posterUrl: string | null;
   screenshotUrl: string | null;
   shikimoriId: number | null;
+  seasonNumber?: number;
   episodeNumber: number;
   translationName: string;
   playerLink: string | null;
@@ -35,8 +37,10 @@ function catalogHoverRelease(input: {
 }): HoverPanelRelease {
   return {
     animeTitle: input.animeTitle,
+    materialId: null,
     posterUrl: input.posterUrl,
     screenshotUrl: input.screenshotUrl ?? null,
+    seasonNumber: 1,
     episodeNumber: 0,
     translationName: "",
     playerLink: null,

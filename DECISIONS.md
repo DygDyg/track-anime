@@ -28,5 +28,6 @@
 
 ## AI workflow
 
-- Мультитемные запросы — rule `.cursor/rules/multi-task-dispatcher.mdc`, skill `ta-dispatcher`.
-- Быстрый контекст — `AI_CONTEXT.md`; правила разработки — `AI_RULES.md`.
+- Мультитемные запросы — rule `.cursor/rules/multi-task-dispatcher.mdc`, skill `ta-dispatcher` (есть в репо).
+- Cursor always-on — `.cursor/rules/track-anime-core.mdc`, `codex-ported-preferences.mdc` (предпочтения из Codex memories).
+- Быстрый контекст — `AI_CONTEXT.md`; правила разработки — `AI_RULES.md` / `AGENTS.md` / `.cursorrules`.

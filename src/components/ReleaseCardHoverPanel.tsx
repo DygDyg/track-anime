@@ -4,6 +4,7 @@ import Link from "next/link";
 import { createPortal } from "react-dom";
 import { useEffect, useLayoutEffect, useRef, useState, type CSSProperties, type RefObject } from "react";
 import { AnimeLink } from "@/components/AnimeLink";
+import { AdminAnimeDebugButton } from "@/components/admin/AdminAnimeDebugButton";
 import { AnimeKindInfoLink } from "@/components/AnimeKindInfoLink";
 import { AnimePoster } from "@/components/AnimePoster";
 import { AnimeScoreBadge } from "@/components/AnimeScoreBadge";
@@ -622,6 +623,13 @@ export function ReleaseCardHoverPanel({
           {release.shikimoriId ? (
             <ReleaseCardQuickActions shikimoriId={release.shikimoriId} />
           ) : null}
+          <AdminAnimeDebugButton
+            shikimoriId={release.shikimoriId}
+            materialId={release.materialId}
+            seasonNumber={release.episodeNumber > 0 ? release.seasonNumber : null}
+            episodeNumber={release.episodeNumber > 0 ? release.episodeNumber : null}
+            compact
+          />
         </div>
       </div>
     </div>

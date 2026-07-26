@@ -14,6 +14,9 @@ temp/
 
 # Local scratch/design files
 .cursorignore
+.chats/
+.cursor/
+.embeddings/
 Desktop.ini
 test_filesystem.txt
 tmp-home.html
@@ -36,6 +39,7 @@ public/sw.js
 public/sw.js.map
 public/swe-worker-*.js
 public/downloads/TrackAnimeDiscordRPC.exe
+public/downloads/TrackAnime.apk
 
 # Backups
 backups/

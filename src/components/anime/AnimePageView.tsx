@@ -1,4 +1,5 @@
 import { AnimeAgeRatingBadge } from "@/components/anime/AnimeAgeRatingBadge";
+import { AdminAnimeDebugButton } from "@/components/admin/AdminAnimeDebugButton";
 import { AnimePageBackButton } from "@/components/anime/AnimePageBackButton";
 import { AnimeScreenshotBackground } from "@/components/anime/AnimeScreenshotBackground";
 import { FormattedDescription } from "@/components/anime/FormattedDescription";
@@ -212,6 +213,7 @@ export function AnimePageView({ anime }: { anime: AnimePageDto }) {
                     </MetaBadge>
                   ) : null}
                   <AnimeAgeRatingBadge rating={anime.rating} />
+                  <AdminAnimeDebugButton shikimoriId={anime.shikimoriId} compact />
                 </div>
 
                 <AnimeInfoStats anime={anime} />

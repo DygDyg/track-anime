@@ -7,7 +7,7 @@ Quick reference for AI assistants working on this codebase. Shared by Codex and 
 | Tool | Entrypoint | Notes |
 |------|------------|-------|
 | Codex | `AGENTS.md` | Primary Codex rules; also read this file and `AI_RULES.md` |
-| Cursor | `.cursorrules` | Cursor compatibility rules; also read this file and `AI_RULES.md` |
+| Cursor | `.cursorrules` + `.cursor/rules/` | Cursor entrypoint; helpers include `multi-task-dispatcher` and skill `ta-dispatcher`; also read this file and `AI_RULES.md` |
 | Any AI | `PROJECT_OVERVIEW.md` → linked docs | Start here for full project onboarding |
 
 ## What This Project Is
@@ -18,7 +18,7 @@ Next.js anime streaming site with Shikimori OAuth + Kodik player. Data lives in 
 
 | Task | Start here |
 |------|------------|
-| Fix auth/login | `src/lib/auth/shikimori-oauth.ts`, `src/app/api/auth/callback/shikimori/route.ts` |
+| Fix auth/login | `src/lib/auth/shikimori-oauth.ts`, `src/lib/auth/local-credentials.ts`, `src/lib/auth/qr-login.ts`, `src/app/api/auth/callback/shikimori/route.ts` |
 | Fix player | `src/components/anime/KodikPlayer.tsx`, `src/lib/kodik-player-api.ts` |
 | Fix watch party | `src/hooks/useWatchParty.ts`, `scripts/watch-party-server.mjs`, `src/components/anime/AnimeWatchPanel.tsx` |
 | Fix home feed | `src/lib/releases.ts`, `src/components/ReleaseFeed.tsx` |
@@ -37,7 +37,7 @@ Next.js anime streaming site with Shikimori OAuth + Kodik player. Data lives in 
 
 При широком запросе («UI + обложки + деплой») — сначала разложить задачу по таблице ниже, **deploy последним**.
 
-Cursor: если доступны `.cursor/rules/multi-task-dispatcher.mdc` или skill `ta-dispatcher`, можно использовать их как helper.
+Cursor: использовать `.cursor/rules/multi-task-dispatcher.mdc` и skill `ta-dispatcher`.
 Codex: использовать эту таблицу напрямую и читать реальные стартовые файлы.
 
 | Тема | Ключевые слова | Стартовые файлы |
@@ -66,7 +66,7 @@ Details: `DECISIONS.md`, если файл присутствует. Если ф
 
 ## Hidden Assumptions
 
-1. **proxy.ts** — redirects legacy `?shikimori_id=` → `/anime/{id}` and canonicalizes legacy host; auth is per-route, not global
+1. **proxy.ts** — redirects legacy `?shikimori_id=` → `/anime/{id}`; production mirrors are handled by nginx, auth is per-route, not global
 2. **Shikimori ID is the URL key** — not internal DB id, not kodikId
 3. **KodikMaterial = one translation** — multiple materials per anime
 4. **Watch progress is per shikimoriId** — not per translation
@@ -82,7 +82,7 @@ Details: `DECISIONS.md`, если файл присутствует. Если ф
 ```
 Home:  KodikEpisodeRelease → releases.ts → ReleaseFeed
 Anime: shikimoriId → anime-page.ts → Shikimori API + KodikMaterial DB
-Player: playerLink → KodikPlayer iframe → postMessage → watch-history API; beta watch party → `useWatchParty` → WebSocket server
+Player: playerLink → KodikPlayer iframe → postMessage → watch-history API; TA player watch party → `useWatchParty` → WebSocket server
 Skip times: AnimeWatchPanel → /api/anime/[shikimoriId]/skip-times → aniskip.ts → AniSkip + DB cache → manual/auto OP/ED skip
 Lists: favorites-sync.ts → Shikimori user_rates → UserAnimeListEntry
 Notifications: preferences + links → notification-worker.ts → browser/Discord/Telegram/VK + in-app feed
@@ -161,8 +161,10 @@ npm run watch-party:server
 - `KodikMaterial.kodikId` — PK, Kodik's id
 - `KodikMaterial.shikimoriId` — link to Shikimori
 - `User.shikimoriId` — unique, from OAuth
+- `LocalCredential` — optional local login/password hash for the same `User`
+- `QrLoginRequest` — one-time QR approval state; the QR itself never contains a session token
 - `UserWatchProgress` — unique (userId, shikimoriId)
-- `WatchPartySettings` — global beta-плеер совместный просмотр toggles
+- `WatchPartySettings` — global TA-плеер совместный просмотр toggles
 - `KodikEpisodeRelease` — home feed source
 - `UserNotificationPreferences`, `UserNotificationLink`, `NotificationDelivery` — notifications state
 - `AnimeExternalIdMap` — server-side external ID cache (`shikimoriId -> malId`)
@@ -173,7 +175,7 @@ npm run watch-party:server
 1. Find similar implementation first (see CONVENTIONS.md)
 2. Server data in `src/lib/`, API in `src/app/api/`
 3. Client UI in `src/components/`
-4. Keep auth per route via `getSession()` / `requireAdmin*()`; `src/proxy.ts` is only for legacy host/query redirects
+4. Keep auth per route via `getSession()` / `requireAdmin*()`; `src/proxy.ts` is only for the legacy query redirect
 5. Don't call external APIs from client components
 6. Run documentation impact check and update only affected doc sections if behavior changes
 
@@ -196,8 +198,8 @@ Final response should include either changed docs or `Docs: not needed`.
 ## AI workflow
 
 - Codex: follow `AGENTS.md`, then this file, then task-specific docs/code.
-- Cursor: follow `.cursorrules`, then this file, then task-specific docs/code.
-- Multi-topic requests: use the request routing table above. Cursor helpers under `.cursor/` are optional and may be absent.
+- Cursor: follow `.cursorrules`, then `.cursor/rules/` (always-on), then this file, then task-specific docs/code.
+- Multi-topic requests: use the request routing table above; Cursor also has `.cursor/rules/multi-task-dispatcher.mdc` and skill `ta-dispatcher`.
 - Decisions log: `DECISIONS.md` if present.
 - Ignore for indexing: `.cursorignore` / tool-specific excludes for `.next/`, `node_modules/`, caches.
 

@@ -7,6 +7,8 @@ import { pickScreenshotUrl } from "@/lib/screenshots";
 export type ReleaseItem = {
   /** Shikimori ID тайтла (или materialId, если shikimori нет) */
   id: string;
+  /** Материал Kodik выбранной озвучки */
+  materialId?: string | null;
   animeTitle: string;
   posterUrl: string | null;
   screenshotUrl: string | null;
@@ -54,6 +56,7 @@ function parseGenres(value: unknown): string[] {
 function mapReleaseRow(row: RawReleaseRow): ReleaseItem {
   return {
     id: row.id,
+    materialId: row.materialId,
     animeTitle: row.animeTitle,
     posterUrl: resolveMaterialPosterUrl({
       anime_poster_url: row.posterUrl,
@@ -102,6 +105,7 @@ function resolveFeedPhase(cursor?: ReleasesCursor | null): ReleasesCursor["phase
 
 type RawReleaseRow = {
   id: string;
+  materialId: string;
   animeTitle: string;
   posterUrl: string | null;
   worldartLinkFromMaterial: string | null;
@@ -123,8 +127,13 @@ type RawReleaseRow = {
 const CATALOG_QUERY_BATCH_FACTOR = 4;
 const CATALOG_QUERY_MIN_BATCH = 96;
 const CATALOG_QUERY_MAX_BATCHES = 8;
+const COMPLETED_SERIES_MAX_AGE_DAYS = 90;
 export const RELEASES_FEED_CACHE_SECONDS = 60 * 60;
 export const RELEASES_FEED_STALE_WHILE_REVALIDATE_SECONDS = 10 * 60;
+
+function completedSeriesCutoff(): Date {
+  return new Date(Date.now() - COMPLETED_SERIES_MAX_AGE_DAYS * 24 * 60 * 60 * 1000);
+}
 
 /** title_key тайтлов, у которых есть KodikEpisodeRelease (для исключения из каталога) */
 function releaseTitleKeysCte() {
@@ -138,6 +147,23 @@ function releaseTitleKeysCte() {
         END AS title_key
       FROM "KodikEpisodeRelease" r
       INNER JOIN "KodikMaterial" m ON m."kodikId" = r."materialId"
+      WHERE NOT (
+        LOWER(COALESCE(
+          NULLIF(m."materialData"->>'anime_status', ''),
+          NULLIF(m."materialData"->>'all_status', ''),
+          NULLIF(m."materialData"->'anime_full'->>'status', '')
+        )) = 'released'
+        AND COALESCE(
+          NULLIF(m."materialData"->>'released_at', ''),
+          NULLIF(m."materialData"->'anime_full'->>'released_on', ''),
+          NULLIF(m."materialData"->'anime_full'->>'released_at', '')
+        ) ~ '^\\d{4}-\\d{2}-\\d{2}'
+        AND COALESCE(
+          NULLIF(m."materialData"->>'released_at', ''),
+          NULLIF(m."materialData"->'anime_full'->>'released_on', ''),
+          NULLIF(m."materialData"->'anime_full'->>'released_at', '')
+        )::date < CURRENT_DATE - INTERVAL '90 days'
+      )
     )
   `;
 }
@@ -152,11 +178,13 @@ async function queryFreshReleasesPerTitle(
 ): Promise<ReleaseItem[]> {
   const afterReleasedAt = after?.releasedAt ?? null;
   const afterId = after?.id ?? null;
+  const completedSeriesCutoffDate = completedSeriesCutoff();
 
   const rows = await prisma.$queryRaw<RawReleaseRow[]>`
     WITH latest_release AS (
       SELECT DISTINCT ON (title_key)
         title_key AS id,
+        "materialId",
         "animeTitle",
         "posterUrl",
         "worldartLinkFromMaterial",
@@ -180,6 +208,7 @@ async function queryFreshReleasesPerTitle(
               THEN COALESCE(m."shikimoriId", r."shikimoriId")::text
             ELSE r."materialId"
           END AS title_key,
+          r."materialId",
           r."animeTitle",
           COALESCE(
             NULLIF(r."posterUrl", ''),
@@ -220,6 +249,23 @@ async function queryFreshReleasesPerTitle(
         LEFT JOIN "KodikEpisode" e ON e."materialId" = r."materialId"
           AND e."seasonNumber" = r."seasonNumber"
           AND e."episodeNumber" = r."episodeNumber"
+        WHERE NOT (
+          LOWER(COALESCE(
+            NULLIF(m."materialData"->>'anime_status', ''),
+            NULLIF(m."materialData"->>'all_status', ''),
+            NULLIF(m."materialData"->'anime_full'->>'status', '')
+          )) = 'released'
+          AND COALESCE(
+            NULLIF(m."materialData"->>'released_at', ''),
+            NULLIF(m."materialData"->'anime_full'->>'released_on', ''),
+            NULLIF(m."materialData"->'anime_full'->>'released_at', '')
+          ) ~ '^\\d{4}-\\d{2}-\\d{2}'
+          AND COALESCE(
+            NULLIF(m."materialData"->>'released_at', ''),
+            NULLIF(m."materialData"->'anime_full'->>'released_on', ''),
+            NULLIF(m."materialData"->'anime_full'->>'released_at', '')
+          )::date < ${completedSeriesCutoffDate}::date
+        )
       ) release_rows
       ORDER BY
         title_key,
@@ -281,7 +327,6 @@ async function queryCatalogReleaseCandidates(
 ): Promise<RawReleaseRow[]> {
   const afterReleasedAt = after?.releasedAt ?? null;
   const afterId = after?.id ?? null;
-
   const rows = await prisma.$queryRawUnsafe<RawReleaseRow[]>(
     `
     WITH catalog_candidates AS (
@@ -290,6 +335,7 @@ async function queryCatalogReleaseCandidates(
           WHEN m."shikimoriId" IS NOT NULL THEN m."shikimoriId"::text
           ELSE m."kodikId"
         END AS id,
+        m."kodikId" AS "materialId",
         COALESCE(
           NULLIF(m."materialData"->>'anime_title', ''),
           m."title"
@@ -357,6 +403,23 @@ async function queryCatalogReleaseCandidates(
             WHEN m."shikimoriId" IS NOT NULL THEN m."shikimoriId"::text
             ELSE m."kodikId"
           END
+          AND NOT (
+            LOWER(COALESCE(
+              NULLIF(rm."materialData"->>'anime_status', ''),
+              NULLIF(rm."materialData"->>'all_status', ''),
+              NULLIF(rm."materialData"->'anime_full'->>'status', '')
+            )) = 'released'
+            AND COALESCE(
+              NULLIF(rm."materialData"->>'released_at', ''),
+              NULLIF(rm."materialData"->'anime_full'->>'released_on', ''),
+              NULLIF(rm."materialData"->'anime_full'->>'released_at', '')
+            ) ~ '^\\d{4}-\\d{2}-\\d{2}'
+            AND COALESCE(
+              NULLIF(rm."materialData"->>'released_at', ''),
+              NULLIF(rm."materialData"->'anime_full'->>'released_on', ''),
+              NULLIF(rm."materialData"->'anime_full'->>'released_at', '')
+            )::date < CURRENT_DATE - INTERVAL '90 days'
+          )
         )
       ORDER BY
         m."kodikUpdatedAt" DESC,
@@ -380,6 +443,7 @@ async function queryCatalogReleaseCandidates(
 }
 
 async function countFreshReleasesPerTitle(): Promise<number> {
+  const completedSeriesCutoffDate = completedSeriesCutoff();
   const result = await prisma.$queryRaw<{ count: bigint }[]>`
     WITH latest_release AS (
       SELECT DISTINCT ON (title_key)
@@ -394,6 +458,23 @@ async function countFreshReleasesPerTitle(): Promise<number> {
           r."releasedAt"
         FROM "KodikEpisodeRelease" r
         INNER JOIN "KodikMaterial" m ON m."kodikId" = r."materialId"
+        WHERE NOT (
+          LOWER(COALESCE(
+            NULLIF(m."materialData"->>'anime_status', ''),
+            NULLIF(m."materialData"->>'all_status', ''),
+            NULLIF(m."materialData"->'anime_full'->>'status', '')
+          )) = 'released'
+          AND COALESCE(
+            NULLIF(m."materialData"->>'released_at', ''),
+            NULLIF(m."materialData"->'anime_full'->>'released_on', ''),
+            NULLIF(m."materialData"->'anime_full'->>'released_at', '')
+          ) ~ '^\\d{4}-\\d{2}-\\d{2}'
+          AND COALESCE(
+            NULLIF(m."materialData"->>'released_at', ''),
+            NULLIF(m."materialData"->'anime_full'->>'released_on', ''),
+            NULLIF(m."materialData"->'anime_full'->>'released_at', '')
+          )::date < ${completedSeriesCutoffDate}::date
+        )
       ) release_rows
       ORDER BY
         title_key,

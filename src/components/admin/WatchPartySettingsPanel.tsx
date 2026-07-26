@@ -121,7 +121,7 @@ export function WatchPartySettingsPanel({
       <section className={adminClass.panel}>
         <h2 className="text-lg font-semibold text-foreground">Совместный просмотр</h2>
         <p className="mt-2 text-sm text-muted">
-          Глобальные настройки WebSocket-комнат beta-плеера. Комнаты хранятся в памяти
+          Глобальные настройки WebSocket-комнат TA-плеера. Комнаты хранятся в памяти
           отдельного процесса и исчезают при его перезапуске.
         </p>
       </section>

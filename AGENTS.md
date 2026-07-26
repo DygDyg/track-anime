@@ -105,5 +105,5 @@ Rules:
 ## Codex vs Cursor
 
 - Codex: use this `AGENTS.md` plus `AI_RULES.md` and `AI_CONTEXT.md`.
-- Cursor: use `.cursorrules` plus the same shared docs.
-- Cursor-specific paths under `.cursor/` are optional helpers. If they are absent, fall back to `AI_CONTEXT.md` and the task-specific files.
+- Cursor: use `.cursorrules`, `.cursor/rules/`, skill `ta-dispatcher`, plus the same shared docs.
+- If Cursor helpers under `.cursor/` are missing, fall back to `AI_CONTEXT.md` request routing and the task-specific files.

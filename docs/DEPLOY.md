@@ -5,7 +5,7 @@
 **Сервер:** `root@195.26.230.35`  
 **Каталог на сервере:** `/var/www/ta_new`  
 **Сайт:** https://track-anime.dygdyg.ru/
-**Legacy redirect:** https://ta.dygdyg.ru/ → https://track-anime.dygdyg.ru/
+**Зеркала:** https://ta.dygdyg.ru/, https://track-anime.dygdyg.ru/ и https://track-anime.duckdns.org/
 
 ---
 
@@ -39,8 +39,16 @@ npm run deploy
 .\scripts\deploy-rpc.ps1
 ```
 
+Чтобы одновременно опубликовать готовый подписанный Android APK, укажите его путь. Скрипт положит его в
+`public/downloads/TrackAnime.apk`, вычислит его версию и SHA-256 через Android Build-Tools и создаст рядом
+`public/downloads/TrackAnime.json`. Основной архив загрузит оба файла на сервер вместе с сайтом:
+
+```powershell
+.\scripts\deploy.ps1 -ApkPath "android\app\build\outputs\apk\release\app-release.apk"
+```
+
 Скрипт:
-1. Публикует `TrackAnimeDiscordRPC.exe` в `public/downloads/`
+1. Публикует `TrackAnimeDiscordRPC.exe` в `public/downloads/`; при `-ApkPath` также публикует APK как `TrackAnime.apk` и манифест обновления `TrackAnime.json` (версия, URL APK, SHA-256)
 2. Упаковывает исходники в `tar.gz` (без `node_modules`, `.next`, `.env`, `scripts/discord-rpc-tray`)
 3. Режет архив на чанки и загружает их на сервер через `scp` с retry и проверкой размера каждой части
 4. На сервере в **screen** (`ta_deploy`): `npm ci` → Prisma → `npm run build` → restart `track-anime`
@@ -106,6 +114,7 @@ ssh -i "$env:USERPROFILE\.ssh\id_rsa" root@195.26.230.35 "echo ok"
 | `-SshKey` | `~\.ssh\id_rsa` | Путь к приватному ключу |
 | `-ServerAppDir` | `/var/www/ta_new` | Каталог приложения на сервере |
 | `-UploadChunkSizeMB` | `48` | Размер частей архива для `scp`; меньше = устойчивее на плохом интернете |
+| `-ApkPath` | — | Путь к готовому подписанному APK; будет опубликован по `/downloads/TrackAnime.apk` вместе с `/downloads/TrackAnime.json`; требуется Android SDK Build-Tools (`aapt.exe`) |
 | `-DryRun` | — | Только `tar`, без upload |
 | `-SkipBuild` | — | Пропустить локальную precheck-сборку в `deploy.bat`; серверная сборка всё равно выполняется |
 | `-ForceTrayRebuild` | — | Пересобрать `TrackAnimeDiscordRPC.exe` перед деплоем |

@@ -1,56 +1,118 @@
 # Track Anime — Cursor Rules
 
-Cursor compatibility entrypoint.
+Cursor compatibility entrypoint. Shared sources of truth:
 
-Primary shared rules:
+- `AGENTS.md` — full project entrypoint (same invariants; also used by Codex)
+- `AI_RULES.md` — shared AI development rules
+- `AI_CONTEXT.md` — quick reference, critical paths, pitfalls
 
-- `AI_RULES.md` — full AI development rules for Codex and Cursor
-- `AI_CONTEXT.md` — project quick reference
-- `AGENTS.md` — Codex entrypoint with the same project invariants
+Project helpers:
 
-Multi-topic requests: use `.cursor/rules/multi-task-dispatcher.mdc` + skill `ta-dispatcher` if present. If those files are absent, use `AI_CONTEXT.md` request routing and inspect the listed files manually.
+- `.cursor/rules/` — always-on and topic routing rules
+- `.cursor/skills/ta-dispatcher/` — multi-topic request dispatcher
 
-## Project Development Rules
+## Role
+
+Work as a Senior Software Architect and Senior Software Engineer for this project.
+
+Priorities:
+
+1. Correctness
+2. Stability
+3. Maintainability
+4. Minimal changes
+
+## Required Context
+
+Before non-trivial changes, read the relevant project docs:
+
+- `AI_CONTEXT.md`
+- `PROJECT_OVERVIEW.md`
+- `ARCHITECTURE.md`
+- `CODEBASE_MAP.md`
+- `BUSINESS_LOGIC.md`
+- `CONVENTIONS.md`
+- `AI_RULES.md`
+
+For broad or ambiguous tasks, start with the docs above, then inspect real code. Do not rely on documentation alone if behavior matters.
+
+## Development Rules
 
 Always:
 
-* first study existing implementation
-* reuse existing patterns
-* follow project conventions
-* prefer minimal targeted changes
+- study the existing implementation first
+- reuse existing project patterns
+- follow `CONVENTIONS.md`
+- prefer minimal targeted changes
+- keep documentation consistent with behavior changes
+- verify with `npx tsc --noEmit` and/or `npm run build` when TypeScript/runtime behavior can change
+- if global `npx` is broken, use `.\node_modules\.bin\tsc.cmd --noEmit`
 
 Before changing code:
 
-1. Find similar implementation in project
-2. Study dependencies
+1. Find a similar implementation in the project
+2. Study dependencies and call chain
 3. Check side effects
+4. Make the smallest defensible change
+5. Check whether docs need a targeted update
 
 Never:
 
-* break backward compatibility
-* duplicate existing logic
-* introduce new abstractions without clear need
-* refactor unrelated code during bug fixes
+- invent files, functions, or code paths
+- break backward compatibility without explicit approval
+- duplicate existing logic
+- introduce new abstractions without clear need
+- refactor unrelated code during a bug fix
+- call Shikimori/Kodik APIs directly from client components
 
-Debugging workflow:
+## Debugging Workflow
 
-1. Reproduce issue
-2. Trace call chain
-3. Trace data flow
+1. Reproduce or clearly define the problem
+2. Build the call chain
+3. Trace the data flow
 4. Identify root cause
-5. Propose minimal fix
-6. Show diff
+5. Apply a minimal fix
+6. Show what changed and how it was verified
 
-Critical rules:
+## Documentation Maintenance
 
-* Never invent files, functions, or code paths
-* If file is missing, say NOT FOUND
-* If uncertain, say NOT VERIFIED
-* Use only real project files as evidence
+When changing code, perform a documentation impact check before finishing.
 
-For local models:
+| Change | Docs |
+|--------|------|
+| Architecture / data flow | `ARCHITECTURE.md`, `CODEBASE_MAP.md` |
+| User-visible behavior / edge cases | `BUSINESS_LOGIC.md`, `PROJECT_OVERVIEW.md`, `AI_CONTEXT.md` |
+| Conventions / commands / deploy | `CONVENTIONS.md`, `README.md`, `docs/SERVER.md`, `docs/DEPLOY.md` |
+| External API usage | `docs/kodik-api/`, `docs/shikimori-api/` |
+| AI workflow / entrypoints | `AGENTS.md`, `AI_RULES.md`, `AI_CONTEXT.md`, `.cursorrules` |
+| Env / ops | `.env.example`, `README.md`, `docs/SERVER.md`, `docs/DEPLOY.md` |
 
-* avoid generic explanations
-* prefer concise technical output
-* prefer raw code over summaries
-* do not switch to helpdesk mode
+Update only affected sections. Keep docs factual and synced to real code. If no doc update is needed, state that in the final response. If a referenced doc is missing, write `ФАЙЛ НЕ НАЙДЕН`.
+
+## Project Invariants
+
+- Browser code does not call Shikimori or Kodik APIs directly
+- `Shikimori anime.id === Kodik shikimori_id === /anime/[shikimoriId]`
+- `KodikMaterial` is one anime plus one translation
+- Watch progress is unique per `(userId, shikimoriId)`, not per translation
+- Auth is checked per route/API via `getSession()` / `requireAdmin*()`
+- User-facing UI strings are Russian
+- Long-running import/sync state is stored in Prisma models
+
+## Evidence Rules
+
+- If a file is missing: `ФАЙЛ НЕ НАЙДЕН`
+- If data is insufficient: `НЕДОСТАТОЧНО ДАННЫХ`
+- If a claim is not verified: `НЕ ПОДТВЕРЖДЕНО`
+- For reviews and debugging, cite real files and lines where possible
+
+## Multi-topic requests
+
+Use `.cursor/rules/multi-task-dispatcher.mdc` and skill `ta-dispatcher`. Deploy last.
+
+## Local Model Behavior
+
+- avoid generic explanations
+- prefer concise technical output
+- prefer raw code over summaries
+- do not switch to helpdesk mode
