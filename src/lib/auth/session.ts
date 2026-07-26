@@ -9,6 +9,7 @@ export type AuthUser = {
   nickname: string;
   avatar: string | null;
   isAdmin: boolean;
+  hasLocalCredential: boolean;
 };
 
 export type AuthSession = {
@@ -21,6 +22,7 @@ function mapUser(user: {
   nickname: string;
   avatar: string | null;
   isAdmin: boolean;
+  localCredential?: { userId: string } | null;
 }): AuthUser {
   return {
     id: user.id,
@@ -28,6 +30,7 @@ function mapUser(user: {
     nickname: user.nickname,
     avatar: shikimoriAvatarUrl(user.avatar),
     isAdmin: user.isAdmin || isBootstrapAdmin(user.shikimoriId),
+    hasLocalCredential: Boolean(user.localCredential),
   };
 }
 
@@ -48,7 +51,11 @@ export async function getSession(): Promise<AuthSession | null> {
     return null;
   }
 
-  return { user: mapUser(session.user) };
+  const localCredential = await prisma.localCredential.findUnique({
+    where: { userId: session.user.id },
+    select: { userId: true },
+  });
+  return { user: mapUser({ ...session.user, localCredential }) };
 }
 
 export async function createSession(userId: string): Promise<string> {
@@ -66,7 +73,13 @@ export async function deleteSessionByToken(token: string): Promise<void> {
   await prisma.session.deleteMany({ where: { token } });
 }
 
-export function sessionCookieOptions(token: string) {
+export function isSecureRequest(request: Request): boolean {
+  const forwardedProto = request.headers.get("x-forwarded-proto")?.split(",")[0]?.trim().toLowerCase();
+  if (forwardedProto) return forwardedProto === "https";
+  return new URL(request.url).protocol === "https:";
+}
+
+export function sessionCookieOptions(token: string, secure = process.env.NODE_ENV === "production") {
   return {
     name: authConfig.sessionCookie,
     value: token,

@@ -4,6 +4,7 @@ import { ProfileAvatar } from "@/components/profile/ProfileAvatar";
 import { ProfileFriendButton } from "@/components/profile/ProfileFriendButton";
 import { ProfileFriendsSection } from "@/components/profile/ProfileFriendsSection";
 import { ProfileSiteSettingsNote } from "@/components/profile/ProfileSiteSettingsNote";
+import { LocalCredentialSettings } from "@/components/profile/LocalCredentialSettings";
 import { UsersSearchForm } from "@/components/user/UsersSearchForm";
 import { shikimoriSiteUrl } from "@/lib/shikimori/endpoints";
 import type { AuthUser } from "@/lib/auth/session";
@@ -244,6 +245,8 @@ export function ProfileCard({
       </div>
 
       <div className="space-y-6 px-6 py-6 sm:px-8">
+        {isOwn ? <LocalCredentialSettings suggestedLogin={user.nickname} shikimoriId={user.shikimoriId} /> : null}
+
         <section>
           <h2 className="mb-3 text-sm font-semibold uppercase tracking-wide text-muted">
             Списки аниме

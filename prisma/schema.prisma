@@ -282,6 +282,7 @@ model User {
   createdAt          DateTime             @default(now())
   updatedAt          DateTime             @updatedAt
   account            ShikimoriAccount?
+  localCredential    LocalCredential?
   sessions           Session[]
   listSync           UserListSync?
   animeListEntries   UserAnimeListEntry[]
@@ -293,6 +294,7 @@ model User {
   notificationPreferences UserNotificationPreferences?
   notificationLink        UserNotificationLink?
   pushSubscriptions       PushSubscription[]
+  approvedQrLogins        QrLoginRequest[] @relation("QrLoginApprover")
 }
 
 /// Настройки уведомлений пользователя
@@ -442,6 +444,34 @@ model ShikimoriAccount {
   expiresAt    DateTime
   scope        String
   updatedAt    DateTime @updatedAt
+}
+
+/// Локальный способ входа, дополнительно к привязке Shikimori.
+model LocalCredential {
+  userId       String   @id
+  user         User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  login        String   @unique
+  passwordHash String   @db.Text
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+}
+
+/// Одноразовый запрос входа: QR содержит только code, секрет получателя остаётся в браузере.
+model QrLoginRequest {
+  id                 String   @id @default(cuid())
+  codeHash           String   @unique
+  requesterSecretHash String  @unique
+  status             String   @default("pending")
+  approvedByUserId   String?
+  approvedByUser      User?    @relation("QrLoginApprover", fields: [approvedByUserId], references: [id], onDelete: SetNull)
+  approvedSessionId  String?  @unique
+  expiresAt          DateTime
+  createdAt          DateTime @default(now())
+  approvedAt         DateTime?
+  consumedAt         DateTime?
+
+  @@index([expiresAt])
+  @@index([approvedByUserId])
 }
 
 /// Серверная сессия (httpOnly cookie)

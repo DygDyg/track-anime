@@ -10,12 +10,22 @@ import { useSiteSettings } from "@/components/SiteSettingsProvider";
 import { userProfilePath } from "@/lib/public-user";
 import { headerControl } from "@/components/header/header-styles";
 import { LoadingSpinner } from "@/components/ui/LoadingSpinner";
+import { QrCodeScanner } from "@/components/auth/QrCodeScanner";
 
 function LoginIcon({ className = "h-5 w-5" }: { className?: string }) {
   return (
     <svg viewBox="0 0 24 24" className={className} fill="none" stroke="currentColor" strokeWidth="1.75" aria-hidden>
       <circle cx="12" cy="8" r="4" />
       <path d="M4 20c0-3.3 2.7-6 6-6h4c3.3 0 6 2.7 6 6" strokeLinecap="round" />
+    </svg>
+  );
+}
+
+function LocalCredentialWarningIcon({ className = "absolute -right-1.5 -top-1.5 h-4 w-4 drop-shadow" }: { className?: string }) {
+  return (
+    <svg viewBox="0 0 24 24" className={className} aria-label="Настройте локальный вход" role="img">
+      <path d="M12 3.3 21 19.1a1.3 1.3 0 0 1-1.13 1.95H4.13A1.3 1.3 0 0 1 3 19.1L12 3.3Z" fill="#fbbf24" stroke="#fef3c7" strokeWidth="1" />
+      <path d="M12 8v6.2M12 17.2v.2" stroke="#422006" strokeWidth="2.1" strokeLinecap="round" />
     </svg>
   );
 }
@@ -28,6 +38,7 @@ function ProfileMenu({ compact = false }: { compact?: boolean }) {
   const { settings } = useSiteSettings();
   const pathname = usePathname();
   const [open, setOpen] = useState(false);
+  const [scannerOpen, setScannerOpen] = useState(false);
   const rootRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
@@ -94,23 +105,13 @@ function ProfileMenu({ compact = false }: { compact?: boolean }) {
       >
         {compact ? (
           <span className="inline-flex min-w-0 items-center gap-2">
-            <AvatarWithDecoration
-              avatar={user.avatar}
-              nickname={user.nickname}
-              decorationId={avatarDecorationId}
-              decorationScale={avatarDecorationScale}
-              size="xs"
-            />
-            <span className="truncate">{user.nickname}</span>
+            <span className="relative inline-flex"><AvatarWithDecoration avatar={user.avatar} nickname={user.nickname} decorationId={avatarDecorationId} decorationScale={avatarDecorationScale} size="xs" />{!user.hasLocalCredential ? <LocalCredentialWarningIcon /> : null}</span>
+            <span className={`relative truncate rounded-md ${user.hasLocalCredential ? "" : "bg-amber-500/20 px-1.5 py-0.5 text-amber-100"}`}>
+              {user.nickname}{!user.hasLocalCredential ? <LocalCredentialWarningIcon className="absolute -right-2 -top-2 h-3.5 w-3.5 drop-shadow" /> : null}
+            </span>
           </span>
         ) : (
-          <AvatarWithDecoration
-            avatar={user.avatar}
-            nickname={user.nickname}
-            decorationId={avatarDecorationId}
-            decorationScale={avatarDecorationScale}
-            size="sm"
-          />
+          <span className="relative inline-flex"><AvatarWithDecoration avatar={user.avatar} nickname={user.nickname} decorationId={avatarDecorationId} decorationScale={avatarDecorationScale} size="sm" />{!user.hasLocalCredential ? <LocalCredentialWarningIcon /> : null}</span>
         )}
       </button>
 
@@ -125,7 +126,9 @@ function ProfileMenu({ compact = false }: { compact?: boolean }) {
             className={profileMenuItemClass(pathname === profileHref, menuCentered)}
             onClick={() => setOpen(false)}
           >
-            <span className="truncate">{user.nickname}</span>
+            <span className={`relative truncate rounded-md ${user.hasLocalCredential ? "" : "bg-amber-500/20 px-2 py-1 text-amber-100"}`}>
+              {user.nickname}{!user.hasLocalCredential ? <LocalCredentialWarningIcon className="absolute -right-2 -top-2 h-3.5 w-3.5 drop-shadow" /> : null}
+            </span>
           </NavLink>
           <NavLink
             href="/history"
@@ -160,6 +163,14 @@ function ProfileMenu({ compact = false }: { compact?: boolean }) {
           <button
             type="button"
             role="menuitem"
+            className={profileMenuItemClass(false, menuCentered)}
+            onClick={() => { setOpen(false); setScannerOpen(true); }}
+          >
+            Сканировать QR-код
+          </button>
+          <button
+            type="button"
+            role="menuitem"
             disabled={loggingOut}
             aria-busy={loggingOut || undefined}
             className={[
@@ -175,6 +186,7 @@ function ProfileMenu({ compact = false }: { compact?: boolean }) {
           </button>
         </div>
       ) : null}
+      {scannerOpen ? <QrCodeScanner onClose={() => setScannerOpen(false)} onDetected={(code) => { window.location.href = `/login/qr?code=${encodeURIComponent(code)}`; }} /> : null}
     </div>
   );
 }

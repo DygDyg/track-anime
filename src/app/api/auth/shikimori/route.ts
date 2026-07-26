@@ -6,10 +6,12 @@ import {
   getShikimoriRedirectUri,
   isAuthConfigured,
   isShikimoriAllowedRedirectUri,
+  parseOAuthReturnPath,
 } from "@/lib/auth/config";
 import { getRequestOrigin } from "@/lib/auth/request-origin";
 import {
   oauthRedirectCookieOptions,
+  oauthReturnCookieOptions,
   oauthStateCookieOptions,
 } from "@/lib/auth/session";
 
@@ -30,6 +32,8 @@ export async function GET(request: NextRequest) {
   const response = NextResponse.redirect(await buildShikimoriAuthorizeUrl(state, redirectUri));
   response.cookies.set(oauthStateCookieOptions(state));
   response.cookies.set(oauthRedirectCookieOptions(redirectUri));
+  const returnPath = parseOAuthReturnPath(request.nextUrl.searchParams.get("returnTo"));
+  if (returnPath) response.cookies.set(oauthReturnCookieOptions(returnPath));
 
   return response;
 }
