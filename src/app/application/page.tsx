@@ -1,17 +1,5 @@
-import type { Metadata } from "next";
-import { AndroidAppDownloadSection } from "@/components/AndroidAppDownloadSection";
-import { buildSitePageMetadata } from "@/lib/site-metadata";
+import { redirect } from "next/navigation";
 
-export const metadata: Metadata = buildSitePageMetadata({
-  title: "Приложение для Android",
-  description: "Скачайте Track Anime для телефона, планшета или Android TV.",
-  canonicalPath: "/application",
-});
-
-export default function ApplicationPage() {
-  return (
-    <div className="mx-auto max-w-2xl px-4 py-8 sm:py-12">
-      <AndroidAppDownloadSection />
-    </div>
-  );
+export default function ApplicationRedirectPage() {
+  redirect("/app");
 }

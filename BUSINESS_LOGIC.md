@@ -184,7 +184,7 @@ Shikimori anime.id  ===  Kodik shikimori_id  ===  URL /anime/[shikimoriId]
 - **Нет Kodik данных для shikimoriId:** anime page показывает Shikimori metadata, плеер недоступен
 - **Несколько озвучек:** пользователь выбирает в `AnimeWatchPanel`, фильтр в site settings
 - **ТВ-навигация:** локальная настройка устройства включает/выключает управление фокусом стрелками по сайту
-- **Android APK:** страница `/application` и вкладка «Приложение» используют общий блок, который показывает версию из `/downloads/TrackAnime.json` и ведёт на `/downloads/TrackAnime.apk`; оба файла появляются при деплое с параметром `-ApkPath`. Приложение предлагает обновление только при большем `versionCode`, сверяет SHA-256 и передаёт установку системному Android.
+- **Android APK:** страница `/app` и вкладка «Приложение» используют общий блок, который показывает версию из `/downloads/TrackAnime.json` и ведёт на `/downloads/TrackAnime.apk`; старый `/application` перенаправляется на `/app`. Оба файла появляются при деплое с параметром `-ApkPath`. Приложение предлагает обновление только при большем `versionCode`, сверяет SHA-256 и передаёт установку системному Android.
 - **Украшения аватарок:** настраиваются только авторизованными пользователями; гостям блок выбора в site settings скрыт
 - **OAuth redirect mismatch:** `AUTH_URL` и `SHIKIMORI_REDIRECT_URI` должны совпадать с Shikimori app settings
 - **Import interrupted:** resume через `npm run kodik:import:resume`

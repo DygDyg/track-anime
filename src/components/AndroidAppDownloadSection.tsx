@@ -8,7 +8,7 @@ export function AndroidAppDownloadSection() {
   const [appVersion, setAppVersion] = useState<string | null>(null);
 
   useEffect(() => {
-    const pageUrl = new URL("/application", window.location.origin).href;
+    const pageUrl = new URL("/app", window.location.origin).href;
     void QRCode.toDataURL(pageUrl, { margin: 1, width: 256, errorCorrectionLevel: "M" })
       .then(setQrCode)
       .catch(() => setQrCode(null));
