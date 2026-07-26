@@ -53,8 +53,8 @@ export function QrLoginRequest({ autoStart = false }: { autoStart?: boolean }) {
           const claim = await fetch("/api/auth/qr/claim", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify(request) });
           if (!active) return;
           if (claim.ok) {
-            // A full navigation makes AuthProvider read the newly set session cookie.
-            window.location.assign("/");
+            // Reload the current URL so server-rendered data sees the new session too.
+            window.location.reload();
             return;
           }
           claimingRef.current = false;

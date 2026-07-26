@@ -16,7 +16,7 @@ function LoginPageInner() {
 
   if (loading || user) return <div className="flex min-h-screen items-center justify-center bg-background px-4 text-sm text-muted">{loading ? "Загрузка…" : "Перенаправление…"}</div>;
 
-  return <div className="flex min-h-screen items-center justify-center bg-background px-4"><div className="w-full max-w-md rounded-2xl border border-border bg-card p-6 shadow-2xl shadow-black/50"><h1 className="text-lg font-semibold text-foreground sm:text-xl">Вход</h1><AuthLoginPanel errorCode={searchParams.get("error")} errorDetails={searchParams.get("details")} onLocalSuccess={() => window.location.assign("/")} showHomeLink startShikimoriLogin={startShikimoriLogin} authNavigating={authNavigating} /></div></div>;
+  return <div className="flex min-h-screen items-center justify-center bg-background px-4"><div className="w-full max-w-md rounded-2xl border border-border bg-card p-6 shadow-2xl shadow-black/50"><h1 className="text-lg font-semibold text-foreground sm:text-xl">Вход</h1><AuthLoginPanel errorCode={searchParams.get("error")} errorDetails={searchParams.get("details")} onLocalSuccess={() => window.location.reload()} showHomeLink startShikimoriLogin={startShikimoriLogin} authNavigating={authNavigating} /></div></div>;
 }
 
 export default function LoginPage() {

@@ -158,7 +158,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
               <div><h2 className="text-lg font-semibold text-foreground">Вход</h2></div>
               <button type="button" onClick={() => setLoginDialogOpen(false)} className="rounded p-1 text-muted hover:bg-foreground/10 hover:text-foreground" aria-label="Закрыть">×</button>
             </div>
-            <AuthLoginPanel onLocalSuccess={() => window.location.assign("/")} startShikimoriLogin={startShikimoriLogin} authNavigating={authNavigating} />
+            <AuthLoginPanel onLocalSuccess={() => window.location.reload()} startShikimoriLogin={startShikimoriLogin} authNavigating={authNavigating} />
           </div>
         </div>
       ) : null}
