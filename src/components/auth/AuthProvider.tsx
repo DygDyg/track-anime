@@ -7,6 +7,7 @@ import {
   useEffect,
   useMemo,
   useState,
+  useRef,
   type ReactNode,
 } from "react";
 import { usePathname } from "next/navigation";
@@ -47,6 +48,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const [loginDialogOpen, setLoginDialogOpen] = useState(false);
   const [localCredentialReminderOpen, setLocalCredentialReminderOpen] = useState(false);
   const [loggingOut, setLoggingOut] = useState(false);
+  const loginDialogRef = useRef<HTMLDivElement>(null);
 
   const refresh = useCallback(async () => {
     try {
@@ -88,6 +90,11 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     window.localStorage.setItem(storageKey, "shown");
     setLocalCredentialReminderOpen(true);
   }, [pathname, user]);
+
+  useEffect(() => {
+    if (!loginDialogOpen) return;
+    loginDialogRef.current?.querySelector<HTMLElement>("[data-tv-autofocus]")?.focus({ preventScroll: true });
+  }, [loginDialogOpen]);
 
   const login = useCallback(() => {
     setLoginDialogOpen(true);
@@ -152,8 +159,8 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     <AuthContext.Provider value={value}>
       {children}
       {loginDialogOpen && !user ? (
-        <div className="fixed inset-0 z-[100] flex items-center justify-center bg-black/65 p-4" role="dialog" aria-modal="true" aria-label="Выбор способа входа">
-          <div className="w-full max-w-sm rounded-2xl border border-border bg-card p-5 shadow-2xl shadow-black/60">
+        <div ref={loginDialogRef} className="fixed inset-0 z-[100] flex items-center justify-center bg-black/65 p-4" role="dialog" aria-modal="true" aria-label="Выбор способа входа">
+          <div className="w-full max-w-3xl rounded-2xl border border-border bg-card p-5 shadow-2xl shadow-black/60">
             <div className="flex items-start justify-between gap-4">
               <div><h2 className="text-lg font-semibold text-foreground">Вход</h2></div>
               <button type="button" onClick={() => setLoginDialogOpen(false)} className="rounded p-1 text-muted hover:bg-foreground/10 hover:text-foreground" aria-label="Закрыть">×</button>

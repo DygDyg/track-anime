@@ -54,14 +54,18 @@ export function TvNavigationProvider() {
   useEffect(() => {
     const onKeyDown = (event: KeyboardEvent) => {
       if (!settings.tvNavigationEnabled) return;
-      if (shouldIgnoreTvNavigation(event)) return;
+
+      const active = document.activeElement;
+      const modalScope = active instanceof HTMLElement
+        ? active.closest<HTMLElement>('[role="dialog"][aria-modal="true"]')
+        : null;
+      if (!modalScope && shouldIgnoreTvNavigation(event)) return;
 
       const direction = DIRECTION_KEYS[event.key];
       if (direction) {
-        const active = document.activeElement;
         const current =
           active instanceof HTMLElement && active !== document.body ? active : null;
-        const focusables = getTvFocusableElements();
+        const focusables = getTvFocusableElements(modalScope ?? document);
         const focusedInScope = Boolean(current && focusables.includes(current));
         const tvNavActive = document.documentElement.dataset.tvNav === "true";
         const tvLike = isTvLikeDevice();
@@ -74,13 +78,13 @@ export function TvNavigationProvider() {
         markTvNavigationActive();
 
         const next = current
-          ? findTvFocusNeighbor(current, direction)
-          : getInitialTvFocusTarget();
+          ? findTvFocusNeighbor(current, direction, modalScope ?? document)
+          : getInitialTvFocusTarget(modalScope ?? document);
 
         if (next) {
           focusTvElement(next);
         } else if (!current) {
-          const initial = getInitialTvFocusTarget();
+          const initial = getInitialTvFocusTarget(modalScope ?? document);
           if (initial) focusTvElement(initial);
         }
         return;

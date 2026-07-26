@@ -266,6 +266,7 @@ function Test-DeployExcludedFile {
     return (
         $Name -eq ".env" -or
         $Name -eq ".build-number" -or
+        $Name -eq ".workspace.json" -or
         $Name -eq "Desktop.ini" -or
         $Name -eq "tsconfig.tsbuildinfo" -or
         $Name -like "*.tar.gz" -or
@@ -279,7 +280,7 @@ function Get-DeploySourceBytes {
     param([string]$Root)
 
     $excludedTop = [System.Collections.Generic.HashSet[string]]::new(
-        [string[]]@("node_modules", ".next", ".git", "tmp", "temp", ".cursor", ".kilo", ".roo"),
+        [string[]]@("node_modules", ".next", ".git", "tmp", "temp", ".cursor", ".kilo", ".roo", ".idea"),
         [StringComparer]::OrdinalIgnoreCase
     )
     $total = [int64]0
@@ -291,7 +292,7 @@ function Get-DeploySourceBytes {
         try {
             foreach ($item in Get-ChildItem -LiteralPath $dir -Force -ErrorAction Stop) {
                 if ($item.PSIsContainer) {
-                    if ($dir -eq $Root -and $excludedTop.Contains($item.Name)) {
+                    if ($excludedTop.Contains($item.Name)) {
                         continue
                     }
                     $stack.Push($item.FullName)
@@ -554,6 +555,8 @@ $tarExcludes = @(
     "--exclude=.cursor",
     "--exclude=.kilo",
     "--exclude=.roo",
+    "--exclude=.workspace.json",
+    "--exclude=.idea",
     "--exclude=Desktop.ini",
     "--exclude=*.tar.gz",
     "--exclude=*~ov.ico",

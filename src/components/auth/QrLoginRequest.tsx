@@ -5,7 +5,7 @@ import { useEffect, useRef, useState } from "react";
 
 type RequestData = { code: string; requesterSecret: string; expiresAt: string };
 
-export function QrLoginRequest({ autoStart = false }: { autoStart?: boolean }) {
+export function QrLoginRequest({ autoStart = false, className = "" }: { autoStart?: boolean; className?: string }) {
   const [request, setRequest] = useState<RequestData | null>(null);
   const [image, setImage] = useState<string | null>(null);
   const [message, setMessage] = useState<string | null>(null);
@@ -74,7 +74,7 @@ export function QrLoginRequest({ autoStart = false }: { autoStart?: boolean }) {
   }, [request]);
 
   return (
-    <section className="mt-6 border-t border-border pt-5 text-center">
+    <section className={`mt-6 border-t border-border pt-5 text-center ${className}`}>
       <h2 className="text-sm font-semibold text-foreground">Вход по QR-коду</h2>
       <p className="mt-1 text-xs leading-relaxed text-muted">Покажите код на этом устройстве и отсканируйте его устройством, на котором войдёте или уже вошли.</p>
       {image ? <img src={image} alt="QR-код для входа" className="mx-auto mt-4 h-48 w-48 rounded-lg bg-white p-2" /> : null}

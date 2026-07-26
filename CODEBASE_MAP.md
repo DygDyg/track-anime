@@ -4,7 +4,7 @@
 
 ```
 ta_new/
-├── android/               # Native WebView shell: Android phone + Android TV launchers, update checker
+├── android/               # Native WebView shell: Android phone + Android TV launchers, shortcuts, proxy/cache settings, update checker
 ├── prisma/schema.prisma     # DB schema
 ├── src/
 │   ├── app/                 # Next.js App Router (pages + API)
@@ -92,6 +92,8 @@ ta_new/
 | `settings/intro-offsets` | Public translation intro offsets |
 | `settings/translations` | Translation catalog |
 | `settings/watch-party` | Public global settings for TA-плеер совместный просмотр |
+| `site-build` | Current build timestamp for notifying an open client about an update |
+| `app/og.png` | PNG Open Graph card for the Android app download page |
 
 ### Realtime
 
@@ -224,7 +226,7 @@ ta_new/
 | `user/` | `UsersSearchForm` |
 | `admin/` | Import/sync panels, MAL ID sync, notifications, DB explorer, stats |
 
-Root components: `ReleaseFeed`, `ReleaseCard`, `Header`, `RecentAnimeOpensButton`, `SiteBackground`, `ThemeProvider`, `NavigationProgress`.
+Root components: `ReleaseFeed`, `ReleaseCard`, `Header`, `RecentAnimeOpensButton`, `SiteBackground`, `ThemeProvider`, `NavigationProgress`, `PullToRefresh`, `ClientUpdateGuard` (checks new build in an open tab).
 
 Brand assets: `public/brand-logos/` contains optional `.webp` logos for global rotation; fallback remains `public/logo.webp`.
 Error page asset: `public/404.webm` is used by the custom App Router 404 page.

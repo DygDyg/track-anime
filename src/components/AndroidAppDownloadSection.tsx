@@ -6,6 +6,11 @@ import QRCode from "qrcode";
 export function AndroidAppDownloadSection() {
   const [qrCode, setQrCode] = useState<string | null>(null);
   const [appVersion, setAppVersion] = useState<string | null>(null);
+  const [nativeApp, setNativeApp] = useState(false);
+
+  useEffect(() => {
+    setNativeApp(/\bTrackAnimeAndroid\//.test(navigator.userAgent));
+  }, []);
 
   useEffect(() => {
     const pageUrl = new URL("/app", window.location.origin).href;
@@ -37,6 +42,20 @@ export function AndroidAppDownloadSection() {
           {appVersion ? ` Текущая версия: ${appVersion}.` : ""}
         </p>
       </div>
+      {nativeApp ? (
+        <section className="rounded-xl border border-border bg-foreground/[0.03] p-4">
+          <h3 className="text-sm font-semibold text-foreground">Настройки приложения</h3>
+          <p className="mt-1 text-sm leading-relaxed text-muted">
+            Выберите прокси для случая, когда сайт недоступен, или очистите кэш WebView. Вход в аккаунт сохранится.
+          </p>
+          <a
+            href="trackanime://settings"
+            className="mt-3 inline-flex rounded-lg border border-border px-4 py-2 text-sm font-medium text-foreground transition hover:border-accent/50 hover:bg-accent/10"
+          >
+            Открыть настройки приложения
+          </a>
+        </section>
+      ) : null}
       <div className="flex flex-col items-center gap-4 rounded-xl border border-border bg-foreground/[0.03] p-5 text-center sm:flex-row sm:text-left">
         {qrCode ? (
           <img src={qrCode} alt="QR-код страницы приложения Track Anime" className="h-40 w-40 rounded-lg bg-white p-2" />

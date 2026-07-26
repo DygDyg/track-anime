@@ -1,32 +1,38 @@
 import type { Metadata } from "next";
 import { AndroidAppDownloadSection } from "@/components/AndroidAppDownloadSection";
 import { SITE_NAME } from "@/lib/site-brand";
-import { toAbsoluteUrl } from "@/lib/site-url";
 
 const title = "Приложение для Android";
 const description = "Страница загрузки приложения Track Anime для телефона, планшета и Android TV.";
-const qrImageUrl = toAbsoluteUrl("/app/qr");
+const appPageUrl = "https://track-anime.dygdyg.ru/app";
+const socialImageUrl = "https://track-anime.dygdyg.ru/app/og.png";
 
 export const metadata: Metadata = {
   title,
   description,
-  alternates: { canonical: "/app" },
+  alternates: { canonical: appPageUrl },
   openGraph: {
     type: "website",
     title,
     description,
-    url: "/app",
+    url: appPageUrl,
     siteName: SITE_NAME,
     locale: "ru_RU",
-    images: qrImageUrl
-      ? [{ url: qrImageUrl, width: 1024, height: 1024, alt: "QR-код страницы приложения Track Anime" }]
-      : undefined,
+    images: [
+      {
+        url: socialImageUrl,
+        width: 1200,
+        height: 630,
+        type: "image/png",
+        alt: "Приложение Track Anime для Android",
+      },
+    ],
   },
   twitter: {
     card: "summary_large_image",
     title: `${title} — ${SITE_NAME}`,
     description,
-    images: qrImageUrl ? [qrImageUrl] : undefined,
+    images: [socialImageUrl],
   },
 };
 

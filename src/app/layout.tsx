@@ -21,6 +21,7 @@ import { InAppNotificationsListener } from "@/components/InAppNotificationsListe
 import { RecentAnimeOpensSync } from "@/components/anime/RecentAnimeOpensSync";
 import { NotificationUiLayer } from "@/components/NotificationUiLayer";
 import { ScrollToTopButton } from "@/components/ScrollToTopButton";
+import { PullToRefresh } from "@/components/PullToRefresh";
 import { TvNavigationProvider } from "@/components/TvNavigationProvider";
 import { PWA_THEME_COLOR } from "@/app/manifest";
 import { buildDefaultOpenGraph, defaultSiteDescription } from "@/lib/site-metadata";
@@ -28,6 +29,8 @@ import { SITE_LOGO_PATH, SITE_NAME, versionedAsset } from "@/lib/site-brand";
 import { getSiteUrl } from "@/lib/site-url";
 import { siteFontBodyClassName } from "@/lib/site-fonts";
 import { getActiveBrandAsset } from "@/lib/brand-rotation";
+import { getSiteBuildFingerprint } from "@/lib/admin/build-info";
+import { ClientUpdateGuard } from "@/components/ClientUpdateGuard";
 import "./globals.css";
 import "./translation-badges.css";
 
@@ -94,9 +97,10 @@ export const viewport: Viewport = {
 
 export default async function RootLayout({ children }: { children: React.ReactNode }) {
   await getShikimoriEndpoints();
-  const [backgroundUrls, siteSettingsDefaults] = await Promise.all([
+  const [backgroundUrls, siteSettingsDefaults, buildFingerprint] = await Promise.all([
     Promise.resolve(listBackgroundImageUrls()),
     getSiteSettingsDefaults(),
+    Promise.resolve(getSiteBuildFingerprint()),
   ]);
   const brand = await getActiveBrandAsset();
 
@@ -113,6 +117,7 @@ export default async function RootLayout({ children }: { children: React.ReactNo
         <SiteSettingsInit defaults={siteSettingsDefaults} />
         <ThemeProvider>
           <PwaProvider>
+            <ClientUpdateGuard initialFingerprint={buildFingerprint} />
             <AuthProvider>
               <RecentAnimeOpensSync />
               <InAppNotificationsListener />
@@ -128,6 +133,7 @@ export default async function RootLayout({ children }: { children: React.ReactNo
                     <Header logoSrc={brand.logoSrc} />
                     <DiscordSitePresence />
                     <main className="relative z-10">{children}</main>
+                    <PullToRefresh />
                     <ScrollToTopButton />
                     <SiteSettingsModal />
                     <PwaBottomNav />

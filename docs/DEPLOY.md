@@ -185,6 +185,7 @@ ssh root@195.26.230.35 "cd /var/www/ta_new && npm run build && chown -R www-data
 
 - `node_modules/`, `.next/` — ставятся/собираются на сервере
 - `.env` — секреты остаются только на сервере
+- `.workspace.json`, `.idea/` — локальные настройки Codex/Cursor и Android Studio
 - `.git/`, `tmp/`, `*.tar.gz`, `*.mp4`
 - `.build-number` — номер билда ведётся на сервере
 - `scripts/discord-rpc-tray/` — Electron-проект нужен только локально для сборки exe; на сервер отправляется `public/downloads/TrackAnimeDiscordRPC.exe`

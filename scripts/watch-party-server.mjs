@@ -7,6 +7,8 @@ const port = Number(process.env.WATCH_PARTY_PORT ?? 3001);
 const path = process.env.WATCH_PARTY_WS_PATH ?? "/watch-party-ws";
 const heartbeatMs = 30_000;
 const stateSyncMs = 2_000;
+// Must match WATCH_PARTY_PROTOCOL_VERSION in src/lib/watch-party/types.ts.
+const watchPartyProtocolVersion = 2;
 const rooms = new Map();
 const WebSocketServer = wsPackage.WebSocketServer ?? wsPackage.Server;
 
@@ -148,6 +150,15 @@ function canSendCommand(room, client, commandType) {
 }
 
 function handleJoin(ws, message) {
+  if (Number(message.protocolVersion) !== watchPartyProtocolVersion) {
+    send(ws, {
+      type: "error",
+      message: "Версия совместного просмотра устарела. Обновите страницу и подключитесь снова.",
+    });
+    ws.close(1008, "Unsupported watch party protocol");
+    return;
+  }
+
   const participant = normalizeParticipant(message.participant);
   const state = normalizeState(message.state);
   if (!participant || !state) {

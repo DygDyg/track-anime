@@ -50,14 +50,18 @@ export function AuthLoginPanel({
 
   return (
     <>
-      <p className="mt-2 text-sm leading-relaxed text-muted">Выберите удобный способ. Shikimori останется привязанным к вашему аккаунту.</p>
-      {errorMessage ? <div className="mt-4 rounded-lg border border-red-500/30 bg-red-500/10 px-3 py-2 text-sm text-red-200"><p>{errorMessage}</p>{errorDetails ? <p className="mt-2 break-all font-mono text-xs text-red-100/90">{errorDetails}</p> : null}</div> : null}
-      {oauthHint && (showOAuthDetails || errorCode) ? <div className="mt-4 rounded-lg border border-amber-500/30 bg-amber-500/10 px-3 py-2 text-sm text-amber-100"><p>{oauthHint}</p>{redirectUri ? <p className="mt-2 break-all font-mono text-xs text-amber-100/90">{redirectUri}</p> : null}</div> : null}
-      <AsyncButton type="button" onClick={() => { setShowOAuthDetails(true); startShikimoriLogin(); }} loading={authNavigating} loadingLabel="Переход на Shikimori…" className="mt-5 flex w-full items-center justify-center gap-2 rounded-lg bg-accent px-4 py-3 text-sm font-medium text-white transition hover:bg-accent/90 disabled:opacity-90">
-        <span className="inline-flex h-6 w-6 items-center justify-center rounded bg-white/15 text-xs font-bold">S</span>Войти через Shikimori
-      </AsyncButton>
-      <div id="local"><LocalLoginForm onSuccess={onLocalSuccess} /></div>
-      <div id="qr"><QrLoginRequest autoStart /></div>
+      <div className="md:grid md:grid-cols-[minmax(0,1fr)_18rem] md:gap-6">
+        <div>
+          <p className="mt-2 text-sm leading-relaxed text-muted">Выберите удобный способ. Shikimori останется привязанным к вашему аккаунту.</p>
+          {errorMessage ? <div className="mt-4 rounded-lg border border-red-500/30 bg-red-500/10 px-3 py-2 text-sm text-red-200"><p>{errorMessage}</p>{errorDetails ? <p className="mt-2 break-all font-mono text-xs text-red-100/90">{errorDetails}</p> : null}</div> : null}
+          {oauthHint && (showOAuthDetails || errorCode) ? <div className="mt-4 rounded-lg border border-amber-500/30 bg-amber-500/10 px-3 py-2 text-sm text-amber-100"><p>{oauthHint}</p>{redirectUri ? <p className="mt-2 break-all font-mono text-xs text-amber-100/90">{redirectUri}</p> : null}</div> : null}
+          <AsyncButton type="button" data-tv-autofocus onClick={() => { setShowOAuthDetails(true); startShikimoriLogin(); }} loading={authNavigating} loadingLabel="Переход на Shikimori…" className="mt-5 flex w-full items-center justify-center gap-2 rounded-lg bg-accent px-4 py-3 text-sm font-medium text-white transition hover:bg-accent/90 disabled:opacity-90">
+            <span className="inline-flex h-6 w-6 items-center justify-center rounded bg-white/15 text-xs font-bold">S</span>Войти через Shikimori
+          </AsyncButton>
+          <div id="local"><LocalLoginForm onSuccess={onLocalSuccess} /></div>
+        </div>
+        <div id="qr"><QrLoginRequest autoStart className="md:mt-0 md:border-l md:border-t-0 md:pl-6 md:pt-0" /></div>
+      </div>
       {showHomeLink ? <p className="mt-4 text-center text-xs text-muted"><Link href="/" className="text-accent hover:underline">На главную</Link></p> : null}
     </>
   );

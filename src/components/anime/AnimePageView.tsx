@@ -165,7 +165,7 @@ export function AnimePageView({ anime }: { anime: AnimePageDto }) {
       <RecentAnimeOpenRecorder shikimoriId={anime.shikimoriId} title={anime.title} />
       <AnimeScreenshotBackground urls={anime.screenshots} fallbackUrl={anime.posterUrl} title={anime.title} />
       <div className="relative z-10 py-5 sm:py-8">
-        <div className="mx-auto max-w-5xl space-y-6 px-3 sm:px-6 lg:px-8">
+        <div className="mx-auto max-w-5xl space-y-6 px-0 sm:px-6 lg:px-8">
           <ContentPanel className="overflow-x-hidden p-0 sm:overflow-visible sm:p-6">
             <div className="anime-page-hero-row relative flex flex-col gap-5 sm:flex-row sm:gap-8">
               <div className="px-4 pt-4 sm:hidden">

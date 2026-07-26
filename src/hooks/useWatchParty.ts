@@ -1,6 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { WATCH_PARTY_PROTOCOL_VERSION } from "@/lib/watch-party/types";
 import type {
   WatchPartyClientMessage,
   WatchPartyCommand,
@@ -268,6 +269,7 @@ export function useWatchParty({
         const joinState = getPlaybackStateRef.current() ?? state;
         const message: WatchPartyClientMessage = {
           type: "join",
+          protocolVersion: WATCH_PARTY_PROTOCOL_VERSION,
           roomId: targetRoomId,
           participant: {
             userId: participant.id,

@@ -33,19 +33,26 @@ final class UpdateManager {
     private static final String MANIFEST_PATH = "/downloads/TrackAnime.json";
     private final Activity activity;
     private final ExecutorService executor = Executors.newSingleThreadExecutor();
-    private boolean checkStarted;
+    private volatile boolean checkInProgress;
+    private volatile boolean updateDialogShown;
 
     UpdateManager(Activity activity) {
         this.activity = activity;
     }
 
     void checkForUpdate(Uri loadedUri) {
-        if (checkStarted || loadedUri == null || !"https".equalsIgnoreCase(loadedUri.getScheme())) return;
+        if (checkInProgress || updateDialogShown || loadedUri == null || !"https".equalsIgnoreCase(loadedUri.getScheme())) return;
         String host = loadedUri.getHost();
         if (host == null) return;
-        checkStarted = true;
+        checkInProgress = true;
         Uri manifestUri = new Uri.Builder().scheme("https").authority(host).path(MANIFEST_PATH).build();
-        executor.execute(() -> loadManifest(manifestUri));
+        executor.execute(() -> {
+            try {
+                loadManifest(manifestUri);
+            } finally {
+                checkInProgress = false;
+            }
+        });
     }
 
     void destroy() {
@@ -72,6 +79,7 @@ final class UpdateManager {
                     || !manifestUri.getHost().equalsIgnoreCase(resolvedApkUri.getHost())) {
                 throw new IllegalArgumentException("APK URL must use the manifest HTTPS host");
             }
+            updateDialogShown = true;
             activity.runOnUiThread(() -> showUpdateDialog(versionName, resolvedApkUri, sha256));
         } catch (Exception error) {
             Log.w(LOG_TAG, "Update check skipped: " + error.getMessage());

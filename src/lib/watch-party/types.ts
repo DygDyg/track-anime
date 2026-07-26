@@ -7,6 +7,12 @@ export type WatchPartyParticipant = {
   state?: WatchPartyPlaybackState;
 };
 
+/**
+ * Increment this only when an older client could corrupt a room's state.
+ * The WebSocket server rejects joins with a different version.
+ */
+export const WATCH_PARTY_PROTOCOL_VERSION = 2;
+
 export type WatchPartyPlaybackState = {
   shikimoriId: number;
   kodikId: string;
@@ -36,6 +42,7 @@ export type WatchPartyRoomPermissions = {
 export type WatchPartyClientMessage =
   | {
       type: "join";
+      protocolVersion: number;
       roomId: string | null;
       participant: {
         userId: string;

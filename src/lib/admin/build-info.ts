@@ -37,6 +37,30 @@ function parseBuildNumber(value: unknown): number | null {
   return null;
 }
 
+function readConfiguredBuildNumber(): number | null {
+  const fromEnv = parseBuildNumber(process.env.BUILD_NUMBER);
+  if (fromEnv != null) return fromEnv;
+
+  try {
+    return parseBuildNumber(fs.readFileSync(path.join(process.cwd(), ".build-number"), "utf8").trim());
+  } catch {
+    return null;
+  }
+}
+
+/** A stable value embedded into an HTML response and compared by open tabs. */
+export function getSiteBuildFingerprint(): string | null {
+  const buildNumber = readConfiguredBuildNumber();
+  if (buildNumber != null) return `build:${buildNumber}`;
+
+  try {
+    const buildId = fs.readFileSync(path.join(process.cwd(), ".next/BUILD_ID"), "utf8").trim();
+    return buildId ? `next:${buildId}` : null;
+  } catch {
+    return null;
+  }
+}
+
 function readBuildInfoFile(): SiteBuildInfo | null {
   const infoPath = path.join(process.cwd(), ".next/build-info.json");
   const raw = JSON.parse(fs.readFileSync(infoPath, "utf8")) as {

@@ -1,6 +1,7 @@
 package ru.dygdyg.trackanime;
 
 import android.app.Activity;
+import android.app.AlertDialog;
 import android.Manifest;
 import android.content.pm.PackageManager;
 import android.content.Intent;
@@ -13,6 +14,7 @@ import android.os.Build;
 import android.os.Bundle;
 import android.os.Handler;
 import android.os.Looper;
+import android.text.InputType;
 import android.util.Log;
 import android.view.View;
 import android.view.ViewGroup;
@@ -30,6 +32,12 @@ import android.webkit.WebResourceError;
 import android.webkit.WebView;
 import android.webkit.WebViewClient;
 import android.webkit.ValueCallback;
+import android.widget.EditText;
+import android.widget.LinearLayout;
+import android.widget.RadioButton;
+import android.widget.RadioGroup;
+import android.widget.TextView;
+import android.widget.Toast;
 
 abstract class BaseWebActivity extends Activity {
     private static final String LOG_TAG = "TrackAnimeWebView";
@@ -57,7 +65,7 @@ abstract class BaseWebActivity extends Activity {
     private SharedPreferences preferences;
     private UpdateManager updateManager;
     private PermissionRequest pendingCameraRequest;
-    private final ProxyFallback proxyFallback = new ProxyFallback();
+    private ProxyFallback proxyFallback;
     private boolean proxyFallbackAttempted;
 
     protected abstract boolean isTvMode();
@@ -72,10 +80,12 @@ abstract class BaseWebActivity extends Activity {
         CookieManager.setAcceptFileSchemeCookies(false);
         webView = new WebView(this);
         preferences = getSharedPreferences(PREFERENCES_NAME, MODE_PRIVATE);
+        proxyFallback = new ProxyFallback(preferences);
         cookies.setAcceptThirdPartyCookies(webView, true);
         webView.setBackgroundColor(Color.rgb(12, 14, 20));
         webView.setLayoutParams(new ViewGroup.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT));
         webView.getSettings().setJavaScriptEnabled(true);
+        webView.getSettings().setUserAgentString(webView.getSettings().getUserAgentString() + " TrackAnimeAndroid/1");
         webView.getSettings().setDomStorageEnabled(true);
         webView.getSettings().setMediaPlaybackRequiresUserGesture(false);
         webView.getSettings().setAllowFileAccess(false);
@@ -97,6 +107,20 @@ abstract class BaseWebActivity extends Activity {
         if (webView != null) webView.destroy();
         if (updateManager != null) updateManager.destroy();
         super.onDestroy();
+    }
+
+    @Override protected void onNewIntent(Intent intent) {
+        super.onNewIntent(intent);
+        setIntent(intent);
+        Uri requestedUri = intent.getData();
+        loadSite(isAllowedSiteUrl(requestedUri) ? requestedUri.toString() : SITE_URL);
+    }
+
+    @Override protected void onResume() {
+        super.onResume();
+        if (webView == null || updateManager == null) return;
+        String currentUrl = webView.getUrl();
+        if (currentUrl != null) updateManager.checkForUpdate(Uri.parse(currentUrl));
     }
 
     @Override public void onBackPressed() {
@@ -316,6 +340,117 @@ abstract class BaseWebActivity extends Activity {
         webView.evaluateJavascript("(function(){try{var k='track-anime-site-settings';var s=JSON.parse(localStorage.getItem(k)||'{}');s.tvNavigationEnabled=true;localStorage.setItem(k,JSON.stringify(s));document.documentElement.dataset.tvNav='true';}catch(e){}})();", null);
     }
 
+    private int dp(int value) {
+        return Math.round(value * getResources().getDisplayMetrics().density);
+    }
+
+    private EditText createProxyField(String hint, int inputType, String value) {
+        EditText field = new EditText(this);
+        field.setHint(hint);
+        field.setInputType(inputType);
+        field.setText(value);
+        field.setSingleLine(true);
+        field.setLayoutParams(new LinearLayout.LayoutParams(
+                ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT));
+        return field;
+    }
+
+    private void showAppSettings() {
+        if (isFinishing()) return;
+        ProxyFallback.Settings saved = proxyFallback.getSettings();
+        LinearLayout content = new LinearLayout(this);
+        content.setOrientation(LinearLayout.VERTICAL);
+        content.setPadding(dp(24), dp(8), dp(24), 0);
+
+        TextView hint = new TextView(this);
+        hint.setText("Прокси используется только после ошибки всех прямых зеркал. Поддерживается HTTP/HTTPS proxy.");
+        hint.setTextSize(14);
+        hint.setPadding(0, 0, 0, dp(12));
+        content.addView(hint);
+
+        RadioGroup modes = new RadioGroup(this);
+        modes.setOrientation(RadioGroup.VERTICAL);
+        RadioButton noProxy = new RadioButton(this);
+        noProxy.setId(View.generateViewId());
+        noProxy.setText("Без прокси");
+        RadioButton serverProxy = new RadioButton(this);
+        serverProxy.setId(View.generateViewId());
+        serverProxy.setText("Прокси сервера");
+        RadioButton manualProxy = new RadioButton(this);
+        manualProxy.setId(View.generateViewId());
+        manualProxy.setText("Указать вручную");
+        modes.addView(noProxy);
+        modes.addView(serverProxy);
+        modes.addView(manualProxy);
+        content.addView(modes);
+
+        LinearLayout manualFields = new LinearLayout(this);
+        manualFields.setOrientation(LinearLayout.VERTICAL);
+        manualFields.setPadding(0, dp(8), 0, 0);
+        EditText host = createProxyField("Адрес прокси", InputType.TYPE_CLASS_TEXT | InputType.TYPE_TEXT_VARIATION_URI, saved.host);
+        EditText port = createProxyField("Порт", InputType.TYPE_CLASS_NUMBER, saved.port > 0 ? String.valueOf(saved.port) : "");
+        EditText username = createProxyField("Логин (необязательно)", InputType.TYPE_CLASS_TEXT, saved.username);
+        EditText password = createProxyField("Пароль (необязательно)", InputType.TYPE_CLASS_TEXT | InputType.TYPE_TEXT_VARIATION_PASSWORD, saved.password);
+        manualFields.addView(host);
+        manualFields.addView(port);
+        manualFields.addView(username);
+        manualFields.addView(password);
+        content.addView(manualFields);
+
+        int checkedId = saved.mode == ProxyFallback.Mode.NONE ? noProxy.getId()
+                : saved.mode == ProxyFallback.Mode.MANUAL ? manualProxy.getId() : serverProxy.getId();
+        modes.check(checkedId);
+        manualFields.setVisibility(saved.mode == ProxyFallback.Mode.MANUAL ? View.VISIBLE : View.GONE);
+        modes.setOnCheckedChangeListener((group, checked) ->
+                manualFields.setVisibility(checked == manualProxy.getId() ? View.VISIBLE : View.GONE));
+
+        AlertDialog dialog = new AlertDialog.Builder(this)
+                .setTitle("Настройки приложения")
+                .setView(content)
+                .setNegativeButton("Отмена", null)
+                .setNeutralButton("Очистить кэш", null)
+                .setPositiveButton("Сохранить", null)
+                .create();
+        dialog.setOnShowListener(ignored -> {
+            dialog.getButton(AlertDialog.BUTTON_NEUTRAL).setOnClickListener(view -> confirmCacheClear());
+            dialog.getButton(AlertDialog.BUTTON_POSITIVE).setOnClickListener(view -> {
+                ProxyFallback.Mode mode = modes.getCheckedRadioButtonId() == noProxy.getId()
+                        ? ProxyFallback.Mode.NONE
+                        : modes.getCheckedRadioButtonId() == manualProxy.getId()
+                                ? ProxyFallback.Mode.MANUAL : ProxyFallback.Mode.SERVER;
+                int manualPort = 0;
+                if (mode == ProxyFallback.Mode.MANUAL) {
+                    try { manualPort = Integer.parseInt(port.getText().toString().trim()); } catch (NumberFormatException ignoredError) { }
+                    if (host.getText().toString().trim().isEmpty() || manualPort < 1 || manualPort > 65535) {
+                        Toast.makeText(this, "Укажите адрес и порт от 1 до 65535.", Toast.LENGTH_LONG).show();
+                        return;
+                    }
+                }
+                proxyFallback.saveSettings(new ProxyFallback.Settings(mode, host.getText().toString(), manualPort,
+                        username.getText().toString(), password.getText().toString()));
+                proxyFallback.clearOverride(() -> Toast.makeText(this, "Настройки прокси сохранены.", Toast.LENGTH_SHORT).show());
+                dialog.dismiss();
+            });
+        });
+        dialog.show();
+    }
+
+    private void confirmCacheClear() {
+        new AlertDialog.Builder(this)
+                .setTitle("Очистить кэш?")
+                .setMessage("Кэш страниц и изображений будет удалён. Вход и настройки сайта сохранятся.")
+                .setNegativeButton("Отмена", null)
+                .setPositiveButton("Очистить", (dialog, ignored) -> {
+                    webView.clearCache(true);
+                    webView.clearHistory();
+                    proxyFallbackAttempted = false;
+                    String url = webView.getUrl();
+                    loadSite(isAllowedSiteUrl(url == null ? null : Uri.parse(url)) ? url : SITE_URL);
+                    Toast.makeText(this, "Кэш очищен.", Toast.LENGTH_SHORT).show();
+                })
+                .show();
+    }
+
     private void openExternal(Uri uri) {
         try { startActivity(new Intent(Intent.ACTION_VIEW, uri)); } catch (Exception ignored) { }
     }
@@ -323,6 +458,10 @@ abstract class BaseWebActivity extends Activity {
     private final class TrackAnimeWebViewClient extends WebViewClient {
         @Override public boolean shouldOverrideUrlLoading(WebView view, WebResourceRequest request) {
             Uri uri = request.getUrl();
+            if ("trackanime".equalsIgnoreCase(uri.getScheme()) && "settings".equalsIgnoreCase(uri.getHost())) {
+                showAppSettings();
+                return true;
+            }
             if (isInAppUrl(uri)) return false;
             openExternal(uri);
             return true;
@@ -365,8 +504,8 @@ abstract class BaseWebActivity extends Activity {
         }
 
         @Override public void onReceivedHttpAuthRequest(WebView view, HttpAuthHandler handler, String host, String realm) {
-            if (proxyFallback.isEnabled() && BuildConfig.FALLBACK_PROXY_HOST.equalsIgnoreCase(host)) {
-                handler.proceed(BuildConfig.FALLBACK_PROXY_USERNAME, BuildConfig.FALLBACK_PROXY_PASSWORD);
+            if (proxyFallback.matchesEnabledProxy(host)) {
+                handler.proceed(proxyFallback.getEnabledUsername(), proxyFallback.getEnabledPassword());
                 return;
             }
             handler.cancel();
@@ -374,17 +513,18 @@ abstract class BaseWebActivity extends Activity {
     }
 
     private void showLoadErrorPage(WebView view, String reason) {
-        String safeReason = reason == null ? "ошибка сети" : reason.replace("<", "&lt;").replace(">", "&gt;");
+        String safeReason = reason == null ? "ошибка сети" : reason.replace("&", "&amp;").replace("<", "&lt;").replace(">", "&gt;");
         String html = "<!DOCTYPE html><html><head><meta charset=\"utf-8\">"
                 + "<meta name=\"viewport\" content=\"width=device-width, initial-scale=1\">"
                 + "<style>body{margin:0;min-height:100vh;display:flex;align-items:center;justify-content:center;"
                 + "background:#0c0e14;color:#e8ecf4;font-family:sans-serif;padding:24px;text-align:center}"
                 + "h1{font-size:1.25rem;margin:0 0 12px}p{opacity:.8;line-height:1.45;margin:0 0 20px}"
-                + "button{background:#6c8cff;color:#fff;border:0;border-radius:10px;padding:12px 18px;font-size:1rem}"
+                + "button{background:#6c8cff;color:#fff;border:0;border-radius:10px;padding:12px 18px;font-size:1rem;margin:4px}button.secondary{background:#252b3b}"
                 + "small{display:block;margin-top:16px;opacity:.55;word-break:break-word}</style></head><body>"
                 + "<div><h1>Нет соединения с сайтом</h1>"
                 + "<p>Не удалось загрузить Track Anime. Проверьте интернет и VPN (V2Ray/прокси), затем повторите.</p>"
                 + "<button onclick=\"location.replace('" + SITE_URL + "')\">Повторить</button>"
+                + "<button class=\"secondary\" onclick=\"location.href='trackanime://settings'\">Настройки приложения</button>"
                 + "<small>" + safeReason + "<br>" + SITE_URL + "</small></div></body></html>";
         view.loadDataWithBaseURL(SITE_URL, html, "text/html", "utf-8", SITE_URL);
     }
