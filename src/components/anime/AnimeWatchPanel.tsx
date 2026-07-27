@@ -675,17 +675,21 @@ export function AnimeWatchPanel({
       const adjusted = applyPositionOffset(resume, kodikId, selectedIdRef.current);
       const mode: KodikPlayerResumeMode = isPausedRef.current ? "pause" : "play";
 
+      // Both play and pause must use continue-flow (play → seek → optional pause).
+      // bootResume/applyInitialSeek alone is ignored by a cold Kodik iframe, so a
+      // paused translation switch would land at the episode start.
       if (mode === "pause") {
-        pendingContinueRef.current = null;
+        silentContinueFlowRef.current = true;
+        window.setTimeout(() => {
+          silentContinueFlowRef.current = false;
+        }, 5_000);
         setContinueLoading(false);
         setContinueTarget(null);
-        setBootResume(adjusted);
-        setSelectedId(kodikId);
-        return;
+      } else {
+        setContinueLoading(true);
+        setContinueTarget({ episodeNumber: adjusted.episodeNumber });
       }
 
-      setContinueLoading(true);
-      setContinueTarget({ episodeNumber: adjusted.episodeNumber });
       pendingContinueRef.current = adjusted;
       pendingContinueModeRef.current = mode;
       setSelectedId(kodikId);
