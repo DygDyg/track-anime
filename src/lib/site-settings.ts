@@ -25,6 +25,19 @@ export type SiteBackgroundDim = "none" | "light" | "medium" | "heavy";
 /** null = показывать все озвучки; массив = только выбранные */
 export type HomeTranslationFilter = null | string[];
 
+/** Фильтр статуса на главной: всё / онгоинги (+анонсы) / вышедшие */
+export type HomeStatusFilter = "all" | "ongoing" | "released";
+
+export function matchesHomeStatusFilter(
+  status: string | null | undefined,
+  filter: HomeStatusFilter,
+): boolean {
+  if (filter === "all") return true;
+  const normalized = (status ?? "").trim().toLowerCase();
+  if (filter === "ongoing") return normalized === "ongoing" || normalized === "anons";
+  return normalized === "released";
+}
+
 /** null = без фона; строка = URL выбранного изображения */
 export type SiteBackgroundImageUrl = string | null;
 
@@ -86,6 +99,7 @@ export type SiteSettings = {
 
 export const SITE_SETTINGS_STORAGE_KEY = "track-anime-site-settings";
 export const HOME_HISTORY_COLLAPSED_STORAGE_KEY = "track-anime-home-history-collapsed";
+export const HOME_STATUS_FILTER_STORAGE_KEY = "track-anime-home-status-filter";
 
 export const DEFAULT_SITE_SETTINGS: SiteSettings = {
   fontFamily: "inter",
@@ -397,6 +411,29 @@ export function writeHomeHistoryCollapsed(collapsed: boolean): void {
   if (typeof window === "undefined") return;
   try {
     localStorage.setItem(HOME_HISTORY_COLLAPSED_STORAGE_KEY, collapsed ? "true" : "false");
+  } catch {
+    /* ignore */
+  }
+}
+
+export function parseHomeStatusFilter(raw: unknown): HomeStatusFilter {
+  if (raw === "ongoing" || raw === "released" || raw === "all") return raw;
+  return "all";
+}
+
+export function readHomeStatusFilter(): HomeStatusFilter {
+  if (typeof window === "undefined") return "all";
+  try {
+    return parseHomeStatusFilter(localStorage.getItem(HOME_STATUS_FILTER_STORAGE_KEY));
+  } catch {
+    return "all";
+  }
+}
+
+export function writeHomeStatusFilter(filter: HomeStatusFilter): void {
+  if (typeof window === "undefined") return;
+  try {
+    localStorage.setItem(HOME_STATUS_FILTER_STORAGE_KEY, filter);
   } catch {
     /* ignore */
   }

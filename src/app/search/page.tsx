@@ -8,7 +8,9 @@ import {
   parseSearchTab,
 } from "@/lib/search-fields";
 import {
+  SEARCH_MAX_PAGE,
   SEARCH_PAGE_SIZE,
+  parseSearchSort,
   searchAnimesAdvanced,
   searchAnimesQuick,
 } from "@/lib/search";
@@ -70,8 +72,9 @@ export async function generateMetadata({ searchParams }: Props): Promise<Metadat
 
 export default async function SearchPage({ searchParams }: Props) {
   const params = await searchParams;
-  const page = Math.max(1, Number(params.page) || 1);
+  const page = Math.min(SEARCH_MAX_PAGE, Math.max(1, Number(params.page) || 1));
   const tab = parseSearchTab(params.tab);
+  const sort = parseSearchSort(params.sort);
   const trimmedGenre = params.genre?.trim() ?? "";
   const trimmedQuery = params.q?.trim() ?? "";
   const advancedFilters = parseAdvancedFiltersFromParams(params);
@@ -79,9 +82,9 @@ export default async function SearchPage({ searchParams }: Props) {
   let result;
 
   if (tab === "advanced") {
-    result = await searchAnimesAdvanced(advancedFilters, page, SEARCH_PAGE_SIZE);
+    result = await searchAnimesAdvanced(advancedFilters, page, SEARCH_PAGE_SIZE, { sort });
   } else if (trimmedQuery || parseGenreList(trimmedGenre).length > 0) {
-    result = await searchAnimesQuick(trimmedQuery, trimmedGenre, page, SEARCH_PAGE_SIZE);
+    result = await searchAnimesQuick(trimmedQuery, trimmedGenre, page, SEARCH_PAGE_SIZE, { sort });
     result = { ...result, tab: "quick" as const };
   } else {
     result = {
@@ -93,6 +96,7 @@ export default async function SearchPage({ searchParams }: Props) {
       query: trimmedQuery,
       genre: trimmedGenre || null,
       tab,
+      sort,
     };
   }
 

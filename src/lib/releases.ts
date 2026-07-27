@@ -222,7 +222,7 @@ async function queryFreshReleasesPerTitle(
           r."translationName",
           COALESCE(r."playerLink", e."playerLink", m."playerLink") AS "playerLink",
           COALESCE(m."shikimoriId", r."shikimoriId") AS "shikimoriId",
-          r."releasedAt",
+          COALESCE(m."animeReleasedAt", r."releasedAt") AS "releasedAt",
           COALESCE(
             m."materialData"->>'anime_description',
             m."materialData"->>'description'
@@ -351,7 +351,7 @@ async function queryCatalogReleaseCandidates(
         m."translationTitle" AS "translationName",
         COALESCE(e."playerLink", m."playerLink") AS "playerLink",
         m."shikimoriId",
-        m."kodikUpdatedAt" AS "releasedAt",
+        COALESCE(m."animeReleasedAt", m."kodikUpdatedAt") AS "releasedAt",
         COALESCE(
           m."materialData"->>'anime_description',
           m."materialData"->>'description'
@@ -384,7 +384,7 @@ async function queryCatalogReleaseCandidates(
         AND (
           $2::timestamptz IS NULL
           OR (
-            m."kodikUpdatedAt",
+            COALESCE(m."animeReleasedAt", m."kodikUpdatedAt"),
             CASE
               WHEN m."shikimoriId" IS NOT NULL THEN m."shikimoriId"::text
               ELSE m."kodikId"
@@ -422,7 +422,7 @@ async function queryCatalogReleaseCandidates(
           )
         )
       ORDER BY
-        m."kodikUpdatedAt" DESC,
+        COALESCE(m."animeReleasedAt", m."kodikUpdatedAt") DESC,
         CASE
           WHEN m."shikimoriId" IS NOT NULL THEN m."shikimoriId"::text
           ELSE m."kodikId"

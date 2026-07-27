@@ -8,6 +8,7 @@ import {
 } from "@/lib/material-poster";
 import { fetchWorldArtPoster } from "@/lib/world-art-poster";
 import { dispatchHistoryNewEpisodeRelease } from "@/lib/notifications/dispatcher";
+import { normalizeKodikGenreKey, parseKodikGenres } from "@/lib/kodik-material-meta";
 
 function parseShikimoriId(value?: string | number | null): number | null {
   if (value === undefined || value === null || value === "") return null;
@@ -52,6 +53,15 @@ function kodikReleaseDate(material: KodikMaterial): Date {
   return new Date();
 }
 
+function animeReleasedAt(material: KodikMaterial): Date | null {
+  const data = material.material_data;
+  const raw = data?.released_at ?? data?.anime_full?.released_on ?? data?.anime_full?.released_at;
+  if (typeof raw !== "string" || !/^\d{4}-\d{2}-\d{2}$/.test(raw)) return null;
+
+  const parsed = new Date(`${raw}T00:00:00.000Z`);
+  return Number.isNaN(parsed.getTime()) ? null : parsed;
+}
+
 export type SaveMaterialResult = {
   materialId: string;
   newEpisodes: number;
@@ -75,6 +85,7 @@ export async function saveKodikMaterial(
   });
 
   const materialData = await buildStoredMaterialData(material);
+  const materialAnimeReleasedAt = animeReleasedAt(material);
 
   const materialRow = await prisma.kodikMaterial.upsert({
     where: { kodikId: material.id },
@@ -96,6 +107,7 @@ export async function saveKodikMaterial(
       translationType: translation.type,
       kodikCreatedAt: material.created_at ? new Date(material.created_at) : null,
       kodikUpdatedAt: material.updated_at ? new Date(material.updated_at) : null,
+      animeReleasedAt: materialAnimeReleasedAt,
       episodesLoaded: options.loadEpisodes && Boolean(material.seasons),
       materialData,
     },
@@ -115,10 +127,25 @@ export async function saveKodikMaterial(
       translationTitle: translation.title,
       translationType: translation.type,
       kodikUpdatedAt: material.updated_at ? new Date(material.updated_at) : null,
+      ...(materialAnimeReleasedAt ? { animeReleasedAt: materialAnimeReleasedAt } : {}),
       episodesLoaded: options.loadEpisodes && Boolean(material.seasons) ? true : undefined,
       materialData,
     },
   });
+
+  const materialMetadata = material.material_data as
+    | { anime_genres?: unknown; all_genres?: unknown; genres?: unknown }
+    | undefined;
+  const genres = parseKodikGenres(
+    materialMetadata?.anime_genres ?? materialMetadata?.all_genres ?? materialMetadata?.genres,
+  );
+  await prisma.$transaction([
+    prisma.kodikMaterialGenre.deleteMany({ where: { materialId: material.id } }),
+    prisma.kodikMaterialGenre.createMany({
+      data: genres.map((genre) => ({ materialId: material.id, genreKey: normalizeKodikGenreKey(genre) })),
+      skipDuplicates: true,
+    }),
+  ]);
 
   let newEpisodes = 0;
   let newReleases = 0;

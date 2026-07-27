@@ -47,6 +47,11 @@ export type KodikMaterial = {
     worldart_poster_url?: string;
     worldart_animation_id?: string | number;
     worldart_cinema_id?: string | number;
+    released_at?: string;
+    anime_full?: {
+      released_on?: string;
+      released_at?: string;
+    };
   };
 };
 

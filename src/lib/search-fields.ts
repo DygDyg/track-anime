@@ -2,6 +2,12 @@ import { labelKind, labelStatus, statusBadgeClass } from "@/lib/anime-labels";
 import { getAnimeKindDescription } from "@/lib/anime-kind-descriptions";
 import { kindBadgeClass } from "@/lib/anime-kind-theme";
 
+export type SearchSortMode = "relevance" | "date";
+
+export function parseSearchSort(value: string | null | undefined): SearchSortMode {
+  return value === "date" ? "date" : "relevance";
+}
+
 export const SEARCH_FIELD_PARAM_PREFIX = "f";
 export const SEARCH_YEAR_FROM_PARAM = `${SEARCH_FIELD_PARAM_PREFIX}yearFrom`;
 export const SEARCH_YEAR_TO_PARAM = `${SEARCH_FIELD_PARAM_PREFIX}yearTo`;
@@ -11,6 +17,9 @@ export const SEARCH_YEAR_MIN = 1963;
 export const SEARCH_YEAR_MAX = new Date().getFullYear() + 1;
 export const SEARCH_RATING_MIN = 0;
 export const SEARCH_RATING_MAX = 10;
+export const SEARCH_MAX_FIELD_LENGTH = 160;
+export const SEARCH_MAX_GENRES = 6;
+export const SEARCH_MAX_GENRE_LENGTH = 80;
 
 const KIND_VALUES = ["tv", "tv_13", "tv_24", "tv_48", "movie", "ova", "ona", "special", "music"] as const;
 const STATUS_VALUES = ["ongoing", "released", "anons", "latest"] as const;
@@ -87,12 +96,13 @@ export function parseGenreList(value: string | null | undefined): string[] {
   const result: string[] = [];
 
   for (const part of value.split(",")) {
-    const trimmed = part.trim();
+    const trimmed = part.trim().slice(0, SEARCH_MAX_GENRE_LENGTH);
     if (!trimmed) continue;
     const key = trimmed.toLowerCase();
     if (seen.has(key)) continue;
     seen.add(key);
     result.push(trimmed);
+    if (result.length >= SEARCH_MAX_GENRES) break;
   }
 
   return result;
@@ -130,7 +140,7 @@ function readParam(
   key: string,
 ): string | undefined {
   const raw = params instanceof URLSearchParams ? params.get(key) : params[key];
-  return raw?.trim() || undefined;
+  return raw?.trim().slice(0, SEARCH_MAX_FIELD_LENGTH) || undefined;
 }
 
 function parseYearParam(value: string | undefined): number | null {
@@ -230,6 +240,7 @@ export function hasAdvancedFilters(filters: AdvancedSearchFilters): boolean {
 export function buildAdvancedSearchParams(
   filters: AdvancedSearchFilters,
   page?: number,
+  sort?: SearchSortMode,
 ): URLSearchParams {
   const params = new URLSearchParams();
   params.set("tab", "advanced");
@@ -257,13 +268,18 @@ export function buildAdvancedSearchParams(
     if (rating != null) params.set(SEARCH_MIN_RATING_PARAM, String(rating));
   }
 
+  if (sort === "date") params.set("sort", "date");
   if (page && page > 1) params.set("page", String(page));
 
   return params;
 }
 
-export function buildAdvancedSearchHref(filters: AdvancedSearchFilters, page?: number): string {
-  const params = buildAdvancedSearchParams(filters, page);
+export function buildAdvancedSearchHref(
+  filters: AdvancedSearchFilters,
+  page?: number,
+  sort?: SearchSortMode,
+): string {
+  const params = buildAdvancedSearchParams(filters, page, sort);
   const serialized = params.toString();
   return serialized ? `/search?${serialized}` : "/search?tab=advanced";
 }
@@ -323,14 +339,16 @@ export function buildSearchApiParams(input: {
   page: number;
   pageSize?: number;
   includeTotal?: boolean;
+  sort?: SearchSortMode;
 }): URLSearchParams {
   const params = new URLSearchParams();
   params.set("page", String(input.page));
   if (input.pageSize) params.set("pageSize", String(input.pageSize));
   if (input.includeTotal === false) params.set("includeTotal", "0");
+  if (input.sort === "date") params.set("sort", "date");
 
   if (input.tab === "advanced" && input.advancedFilters) {
-    const built = buildAdvancedSearchParams(input.advancedFilters, input.page);
+    const built = buildAdvancedSearchParams(input.advancedFilters, input.page, input.sort);
     built.forEach((value, key) => params.set(key, value));
     return params;
   }

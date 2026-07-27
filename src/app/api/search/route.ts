@@ -1,7 +1,8 @@
 import { type NextRequest, NextResponse } from "next/server";
 import { parseAdvancedFiltersFromParams, parseSearchTab } from "@/lib/search-fields";
-import { parseExcludeShikimoriIds } from "@/lib/search-shared";
+import { parseExcludeShikimoriIds, parseSearchSort } from "@/lib/search-shared";
 import {
+  SEARCH_MAX_PAGE,
   SEARCH_PAGE_SIZE,
   searchAnimesAdvanced,
   searchAnimesByDescription,
@@ -12,9 +13,10 @@ import {
 export async function GET(request: NextRequest) {
   const params = request.nextUrl.searchParams;
   const tab = parseSearchTab(params.get("tab"));
+  const sort = parseSearchSort(params.get("sort"));
   const genre = params.get("genre")?.trim() ?? "";
   const q = params.get("q") ?? "";
-  const page = Math.max(1, Number(params.get("page")) || 1);
+  const page = Math.min(SEARCH_MAX_PAGE, Math.max(1, Number(params.get("page")) || 1));
   const pageSize = Math.min(
     48,
     Math.max(1, Number(params.get("pageSize")) || SEARCH_PAGE_SIZE),
@@ -24,12 +26,13 @@ export async function GET(request: NextRequest) {
   const excludeShikimoriIds = parseExcludeShikimoriIds(params.get("excludeIds"));
 
   const result = descriptionOnly
-    ? await searchAnimesByDescription(q, page, pageSize, excludeShikimoriIds, { includeTotal })
+    ? await searchAnimesByDescription(q, page, pageSize, excludeShikimoriIds, { includeTotal, sort })
     : tab === "advanced"
       ? await searchAnimesAdvanced(parseAdvancedFiltersFromParams(params), page, pageSize, {
           includeTotal,
+          sort,
         })
-      : await searchAnimesQuick(q, genre, page, pageSize, { includeTotal });
+      : await searchAnimesQuick(q, genre, page, pageSize, { includeTotal, sort });
 
   return NextResponse.json(
     {
@@ -37,6 +40,7 @@ export async function GET(request: NextRequest) {
       layoutCorrectedQuery: result.layoutCorrectedQuery ?? null,
       genre: result.genre,
       tab: result.tab ?? "quick",
+      sort: result.sort ?? sort,
       page: result.page,
       pageSize: result.pageSize,
       total: result.total,

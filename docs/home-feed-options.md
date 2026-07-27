@@ -10,8 +10,8 @@
 
 ### Как работает сейчас (гибрид)
 
-- **Фаза 1 — «Новые серии»:** тайтлы из `KodikEpisodeRelease`, одна карточка на `shikimoriId`, последняя серия среди всех озвучек, сортировка по `releasedAt`.
-- **Фаза 2 — «Каталог»:** остальные тайтлы с сериями из `KodikMaterial`, группировка по `shikimoriId`, сортировка по `kodikUpdatedAt`. Тайтлы из фазы 1 **не дублируются**.
+- **Фаза 1 — «Новые серии»:** тайтлы из `KodikEpisodeRelease`, одна карточка на `shikimoriId`, последняя серия среди всех озвучек. Онгоинги сортируются по `releasedAt`, завершённые — по `animeReleasedAt`, поэтому поздняя доозвучка не поднимает тайтл в ленте.
+- **Фаза 2 — «Каталог»:** остальные тайтлы с сериями из `KodikMaterial`, группировка по `shikimoriId`. Онгоинги сортируются по `kodikUpdatedAt`, завершённые тайтлы — по индексируемому `animeReleasedAt` (дате финальной оригинальной серии). Тайтлы из фазы 1 **не дублируются**.
 - Пагинация: курсор `{ phase: 'releases' | 'catalog', releasedAt, id }`.
 - Код: `src/lib/releases.ts` → `queryFreshReleasesPerTitle()` + `queryCatalogReleasesPerTitle()`.
 
@@ -129,6 +129,7 @@
 | `src/app/page.tsx` | Страница главной |
 | `src/components/ReleaseFeed.tsx` | Подгрузка ленты |
 | `src/db/save-material.ts` | `trackLatestRelease()` |
+| `scripts/kodik-backfill-anime-release-dates.ts` | Однократно переносит дату финальной серии из JSON в `animeReleasedAt` |
 | `src/lib/calendar.ts` | Календарь (тоже использует релизы) |
 | `scripts/check-db-stats.mjs` | Проверка цифр на сервере |
 

@@ -1,12 +1,17 @@
-import type { AdvancedSearchFilters } from "@/lib/search-fields";
+import type { AdvancedSearchFilters, SearchSortMode } from "@/lib/search-fields";
 
 export const SEARCH_MIN_QUERY_LENGTH = 2;
 export const SEARCH_PAGE_SIZE = 24;
+export const SEARCH_MAX_PAGE = 200;
 export const DEFAULT_HEADER_SEARCH_DEBOUNCE_MS = 1500;
 export const MIN_HEADER_SEARCH_DEBOUNCE_MS = 500;
 export const MAX_HEADER_SEARCH_DEBOUNCE_MS = 5000;
 /** Меньше этого числа title-совпадений в шапке — второй запрос по описанию. */
 export const HEADER_DESCRIPTION_SUPPLEMENT_THRESHOLD = 10;
+
+export const SEARCH_SORT_PARAM = "sort";
+
+export { parseSearchSort, type SearchSortMode } from "@/lib/search-fields";
 
 export function parseExcludeShikimoriIds(value: string | null | undefined): number[] {
   if (!value?.trim()) return [];
@@ -57,6 +62,7 @@ export type SearchPage = {
   layoutCorrectedQuery?: string | null;
   tab?: "quick" | "advanced";
   advancedFilters?: AdvancedSearchFilters;
+  sort?: SearchSortMode;
 };
 
 export function buildSearchHref(input: {
@@ -64,6 +70,7 @@ export function buildSearchHref(input: {
   genre?: string;
   page?: number;
   tab?: "quick" | "advanced";
+  sort?: SearchSortMode;
 }): string {
   const params = new URLSearchParams();
   const tab = input.tab ?? "quick";
@@ -73,6 +80,7 @@ export function buildSearchHref(input: {
 
   if (genre) params.set("genre", genre);
   if (query) params.set("q", query);
+  if (input.sort === "date") params.set(SEARCH_SORT_PARAM, "date");
 
   if (input.page && input.page > 1) params.set("page", String(input.page));
 

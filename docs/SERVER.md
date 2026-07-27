@@ -479,3 +479,6 @@ SELECT COUNT(*) FROM "KodikEpisodeRelease";
 - PostgreSQL слушает только localhost.
 - Не коммитьте `.env` в git.
 - Токен Kodik храните только на сервере.
+- Для публичных `/search`, `/api/search` и `/anime/*` настройте nginx `limit_req`: эти маршруты могут выполнять тяжёлые server-side запросы. На домене за Cloudflare сначала настройте `real_ip_header CF-Connecting-IP` и актуальные trusted-сети Cloudflare; прямые зеркала продолжают использовать IP исходного подключения.
+- В nginx можно вернуть быстрый `404` для неиспользуемых scanner-путей (`/.env`, `/.git`, `/wp-config*`, `/phpinfo*`, `/vendor`, `/config`, `/aws`), чтобы они не попадали в Next.js.
+- Для неиспользуемых доменных алиасов и произвольного `Host` настройте `default_server` на портах 80 и 443 с `return 444`. Не добавляйте такие алиасы в `server_name`: это исключает конфликты виртуальных хостов и не перенаправляет ботов на рабочие сайты.

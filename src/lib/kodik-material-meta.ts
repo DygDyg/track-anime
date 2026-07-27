@@ -1,8 +1,22 @@
 type MaterialData = Record<string, unknown>;
 
+export function normalizeKodikGenreKey(value: string): string {
+  return value.trim().toLocaleLowerCase("ru-RU").replace(/\s+/g, " ");
+}
+
 export function parseKodikGenres(value: unknown): string[] {
   if (!Array.isArray(value)) return [];
-  return value.filter((item): item is string => typeof item === "string").slice(0, 12);
+  const seen = new Set<string>();
+  const genres: string[] = [];
+  for (const item of value) {
+    if (typeof item !== "string") continue;
+    const key = normalizeKodikGenreKey(item);
+    if (!key || seen.has(key)) continue;
+    seen.add(key);
+    genres.push(item.trim());
+    if (genres.length === 12) break;
+  }
+  return genres;
 }
 
 export function parseKodikStudios(value: unknown): string[] {

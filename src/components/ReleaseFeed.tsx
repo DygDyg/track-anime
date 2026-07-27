@@ -3,8 +3,14 @@
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import { ReleaseCard } from "@/components/ReleaseCard";
 import { useSiteSettings } from "@/components/SiteSettingsProvider";
-import type { HomeTranslationFilter } from "@/lib/site-settings";
-import { isHomeTranslationVisible } from "@/lib/site-settings";
+import {
+  isHomeTranslationVisible,
+  matchesHomeStatusFilter,
+  readHomeStatusFilter,
+  writeHomeStatusFilter,
+  type HomeStatusFilter,
+  type HomeTranslationFilter,
+} from "@/lib/site-settings";
 import {
   BEFORE_ANIME_NAV_EVENT,
   consumePageRestore,
@@ -12,7 +18,13 @@ import {
   saveFeedState,
 } from "@/lib/navigation-return";
 import type { ReleaseItemDto, ReleasesCursor } from "@/lib/releases";
-import { homeFeedGridClassName, homeFeedGutterX } from "@/lib/home-feed-layout";
+import { homeFeedGridClassName, homeFeedGutterX, homeFeedOuterGutterX } from "@/lib/home-feed-layout";
+
+const STATUS_FILTER_OPTIONS: Array<{ value: HomeStatusFilter; label: string }> = [
+  { value: "all", label: "Всё" },
+  { value: "ongoing", label: "Онгоинги" },
+  { value: "released", label: "Вышедшие" },
+];
 
 type Props = {
   initialItems: ReleaseItemDto[];
@@ -50,6 +62,7 @@ export function ReleaseFeed({
   const [hasMore, setHasMore] = useState(initialHasMore);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [statusFilter, setStatusFilter] = useState<HomeStatusFilter>("all");
   const sentinelRef = useRef<HTMLDivElement>(null);
 
   const nextCursorRef = useRef(initialNextCursor);
@@ -70,6 +83,8 @@ export function ReleaseFeed({
   }, []);
 
   useLayoutEffect(() => {
+    setStatusFilter(readHomeStatusFilter());
+
     const restored = consumePageRestore(HOME_PATH);
     if (!restored) return;
 
@@ -89,6 +104,11 @@ export function ReleaseFeed({
     return () => window.removeEventListener(BEFORE_ANIME_NAV_EVENT, persistFeed);
   }, [persistFeed]);
 
+  const onStatusFilterChange = useCallback((next: HomeStatusFilter) => {
+    setStatusFilter(next);
+    writeHomeStatusFilter(next);
+  }, []);
+
   const excludeIdSet = useMemo(() => new Set(excludeIds), [excludeIds]);
 
   const visibleItems = useMemo(
@@ -96,9 +116,10 @@ export function ReleaseFeed({
       items.filter(
         (item) =>
           !excludeIdSet.has(item.id) &&
-          isHomeTranslationVisible(item.translationName, settings.homeTranslationFilter),
+          isHomeTranslationVisible(item.translationName, settings.homeTranslationFilter) &&
+          matchesHomeStatusFilter(item.status, statusFilter),
       ),
-    [items, excludeIdSet, settings.homeTranslationFilter],
+    [items, excludeIdSet, settings.homeTranslationFilter, statusFilter],
   );
 
   const loadMore = useCallback(async () => {
@@ -135,7 +156,11 @@ export function ReleaseFeed({
 
         if (!data.hasMore || !data.nextCursor) break;
 
-        const visibleCount = visibleItemsCount(itemsRef.current, settings.homeTranslationFilter);
+        const visibleCount = visibleItemsCount(
+          itemsRef.current,
+          settings.homeTranslationFilter,
+          statusFilter,
+        );
         if (visibleCount >= pageSize) break;
 
         if (fresh.length === 0) {
@@ -152,7 +177,7 @@ export function ReleaseFeed({
       loadingRef.current = false;
       setLoading(false);
     }
-  }, [pageSize, settings.homeTranslationFilter]);
+  }, [pageSize, settings.homeTranslationFilter, statusFilter]);
 
   const pollForNewReleases = useCallback(async () => {
     if (document.hidden) return;
@@ -249,10 +274,17 @@ export function ReleaseFeed({
     if (loadingRef.current || !hasMoreRef.current) return;
     if (visibleItems.length >= pageSize) return;
     void loadMoreRef.current();
-  }, [visibleItems.length, pageSize, settings.homeTranslationFilter]);
+  }, [visibleItems.length, pageSize, settings.homeTranslationFilter, statusFilter]);
+
+  const emptyMessage =
+    statusFilter !== "all"
+      ? "Нет серий для выбранного фильтра статуса."
+      : "Нет серий для выбранных озвучек. Откройте настройки и отметьте нужные студии.";
 
   return (
     <>
+      <HomeStatusFilterBar value={statusFilter} onChange={onStatusFilterChange} />
+
       <div className={`${homeFeedGridClassName} ${homeFeedGutterX} md:overflow-visible`}>
         {visibleItems.map((release) => (
           <ReleaseCard key={release.id} release={release} />
@@ -261,9 +293,7 @@ export function ReleaseFeed({
 
       {visibleItems.length === 0 && !loading ? (
         <div className="mx-3 mt-4 rounded-xl border border-dashed border-border bg-card/50 p-6 text-center sm:mx-6 lg:mx-8">
-          <p className="text-sm text-muted">
-            Нет серий для выбранных озвучек. Откройте настройки и отметьте нужные студии.
-          </p>
+          <p className="text-sm text-muted">{emptyMessage}</p>
         </div>
       ) : null}
 
@@ -316,8 +346,59 @@ async function fetchReleasesPage(params: URLSearchParams): Promise<ReleasesPageR
   }
 }
 
-function visibleItemsCount(items: ReleaseItemDto[], filter: HomeTranslationFilter): number {
-  return items.filter((item) => isHomeTranslationVisible(item.translationName, filter)).length;
+function HomeStatusFilterBar({
+  value,
+  onChange,
+}: {
+  value: HomeStatusFilter;
+  onChange: (next: HomeStatusFilter) => void;
+}) {
+  return (
+    <div className={`${homeFeedOuterGutterX} mb-4 sm:mb-5`}>
+      <div
+        className="grid grid-cols-3 gap-1.5 sm:flex sm:flex-wrap sm:gap-2"
+        role="radiogroup"
+        aria-label="Фильтр по статусу тайтла"
+      >
+        {STATUS_FILTER_OPTIONS.map((option) => {
+          const active = value === option.value;
+          return (
+            <label
+              key={option.value}
+              className={[
+                "inline-flex cursor-pointer items-center justify-center gap-1.5 rounded-lg border px-2 py-2 text-xs font-medium transition sm:justify-start sm:px-3 sm:text-sm",
+                active
+                  ? "border-accent bg-accent/15 text-accent"
+                  : "border-border bg-card/60 text-foreground hover:border-accent/40",
+              ].join(" ")}
+            >
+              <input
+                type="radio"
+                name="home-status-filter"
+                value={option.value}
+                checked={active}
+                onChange={() => onChange(option.value)}
+                className="sr-only sm:not-sr-only sm:h-4 sm:w-4 sm:shrink-0 sm:accent-accent"
+              />
+              <span>{option.label}</span>
+            </label>
+          );
+        })}
+      </div>
+    </div>
+  );
+}
+
+function visibleItemsCount(
+  items: ReleaseItemDto[],
+  translationFilter: HomeTranslationFilter,
+  statusFilter: HomeStatusFilter,
+): number {
+  return items.filter(
+    (item) =>
+      isHomeTranslationVisible(item.translationName, translationFilter) &&
+      matchesHomeStatusFilter(item.status, statusFilter),
+  ).length;
 }
 
 /** Обновляет верх ленты по свежей первой странице, сохраняя подгруженный хвост. */

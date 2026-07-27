@@ -203,16 +203,19 @@ model KodikMaterial {
   translationType  String
   kodikCreatedAt   DateTime?
   kodikUpdatedAt   DateTime?
+  animeReleasedAt  DateTime?
   episodesLoaded   Boolean   @default(false)
   materialData     Json?
   seasons          KodikSeason[]
   episodes         KodikEpisode[]
   releases         KodikEpisodeRelease[]
+  genres           KodikMaterialGenre[]
   createdAt        DateTime  @default(now())
   updatedAt        DateTime  @updatedAt
 
   @@index([shikimoriId])
   @@index([kodikUpdatedAt(sort: Desc)])
+  @@index([animeReleasedAt(sort: Desc)])
   @@index([shikimoriId, kodikUpdatedAt(sort: Desc)])
   @@index([translationId])
   @@index([episodesLoaded])
@@ -295,6 +298,16 @@ model User {
   notificationLink        UserNotificationLink?
   pushSubscriptions       PushSubscription[]
   approvedQrLogins        QrLoginRequest[] @relation("QrLoginApprover")
+}
+
+/// Нормализованные жанры материала для индексируемого публичного поиска.
+model KodikMaterialGenre {
+  materialId String
+  genreKey   String
+  material   KodikMaterial @relation(fields: [materialId], references: [kodikId], onDelete: Cascade)
+
+  @@id([materialId, genreKey])
+  @@index([genreKey, materialId])
 }
 
 /// Настройки уведомлений пользователя

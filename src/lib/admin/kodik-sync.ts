@@ -239,3 +239,23 @@ export async function backfillReleaseDates(): Promise<number> {
       AND m."kodikUpdatedAt" IS NOT NULL
   `;
 }
+
+/** Однократно извлекает дату финальной оригинальной серии из materialData в индексируемое поле. */
+export async function backfillAnimeReleaseDates(): Promise<number> {
+  return prisma.$executeRawUnsafe(`
+    UPDATE "KodikMaterial"
+    SET "animeReleasedAt" = (
+      COALESCE(
+        NULLIF("materialData"->>'released_at', ''),
+        NULLIF("materialData"->'anime_full'->>'released_on', ''),
+        NULLIF("materialData"->'anime_full'->>'released_at', '')
+      )::date
+    )
+    WHERE "animeReleasedAt" IS NULL
+      AND COALESCE(
+        NULLIF("materialData"->>'released_at', ''),
+        NULLIF("materialData"->'anime_full'->>'released_on', ''),
+        NULLIF("materialData"->'anime_full'->>'released_at', '')
+      ) ~ '^\\d{4}-\\d{2}-\\d{2}$'
+  `);
+}

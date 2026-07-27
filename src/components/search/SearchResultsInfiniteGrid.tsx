@@ -5,7 +5,7 @@ import { SearchResultCard } from "@/components/search/SearchResultCard";
 import { siteClass } from "@/components/site/site-styles";
 import type { AdvancedSearchFilters } from "@/lib/search-fields";
 import { buildSearchApiParams } from "@/lib/search-fields";
-import type { SearchResultDto } from "@/lib/search-shared";
+import type { SearchResultDto, SearchSortMode } from "@/lib/search-shared";
 
 const LOAD_AHEAD_PX = 480;
 
@@ -26,6 +26,7 @@ type Props = {
   genre: string | null;
   advancedFilters?: AdvancedSearchFilters;
   pageSize: number;
+  sort?: SearchSortMode;
 };
 
 function mergeItems(current: SearchResultDto[], next: SearchResultDto[]): SearchResultDto[] {
@@ -44,6 +45,7 @@ export function SearchResultsInfiniteGrid({
   genre,
   advancedFilters,
   pageSize,
+  sort = "relevance",
 }: Props) {
   const [items, setItems] = useState(initialItems);
   const [page, setPage] = useState(initialPage);
@@ -83,6 +85,7 @@ export function SearchResultsInfiniteGrid({
       page: nextPage,
       pageSize,
       includeTotal: false,
+      sort,
     });
 
     try {
@@ -102,7 +105,7 @@ export function SearchResultsInfiniteGrid({
       loadingRef.current = false;
       setLoading(false);
     }
-  }, [advancedFilters, genre, pageSize, query, tab]);
+  }, [advancedFilters, genre, pageSize, query, sort, tab]);
 
   const loadMoreRef = useRef(loadMore);
   loadMoreRef.current = loadMore;

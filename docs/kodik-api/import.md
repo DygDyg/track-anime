@@ -60,6 +60,16 @@ npm run kodik:import -- --no-material-data
 npm run kodik:sync
 ```
 
+### Backfill даты завершения аниме
+
+После добавления поля `animeReleasedAt` выполните один раз:
+
+```bash
+npm run kodik:backfill-anime-release-dates
+```
+
+Команда переносит дату окончания оригинального показа из `material_data.released_at` в отдельное индексируемое поле. Это поле используется в каталогной фазе главной для завершённых тайтлов; онгоинги продолжают сортироваться по обновлению Kodik.
+
 Cron (Linux):
 
 ```cron

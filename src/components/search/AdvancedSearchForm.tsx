@@ -24,10 +24,12 @@ import {
   serializeGenreList,
   type AdvancedSearchFilters,
   type SearchFieldId,
+  type SearchSortMode,
 } from "@/lib/search-fields";
 
 type Props = {
   initialFilters?: AdvancedSearchFilters;
+  initialSort?: SearchSortMode;
 };
 
 type ComboboxFieldId = Exclude<SearchFieldId, "genre" | "kind" | "status">;
@@ -102,7 +104,10 @@ function SearchComboboxFilter({
   );
 }
 
-export function AdvancedSearchForm({ initialFilters }: Props) {
+export function AdvancedSearchForm({
+  initialFilters,
+  initialSort = "relevance",
+}: Props) {
   const router = useRouter();
   const [isPending, startTransition] = useTransition();
   const [filters, setFilters] = useState<AdvancedSearchFilters>(() => initFilters(initialFilters));
@@ -124,7 +129,7 @@ export function AdvancedSearchForm({ initialFilters }: Props) {
   const handleSubmit = (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault();
     startTransition(() => {
-      router.push(buildAdvancedSearchHref(filtersForSubmit(filters)));
+      router.push(buildAdvancedSearchHref(filtersForSubmit(filters), undefined, initialSort));
     });
   };
 

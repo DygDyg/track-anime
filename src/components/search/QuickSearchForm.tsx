@@ -7,14 +7,19 @@ import { SearchGenreMultiSelect } from "@/components/search/SearchGenreMultiSele
 import { siteClass } from "@/components/site/site-styles";
 import { AsyncButton } from "@/components/ui/AsyncButton";
 import { buildAdvancedSearchHref, parseGenreList, serializeGenreList } from "@/lib/search-fields";
-import { SEARCH_MIN_QUERY_LENGTH, buildSearchHref } from "@/lib/search-shared";
+import { SEARCH_MIN_QUERY_LENGTH, buildSearchHref, type SearchSortMode } from "@/lib/search-shared";
 
 type Props = {
   initialQuery?: string;
   initialGenre?: string;
+  initialSort?: SearchSortMode;
 };
 
-export function QuickSearchForm({ initialQuery = "", initialGenre = "" }: Props) {
+export function QuickSearchForm({
+  initialQuery = "",
+  initialGenre = "",
+  initialSort = "relevance",
+}: Props) {
   const router = useRouter();
   const [isPending, startTransition] = useTransition();
   const [query, setQuery] = useState(initialQuery);
@@ -34,6 +39,7 @@ export function QuickSearchForm({ initialQuery = "", initialGenre = "" }: Props)
         buildSearchHref({
           q: hasQuery ? trimmedQuery : undefined,
           genre: hasGenres ? serializedGenres : undefined,
+          sort: initialSort,
         }),
       );
     });

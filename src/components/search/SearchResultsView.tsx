@@ -6,14 +6,24 @@ import { siteClass } from "@/components/site/site-styles";
 import { homeFeedGutterX } from "@/lib/home-feed-layout";
 import {
   advancedFiltersSummary,
+  buildAdvancedSearchHref,
   hasAdvancedFilters,
   parseGenreList,
 } from "@/lib/search-fields";
-import { type SearchPage as SearchPageData } from "@/lib/search-shared";
+import {
+  buildSearchHref,
+  type SearchPage as SearchPageData,
+  type SearchSortMode,
+} from "@/lib/search-shared";
 
 type Props = {
   result: SearchPageData;
 };
+
+const SORT_OPTIONS: Array<{ value: SearchSortMode; label: string }> = [
+  { value: "relevance", label: "По релевантности" },
+  { value: "date", label: "По дате выхода" },
+];
 
 function SearchTabs({ activeTab }: { activeTab: "quick" | "advanced" }) {
   return (
@@ -54,8 +64,47 @@ function resultTitle(result: SearchPageData): string {
   return "Поиск аниме";
 }
 
+function sortHref(result: SearchPageData, sort: SearchSortMode): string {
+  if (result.tab === "advanced") {
+    return buildAdvancedSearchHref(result.advancedFilters ?? {}, undefined, sort);
+  }
+  return buildSearchHref({
+    q: result.query || undefined,
+    genre: result.genre ?? undefined,
+    sort,
+  });
+}
+
+function SearchSortToggle({ result }: { result: SearchPageData }) {
+  const activeSort = result.sort ?? "relevance";
+
+  return (
+    <div
+      className="flex flex-wrap gap-2"
+      role="radiogroup"
+      aria-label="Сортировка результатов"
+    >
+      {SORT_OPTIONS.map((option) => {
+        const active = activeSort === option.value;
+        return (
+          <Link
+            key={option.value}
+            href={sortHref(result, option.value)}
+            role="radio"
+            aria-checked={active}
+            className={active ? siteClass.btnSmOn : siteClass.btnSmOff}
+          >
+            {option.label}
+          </Link>
+        );
+      })}
+    </div>
+  );
+}
+
 export function SearchResultsView({ result }: Props) {
   const tab = result.tab ?? "quick";
+  const sort = result.sort ?? "relevance";
   const title = resultTitle(result);
   const hasSearchCriteria =
     tab === "advanced"
@@ -74,9 +123,13 @@ export function SearchResultsView({ result }: Props) {
       <section role="tabpanel" className={`${siteClass.panel} mb-6 overflow-visible`}>
         <h2 className={siteClass.sectionTitle}>{tab === "advanced" ? "Фильтры" : "Запрос"}</h2>
         {tab === "advanced" ? (
-          <AdvancedSearchForm initialFilters={result.advancedFilters} />
+          <AdvancedSearchForm initialFilters={result.advancedFilters} initialSort={sort} />
         ) : (
-          <QuickSearchForm initialQuery={result.query} initialGenre={result.genre ?? ""} />
+          <QuickSearchForm
+            initialQuery={result.query}
+            initialGenre={result.genre ?? ""}
+            initialSort={sort}
+          />
         )}
       </section>
 
@@ -94,7 +147,10 @@ export function SearchResultsView({ result }: Props) {
         </section>
       ) : (
         <section className={`${siteClass.panel} space-y-6`}>
-          <h2 className={siteClass.sectionTitle}>Результаты</h2>
+          <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+            <h2 className={`${siteClass.sectionTitle} mb-0`}>Результаты</h2>
+            <SearchSortToggle result={result} />
+          </div>
           {result.layoutCorrectedQuery ? (
             <p className="text-sm text-foreground/80">
               По запросу «{result.query}» ничего не найдено. Показаны результаты для «
@@ -111,6 +167,7 @@ export function SearchResultsView({ result }: Props) {
             genre={result.genre}
             advancedFilters={result.advancedFilters}
             pageSize={result.pageSize}
+            sort={sort}
           />
         </section>
       )}
