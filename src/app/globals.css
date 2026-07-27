@@ -162,10 +162,31 @@ html.has-bottom-nav .scroll-to-top-button {
   bottom: calc(var(--pwa-nav-height) + 0.75rem + env(safe-area-inset-bottom, 0px));
 }
 
+.aqua-coder-companion {
+  right: calc(0.5rem + env(safe-area-inset-right, 0px));
+  bottom: calc(0.5rem + env(safe-area-inset-bottom, 0px));
+}
+
+html.has-bottom-nav .aqua-coder-companion {
+  bottom: calc(var(--pwa-nav-height) + 0.5rem + env(safe-area-inset-bottom, 0px));
+}
+
 @media (min-width: 640px) {
   .scroll-to-top-button {
     right: calc(1.5rem + env(safe-area-inset-right, 0px));
     bottom: calc(1.5rem + env(safe-area-inset-bottom, 0px));
+  }
+
+  .aqua-coder-companion {
+    right: calc(1rem + env(safe-area-inset-right, 0px));
+    bottom: calc(1rem + env(safe-area-inset-bottom, 0px));
+  }
+}
+
+/* Companion only on md+; keep «Наверх» left of the mascot */
+@media (min-width: 768px) {
+  html.has-aqua-companion .scroll-to-top-button {
+    right: calc(1.5rem + var(--aqua-companion-width, 6rem) + env(safe-area-inset-right, 0px));
   }
 }
 

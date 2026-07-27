@@ -12,6 +12,7 @@ import {
 } from "react";
 import { useAuth } from "@/components/auth/AuthProvider";
 import { useSiteSettings } from "@/components/SiteSettingsProvider";
+import { emitCompanionReaction } from "@/lib/companion/companion-bus";
 import {
   KodikPlayer,
   type KodikPlayerHandle,
@@ -1254,15 +1255,19 @@ export function AnimeWatchPanel({
   const handlePlaybackStateChange = useCallback((state: KodikPlayerPlaybackState) => {
     setPlayback((previous) => {
       const initialized = playbackStateInitializedRef.current;
-      const playingChanged = initialized && previous.isPlaying !== state.isPlaying;
+      const playingChanged = previous.isPlaying !== state.isPlaying;
       playbackStateInitializedRef.current = true;
 
       if (playingChanged && !applyingWatchPartyCommandRef.current) {
         if (suppressNextPlaybackBroadcastRef.current) {
           suppressNextPlaybackBroadcastRef.current = false;
-        } else {
+        } else if (initialized) {
           sendWatchPartyPlaybackEventRef.current(state.isPlaying);
         }
+      }
+
+      if (playingChanged) {
+        emitCompanionReaction(state.isPlaying ? "sittingPlay" : "sittingPause", { force: true });
       }
 
       return state;

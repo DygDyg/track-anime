@@ -223,12 +223,14 @@ ta_new/
 | `profile/` | `ProfileCard`, `ProfileFriendsSection` |
 | `notifications/` | Notification discovery CTA |
 | `settings/` | `SiteSettingsModal`, providers |
+| `companion/` | `AquaCoderCompanion` — corner mascot + admin animation debug |
 | `user/` | `UsersSearchForm` |
 | `admin/` | Import/sync panels, MAL ID sync, notifications, DB explorer, stats |
 
-Root components: `ReleaseFeed`, `ReleaseCard`, `Header`, `RecentAnimeOpensButton`, `SiteBackground`, `ThemeProvider`, `NavigationProgress`, `PullToRefresh`, `ClientUpdateGuard` (checks new build in an open tab).
+Root components: `ReleaseFeed`, `ReleaseCard`, `Header`, `RecentAnimeOpensButton`, `SiteBackground`, `ThemeProvider`, `NavigationProgress`, `PullToRefresh`, `AquaCoderCompanion`, `ClientUpdateGuard` (checks new build in an open tab).
 
 Brand assets: `public/brand-logos/` contains optional `.webp` logos for global rotation; fallback remains `public/logo.webp`.
+Companion assets: `public/companion/aqua-coder-chibi/` (manifest + per-animation WebP atlases); renderer `src/lib/companion/AquaCoderCanvas.ts`; reactions bus `src/lib/companion/companion-bus.ts`; source package `aqua-coder-web/`.
 Error page asset: `public/404.webm` is used by the custom App Router 404 page.
 
 ## `scripts/` — CLI Tools

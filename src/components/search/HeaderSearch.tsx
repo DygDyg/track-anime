@@ -31,6 +31,7 @@ import {
   buildSearchHref,
   type SearchResultDto,
 } from "@/lib/search-shared";
+import { emitCompanionReaction } from "@/lib/companion/companion-bus";
 
 const HEADER_SEARCH_LIMIT = 12;
 const HEADER_SEARCH_INPUT_CLASS = `${siteClass.input} site-search-input !bg-card !pl-10 !pr-11 focus:ring-2 focus:ring-accent/25`;
@@ -202,6 +203,7 @@ export function HeaderSearch({
     const controller = new AbortController();
     abortRef.current = controller;
     setLoading(true);
+    emitCompanionReaction("searching");
     setExpandingSearch(false);
     setLayoutCorrectedQuery(null);
 

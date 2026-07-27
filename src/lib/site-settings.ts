@@ -51,6 +51,14 @@ export const AVATAR_DECORATION_SCALE_MIN = 1;
 export const AVATAR_DECORATION_SCALE_MAX = 2;
 export const AVATAR_DECORATION_SCALE_DEFAULT = 1.08;
 export const AVATAR_DECORATION_SCALE_STEP = 0.01;
+export const COMPANION_SCALE_MIN = 0.5;
+export const COMPANION_SCALE_MAX = 2;
+export const COMPANION_SCALE_DEFAULT = 1;
+export const COMPANION_SCALE_STEP = 0.05;
+/** Atlas cell width used for layout offsets (CSS --aqua-companion-width). */
+export const COMPANION_FRAME_WIDTH = 192;
+/** On-screen multiplier: 1× in settings ≈ 1/2 of the raw 192×208 atlas. */
+export const COMPANION_DISPLAY_BASE = 1 / 2;
 export const BETA_HIDDEN_PROGRESS_OPACITY_MIN = 0;
 export const BETA_HIDDEN_PROGRESS_OPACITY_MAX = 1;
 export const BETA_HIDDEN_PROGRESS_OPACITY_DEFAULT = 1;
@@ -95,6 +103,12 @@ export type SiteSettings = {
   betaHiddenProgressOpacity: number;
   /** Локально для устройства: навигация стрелками по карточкам сайта */
   tvNavigationEnabled: boolean;
+  /** Показывать companion Aqua Coder в правом нижнем углу */
+  companionEnabled: boolean;
+  /** Масштаб companion (1 = кадр 192×208) */
+  companionScale: number;
+  /** Без покадровой анимации: только первый кадр каждой позы */
+  companionStaticAnimations: boolean;
 };
 
 export const SITE_SETTINGS_STORAGE_KEY = "track-anime-site-settings";
@@ -128,6 +142,9 @@ export const DEFAULT_SITE_SETTINGS: SiteSettings = {
   autoSkipTranslationIds: {},
   betaHiddenProgressOpacity: BETA_HIDDEN_PROGRESS_OPACITY_DEFAULT,
   tvNavigationEnabled: true,
+  companionEnabled: true,
+  companionScale: COMPANION_SCALE_DEFAULT,
+  companionStaticAnimations: false,
 };
 
 export const SITE_FONT_OPTIONS: { id: SiteFontFamily; label: string }[] = [
@@ -224,6 +241,21 @@ export function normalizeAvatarDecorationScale(value: unknown): number {
   );
 }
 
+export function normalizeCompanionScale(value: unknown): number {
+  const parsed = typeof value === "number" ? value : Number(value);
+  if (!Number.isFinite(parsed)) return COMPANION_SCALE_DEFAULT;
+  const stepped = Math.round(parsed / COMPANION_SCALE_STEP) * COMPANION_SCALE_STEP;
+  return Math.min(
+    COMPANION_SCALE_MAX,
+    Math.max(COMPANION_SCALE_MIN, Math.round(stepped * 100) / 100),
+  );
+}
+
+/** Settings scale (1×) → canvas/CSS scale with display base applied. */
+export function resolveCompanionDisplayScale(value: unknown): number {
+  return normalizeCompanionScale(value) * COMPANION_DISPLAY_BASE;
+}
+
 function parseAutoSkipTranslationIds(value: unknown): AutoSkipTranslationIds {
   if (!isRecord(value)) return {};
   const result: AutoSkipTranslationIds = {};
@@ -304,6 +336,9 @@ export function normalizeSiteSettings(raw: unknown): SiteSettings {
     autoSkipTranslationIds: parseAutoSkipTranslationIds(raw.autoSkipTranslationIds),
     betaHiddenProgressOpacity: normalizeBetaHiddenProgressOpacity(raw.betaHiddenProgressOpacity),
     tvNavigationEnabled: raw.tvNavigationEnabled !== false,
+    companionEnabled: raw.companionEnabled !== false,
+    companionScale: normalizeCompanionScale(raw.companionScale),
+    companionStaticAnimations: raw.companionStaticAnimations === true,
   };
 }
 

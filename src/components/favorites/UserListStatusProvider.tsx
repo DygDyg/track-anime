@@ -11,6 +11,7 @@ import {
 } from "react";
 import { useAuth } from "@/components/auth/AuthProvider";
 import type { UserAnimeListInfo } from "@/lib/user-anime-list-status";
+import { emitCompanionReaction } from "@/lib/companion/companion-bus";
 
 type UserListUpdatePayload = {
   listStatus?: string | null;
@@ -78,6 +79,8 @@ export function UserListStatusProvider({ children }: { children: ReactNode }) {
   const updateList = useCallback(
     async (shikimoriId: number, payload: UserListUpdatePayload): Promise<UserAnimeListInfo | null> => {
       setUpdatingIds((prev) => new Set(prev).add(shikimoriId));
+      emitCompanionReaction("work");
+      let signaledError = false;
 
       try {
         const res = await fetch(`/api/user/anime-lists/${shikimoriId}`, {
@@ -96,6 +99,8 @@ export function UserListStatusProvider({ children }: { children: ReactNode }) {
             login();
             return null;
           }
+          signaledError = true;
+          emitCompanionReaction("error");
           throw new Error(data.error ?? "Не удалось обновить список");
         }
 
@@ -110,7 +115,22 @@ export function UserListStatusProvider({ children }: { children: ReactNode }) {
           return { ...prev, [key]: listInfo };
         });
 
+        if (payload.listStatus === "completed" || payload.rewatch) {
+          emitCompanionReaction("celebrate");
+        } else if (payload.removeAll) {
+          emitCompanionReaction("wave");
+        } else if (payload.listStatus === "dropped") {
+          emitCompanionReaction("lying");
+        } else if (payload.bookmark === true || payload.listStatus) {
+          emitCompanionReaction("favorites");
+        } else {
+          emitCompanionReaction("jump");
+        }
+
         return listInfo;
+      } catch (error) {
+        if (!signaledError) emitCompanionReaction("error");
+        throw error;
       } finally {
         setUpdatingIds((prev) => {
           const next = new Set(prev);

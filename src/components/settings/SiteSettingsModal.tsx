@@ -12,7 +12,12 @@ import {
   AVATAR_DECORATION_SCALE_MAX,
   AVATAR_DECORATION_SCALE_MIN,
   AVATAR_DECORATION_SCALE_STEP,
+  COMPANION_SCALE_DEFAULT,
+  COMPANION_SCALE_MAX,
+  COMPANION_SCALE_MIN,
+  COMPANION_SCALE_STEP,
   normalizeAvatarDecorationScale,
+  normalizeCompanionScale,
   SITE_ACCENT_OPTIONS,
   SITE_BG_DIM_OPTIONS,
   SITE_CARD_SIZE_OPTIONS,
@@ -636,6 +641,32 @@ export function SiteSettingsAppearanceTab({
           hint="Показывает текущее время в верхней панели и в fullscreen TA-плеере"
           checked={settings.showClock}
           onChange={(checked) => updateSettings({ showClock: checked })}
+        />
+        <ToggleRow
+          label="Персонаж Aqua Coder"
+          hint="Показывает персонажа в правом нижнем углу экрана"
+          checked={settings.companionEnabled}
+          onChange={(checked) => updateSettings({ companionEnabled: checked })}
+        />
+        <RangeRow
+          label="Размер персонажа"
+          hint="Масштаб companion (1× ≈ половина исходного кадра)"
+          value={normalizeCompanionScale(settings.companionScale ?? COMPANION_SCALE_DEFAULT)}
+          min={COMPANION_SCALE_MIN}
+          max={COMPANION_SCALE_MAX}
+          step={COMPANION_SCALE_STEP}
+          unit="×"
+          disabled={!settings.companionEnabled}
+          onChange={(value) =>
+            updateSettings({ companionScale: normalizeCompanionScale(value) })
+          }
+        />
+        <ToggleRow
+          label="Отключить анимации персонажа"
+          hint="Показывает только первый кадр каждой позы без движения"
+          checked={settings.companionStaticAnimations}
+          disabled={!settings.companionEnabled}
+          onChange={(checked) => updateSettings({ companionStaticAnimations: checked })}
         />
       </section>
     </div>

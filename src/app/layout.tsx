@@ -21,6 +21,7 @@ import { InAppNotificationsListener } from "@/components/InAppNotificationsListe
 import { RecentAnimeOpensSync } from "@/components/anime/RecentAnimeOpensSync";
 import { NotificationUiLayer } from "@/components/NotificationUiLayer";
 import { ScrollToTopButton } from "@/components/ScrollToTopButton";
+import { AquaCoderCompanion } from "@/components/companion/AquaCoderCompanion";
 import { PullToRefresh } from "@/components/PullToRefresh";
 import { TvNavigationProvider } from "@/components/TvNavigationProvider";
 import { PWA_THEME_COLOR } from "@/app/manifest";
@@ -135,6 +136,7 @@ export default async function RootLayout({ children }: { children: React.ReactNo
                     <main className="relative z-10">{children}</main>
                     <PullToRefresh />
                     <ScrollToTopButton />
+                    <AquaCoderCompanion />
                     <SiteSettingsModal />
                     <PwaBottomNav />
                   </NavigationProgressProvider>

@@ -31,6 +31,7 @@ Next.js anime streaming site with Shikimori OAuth + Kodik player. Data lives in 
 | Fix MAL ID / AniSkip mapping | `src/lib/admin/mal-id-sync.ts`, `src/lib/shikimori/mal-id.ts`, `src/lib/aniskip.ts`, `MalIdSyncPanel.tsx` |
 | Fix posters | `src/lib/poster.ts`, `AnimePoster.tsx`, `src/lib/cover-cache.ts`, `src/app/api/cover/route.ts` |
 | Fix notifications | `src/lib/notifications/`, `src/app/api/notifications/`, `scripts/notification-worker.ts` |
+| Fix companion | `src/components/companion/AquaCoderCompanion.tsx`, `src/lib/companion/AquaCoderCanvas.ts`, `src/lib/companion/companion-bus.ts`, `public/companion/aqua-coder-chibi/`, `aqua-coder-web/` |
 | Fix admin | `src/lib/auth/admin.ts`, `src/app/admin/` |
 
 ## Request routing (multi-task / dispatcher)

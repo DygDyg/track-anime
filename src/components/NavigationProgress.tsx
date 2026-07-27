@@ -9,6 +9,7 @@ import {
   type ReactNode,
 } from "react";
 import { usePathname } from "next/navigation";
+import { emitCompanionReaction, emitCompanionSituation } from "@/lib/companion/companion-bus";
 
 const NavigationPendingContext = createContext<(pending: boolean) => void>(() => {});
 
@@ -50,10 +51,17 @@ export function NavigationProgressProvider({ children }: { children: ReactNode }
 
   useEffect(() => {
     setPending(false);
+    // Page arrived / finished client navigation → situation for this tab.
+    emitCompanionSituation(pathname, { force: true });
   }, [pathname]);
 
   return (
-    <NavigationPendingContext.Provider value={setPending}>
+    <NavigationPendingContext.Provider
+      value={(next) => {
+        setPending(next);
+        if (next) emitCompanionReaction("jumpRopeLoading", { force: true });
+      }}
+    >
       {pending ? (
         <div
           className="pointer-events-none fixed inset-x-0 top-0 z-[100] h-0.5 overflow-hidden supports-[padding:max(0px)]:top-[env(safe-area-inset-top)]"

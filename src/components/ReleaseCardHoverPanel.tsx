@@ -486,7 +486,7 @@ export function ReleaseCardHoverPanel({
 
   const panelClassName = portal
     ? "release-card-hover-panel release-card-hover-panel--portal hidden md:block"
-    : "release-card-hover-panel absolute left-1/2 top-0 z-50 hidden w-[320px] md:block";
+    : "release-card-hover-panel absolute left-1/2 top-0 z-[80] hidden w-[320px] md:block";
 
   const panelVisibilityClass = visible ? "is-visible" : "";
 

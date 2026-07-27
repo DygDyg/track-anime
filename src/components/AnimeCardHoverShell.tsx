@@ -6,6 +6,7 @@ import {
   computeHoverPanelOffsetX,
 } from "@/components/ReleaseCardHoverPanel";
 import { useSiteSettings } from "@/components/SiteSettingsProvider";
+import { emitCompanionReaction, emitCompanionSituation } from "@/lib/companion/companion-bus";
 import type { HoverPanelRelease, HoverPanelReleaseInput } from "@/lib/hover-panel-release";
 
 type Props = {
@@ -24,7 +25,7 @@ export function AnimeCardHoverShell({
   previewUrl,
   children,
   className = "",
-  hoverPanelPortal = false,
+  hoverPanelPortal: _hoverPanelPortal = true,
   onDeleteFromHistory,
   deletingFromHistory = false,
   readOnly = false,
@@ -32,6 +33,7 @@ export function AnimeCardHoverShell({
   const cardRef = useRef<HTMLDivElement>(null);
   const panelRef = useRef<HTMLDivElement>(null);
   const hoveredRef = useRef(false);
+  const panelWasOpenRef = useRef(false);
   const [hovered, setHovered] = useState(false);
   const [panelOffsetX, setPanelOffsetX] = useState(0);
   const { settings } = useSiteSettings();
@@ -57,6 +59,18 @@ export function AnimeCardHoverShell({
     hoveredRef.current = false;
     setHovered(false);
   };
+
+  // Companion: popup open → work; popup close → tab situation
+  useEffect(() => {
+    if (hovered) {
+      panelWasOpenRef.current = true;
+      emitCompanionReaction("work", { force: true });
+      return;
+    }
+    if (!panelWasOpenRef.current) return;
+    panelWasOpenRef.current = false;
+    emitCompanionSituation(window.location.pathname, { force: true });
+  }, [hovered]);
 
   useEffect(() => {
     const onViewportChange = () => {
@@ -85,7 +99,7 @@ export function AnimeCardHoverShell({
       ref={cardRef}
       className={[
         "group/card relative h-full",
-        hovered ? (hoverPanelPortal ? "md:z-[70]" : "md:z-50") : "",
+        hovered ? "md:z-[80]" : "",
         className,
       ].join(" ")}
       style={{ "--hover-panel-x": `${panelOffsetX}px` } as CSSProperties}
@@ -100,7 +114,8 @@ export function AnimeCardHoverShell({
         animeHref={animeHref}
         trailerEnabled={settings.hoverTrailerEnabled}
         trailerDelaySec={settings.hoverTrailerDelaySec}
-        portal={hoverPanelPortal}
+        // Portal to body so panel sits above fixed companion (z-40) and below modals.
+        portal
         anchorRef={cardRef}
         panelOffsetX={panelOffsetX}
         panelRef={panelRef}

@@ -10,6 +10,7 @@ import {
   type AnimeShareCopyFormat,
 } from "@/lib/anime-share-copy";
 import { playCopySound } from "@/lib/copy-feedback";
+import { emitCompanionReaction } from "@/lib/companion/companion-bus";
 import { LoadingSpinner } from "@/components/ui/LoadingSpinner";
 
 type ShareAction = { type: "copy"; format: AnimeShareCopyFormat; label: string };
@@ -128,6 +129,7 @@ export function AnimeShareButtons({ anime }: { anime: AnimePageDto }) {
       if (!settings.reduceMotion) {
         playCopySound();
       }
+      emitCompanionReaction("celebrate");
     },
     [settings.reduceMotion],
   );
@@ -148,6 +150,7 @@ export function AnimeShareButtons({ anime }: { anime: AnimePageDto }) {
         showCopyFeedback(action.format);
       } catch {
         setToast("Не удалось скопировать");
+        emitCompanionReaction("error");
       } finally {
         setCopyingFormat(null);
       }
