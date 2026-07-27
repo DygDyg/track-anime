@@ -158,18 +158,26 @@ function ToggleRow({
   label,
   hint,
   checked,
+  disabled = false,
   onChange,
 }: {
   label: string;
   hint?: string;
   checked: boolean;
+  disabled?: boolean;
   onChange: (checked: boolean) => void;
 }) {
   return (
-    <label className="flex cursor-pointer items-start gap-3 rounded-lg border border-border bg-card px-3 py-2.5">
+    <label
+      className={[
+        "flex items-start gap-3 rounded-lg border border-border bg-card px-3 py-2.5",
+        disabled ? "cursor-not-allowed opacity-50" : "cursor-pointer",
+      ].join(" ")}
+    >
       <input
         type="checkbox"
         checked={checked}
+        disabled={disabled}
         onChange={(event) => onChange(event.target.checked)}
         className="site-checkbox mt-0.5"
       />
