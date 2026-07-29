@@ -144,7 +144,10 @@ http://localhost:3000/api/auth/callback/shikimori
 | `npm run kodik:sync` | Sync новых материалов Kodik |
 | `npm run kodik:sync:scheduled` | Sync для cron |
 | `npm run watch-party:server` | WebSocket-сервер комнат совместного просмотра |
-| `npm run deploy` | Деплой на production (Windows) |
+| `npm run deploy` | Авто-деплой (site / rpc / apk по git diff) |
+| `npm run deploy:site` | Только сайт |
+| `npm run deploy:rpc` | Только Discord RPC exe |
+| `npm run deploy:apk` | Только Android APK |
 
 Полный список скриптов — в [`package.json`](package.json).
 
@@ -190,10 +193,14 @@ docs/              # справочники API (Kodik, Shikimori)
 ## Деплой
 
 Production-сервер и подробности — в [`docs/DEPLOY.md`](docs/DEPLOY.md).
+Локальный HTTP-прокси для SSH/SCP: скопируйте [`deploy.local.example.json`](deploy.local.example.json) → `deploy.local.json` (файл в `.gitignore`).
 
 ```powershell
-npm run deploy              # обычный деплой
-npm run deploy:release      # деплой + пересборка Discord RPC exe
+npm run deploy              # авто: только изменившиеся части
+npm run deploy:site         # только сайт
+npm run deploy:rpc          # только Discord RPC exe
+npm run deploy:apk          # только Android APK
+npm run deploy:release      # сайт + пересборка Discord RPC exe
 ```
 
 ---

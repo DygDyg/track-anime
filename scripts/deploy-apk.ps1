@@ -1,16 +1,19 @@
-# Быстрая заливка TrackAnimeDiscordRPC.exe на сервер (без пересборки сайта).
+# Быстрая заливка TrackAnime.apk + TrackAnime.json на сервер (без пересборки сайта).
 #
 # Использование:
-#   .\scripts\deploy-rpc.ps1
-#   .\scripts\deploy-rpc.ps1 -SkipBuild
+#   .\scripts\deploy-apk.ps1 -ApkPath "android\app\build\outputs\apk\release\app-release.apk"
+#   .\scripts\deploy-apk.ps1
+#   .\scripts\deploy-apk.ps1 -SkipPublish
 #
-# См. docs/DEPLOY.md
+# Без -ApkPath заливает уже опубликованные public/downloads/TrackAnime.{apk,json}.
+# См. docs/DEPLOY.md, docs/ANDROID.md
 
 param(
     [string]$Remote = "root@195.26.230.35",
     [string]$SshKey = "$env:USERPROFILE\.ssh\id_rsa",
     [string]$ServerAppDir = "/var/www/ta_new",
-    [switch]$SkipBuild
+    [string]$ApkPath = "",
+    [switch]$SkipPublish
 )
 
 $ErrorActionPreference = "Stop"
@@ -22,9 +25,10 @@ $DefaultSshKey = "$env:USERPROFILE\.ssh\id_rsa"
 $DefaultServerAppDir = "/var/www/ta_new"
 
 $ProjectRoot = (Resolve-Path (Join-Path $PSScriptRoot "..")).Path
-$LocalExe = Join-Path $ProjectRoot "public\downloads\TrackAnimeDiscordRPC.exe"
-$RemoteExe = "$ServerAppDir/public/downloads/TrackAnimeDiscordRPC.exe"
-$DownloadUrl = "https://ta.dygdyg.ru/downloads/TrackAnimeDiscordRPC.exe"
+$LocalApk = Join-Path $ProjectRoot "public\downloads\TrackAnime.apk"
+$LocalManifest = Join-Path $ProjectRoot "public\downloads\TrackAnime.json"
+$DownloadUrl = "https://ta.dygdyg.ru/downloads/TrackAnime.apk"
+$ManifestUrl = "https://ta.dygdyg.ru/downloads/TrackAnime.json"
 
 Merge-TaDeployLocalParams `
     -Remote ([ref]$Remote) `
@@ -34,15 +38,15 @@ Merge-TaDeployLocalParams `
     -ServerAppDir ([ref]$ServerAppDir) `
     -DefaultServerAppDir $DefaultServerAppDir | Out-Null
 
-# Recompute paths that depend on ServerAppDir after merge.
-$RemoteExe = "$ServerAppDir/public/downloads/TrackAnimeDiscordRPC.exe"
+$RemoteApk = "$ServerAppDir/public/downloads/TrackAnime.apk"
+$RemoteManifest = "$ServerAppDir/public/downloads/TrackAnime.json"
 
 function Write-Step {
     param(
         [string]$Message,
         [ConsoleColor]$Color = [ConsoleColor]::Cyan
     )
-    Write-Host "[deploy-rpc] $Message" -ForegroundColor $Color
+    Write-Host "[deploy-apk] $Message" -ForegroundColor $Color
 }
 
 function Assert-LastExit {
@@ -112,7 +116,7 @@ function Invoke-SshWithRetry {
 function Invoke-ScpWithRetry {
     param(
         [string]$Key,
-        [string]$ArchivePath,
+        [string]$LocalPath,
         [string]$Target,
         [int]$MaxAttempts = -1,
         [string]$Step = "scp upload"
@@ -129,7 +133,7 @@ function Invoke-ScpWithRetry {
         $prevEap = $ErrorActionPreference
         $ErrorActionPreference = "SilentlyContinue"
         try {
-            & scp @scpOpts $ArchivePath $Target 2>$null
+            & scp @scpOpts $LocalPath $Target 2>$null
             $lastExit = $LASTEXITCODE
         } finally {
             $ErrorActionPreference = $prevEap
@@ -154,32 +158,61 @@ if (-not (Test-Path $SshKey)) {
 Set-Location $ProjectRoot
 Write-Step "project: $ProjectRoot"
 Write-Step "remote:  $Remote"
-Write-TaDeployConfigStatus -Prefix "[deploy-rpc]"
+Write-TaDeployConfigStatus -Prefix "[deploy-apk]"
 
-if (-not $SkipBuild) {
-    Write-Step "build + publish..."
-    npm run discord:tray:publish
-    Assert-LastExit "discord tray publish"
-} elseif (-not (Test-Path $LocalExe)) {
-    throw "Local exe not found: $LocalExe (run without -SkipBuild)"
+if (-not $SkipPublish) {
+    $source = $ApkPath
+    if (-not $source) {
+        $defaultRelease = Join-Path $ProjectRoot "android\app\build\outputs\apk\release\app-release.apk"
+        if (Test-Path -LiteralPath $defaultRelease) {
+            $source = $defaultRelease
+            Write-Step "using default release APK: $source"
+        }
+    }
+    if ($source) {
+        Write-Step "publish APK + manifest..."
+        & (Join-Path $PSScriptRoot "publish-android-apk.ps1") -SourcePath $source -ProjectRoot $ProjectRoot
+    } elseif (-not (Test-Path -LiteralPath $LocalApk)) {
+        throw "Local APK not found: $LocalApk (pass -ApkPath or build release APK first)"
+    } else {
+        Write-Step "APK already in public/downloads, skip republish"
+    }
+} elseif (-not (Test-Path -LiteralPath $LocalApk)) {
+    throw "Local APK not found: $LocalApk (run without -SkipPublish)"
 }
 
-$sizeMb = [math]::Round((Get-Item $LocalExe).Length / 1MB, 1)
-Write-Step "upload: $LocalExe ($sizeMb MB)"
+if (-not (Test-Path -LiteralPath $LocalManifest)) {
+    throw "Local manifest not found: $LocalManifest (publish APK first to generate TrackAnime.json)"
+}
 
-Invoke-ScpWithRetry -Key $SshKey -ArchivePath $LocalExe -Target "${Remote}:${RemoteExe}" -Step "scp rpc upload"
+$apkMb = [math]::Round((Get-Item -LiteralPath $LocalApk).Length / 1MB, 1)
+Write-Step "ensure remote downloads dir..."
+Invoke-SshWithRetry `
+    -Key $SshKey `
+    -RemoteHost $Remote `
+    -Command "mkdir -p '$ServerAppDir/public/downloads'" `
+    -Step "mkdir downloads" | Out-Null
 
-Write-Step "verify remote file..."
-$remoteCmd = "ls -lh '$RemoteExe'"
-$result = Invoke-SshWithRetry -Key $SshKey -RemoteHost $Remote -Command $remoteCmd -Step "remote ls"
+Write-Step "upload: $LocalApk ($apkMb MB)"
+Invoke-ScpWithRetry -Key $SshKey -LocalPath $LocalApk -Target "${Remote}:${RemoteApk}" -Step "scp apk upload"
+
+Write-Step "upload: $LocalManifest"
+Invoke-ScpWithRetry -Key $SshKey -LocalPath $LocalManifest -Target "${Remote}:${RemoteManifest}" -Step "scp manifest upload"
+
+Write-Step "verify remote files..."
+$result = Invoke-SshWithRetry -Key $SshKey -RemoteHost $Remote -Command "ls -lh '$RemoteApk' '$RemoteManifest'" -Step "remote ls"
 if ($result.Output) {
     Write-Host $result.Output
 }
 
-Write-Step "verify download url..."
-$httpCode = Invoke-TaDeployCurlHttpCode -Url $DownloadUrl
-if ($httpCode -ne "200") {
-    throw "Download URL returned HTTP $httpCode ($DownloadUrl)"
+Write-Step "verify download URLs..."
+$apkCode = Invoke-TaDeployCurlHttpCode -Url $DownloadUrl
+if ($apkCode -ne "200") {
+    throw "APK URL returned HTTP $apkCode ($DownloadUrl)"
+}
+$manifestCode = Invoke-TaDeployCurlHttpCode -Url $ManifestUrl
+if ($manifestCode -ne "200") {
+    throw "Manifest URL returned HTTP $manifestCode ($ManifestUrl)"
 }
 
 Write-Step "done ($DownloadUrl)" -Color Green

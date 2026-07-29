@@ -11,45 +11,68 @@
 
 ## Быстрый старт
 
-Полный деплой сайта + свежий Discord RPC exe:
-
-```powershell
-npm run deploy:release
-```
-
-Только обновить `TrackAnimeDiscordRPC.exe` на сервере (без пересборки Next.js, ~1–2 мин):
-
-```powershell
-npm run deploy:rpc
-```
-
-Обычный деплой (exe не пересобирается, если уже есть в `dist/`):
+Авто-выбор по `git diff` (site / rpc / apk — только то, что изменилось):
 
 ```powershell
 npm run deploy
+.\deploy.bat
+```
+
+Принудительно отдельные части:
+
+```powershell
+npm run deploy:site    # сайт (Next.js на сервере)
+npm run deploy:rpc     # только TrackAnimeDiscordRPC.exe (~1–2 мин)
+npm run deploy:apk     # только TrackAnime.apk + TrackAnime.json
+npm run deploy:release # сайт + пересборка Discord RPC exe в архиве
+npm run deploy:all     # site + rpc (и apk, если есть изменения/путь)
 ```
 
 Или напрямую:
 
 ```powershell
-.\deploy.bat
-.\deploy.bat -ForceTrayRebuild
+.\scripts\deploy-auto.ps1
+.\scripts\deploy-auto.ps1 -DryRun
+.\scripts\deploy-auto.ps1 -ForceSite
 .\scripts\deploy.ps1
 .\scripts\deploy.ps1 -ForceTrayRebuild
 .\scripts\deploy-rpc.ps1
+.\scripts\deploy-apk.ps1 -ApkPath "android\app\build\outputs\apk\release\app-release.apk"
 ```
 
-Чтобы одновременно опубликовать готовый подписанный Android APK, укажите его путь. Скрипт положит его в
-`public/downloads/TrackAnime.apk`, вычислит его версию и SHA-256 через Android Build-Tools и создаст рядом
-`public/downloads/TrackAnime.json`. Основной архив загрузит оба файла на сервер вместе с сайтом:
+### Android APK
+
+Отдельная заливка (без пересборки сайта):
+
+```powershell
+npm run deploy:apk -- -ApkPath "android\app\build\outputs\apk\release\app-release.apk"
+# или
+.\scripts\deploy-apk.ps1 -ApkPath "android\app\build\outputs\apk\release\app-release.apk"
+```
+
+Вместе с полным деплоем сайта (APK попадёт в tar):
 
 ```powershell
 .\scripts\deploy.ps1 -ApkPath "android\app\build\outputs\apk\release\app-release.apk"
 ```
 
-Скрипт:
-1. Публикует `TrackAnimeDiscordRPC.exe` в `public/downloads/`; при `-ApkPath` также публикует APK как `TrackAnime.apk` и манифест обновления `TrackAnime.json` (версия, URL APK, SHA-256)
-2. Упаковывает исходники в `tar.gz` (без `node_modules`, `.next`, `.env`, `scripts/discord-rpc-tray`)
+Скрипт публикации положит APK в `public/downloads/TrackAnime.apk`, посчитает версию и SHA-256 через Android Build-Tools и создаст `public/downloads/TrackAnime.json`.
+
+### Авто-деплой (`deploy-auto.ps1`)
+
+1. По умолчанию смотрит только dirty working tree (staged/unstaged/untracked). Для diff с `origin/main` — `-SinceMain` или `-BaseRef`
+2. Классифицирует изменения:
+   - `scripts/discord-rpc-tray/**`, exe → **rpc**
+   - `android/**`, `public/downloads/TrackAnime.{apk,json}` → **apk**
+   - остальной код сайта → **site**
+   - docs / `.cursor` / сами deploy-скрипты → игнор
+3. Запускает только нужные пайплайны (rpc → apk → site)
+4. Для **site** не тащит в tar уже залитые `TrackAnimeDiscordRPC.exe` и APK (остаются на сервере)
+
+### Деплой сайта (`deploy.ps1`)
+
+1. Опционально публикует APK (`-ApkPath`) и Discord RPC exe в `public/downloads/`
+2. Упаковывает исходники в `tar.gz` (без `node_modules`, `.next`, `.env`, `android/`, `scripts/discord-rpc-tray`, `data/cover-cache`, локальных handoff/`aqua-coder-web`/embeddings и т.п.)
 3. Режет архив на чанки и загружает их на сервер через `scp` с retry и проверкой размера каждой части
 4. На сервере в **screen** (`ta_deploy`): `npm ci` → Prisma → `npm run build` → restart `track-anime`
 5. Проверяет HTTP 200 на https://track-anime.dygdyg.ru/
@@ -82,6 +105,7 @@ ssh root@195.26.230.35 "cat /tmp/ta_deploy.exit; tail -80 /tmp/ta_deploy.log; sc
 | `tar` | Windows 10+ (встроен) |
 | `scp`, `ssh` | OpenSSH Client (Windows) |
 | Доступ к серверу | `root@195.26.230.35` |
+| (опц.) HTTP-прокси | `deploy.local.json` + `ncat` / Git `connect.exe` |
 
 Проверка:
 
@@ -89,6 +113,65 @@ ssh root@195.26.230.35 "cat /tmp/ta_deploy.exit; tail -80 /tmp/ta_deploy.log; sc
 Test-Path "$env:USERPROFILE\.ssh\id_rsa"
 ssh -i "$env:USERPROFILE\.ssh\id_rsa" root@195.26.230.35 "echo ok"
 ```
+
+---
+
+## Локальный прокси и устойчивость SSH (`deploy.local.json`)
+
+Файл **`deploy.local.json`** в корне репозитория (в git **не** коммитится). Шаблон: `deploy.local.example.json`.
+
+Скопируйте/отредактируйте и укажите HTTP-прокси, через который пойдут `ssh`/`scp`:
+
+```json
+{
+  "httpProxy": "http://127.0.0.1:7890",
+  "proxyUser": "",
+  "proxyPassword": "",
+  "uploadChunkSizeMB": 16,
+  "connectTimeout": 40,
+  "serverAliveInterval": 10,
+  "serverAliveCountMax": 12,
+  "sshMaxAttempts": 8,
+  "scpMaxAttempts": 8
+}
+```
+
+Что делает:
+
+- SSH/SCP идут через HTTP CONNECT (`ProxyCommand`) — меньше обрывов на нестабильном канале
+- Автоматически уменьшает чанки upload (по умолчанию 16 MB при прокси)
+- Чаще keepalive и больше retry для scp/ssh
+- `curl`-проверки download URL тоже через тот же прокси
+
+**Fallback без прокси:** если `deploy.local.json` пуст / `httpProxy` пустой, helper не собран, прокси недоступен по TCP или `ssh` через прокси не отвечает — деплой **сам переключается на прямой SSH/SCP** (warning в логе, без падения).
+
+Для HTTP Basic auth на Windows используется локальный helper `temp/deploy/ta-http-connect.exe` (собирается из `scripts/ta-http-connect.cs` при первом деплое).
+
+Нужен helper на машине (достаточно одного):
+
+| Helper | Откуда |
+|--------|--------|
+| `connect.exe` | Git for Windows (`...\Git\mingw64\bin\connect.exe`) |
+| `ncat.exe` | Nmap |
+| `corkscrew` | отдельно |
+
+Либо задайте команду вручную:
+
+```json
+{
+  "proxyCommand": "ncat --proxy-type http --proxy 127.0.0.1:7890 %h %p"
+}
+```
+
+Переменные окружения (если файла нет): `TA_DEPLOY_HTTP_PROXY`, `HTTPS_PROXY`, `HTTP_PROXY`.
+
+После правки проверьте, что конфиг подхватился:
+
+```powershell
+.\scripts\deploy-auto.ps1 -DryRun
+```
+
+В логе должны быть строки `httpProxy:` / `ProxyCommand:`.
 
 ---
 
@@ -116,8 +199,21 @@ ssh -i "$env:USERPROFILE\.ssh\id_rsa" root@195.26.230.35 "echo ok"
 | `-UploadChunkSizeMB` | `48` | Размер частей архива для `scp`; меньше = устойчивее на плохом интернете |
 | `-ApkPath` | — | Путь к готовому подписанному APK; будет опубликован по `/downloads/TrackAnime.apk` вместе с `/downloads/TrackAnime.json`; требуется Android SDK Build-Tools (`aapt.exe`) |
 | `-DryRun` | — | Только `tar`, без upload |
-| `-SkipBuild` | — | Пропустить локальную precheck-сборку в `deploy.bat`; серверная сборка всё равно выполняется |
+| `-SkipBuild` | — | Пропустить локальную precheck-сборку; серверная сборка всё равно выполняется |
 | `-ForceTrayRebuild` | — | Пересобрать `TrackAnimeDiscordRPC.exe` перед деплоем |
+| `-SkipTrayPublish` | — | Не публиковать/копировать Discord RPC exe локально |
+| `-ExcludeRpcExe` | — | Не класть exe в tar (оставить файл на сервере) |
+| `-ExcludeApk` | — | Не класть APK/json в tar (оставить файлы на сервере) |
+
+`deploy-auto.ps1` дополнительно:
+
+| Параметр | Описание |
+|----------|----------|
+| `-BaseRef` | База для committed diff (если задана — вместе с dirty) |
+| `-SinceMain` | То же, что `-BaseRef origin/main` (или `main`/`master`) |
+| `-ForceSite` | Всегда включить деплой сайта |
+| `-ForceTrayRebuild` | Всегда включить `deploy:rpc` |
+| `-SkipPrecheck` | Не вызывать `deploy-precheck.ps1` перед site |
 
 ---
 
@@ -156,6 +252,12 @@ tar -czf temp\deploy\ta_deploy.tar.gz `
   --exclude=node_modules --exclude=.next --exclude=.git `
   --exclude=.env --exclude=.build-number --exclude=tmp --exclude=temp `
   --exclude=scripts/discord-rpc-tray `
+  --exclude=android `
+  --exclude=data/cover-cache --exclude=data/image-cache `
+  --exclude=Aqua_Coder_Chibi_Codex_Handoff_v2 `
+  --exclude=Aqua_Coder_Chibi_Codex_Handoff_v2.zip `
+  --exclude=aqua-coder-web `
+  --exclude=.embeddings --exclude=.chats --exclude=.memory `
   --exclude="*.tar.gz" --exclude="*.mp4" .
 
 scp -i $env:USERPROFILE\.ssh\id_rsa `
@@ -186,9 +288,14 @@ ssh root@195.26.230.35 "cd /var/www/ta_new && npm run build && chown -R www-data
 - `node_modules/`, `.next/` — ставятся/собираются на сервере
 - `.env` — секреты остаются только на сервере
 - `.workspace.json`, `.idea/` — локальные настройки Codex/Cursor и Android Studio
-- `.git/`, `tmp/`, `*.tar.gz`, `*.mp4`
+- `.git/`, `tmp/`, `temp/`, `*.tar.gz`, `*.mp4`
 - `.build-number` — номер билда ведётся на сервере
-- `scripts/discord-rpc-tray/` — Electron-проект нужен только локально для сборки exe; на сервер отправляется `public/downloads/TrackAnimeDiscordRPC.exe`
+- `android/` — нативная оболочка собирается локально; на сервер уходит только `public/downloads/TrackAnime.apk` (+ json) через `deploy:apk` или `-ApkPath`
+- `scripts/discord-rpc-tray/` — Electron-проект нужен только локально для сборки exe; на сервер отправляется `public/downloads/TrackAnimeDiscordRPC.exe` через `deploy:rpc` или полный site-деплой
+- `data/cover-cache/`, `data/image-cache/` — runtime-кеш на сервере (в git уже ignore)
+- `Aqua_Coder_Chibi_Codex_Handoff_v2/` (+ `.zip`), `aqua-coder-web/`, `.embeddings/`, `.chats/`, `.memory/` — локальные handoff/scratch
+- корневой `avatar-decorations/` (scratch PNG) — временно уводится при pack, чтобы не задеть `public/avatar-decorations/`
+- при `-ExcludeRpcExe` / `-ExcludeApk` (в т.ч. из `deploy-auto`) соответствующие бинарники в tar не кладутся — на сервере остаются прежние файлы
 
 ---
 

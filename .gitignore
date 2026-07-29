@@ -2,6 +2,7 @@ node_modules/
 dist/
 .next/
 .env
+deploy.local.json
 .build-number
 *.log
 .telegram-bot.lock
@@ -19,6 +20,7 @@ temp/
 .workspace.json
 android/.idea/
 .embeddings/
+.memory/
 Desktop.ini
 test_filesystem.txt
 tmp-home.html
@@ -35,6 +37,13 @@ public/!promt_logo*.txt
 public/!referens.png
 public/331af195-*
 public/7574683b-*
+
+# Local Codex/pet handoff & scratch (not for deploy/server)
+Aqua_Coder_Chibi_Codex_Handoff_v2/
+Aqua_Coder_Chibi_Codex_Handoff_v2.zip
+aqua-coder-web/
+/avatar-decorations/
+/avatar-decorations.__deploy_exclude__/
 
 # Serwist (generated at build)
 public/sw.js

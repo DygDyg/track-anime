@@ -190,6 +190,29 @@ html.has-bottom-nav .aqua-coder-companion {
   }
 }
 
+.companion-speech-bubble::after {
+  content: "";
+  position: absolute;
+  /* Center tail under companion head (avatar is right-aligned; use avatar half-width). */
+  left: calc(100% - (var(--aqua-companion-width, 96px) / 2) - 6px);
+  bottom: -0.4rem;
+  width: 0.7rem;
+  height: 0.7rem;
+  border-right: 1px solid rgba(255, 255, 255, 0.8);
+  border-bottom: 1px solid rgba(255, 255, 255, 0.8);
+  background: color-mix(in srgb, var(--card) 95%, transparent);
+  transform: rotate(45deg);
+}
+
+[data-theme="light"] .companion-speech-bubble {
+  border-color: color-mix(in srgb, var(--border) 90%, transparent);
+}
+
+[data-theme="light"] .companion-speech-bubble::after {
+  border-right-color: color-mix(in srgb, var(--border) 90%, transparent);
+  border-bottom-color: color-mix(in srgb, var(--border) 90%, transparent);
+}
+
 @media (min-width: 640px) {
   :root,
   [data-theme="dark"],
@@ -1415,6 +1438,7 @@ html[data-card-size="compact"] .release-card-title {
   background: rgba(0, 0, 0, 0.5);
   backdrop-filter: blur(12px);
 }
+
 
 .kodik-player-beta-translations-toggle {
   box-shadow: 0 6px 14px rgba(0, 0, 0, 0.18);

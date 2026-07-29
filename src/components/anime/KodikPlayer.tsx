@@ -33,6 +33,8 @@ export type KodikPlayerPlaybackState = {
   durationSeconds: number;
   volume: number;
   muted: boolean;
+  /** True after Kodik actually started media (needed for Android WebView gesture unlock). */
+  mediaUnlocked: boolean;
 };
 
 export type KodikPlayerProgressPayload = {
@@ -68,6 +70,7 @@ const DEFAULT_PLAYBACK_STATE: KodikPlayerPlaybackState = {
   durationSeconds: 0,
   volume: 1,
   muted: false,
+  mediaUnlocked: false,
 };
 
 type Props = {
@@ -688,7 +691,11 @@ export const KodikPlayer = forwardRef<KodikPlayerHandle, Props>(function KodikPl
         if (flow && !flow.autoplay && (flow.stage === "seek" || flow.stage === "pausing")) {
           return;
         }
-        patchPlayback({ isPlaying: true });
+        patchPlayback({ isPlaying: true, mediaUnlocked: true });
+      }
+
+      if (event.data.key === "kodik_player_video_started") {
+        patchPlayback({ isPlaying: true, mediaUnlocked: true });
       }
 
       if (event.data.key === "kodik_player_duration_update" && typeof event.data.value === "number") {

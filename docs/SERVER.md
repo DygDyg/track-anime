@@ -354,12 +354,13 @@ npm run kodik:sync:scheduled
 
 ```powershell
 cd E:\GitHub\ta_new
-.\scripts\deploy.ps1
-# или
-npm run deploy
+npm run deploy              # авто: site / rpc / apk по git diff
+.\scripts\deploy.ps1        # только сайт
+npm run deploy:rpc          # только Discord RPC exe
+npm run deploy:apk          # только Android APK
 ```
 
-Скрипт упаковывает исходники (`tar`), заливает на сервер (`scp`) и запускает `scripts/server-deploy.sh`: `npm ci` → Prisma → `npm run build` → restart `track-anime` и, если установлен, `track-anime-watch-party`. **Сборка выполняется на сервере** — отдельный WSL не нужен.
+Скрипт сайта упаковывает исходники (`tar`), заливает на сервер (`scp`) и запускает `scripts/server-deploy.sh`: `npm ci` → Prisma → `npm run build` → restart `track-anime` и, если установлен, `track-anime-watch-party`. **Сборка выполняется на сервере** — отдельный WSL не нужен. RPC и APK можно заливать отдельно без пересборки Next.js.
 
 Параметры и ручные команды — в [DEPLOY.md](./DEPLOY.md).
 
@@ -408,7 +409,8 @@ npm run db:push
 npm run dev                 # http://localhost:3000
 npm run kodik:sync          # быстрая проверка парсинга
 npm run kodik:import        # полный импорт
-.\scripts\deploy.ps1        # деплой на production
+.\scripts\deploy-auto.ps1   # авто-деплой на production
+.\scripts\deploy.ps1        # только сайт
 ```
 
 ### Production (Debian)

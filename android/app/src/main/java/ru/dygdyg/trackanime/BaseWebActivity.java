@@ -18,8 +18,10 @@ import android.text.InputType;
 import android.util.Log;
 import android.view.View;
 import android.view.ViewGroup;
+import android.view.Window;
 import android.view.WindowInsets;
 import android.view.WindowInsetsController;
+import android.view.WindowManager;
 import android.webkit.CookieManager;
 import android.webkit.ConsoleMessage;
 import android.webkit.DownloadListener;
@@ -36,6 +38,7 @@ import android.widget.EditText;
 import android.widget.LinearLayout;
 import android.widget.RadioButton;
 import android.widget.RadioGroup;
+import android.widget.ScrollView;
 import android.widget.TextView;
 import android.widget.Toast;
 
@@ -52,6 +55,10 @@ abstract class BaseWebActivity extends Activity {
     private static final String SESSION_COOKIE_NAME = "ta.session";
     private static final String PREFERENCES_NAME = "track-anime-app";
     private static final String LAST_SESSION_HOST_KEY = "last-session-host";
+    private static final String SYSTEM_BARS_MODE_KEY = "system-bars-mode";
+    private static final String SYSTEM_BARS_MODE_SHOW = "show";
+    private static final String SYSTEM_BARS_MODE_ALWAYS = "always";
+    private static final String SYSTEM_BARS_MODE_VIDEO = "video";
     private static final int CAMERA_PERMISSION_REQUEST_CODE = 11;
     private final Handler handler = new Handler(Looper.getMainLooper());
     private final Runnable mirrorFallback = this::loadNextMirrorIfNeeded;
@@ -97,8 +104,9 @@ abstract class BaseWebActivity extends Activity {
         webView.setDownloadListener(new ExternalDownloadListener());
         updateManager = new UpdateManager(this);
         setContentView(webView);
-        Uri requestedUri = getIntent().getData();
-        loadSite(isAllowedSiteUrl(requestedUri) ? requestedUri.toString() : SITE_URL);
+        applyDarkSystemBars();
+        applySystemBarsPolicy();
+        handleLaunchUri(getIntent().getData());
     }
 
     @Override protected void onDestroy() {
@@ -112,15 +120,20 @@ abstract class BaseWebActivity extends Activity {
     @Override protected void onNewIntent(Intent intent) {
         super.onNewIntent(intent);
         setIntent(intent);
-        Uri requestedUri = intent.getData();
-        loadSite(isAllowedSiteUrl(requestedUri) ? requestedUri.toString() : SITE_URL);
+        handleLaunchUri(intent.getData());
     }
 
     @Override protected void onResume() {
         super.onResume();
+        applySystemBarsPolicy();
         if (webView == null || updateManager == null) return;
         String currentUrl = webView.getUrl();
         if (currentUrl != null) updateManager.checkForUpdate(Uri.parse(currentUrl));
+    }
+
+    @Override public void onWindowFocusChanged(boolean hasFocus) {
+        super.onWindowFocusChanged(hasFocus);
+        if (hasFocus) applySystemBarsPolicy();
     }
 
     @Override public void onBackPressed() {
@@ -158,7 +171,7 @@ abstract class BaseWebActivity extends Activity {
                 ViewGroup.LayoutParams.MATCH_PARENT
         ));
         webView.setVisibility(View.GONE);
-        setFullscreenSystemUi(true);
+        applySystemBarsPolicy();
         if (!isTvMode()) setRequestedOrientation(ActivityInfo.SCREEN_ORIENTATION_SENSOR_LANDSCAPE);
     }
 
@@ -171,7 +184,7 @@ abstract class BaseWebActivity extends Activity {
         customFullscreenView = null;
         webView.setVisibility(View.VISIBLE);
         if (!isTvMode()) setRequestedOrientation(previousOrientation);
-        setFullscreenSystemUi(isTvMode());
+        applySystemBarsPolicy();
 
         if (customFullscreenCallback != null) {
             customFullscreenCallback.onCustomViewHidden();
@@ -179,23 +192,97 @@ abstract class BaseWebActivity extends Activity {
         }
     }
 
+    private void applyDarkSystemBars() {
+        Window window = getWindow();
+        int barColor = Color.rgb(12, 14, 20);
+        window.addFlags(WindowManager.LayoutParams.FLAG_DRAWS_SYSTEM_BAR_BACKGROUNDS);
+        window.setStatusBarColor(barColor);
+        window.setNavigationBarColor(barColor);
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
+            window.setStatusBarContrastEnforced(false);
+            window.setNavigationBarContrastEnforced(false);
+        }
+        // PhoneWindow.getInsetsController() NPEs before DecorView exists.
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R && window.peekDecorView() != null) {
+            WindowInsetsController controller = window.getInsetsController();
+            if (controller != null) {
+                controller.setSystemBarsAppearance(
+                        0,
+                        WindowInsetsController.APPEARANCE_LIGHT_STATUS_BARS
+                                | WindowInsetsController.APPEARANCE_LIGHT_NAVIGATION_BARS
+                );
+            }
+        }
+    }
+
+    private String readSystemBarsMode() {
+        String mode = preferences.getString(SYSTEM_BARS_MODE_KEY, SYSTEM_BARS_MODE_VIDEO);
+        if (SYSTEM_BARS_MODE_SHOW.equals(mode) || SYSTEM_BARS_MODE_ALWAYS.equals(mode) || SYSTEM_BARS_MODE_VIDEO.equals(mode)) {
+            return mode;
+        }
+        return SYSTEM_BARS_MODE_VIDEO;
+    }
+
+    private void saveSystemBarsMode(String mode) {
+        preferences.edit().putString(SYSTEM_BARS_MODE_KEY, mode).apply();
+    }
+
+    private boolean shouldHideSystemBars() {
+        if (isTvMode()) return true;
+        String mode = readSystemBarsMode();
+        if (SYSTEM_BARS_MODE_ALWAYS.equals(mode)) return true;
+        if (SYSTEM_BARS_MODE_VIDEO.equals(mode)) return customFullscreenView != null;
+        return false;
+    }
+
+    private void applySystemBarsPolicy() {
+        setFullscreenSystemUi(shouldHideSystemBars());
+    }
+
     private void setFullscreenSystemUi(boolean fullscreen) {
+        Window window = getWindow();
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
-            WindowInsetsController controller = getWindow().getInsetsController();
+            if (window.peekDecorView() == null) return;
+            WindowInsetsController controller = window.getInsetsController();
             if (controller == null) return;
             if (fullscreen) {
                 controller.hide(WindowInsets.Type.statusBars() | WindowInsets.Type.navigationBars());
+                controller.setSystemBarsBehavior(
+                        WindowInsetsController.BEHAVIOR_SHOW_TRANSIENT_BARS_BY_SWIPE
+                );
             } else {
                 controller.show(WindowInsets.Type.statusBars() | WindowInsets.Type.navigationBars());
+                applyDarkSystemBars();
             }
             return;
         }
 
-        getWindow().getDecorView().setSystemUiVisibility(fullscreen
+        View decor = window.peekDecorView();
+        if (decor == null) return;
+        decor.setSystemUiVisibility(fullscreen
                 ? View.SYSTEM_UI_FLAG_FULLSCREEN
                     | View.SYSTEM_UI_FLAG_HIDE_NAVIGATION
                     | View.SYSTEM_UI_FLAG_IMMERSIVE_STICKY
                 : View.SYSTEM_UI_FLAG_VISIBLE);
+        if (!fullscreen) applyDarkSystemBars();
+    }
+
+    private boolean isAppSettingsUri(Uri uri) {
+        return uri != null
+                && "trackanime".equalsIgnoreCase(uri.getScheme())
+                && "settings".equalsIgnoreCase(uri.getHost());
+    }
+
+    private void handleLaunchUri(Uri requestedUri) {
+        if (isAppSettingsUri(requestedUri)) {
+            String currentUrl = webView != null ? webView.getUrl() : null;
+            if (!isAllowedSiteUrl(currentUrl == null ? null : Uri.parse(currentUrl))) {
+                loadSite(SITE_URL);
+            }
+            handler.post(this::showAppSettings);
+            return;
+        }
+        loadSite(isAllowedSiteUrl(requestedUri) ? requestedUri.toString() : SITE_URL);
     }
 
     private boolean isAllowedSiteUrl(Uri uri) {
@@ -358,9 +445,45 @@ abstract class BaseWebActivity extends Activity {
     private void showAppSettings() {
         if (isFinishing()) return;
         ProxyFallback.Settings saved = proxyFallback.getSettings();
+        String barsMode = readSystemBarsMode();
+
         LinearLayout content = new LinearLayout(this);
         content.setOrientation(LinearLayout.VERTICAL);
-        content.setPadding(dp(24), dp(8), dp(24), 0);
+        content.setPadding(dp(24), dp(8), dp(24), dp(8));
+
+        TextView barsHint = new TextView(this);
+        barsHint.setText("Системные панели Android (статус и навигация)");
+        barsHint.setTextSize(14);
+        barsHint.setPadding(0, 0, 0, dp(8));
+        content.addView(barsHint);
+
+        RadioGroup barsModes = new RadioGroup(this);
+        barsModes.setOrientation(RadioGroup.VERTICAL);
+        RadioButton barsShow = new RadioButton(this);
+        barsShow.setId(View.generateViewId());
+        barsShow.setText("Показывать панели");
+        RadioButton barsAlways = new RadioButton(this);
+        barsAlways.setId(View.generateViewId());
+        barsAlways.setText("Всегда скрывать (полноэкранный режим)");
+        RadioButton barsVideo = new RadioButton(this);
+        barsVideo.setId(View.generateViewId());
+        barsVideo.setText("Скрывать только в полноэкранном видео");
+        barsModes.addView(barsShow);
+        barsModes.addView(barsAlways);
+        barsModes.addView(barsVideo);
+        content.addView(barsModes);
+
+        int barsCheckedId = SYSTEM_BARS_MODE_ALWAYS.equals(barsMode) ? barsAlways.getId()
+                : SYSTEM_BARS_MODE_SHOW.equals(barsMode) ? barsShow.getId() : barsVideo.getId();
+        barsModes.check(barsCheckedId);
+
+        View barsDivider = new View(this);
+        barsDivider.setBackgroundColor(Color.argb(60, 255, 255, 255));
+        LinearLayout.LayoutParams dividerParams = new LinearLayout.LayoutParams(
+                ViewGroup.LayoutParams.MATCH_PARENT, Math.max(1, dp(1)));
+        dividerParams.topMargin = dp(16);
+        dividerParams.bottomMargin = dp(16);
+        content.addView(barsDivider, dividerParams);
 
         TextView hint = new TextView(this);
         hint.setText("Прокси используется только после ошибки всех прямых зеркал. Поддерживается HTTP/HTTPS proxy.");
@@ -404,9 +527,12 @@ abstract class BaseWebActivity extends Activity {
         modes.setOnCheckedChangeListener((group, checked) ->
                 manualFields.setVisibility(checked == manualProxy.getId() ? View.VISIBLE : View.GONE));
 
+        ScrollView scroll = new ScrollView(this);
+        scroll.addView(content);
+
         AlertDialog dialog = new AlertDialog.Builder(this)
                 .setTitle("Настройки приложения")
-                .setView(content)
+                .setView(scroll)
                 .setNegativeButton("Отмена", null)
                 .setNeutralButton("Очистить кэш", null)
                 .setPositiveButton("Сохранить", null)
@@ -426,9 +552,17 @@ abstract class BaseWebActivity extends Activity {
                         return;
                     }
                 }
+                String nextBarsMode = barsModes.getCheckedRadioButtonId() == barsAlways.getId()
+                        ? SYSTEM_BARS_MODE_ALWAYS
+                        : barsModes.getCheckedRadioButtonId() == barsShow.getId()
+                                ? SYSTEM_BARS_MODE_SHOW : SYSTEM_BARS_MODE_VIDEO;
+                saveSystemBarsMode(nextBarsMode);
                 proxyFallback.saveSettings(new ProxyFallback.Settings(mode, host.getText().toString(), manualPort,
                         username.getText().toString(), password.getText().toString()));
-                proxyFallback.clearOverride(() -> Toast.makeText(this, "Настройки прокси сохранены.", Toast.LENGTH_SHORT).show());
+                proxyFallback.clearOverride(() -> {
+                    applySystemBarsPolicy();
+                    Toast.makeText(this, "Настройки сохранены.", Toast.LENGTH_SHORT).show();
+                });
                 dialog.dismiss();
             });
         });
@@ -458,7 +592,7 @@ abstract class BaseWebActivity extends Activity {
     private final class TrackAnimeWebViewClient extends WebViewClient {
         @Override public boolean shouldOverrideUrlLoading(WebView view, WebResourceRequest request) {
             Uri uri = request.getUrl();
-            if ("trackanime".equalsIgnoreCase(uri.getScheme()) && "settings".equalsIgnoreCase(uri.getHost())) {
+            if (isAppSettingsUri(uri)) {
                 showAppSettings();
                 return true;
             }

@@ -18,6 +18,7 @@ import { getShikimoriEndpoints } from "@/lib/shikimori/endpoints";
 import { PwaBottomNav } from "@/components/PwaBottomNav";
 import { PwaProvider } from "@/components/PwaProvider";
 import { InAppNotificationsListener } from "@/components/InAppNotificationsListener";
+import { TodayFromHistoryToastListener } from "@/components/TodayFromHistoryToastListener";
 import { RecentAnimeOpensSync } from "@/components/anime/RecentAnimeOpensSync";
 import { NotificationUiLayer } from "@/components/NotificationUiLayer";
 import { ScrollToTopButton } from "@/components/ScrollToTopButton";
@@ -122,8 +123,9 @@ export default async function RootLayout({ children }: { children: React.ReactNo
             <AuthProvider>
               <RecentAnimeOpensSync />
               <InAppNotificationsListener />
-              <NotificationUiLayer />
+              <TodayFromHistoryToastListener />
               <SiteSettingsProvider defaults={siteSettingsDefaults}>
+                <NotificationUiLayer />
                 <UserListStatusProvider>
                   <SiteBackground urls={backgroundUrls} />
                   <NavigationProgressProvider>

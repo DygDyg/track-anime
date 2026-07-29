@@ -1,9 +1,11 @@
 "use client";
 
+import { useEffect, useState } from "react";
 import { usePathname } from "next/navigation";
 import { NavLink } from "@/components/NavLink";
 import { useAuth } from "@/components/auth/AuthProvider";
 import { profileMenuItemClass, profileMenuLogoutClass } from "@/components/auth/profile-menu-styles";
+import { isTrackAnimeAndroidApp, TRACK_ANIME_ANDROID_SETTINGS_URL } from "@/lib/android-app";
 import { userProfilePath } from "@/lib/public-user";
 
 export function LocalCredentialWarningIcon({
@@ -29,6 +31,11 @@ type ProfileMenuItemsProps = {
 export function ProfileMenuItems({ centered = false, onNavigate, onScanQr }: ProfileMenuItemsProps) {
   const { user, logout, loggingOut } = useAuth();
   const pathname = usePathname();
+  const [nativeApp, setNativeApp] = useState(false);
+
+  useEffect(() => {
+    setNativeApp(isTrackAnimeAndroidApp());
+  }, []);
 
   if (!user) return null;
 
@@ -54,6 +61,16 @@ export function ProfileMenuItems({ centered = false, onNavigate, onScanQr }: Pro
       <button type="button" role="menuitem" className={profileMenuItemClass(false, centered)} onClick={onScanQr}>
         Сканировать QR-код
       </button>
+      {nativeApp ? (
+        <a
+          href={TRACK_ANIME_ANDROID_SETTINGS_URL}
+          role="menuitem"
+          className={profileMenuItemClass(false, centered)}
+          onClick={onNavigate}
+        >
+          Настройки приложения
+        </a>
+      ) : null}
       <button
         type="button"
         role="menuitem"

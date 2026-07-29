@@ -1,27 +1,29 @@
 "use client";
 
-import Link from "next/link";
 import { useCallback, useEffect, useState } from "react";
-import type { InAppNotificationItem } from "@/lib/notifications/in-app-feed";
-import { activateBrowserPushFromPermission, hasActivePushSubscription, readBrowserPushEnabled } from "@/lib/notifications/browser-client";
+import { NotificationToastBody } from "@/components/NotificationToastBody";
+import { useSiteSettings } from "@/components/SiteSettingsProvider";
+import {
+  activateBrowserPushFromPermission,
+  hasActivePushSubscription,
+  readBrowserPushEnabled,
+} from "@/lib/notifications/browser-client";
 import {
   emitNotificationsPrefsChanged,
   resetInAppNotifySince,
 } from "@/lib/notifications/in-app-client";
 import {
-  formatHistoryNewNotificationBody,
-  formatHistoryNewNotificationTitle,
-} from "@/lib/notifications/payload";
+  NOTIFICATION_TOAST_EVENT,
+  NOTIFICATION_TOAST_MS,
+  type NotificationToastItem,
+} from "@/lib/notifications/toast-ui";
 
-export const NOTIFICATION_TOAST_EVENT = "ta:notification-toast";
+export {
+  NOTIFICATION_TOAST_EVENT,
+  type NotificationToastItem,
+} from "@/lib/notifications/toast-ui";
+
 export const NOTIFICATION_BANNER_DISMISS_KEY = "ta:notify-banner-dismissed";
-
-type ToastItem = {
-  id: string;
-  title: string;
-  body: string;
-  url: string;
-};
 
 function readDismissed(): boolean {
   if (typeof window === "undefined") return false;
@@ -41,10 +43,25 @@ function writeDismissed(): void {
 }
 
 export function NotificationUiLayer() {
-  const [toasts, setToasts] = useState<ToastItem[]>([]);
+  const { settings } = useSiteSettings();
+  const [toasts, setToasts] = useState<NotificationToastItem[]>([]);
   const [bannerVisible, setBannerVisible] = useState(false);
   const [bannerDenied, setBannerDenied] = useState(false);
   const [requesting, setRequesting] = useState(false);
+  const [desktop, setDesktop] = useState(false);
+
+  const companionBubbleMode = settings.companionEnabled && desktop;
+
+  const COMPANION_PERMISSION_EVENT = "ta:companion-permission-prompt";
+  const COMPANION_PERMISSION_ACTION_EVENT = "ta:companion-permission-prompt-action";
+
+  useEffect(() => {
+    const mq = window.matchMedia("(min-width: 768px)");
+    const sync = () => setDesktop(mq.matches);
+    sync();
+    mq.addEventListener("change", sync);
+    return () => mq.removeEventListener("change", sync);
+  }, []);
 
   const checkBanner = useCallback(async () => {
     if (typeof window === "undefined" || !("Notification" in window)) return;
@@ -99,23 +116,15 @@ export function NotificationUiLayer() {
     void checkBanner();
 
     const onToast = (event: Event) => {
-      const detail = (event as CustomEvent<InAppNotificationItem>).detail;
-      if (!detail) return;
+      if (companionBubbleMode) return;
+      const detail = (event as CustomEvent<NotificationToastItem>).detail;
+      if (!detail?.id) return;
 
-      const id = `${detail.materialId}:${detail.seasonNumber}:${detail.episodeNumber}:${Date.now()}`;
-      setToasts((prev) => [
-        ...prev,
-        {
-          id,
-          title: formatHistoryNewNotificationTitle(detail),
-          body: formatHistoryNewNotificationBody(detail),
-          url: detail.pageUrl,
-        },
-      ]);
+      setToasts((prev) => [...prev, detail]);
 
       window.setTimeout(() => {
-        setToasts((prev) => prev.filter((item) => item.id !== id));
-      }, 12_000);
+        setToasts((prev) => prev.filter((toast) => toast.id !== detail.id));
+      }, NOTIFICATION_TOAST_MS);
     };
 
     const onPrefs = () => {
@@ -129,9 +138,13 @@ export function NotificationUiLayer() {
       window.removeEventListener(NOTIFICATION_TOAST_EVENT, onToast as EventListener);
       window.removeEventListener("ta:notifications-prefs-changed", onPrefs);
     };
-  }, [checkBanner]);
+  }, [checkBanner, companionBubbleMode]);
 
-  async function requestPermission() {
+  useEffect(() => {
+    if (companionBubbleMode) setToasts([]);
+  }, [companionBubbleMode]);
+
+  const requestPermission = useCallback(async () => {
     if (!("Notification" in window)) return;
     setRequesting(true);
     try {
@@ -146,11 +159,54 @@ export function NotificationUiLayer() {
     } finally {
       setRequesting(false);
     }
-  }
+  }, []);
+
+  // Sync permission banner state into companion bubble (desktop+).
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+    window.dispatchEvent(
+      new CustomEvent(COMPANION_PERMISSION_EVENT, {
+        detail: {
+          open: companionBubbleMode && bannerVisible,
+          denied: bannerDenied,
+          requesting,
+        },
+      }),
+    );
+  }, [COMPANION_PERMISSION_EVENT, companionBubbleMode, bannerVisible, bannerDenied, requesting]);
+
+  // Handle clicks from companion bubble buttons.
+  useEffect(() => {
+    const onAction = (event: Event) => {
+      const detail = (event as CustomEvent<{ action?: string }>).detail;
+      if (!detail?.action) return;
+
+      if (detail.action === "allow") {
+        void requestPermission();
+        return;
+      }
+
+      if (detail.action === "hide") {
+        writeDismissed();
+        setBannerVisible(false);
+      }
+    };
+
+    window.addEventListener(
+      COMPANION_PERMISSION_ACTION_EVENT,
+      onAction as EventListener,
+    );
+    return () => {
+      window.removeEventListener(
+        COMPANION_PERMISSION_ACTION_EVENT,
+        onAction as EventListener,
+      );
+    };
+  }, [COMPANION_PERMISSION_ACTION_EVENT, requestPermission]);
 
   return (
     <>
-      {bannerVisible ? (
+      {bannerVisible && !companionBubbleMode ? (
         <div className="fixed bottom-20 left-3 right-3 z-[90] mx-auto max-w-lg sm:bottom-6 sm:left-auto sm:right-6">
           <div className="rounded-xl border border-accent/30 bg-card px-4 py-3 shadow-lg shadow-black/30">
             <p className="text-sm font-medium text-foreground">Уведомления о новых сериях</p>
@@ -185,18 +241,20 @@ export function NotificationUiLayer() {
         </div>
       ) : null}
 
-      <div className="pointer-events-none fixed right-3 top-20 z-[90] flex w-[min(100%,22rem)] flex-col gap-2 sm:top-24">
-        {toasts.map((toast) => (
-          <Link
-            key={toast.id}
-            href={toast.url}
-            className="pointer-events-auto block rounded-xl border border-border bg-card/95 px-4 py-3 shadow-lg shadow-black/25 backdrop-blur-sm transition hover:border-accent/40"
-          >
-            <p className="text-sm font-semibold text-foreground">{toast.title}</p>
-            <p className="mt-0.5 text-xs text-muted">{toast.body}</p>
-          </Link>
-        ))}
-      </div>
+      {!companionBubbleMode ? (
+        <div className="pointer-events-none fixed right-3 top-20 z-[90] flex w-[min(100%,22rem)] flex-col gap-2 sm:top-24">
+          {toasts.map((toast) => (
+            <NotificationToastBody
+              key={toast.id}
+              toast={toast}
+              className={[
+                "pointer-events-auto rounded-xl border border-border bg-card/95 p-3 shadow-lg shadow-black/25 backdrop-blur-sm transition hover:border-accent/40",
+                toast.kind === "history-new" ? "flex gap-3" : "block",
+              ].join(" ")}
+            />
+          ))}
+        </div>
+      ) : null}
     </>
   );
 }

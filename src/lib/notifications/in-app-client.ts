@@ -3,6 +3,7 @@ import {
   formatHistoryNewNotificationBody,
   formatHistoryNewNotificationTitle,
 } from "@/lib/notifications/payload";
+import { emitToast, toastItemFromNotification } from "@/lib/notifications/toast-ui";
 
 export const IN_APP_NOTIFY_SINCE_KEY = "track-anime-in-app-notify-since";
 export const IN_APP_NOTIFY_PREFS_EVENT = "ta:notifications-prefs-changed";
@@ -82,7 +83,7 @@ export function resetInAppNotifySince(): void {
 
 export function emitNotificationToast(item: InAppNotificationItem): void {
   if (typeof window === "undefined") return;
-  window.dispatchEvent(new CustomEvent("ta:notification-toast", { detail: item }));
+  emitToast(toastItemFromNotification(item));
 }
 
 export function emitNotificationsPrefsChanged(): void {

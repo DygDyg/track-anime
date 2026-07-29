@@ -91,6 +91,7 @@ const DEFAULT_PLAYBACK_STATE: KodikPlayerPlaybackState = {
   durationSeconds: 0,
   volume: 1,
   muted: false,
+  mediaUnlocked: false,
 };
 
 function IconPlayerRefresh({ spinning = false }: { spinning?: boolean }) {

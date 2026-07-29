@@ -4,23 +4,14 @@ setlocal
 cd /d "%~dp0"
 title Track Anime Deploy
 
-echo [deploy] Track Anime - production deploy
+echo [deploy] Track Anime - production deploy (auto: site / rpc / apk)
 echo [deploy] Sm. docs/DEPLOY.md
 echo.
-
-echo [deploy] Pre-deploy checks...
-powershell -NoProfile -ExecutionPolicy Bypass -File "%~dp0scripts\deploy-precheck.ps1" %*
-set "PRECHECK_CODE=%ERRORLEVEL%"
-if not "%PRECHECK_CODE%"=="0" (
-  echo.
-  echo [deploy] Precheck failed ^(exit %PRECHECK_CODE%^).
-  pause
-  exit /b %PRECHECK_CODE%
-)
-
+echo [deploy] Targets chosen from git changes. Force site: deploy.bat -ForceSite
+echo [deploy] Explicit: npm run deploy:site ^| deploy:rpc ^| deploy:apk
 echo.
-echo [deploy] Starting deploy...
-powershell -NoProfile -ExecutionPolicy Bypass -File "%~dp0scripts\deploy.ps1" %*
+
+powershell -NoProfile -ExecutionPolicy Bypass -File "%~dp0scripts\deploy-auto.ps1" %*
 set "EXIT_CODE=%ERRORLEVEL%"
 
 if not "%EXIT_CODE%"=="0" (
@@ -35,6 +26,6 @@ echo [deploy] Gotovo.
 echo.
 echo ============================================================
 echo   LOCAL: deploy.bat finished successfully
-echo   See the DEPLOY REPORT block above for server status.
+echo   See the deploy-auto / target reports above for status.
 echo ============================================================
 pause

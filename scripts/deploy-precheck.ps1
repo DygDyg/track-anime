@@ -19,7 +19,21 @@ param(
 
 $ErrorActionPreference = "Stop"
 
+. (Join-Path $PSScriptRoot "deploy-config.ps1")
+
+$DefaultRemote = "root@195.26.230.35"
+$DefaultSshKey = "$env:USERPROFILE\.ssh\id_rsa"
+$DefaultServerAppDir = "/var/www/ta_new"
+
 $ProjectRoot = (Resolve-Path (Join-Path $PSScriptRoot "..")).Path
+
+Merge-TaDeployLocalParams `
+    -Remote ([ref]$Remote) `
+    -DefaultRemote $DefaultRemote `
+    -SshKey ([ref]$SshKey) `
+    -DefaultSshKey $DefaultSshKey `
+    -ServerAppDir ([ref]$ServerAppDir) `
+    -DefaultServerAppDir $DefaultServerAppDir | Out-Null
 
 function Write-Step {
     param(
@@ -54,6 +68,7 @@ Set-Location $ProjectRoot
 Write-Step "project: $ProjectRoot"
 Write-Step "remote:  $Remote"
 Write-Step "app dir: $ServerAppDir"
+Write-TaDeployConfigStatus -Prefix "[precheck]"
 
 if (-not (Test-Path (Join-Path $ProjectRoot "package.json"))) {
     throw "package.json not found in $ProjectRoot"
@@ -76,14 +91,7 @@ if ($DryRun) {
     Write-Step "DryRun: server SSH check skipped" -Color Yellow
 } else {
     Write-Step "SSH connectivity ($Remote)..."
-    $sshTest = & ssh @(
-        "-i", $SshKey,
-        "-o", "BatchMode=yes",
-        "-o", "ConnectTimeout=15",
-        "-o", "ConnectionAttempts=1",
-        $Remote,
-        "echo ok"
-    ) 2>&1
+    $sshTest = & ssh @(Get-TaDeploySshOptions -Key $SshKey) $Remote "echo ok" 2>&1
     if ($LASTEXITCODE -ne 0) {
         $detail = ($sshTest | Out-String).Trim()
         throw "SSH connectivity check failed (exit $LASTEXITCODE). $detail"

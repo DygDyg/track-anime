@@ -2,6 +2,7 @@
 
 import { useEffect, useState } from "react";
 import QRCode from "qrcode";
+import { isTrackAnimeAndroidApp, TRACK_ANIME_ANDROID_SETTINGS_URL } from "@/lib/android-app";
 
 export function AndroidAppDownloadSection() {
   const [qrCode, setQrCode] = useState<string | null>(null);
@@ -9,7 +10,7 @@ export function AndroidAppDownloadSection() {
   const [nativeApp, setNativeApp] = useState(false);
 
   useEffect(() => {
-    setNativeApp(/\bTrackAnimeAndroid\//.test(navigator.userAgent));
+    setNativeApp(isTrackAnimeAndroidApp());
   }, []);
 
   useEffect(() => {
@@ -30,7 +31,9 @@ export function AndroidAppDownloadSection() {
       .catch(() => {
         if (!cancelled) setAppVersion(null);
       });
-    return () => { cancelled = true; };
+    return () => {
+      cancelled = true;
+    };
   }, []);
 
   return (
@@ -46,10 +49,11 @@ export function AndroidAppDownloadSection() {
         <section className="rounded-xl border border-border bg-foreground/[0.03] p-4">
           <h3 className="text-sm font-semibold text-foreground">Настройки приложения</h3>
           <p className="mt-1 text-sm leading-relaxed text-muted">
-            Выберите прокси для случая, когда сайт недоступен, или очистите кэш WebView. Вход в аккаунт сохранится.
+            Выберите прокси для случая, когда сайт недоступен, режим скрытия системных панелей Android
+            или очистите кэш WebView. Вход в аккаунт сохранится.
           </p>
           <a
-            href="trackanime://settings"
+            href={TRACK_ANIME_ANDROID_SETTINGS_URL}
             className="mt-3 inline-flex rounded-lg border border-border px-4 py-2 text-sm font-medium text-foreground transition hover:border-accent/50 hover:bg-accent/10"
           >
             Открыть настройки приложения

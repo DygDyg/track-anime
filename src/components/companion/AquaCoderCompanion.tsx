@@ -17,6 +17,17 @@ import {
   normalizeCompanionScale,
   resolveCompanionDisplayScale,
 } from "@/lib/site-settings";
+import { CompanionNotificationBubbles } from "@/components/companion/CompanionNotificationBubble";
+import {
+  emitTestDigestToast,
+  emitTestNotificationToast,
+} from "@/lib/notifications/toast-ui";
+
+type CompanionPermissionPromptState = {
+  open: boolean;
+  denied: boolean;
+  requesting: boolean;
+};
 
 const COMPANION_ANIMATIONS: { id: CompanionAnimation; label: string }[] = [
   { id: "idle", label: "idle" },
@@ -72,6 +83,15 @@ export function AquaCoderCompanion() {
   const visible = enabled && desktop;
   const isAdmin = Boolean(user?.isAdmin);
 
+  const COMPANION_PERMISSION_EVENT = "ta:companion-permission-prompt";
+  const COMPANION_PERMISSION_ACTION_EVENT = "ta:companion-permission-prompt-action";
+
+  const [permissionPrompt, setPermissionPrompt] = useState<CompanionPermissionPromptState>({
+    open: false,
+    denied: false,
+    requesting: false,
+  });
+
   menuOpenRef.current = menuOpen;
   pathnameRef.current = pathname;
 
@@ -106,7 +126,15 @@ export function AquaCoderCompanion() {
     if (!options?.force && Date.now() - lastReactionAtRef.current < REACTION_COOLDOWN_MS) return;
     lastReactionAtRef.current = Date.now();
     lastAnimationRef.current = name;
-    setCurrentAnimation(name);
+    // Guard against "Cannot update a component while rendering a different component".
+    // emitCompanionReaction might be triggered synchronously from another component's render.
+    // Defer state update to the end of current JS stack.
+    if (typeof queueMicrotask === "function") {
+      queueMicrotask(() => setCurrentAnimation(name));
+    } else {
+      // Fallback for environments without queueMicrotask.
+      setTimeout(() => setCurrentAnimation(name), 0);
+    }
     void player.play(name).catch(() => undefined);
   };
 
@@ -258,6 +286,22 @@ export function AquaCoderCompanion() {
     };
   }, [visible, menuOpen]);
 
+  // Listen for notification-permission prompt (rendered as companion bubble).
+  useEffect(() => {
+    const onPrompt = (event: Event) => {
+      const detail = (event as CustomEvent<CompanionPermissionPromptState>).detail;
+      if (!detail) return;
+      setPermissionPrompt({
+        open: Boolean(detail.open),
+        denied: Boolean(detail.denied),
+        requesting: Boolean(detail.requesting),
+      });
+    };
+
+    window.addEventListener(COMPANION_PERMISSION_EVENT, onPrompt as EventListener);
+    return () => window.removeEventListener(COMPANION_PERMISSION_EVENT, onPrompt as EventListener);
+  }, [COMPANION_PERMISSION_EVENT]);
+
   if (!visible) return null;
 
   const setMenuOpenSafe = (open: boolean) => {
@@ -297,8 +341,48 @@ export function AquaCoderCompanion() {
               />
               <ul
                 role="menu"
-                className="absolute bottom-full right-0 z-10 mb-2 max-h-[min(24rem,50vh)] w-40 overflow-y-auto rounded-xl border border-border/90 bg-card/95 py-1 shadow-lg shadow-black/40 backdrop-blur-md backdrop-saturate-150"
+                className="absolute bottom-full right-0 z-10 mb-2 max-h-[min(24rem,50vh)] w-44 overflow-y-auto rounded-xl border border-border/90 bg-card/95 py-1 shadow-lg shadow-black/40 backdrop-blur-md backdrop-saturate-150"
               >
+                <li role="none">
+                  <button
+                    type="button"
+                    role="menuitem"
+                    className="block w-full px-3 py-1.5 text-left text-xs font-medium text-accent hover:bg-accent/15"
+                    onClick={() => {
+                      emitTestNotificationToast();
+                      setMenuOpenSafe(false);
+                    }}
+                  >
+                    Тест облачка
+                  </button>
+                </li>
+                <li role="none">
+                  <button
+                    type="button"
+                    role="menuitem"
+                    className="block w-full px-3 py-1.5 text-left text-xs font-medium text-accent hover:bg-accent/15"
+                    onClick={() => {
+                      emitTestDigestToast();
+                      setMenuOpenSafe(false);
+                    }}
+                  >
+                    Тест «сегодня»
+                  </button>
+                </li>
+                <li role="none">
+                  <button
+                    type="button"
+                    role="menuitem"
+                    className="block w-full px-3 py-1.5 text-left text-xs font-medium text-accent hover:bg-accent/15"
+                    onClick={() => {
+                      emitTestDigestToast(0);
+                      setMenuOpenSafe(false);
+                    }}
+                  >
+                    Тест «сегодня» (0)
+                  </button>
+                </li>
+                <li role="separator" className="my-1 border-t border-border/70" />
                 {COMPANION_ANIMATIONS.map((animation) => (
                   <li key={animation.id} role="none">
                     <button
@@ -323,6 +407,49 @@ export function AquaCoderCompanion() {
           ) : null}
         </div>
       ) : null}
+
+      {permissionPrompt.open ? (
+        <div
+          className="companion-speech-bubble pointer-events-auto relative mb-1 w-[min(22rem,calc(var(--aqua-companion-width,12rem)+12rem))] rounded-2xl border border-white/80 bg-card/95 px-3.5 py-2.5 shadow-lg shadow-black/30 backdrop-blur-md backdrop-saturate-150"
+          role="dialog"
+          aria-live="polite"
+        >
+          <p className="text-sm font-medium text-foreground">Уведомления о новых сериях</p>
+          <p className="mt-1 text-xs text-muted">
+            {permissionPrompt.denied
+              ? "Браузер заблокировал уведомления. Разрешите их в настройках сайта в адресной строке."
+              : "Разрешите уведомления — подключится push для фона и PWA (нужна production-сборка)."}
+          </p>
+          <div className="mt-3 flex flex-wrap gap-2">
+            {!permissionPrompt.denied ? (
+              <button
+                type="button"
+                disabled={permissionPrompt.requesting}
+                onClick={() =>
+                  window.dispatchEvent(
+                    new CustomEvent(COMPANION_PERMISSION_ACTION_EVENT, { detail: { action: "allow" } }),
+                  )
+                }
+                className="rounded-lg bg-accent px-3 py-1.5 text-xs font-medium text-white hover:bg-accent/90 disabled:opacity-50"
+              >
+                {permissionPrompt.requesting ? "Запрос…" : "Разрешить"}
+              </button>
+            ) : null}
+            <button
+              type="button"
+              onClick={() =>
+                window.dispatchEvent(
+                  new CustomEvent(COMPANION_PERMISSION_ACTION_EVENT, { detail: { action: "hide" } }),
+                )
+              }
+              className="rounded-lg px-3 py-1.5 text-xs text-muted hover:text-foreground"
+            >
+              Скрыть
+            </button>
+          </div>
+        </div>
+      ) : null}
+      <CompanionNotificationBubbles />
       <canvas
         ref={canvasRef}
         aria-hidden={!isAdmin}

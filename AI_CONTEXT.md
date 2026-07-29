@@ -48,7 +48,7 @@ Codex: использовать эту таблицу напрямую и чит
 | Covers / posters | обложк, poster, thumb, cover | `AnimePoster.tsx`, `src/lib/poster.ts`, `cover-cache.ts`, `src/app/api/cover/route.ts` |
 | Lists / sync | списк, sync, rewatches, shikimori | `favorites-sync.ts`, `user-list-mutations.ts` |
 | Player | kodik, плеер, progress | `KodikPlayer.tsx`, `kodik-player-api.ts` |
-| Deploy | деплой, deploy, prod | `scripts/deploy.ps1`, `docs/DEPLOY.md` |
+| Deploy | деплой, deploy, prod | `scripts/deploy-auto.ps1`, `deploy.ps1`, `deploy-rpc.ps1`, `deploy-apk.ps1`, `docs/DEPLOY.md` |
 | Auth | oauth, login, session | `shikimori-oauth.ts`, `src/app/api/auth/` |
 | Home feed | главная, лента | `releases.ts`, `ReleaseFeed.tsx` |
 | Notifications | уведомлен, push, telegram, vk, discord | `src/lib/notifications/`, `src/app/api/notifications/`, `NotificationSettingsPanel.tsx` |

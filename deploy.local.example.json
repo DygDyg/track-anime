@@ -1,0 +1,17 @@
+{
+  "httpProxy": "http://127.0.0.1:7890",
+  "proxyUser": "",
+  "proxyPassword": "",
+  "proxyCommand": "",
+
+  "remote": "root@195.26.230.35",
+  "serverAppDir": "/var/www/ta_new",
+  "sshKey": "%USERPROFILE%\\.ssh\\id_rsa",
+
+  "uploadChunkSizeMB": 16,
+  "connectTimeout": 40,
+  "serverAliveInterval": 10,
+  "serverAliveCountMax": 12,
+  "sshMaxAttempts": 8,
+  "scpMaxAttempts": 8
+}

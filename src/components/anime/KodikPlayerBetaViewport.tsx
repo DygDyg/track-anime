@@ -162,6 +162,7 @@ export function KodikPlayerBetaViewport({
   const videoShellRef = useRef<HTMLDivElement>(null);
   const hideTimerRef = useRef<number | null>(null);
   const clickTimerRef = useRef<number | null>(null);
+  const [qualityHover, setQualityHover] = useState(false);
   const seekFeedbackTimersRef = useRef<{ backward: number | null; forward: number | null }>({
     backward: null,
     forward: null,
@@ -365,6 +366,15 @@ export function KodikPlayerBetaViewport({
       }
 
       revealUi();
+
+      const node = viewportRef.current;
+      if (node) {
+        const rect = node.getBoundingClientRect();
+        const inHotspot =
+          event.clientX >= rect.right - 200 &&
+          event.clientY >= rect.bottom - 120;
+        setQualityHover((prev) => (prev === inHotspot ? prev : inHotspot));
+      }
     },
     [revealUi],
   );
@@ -718,11 +728,13 @@ export function KodikPlayerBetaViewport({
   );
 
   const uiInteractive = uiVisible && !kodikUiAccess;
+  const awaitKodikGesture = !playback.mediaUnlocked;
   const duration = Math.max(playback.durationSeconds, 0);
   const position = Math.min(Math.max(playback.positionSeconds, 0), duration || playback.positionSeconds);
   const progressMax = duration > 0 ? duration : Math.max(position, 1);
   const progressFill = `${(position / progressMax) * 100}%`;
-  const clickLayerInteractive = !kodikUiAccess;
+  // Until Kodik unlocks media (Android WebView), taps must reach the iframe — postMessage play is ignored.
+  const clickLayerInteractive = !kodikUiAccess && !awaitKodikGesture && !(qualityHover && playback.mediaUnlocked);
   const hideCursor = playback.isPlaying && !uiInteractive && !kodikUiAccess;
   const clickLayerClass = [
     "absolute z-10 bg-transparent",
@@ -763,32 +775,36 @@ export function KodikPlayerBetaViewport({
         onFullscreenTranslationsIntent?.(!fullscreenTranslationsOpen)
       }
       interactive={controlsDocked ? !kodikUiAccess : uiInteractive}
+      qualityHover={qualityHover}
+      controlsDocked={controlsDocked}
     />
   );
 
   const bottomStackNode = (
     <div className="kodik-player-beta-bottom-stack pointer-events-none space-y-1 px-2 pb-1 sm:space-y-2 sm:px-3">
       <div className="flex items-center justify-between gap-2">
-        <button
-          type="button"
-          onClick={toggleKodikUiAccess}
-          className={[
-            "kodik-player-beta-kodik-ui-toggle inline-flex rounded-md border border-white/10 bg-black/35 px-[clamp(0.5rem,0.42vw,0.8rem)] py-[clamp(0.25rem,0.21vw,0.4rem)] text-[clamp(11px,0.58vw,15px)] font-medium text-white/85 backdrop-blur-sm transition hover:bg-black/50 hover:text-white",
-            (controlsDocked ? !kodikUiAccess : uiInteractive)
-              ? "pointer-events-auto"
-              : "pointer-events-none",
-          ].join(" ")}
-        >
-          <span className="hidden sm:inline">
-            Shift — {kodikUiAccess ? "интерфейс TA" : "интерфейс Kodik"}
-          </span>
-          <span className="sm:hidden">{kodikUiAccess ? "TA UI" : "Kodik UI"}</span>
-        </button>
-        {continueAction ? (
+        {!controlsDocked && (
+          <button
+            type="button"
+            onClick={toggleKodikUiAccess}
+            className={[
+              "kodik-player-beta-kodik-ui-toggle inline-flex rounded-md border border-white/10 bg-black/35 px-[clamp(0.5rem,0.42vw,0.8rem)] py-[clamp(0.25rem,0.21vw,0.4rem)] text-[clamp(11px,0.58vw,15px)] font-medium text-white/85 backdrop-blur-sm transition hover:bg-black/50 hover:text-white",
+              uiInteractive
+                ? "pointer-events-auto"
+                : "pointer-events-none",
+            ].join(" ")}
+          >
+            <span className="hidden sm:inline">
+              Shift — {kodikUiAccess ? "интерфейс TA" : "интерфейс Kodik"}
+            </span>
+            <span className="sm:hidden">{kodikUiAccess ? "TA UI" : "Kodik UI"}</span>
+          </button>
+        )}
+        {!controlsDocked && continueAction ? (
           <div
             className={[
               "flex min-w-0 flex-1 flex-wrap justify-center gap-2",
-              (controlsDocked ? !kodikUiAccess : uiInteractive)
+              uiInteractive
                 ? "pointer-events-auto"
                 : "pointer-events-none",
             ].join(" ")}
@@ -811,6 +827,7 @@ export function KodikPlayerBetaViewport({
       ].join(" ")}
       data-player-keyboard-scope
       onMouseMove={handleMouseMove}
+      onMouseLeave={() => setQualityHover(false)}
       onMouseDown={markPlayerInteraction}
       onWheel={handleViewportWheel}
       onTouchStart={handleTouchStart}
@@ -839,7 +856,7 @@ export function KodikPlayerBetaViewport({
           onPlaybackStateChange={onPlaybackStateChange}
           onEnded={onEnded}
         />
-        <div
+        {!controlsDocked && <div
           className="pointer-events-none absolute inset-0 z-10"
           aria-hidden="true"
         >
@@ -899,7 +916,7 @@ export function KodikPlayerBetaViewport({
               }}
             />
           )}
-        </div>
+        </div>}
         {fullscreenActive && settings.showClock ? (
           <div className="pointer-events-none absolute right-2 top-2 z-30 sm:right-3 sm:top-3">
             <SiteClock className="border-white/10 bg-black/45 text-white/90" />
@@ -927,11 +944,11 @@ export function KodikPlayerBetaViewport({
             +{seekFeedback.forward}
           </div>
         ) : null}
-        {kodikUiAccess ? (
+        {kodikUiAccess && !controlsDocked ? (
           <div
             className={[
               "pointer-events-none absolute inset-x-0 z-40 px-2 pb-1 sm:px-3",
-              controlsDocked ? "bottom-2" : "bottom-[4.25rem]",
+              "bottom-[4.25rem]",
             ].join(" ")}
           >
             <button
@@ -942,6 +959,11 @@ export function KodikPlayerBetaViewport({
               <span className="hidden sm:inline">Shift — интерфейс TA</span>
               <span className="sm:hidden">TA UI</span>
             </button>
+          </div>
+        ) : null}
+        {controlsDocked && continueAction ? (
+          <div className="pointer-events-auto absolute inset-x-0 bottom-6 z-30 flex justify-center px-2">
+            {continueAction}
           </div>
         ) : null}
         <div
@@ -971,8 +993,15 @@ export function KodikPlayerBetaViewport({
             <div className="pointer-events-none absolute inset-0 z-[1] flex items-center justify-center">
               <button
                 type="button"
-                disabled={controlsDisabled}
-                aria-label={playback.isPlaying ? "Пауза" : "Воспроизведение"}
+                disabled={controlsDisabled || awaitKodikGesture}
+                aria-label={
+                  awaitKodikGesture
+                    ? "Нажмите на видео, чтобы начать"
+                    : playback.isPlaying
+                      ? "Пауза"
+                      : "Воспроизведение"
+                }
+                title={awaitKodikGesture ? "Нажмите на видео, чтобы начать" : undefined}
                 onClick={handleCenterPlayPause}
                 onDoubleClick={(event) => {
                   event.preventDefault();
@@ -980,7 +1009,8 @@ export function KodikPlayerBetaViewport({
                 }}
                 className={[
                   "kodik-player-beta-center-play",
-                  uiInteractive ? "pointer-events-auto" : "pointer-events-none",
+                  uiInteractive && !awaitKodikGesture ? "pointer-events-auto" : "pointer-events-none",
+                  awaitKodikGesture ? "opacity-90" : "",
                 ].join(" ")}
               >
                 {playback.isPlaying ? (

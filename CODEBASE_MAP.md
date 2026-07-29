@@ -247,7 +247,7 @@ Error page asset: `public/404.webm` is used by the custom App Router 404 page.
 | `backup-db.ps1` | `db:backup` | Local Docker PostgreSQL dump |
 | `pull-prod-db.ps1` | `db:pull-prod`, `db:restore-prod` | Download production DB dump and optionally restore local dev DB |
 | `start-dev.bat` | — | Windows one-click dev startup: Docker/PostgreSQL, Prisma schema, watch-party WebSocket and Next.js |
-| `deploy.ps1`, `server-deploy.sh` | — | Deployment |
+| `deploy-auto.ps1`, `deploy.ps1`, `deploy-rpc.ps1`, `deploy-apk.ps1`, `deploy-config.ps1`, `server-deploy.sh` | — | Deployment (auto / site / rpc / apk + local proxy) |
 | `notification-worker.ts` | `notifications:worker` | Background notification delivery |
 | `watch-party-server.mjs` | `watch-party:server` | WebSocket rooms for TA-плеер совместный просмотр |
 | `telegram-notification-bot.ts` | `notifications:telegram-bot` | Telegram notification link bot |

@@ -1,6 +1,8 @@
 "use client";
 
 import {
+  useCallback,
+  useEffect,
   useRef,
   useState,
   type CSSProperties,
@@ -44,6 +46,10 @@ type Props = {
   fullscreenTranslationsOpen?: boolean;
   overlay?: boolean;
   interactive?: boolean;
+  /** Controlled by viewport: true when the mouse is in the Kodik quality hotspot zone. */
+  qualityHover?: boolean;
+  /** True when controls are docked below the player (portrait mobile). */
+  controlsDocked?: boolean;
 };
 
 type RangeStyle = CSSProperties & {
@@ -264,9 +270,32 @@ export function KodikPlayerBetaControls({
   fullscreenTranslationsOpen = false,
   overlay = false,
   interactive = true,
+  qualityHover = false,
+  controlsDocked = false,
 }: Props) {
   const duration = Math.max(playback.durationSeconds, 0);
   const position = Math.min(Math.max(playback.positionSeconds, 0), duration || playback.positionSeconds);
+  const [qualityTapOpen, setQualityTapOpen] = useState(false);
+  const qualityTapTimerRef = useRef<number | null>(null);
+  const qualitySplit = !controlsDocked && (qualityHover || qualityTapOpen) && playback.mediaUnlocked;
+
+  const handleQualityTap = useCallback(() => {
+    if (!playback.mediaUnlocked) return;
+    setQualityTapOpen((prev) => {
+      if (qualityTapTimerRef.current) window.clearTimeout(qualityTapTimerRef.current);
+      if (!prev) {
+        qualityTapTimerRef.current = window.setTimeout(() => setQualityTapOpen(false), 5000);
+      }
+      return !prev;
+    });
+  }, [playback.mediaUnlocked]);
+
+  useEffect(() => {
+    return () => {
+      if (qualityTapTimerRef.current) window.clearTimeout(qualityTapTimerRef.current);
+    };
+  }, []);
+
   const [dragPosition, setDragPosition] = useState<number | null>(null);
   const progressDraggingRef = useRef(false);
   const dragStartPositionRef = useRef(position);
@@ -354,16 +383,12 @@ export function KodikPlayerBetaControls({
     onVolumeChange(Math.min(1, Math.max(0, next)));
   };
 
-  return (
-    <div
-      className={[
-        "kodik-player-beta-controls relative px-2 py-1.5 text-white sm:px-3",
-        interactive ? "pointer-events-auto" : "pointer-events-none",
-        overlay
-          ? "kodik-player-beta-controls--overlay rounded-none border-0 pb-2"
-          : "rounded-b-lg border border-t-0 border-border bg-[#0f0f0f]",
-      ].join(" ")}
-    >
+  const panelClass = overlay
+    ? "rounded-[0.75rem] border border-white/[0.12] bg-black/50 backdrop-blur-[12px]"
+    : "bg-[#0f0f0f]";
+
+  const progressBar = (
+    <>
       <div className="mb-1 flex h-1.5 items-center gap-2">
         <div className="relative min-w-0 flex-1">
           {dragPosition != null ? (
@@ -403,137 +428,209 @@ export function KodikPlayerBetaControls({
           <span>{formatWatchPosition(duration)}</span>
         </div>
       ) : null}
+    </>
+  );
 
-      <div className="kodik-player-beta-controls-row flex items-center gap-1 sm:gap-2">
+  const leftControls = (
+    <>
+      <ControlButton
+        label={
+          !playback.mediaUnlocked
+            ? "Нажмите на видео, чтобы начать"
+            : playback.isPlaying
+              ? "Пауза"
+              : "Воспроизведение"
+        }
+        disabled={disabled || !playback.mediaUnlocked}
+        onClick={onPlayPause}
+      >
+        {playback.isPlaying ? <IconPause /> : <IconPlay />}
+      </ControlButton>
+
+      {onPreviousEpisode ? (
         <ControlButton
-          label={playback.isPlaying ? "Пауза" : "Воспроизведение"}
-          disabled={disabled}
-          onClick={onPlayPause}
+          label="Предыдущая серия"
+          disabled={disabled || previousEpisodeDisabled}
+          onClick={onPreviousEpisode}
         >
-          {playback.isPlaying ? <IconPause /> : <IconPlay />}
+          <IconPreviousEpisode />
         </ControlButton>
-
-        {onPreviousEpisode ? (
-          <ControlButton
-            label="Предыдущая серия"
-            disabled={disabled || previousEpisodeDisabled}
-            onClick={onPreviousEpisode}
-          >
-            <IconPreviousEpisode />
-          </ControlButton>
-        ) : null}
-
-        <button
-          type="button"
-          disabled={disabled}
-          onMouseDown={(event) => event.preventDefault()}
-          onClick={() => handleSeekSkipButton(-seekSkipLabelSeconds)}
-          className="kodik-player-beta-seek-button h-10 select-none rounded-md px-2 py-1 text-xs font-medium text-white/90 transition hover:bg-white/15 disabled:cursor-not-allowed disabled:opacity-40 sm:h-auto"
-        >
-          −{seekSkipLabelSeconds}
-        </button>
-        <button
-          type="button"
-          disabled={disabled}
-          onMouseDown={(event) => event.preventDefault()}
-          onClick={() => handleSeekSkipButton(seekSkipLabelSeconds)}
-          className="kodik-player-beta-seek-button h-10 select-none rounded-md px-2 py-1 text-xs font-medium text-white/90 transition hover:bg-white/15 disabled:cursor-not-allowed disabled:opacity-40 sm:h-auto"
-        >
-          +{seekSkipLabelSeconds}
-        </button>
-
-        {onNextEpisode ? (
-          <ControlButton
-            label="Следующая серия"
-            disabled={disabled || nextEpisodeDisabled}
-            onClick={onNextEpisode}
-          >
-            <IconNextEpisode />
-          </ControlButton>
-        ) : null}
-
-        {progressReady ? (
-          <span className="hidden min-w-[7.5rem] shrink-0 tabular-nums text-xs text-white/75 sm:inline">
-            {formatWatchPosition(position)} / {formatWatchPosition(duration)}
-          </span>
-        ) : null}
-
-        <div className="kodik-player-beta-controls-actions ml-auto flex items-center gap-1 sm:gap-2">
-          <div
-            className="kodik-player-beta-volume-group flex items-center gap-1 sm:gap-2"
-            onWheel={handleVolumeGroupWheel}
-          >
-            <ControlButton
-              label={playback.muted ? "Включить звук" : "Выключить звук"}
-              disabled={volumeDisabled}
-              onClick={onMuteToggle}
-            >
-              <IconVolume muted={playback.muted} low={volumeLow} />
-            </ControlButton>
-            <input
-              type="range"
-              min={0}
-              max={1}
-              step={0.05}
-              value={volumeValue}
-              disabled={volumeDisabled}
-              aria-label="Громкость"
-              onChange={(event) => onVolumeChange(Number(event.target.value))}
-              onWheel={handleVolumeWheel}
-              style={{ "--range-fill": volumeFill } as CSSProperties}
-              className="kodik-player-beta-range kodik-player-beta-volume site-range hidden w-20 cursor-pointer sm:block"
-            />
-          </div>
-
-          {pipAvailable && onPictureInPicture ? (
-            <ControlButton
-              label="Картинка в картинке"
-              disabled={disabled}
-              onClick={onPictureInPicture}
-            >
-              <IconPictureInPicture />
-            </ControlButton>
-          ) : null}
-
-          {castAvailable && onCast ? (
-            <ControlButton label="Транслировать на ТВ" disabled={disabled} onClick={onCast}>
-              <IconCast />
-            </ControlButton>
-          ) : null}
-
-          <ControlButton
-            label={theaterLabel}
-            disabled={disabled}
-            pressed={theaterMode !== "normal"}
-            onClick={onTheaterToggle}
-            className="kodik-player-beta-theater-button"
-          >
-            <IconTheater mode={theaterMode} />
-          </ControlButton>
-
-          <ControlButton
-            label={fullscreenActive ? "Выйти из полноэкранного режима" : "На весь экран"}
-            disabled={disabled}
-            pressed={fullscreenActive}
-            onClick={onFullscreenToggle}
-            className="kodik-player-beta-fullscreen-button"
-          >
-            <IconFullscreen active={fullscreenActive} />
-          </ControlButton>
-        </div>
-      </div>
-      {fullscreenActive && onFullscreenTranslationsToggle ? (
-        <button
-          type="button"
-          onClick={onFullscreenTranslationsToggle}
-          className="kodik-player-beta-translations-toggle absolute bottom-1 left-1/2 z-10 inline-flex -translate-x-1/2 items-center gap-1 rounded-md border border-white/5 bg-white/5 px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-white/45 backdrop-blur-sm transition hover:bg-white/10 hover:text-white/75"
-          aria-label={fullscreenTranslationsOpen ? "Скрыть озвучки" : "Показать озвучки"}
-          title={fullscreenTranslationsOpen ? "Скрыть озвучки" : "Показать озвучки"}
-        >
-          {fullscreenTranslationsOpen ? <IconChevronUp /> : <IconChevronDown />}
-          <span>Озвучки</span>
-        </button>
       ) : null}
+
+      <button
+        type="button"
+        disabled={disabled}
+        onMouseDown={(event) => event.preventDefault()}
+        onClick={() => handleSeekSkipButton(-seekSkipLabelSeconds)}
+        className="kodik-player-beta-seek-button h-10 select-none rounded-md px-2 py-1 text-xs font-medium text-white/90 transition hover:bg-white/15 disabled:cursor-not-allowed disabled:opacity-40 sm:h-auto"
+      >
+        −{seekSkipLabelSeconds}
+      </button>
+      <button
+        type="button"
+        disabled={disabled}
+        onMouseDown={(event) => event.preventDefault()}
+        onClick={() => handleSeekSkipButton(seekSkipLabelSeconds)}
+        className="kodik-player-beta-seek-button h-10 select-none rounded-md px-2 py-1 text-xs font-medium text-white/90 transition hover:bg-white/15 disabled:cursor-not-allowed disabled:opacity-40 sm:h-auto"
+      >
+        +{seekSkipLabelSeconds}
+      </button>
+
+      {onNextEpisode ? (
+        <ControlButton
+          label="Следующая серия"
+          disabled={disabled || nextEpisodeDisabled}
+          onClick={onNextEpisode}
+        >
+          <IconNextEpisode />
+        </ControlButton>
+      ) : null}
+
+      {progressReady ? (
+        <span className="hidden min-w-[7.5rem] shrink-0 tabular-nums text-xs text-white/75 sm:inline">
+          {formatWatchPosition(position)} / {formatWatchPosition(duration)}
+        </span>
+      ) : null}
+
+      <div className="kodik-player-beta-controls-actions ml-auto flex items-center gap-1 sm:gap-2">
+        <div
+          className="kodik-player-beta-volume-group flex items-center gap-1 sm:gap-2"
+          onWheel={handleVolumeGroupWheel}
+        >
+          <ControlButton
+            label={playback.muted ? "Включить звук" : "Выключить звук"}
+            disabled={volumeDisabled}
+            onClick={onMuteToggle}
+          >
+            <IconVolume muted={playback.muted} low={volumeLow} />
+          </ControlButton>
+          <input
+            type="range"
+            min={0}
+            max={1}
+            step={0.05}
+            value={volumeValue}
+            disabled={volumeDisabled}
+            aria-label="Громкость"
+            onChange={(event) => onVolumeChange(Number(event.target.value))}
+            onWheel={handleVolumeWheel}
+            style={{ "--range-fill": volumeFill } as CSSProperties}
+            className="kodik-player-beta-range kodik-player-beta-volume site-range hidden w-20 cursor-pointer sm:block"
+          />
+        </div>
+
+        {pipAvailable && onPictureInPicture ? (
+          <ControlButton
+            label="Картинка в картинке"
+            disabled={disabled}
+            onClick={onPictureInPicture}
+          >
+            <IconPictureInPicture />
+          </ControlButton>
+        ) : null}
+
+        {castAvailable && onCast ? (
+          <ControlButton label="Транслировать на ТВ" disabled={disabled} onClick={onCast}>
+            <IconCast />
+          </ControlButton>
+        ) : null}
+
+        <ControlButton
+          label={theaterLabel}
+          disabled={disabled}
+          pressed={theaterMode !== "normal"}
+          onClick={onTheaterToggle}
+          className="kodik-player-beta-theater-button"
+        >
+          <IconTheater mode={theaterMode} />
+        </ControlButton>
+      </div>
+    </>
+  );
+
+  const rightControls = (
+    <ControlButton
+      label={fullscreenActive ? "Выйти из полноэкранного режима" : "На весь экран"}
+      disabled={disabled}
+      pressed={fullscreenActive}
+      onClick={onFullscreenToggle}
+      className="kodik-player-beta-fullscreen-button"
+    >
+      <IconFullscreen active={fullscreenActive} />
+    </ControlButton>
+  );
+
+  const translationsToggle = fullscreenActive && onFullscreenTranslationsToggle ? (
+    <button
+      type="button"
+      onClick={onFullscreenTranslationsToggle}
+      className="kodik-player-beta-translations-toggle absolute bottom-1 left-1/2 z-10 inline-flex -translate-x-1/2 items-center gap-1 rounded-md border border-white/5 bg-white/5 px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-white/45 backdrop-blur-sm transition hover:bg-white/10 hover:text-white/75"
+      aria-label={fullscreenTranslationsOpen ? "Скрыть озвучки" : "Показать озвучки"}
+      title={fullscreenTranslationsOpen ? "Скрыть озвучки" : "Показать озвучки"}
+    >
+      {fullscreenTranslationsOpen ? <IconChevronUp /> : <IconChevronDown />}
+      <span>Озвучки</span>
+    </button>
+  ) : null;
+
+  if (qualitySplit) {
+    return (
+      <div
+        className={[
+          "kodik-player-beta-controls relative text-white",
+          "pointer-events-none",
+          overlay ? "rounded-none border-0" : "",
+        ].join(" ")}
+      >
+        <div className="flex items-end gap-[clamp(2.5rem,6vw,5rem)] px-2 pb-2 sm:px-3">
+          <div className={["pointer-events-auto min-w-0 flex-1 px-2 py-1.5 sm:px-3 -mr-6", panelClass].join(" ")}>
+            {progressBar}
+            <div className="kodik-player-beta-controls-row flex items-center gap-1 sm:gap-2">
+              {leftControls}
+            </div>
+          </div>
+          <div className={["pointer-events-auto shrink-0 pl-6 pr-1 py-1.5", panelClass].join(" ")}>
+            {rightControls}
+          </div>
+        </div>
+        {translationsToggle}
+      </div>
+    );
+  }
+
+  return (
+    <div
+      className={[
+        "kodik-player-beta-controls relative px-2 py-1.5 text-white sm:px-3",
+        interactive ? "pointer-events-auto" : "pointer-events-none",
+        overlay
+          ? "kodik-player-beta-controls--overlay rounded-none border-0 pb-2"
+          : "rounded-b-lg border border-t-0 border-border bg-[#0f0f0f]",
+      ].join(" ")}
+    >
+      {progressBar}
+      <div className="kodik-player-beta-controls-row flex items-center gap-1 sm:gap-2">
+        {leftControls}
+        {!controlsDocked && (
+          <button
+            type="button"
+            disabled={disabled || !playback.mediaUnlocked}
+            aria-label="Качество видео"
+            title="Качество видео (наведите в правый нижний угол)"
+            onClick={handleQualityTap}
+            onMouseDown={(e) => e.preventDefault()}
+            className={[
+              "inline-flex h-10 shrink-0 items-center justify-center rounded-md text-[11px] font-semibold transition select-none disabled:cursor-not-allowed disabled:opacity-40 sm:h-9 sm:text-xs",
+              playback.mediaUnlocked ? "cursor-pointer hover:bg-white/15 active:scale-95 text-white/80" : "cursor-default text-white/40",
+            ].join(" ")}
+            style={{ width: "clamp(2.5rem, 6vw, 5rem)" }}
+          >
+            Авто
+          </button>
+        )}
+        {rightControls}
+      </div>
+      {translationsToggle}
     </div>
   );
 }

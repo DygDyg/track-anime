@@ -4,6 +4,7 @@ import {
   createContext,
   useContext,
   useEffect,
+  useRef,
   useState,
   type MouseEvent,
   type ReactNode,
@@ -12,6 +13,11 @@ import { usePathname } from "next/navigation";
 import { emitCompanionReaction, emitCompanionSituation } from "@/lib/companion/companion-bus";
 
 const NavigationPendingContext = createContext<(pending: boolean) => void>(() => {});
+
+/** Keep jumpRope visible at least this long (pathname often flips before content is ready). */
+const MIN_JUMP_ROPE_MS = 1000;
+/** Extra hold after pathname change while RSC/stream settles. */
+const POST_PATH_SETTLE_MS = 400;
 
 function normalizePath(path: string): string {
   const base = path.split("#")[0]?.split("?")[0] ?? path;
@@ -48,18 +54,36 @@ export function useNavigationClick(href: string, onClick?: (event: MouseEvent<HT
 export function NavigationProgressProvider({ children }: { children: ReactNode }) {
   const pathname = usePathname();
   const [pending, setPending] = useState(false);
+  const navInFlightRef = useRef(false);
+  const jumpRopeStartedAtRef = useRef(0);
 
   useEffect(() => {
-    setPending(false);
-    // Page arrived / finished client navigation → situation for this tab.
-    emitCompanionSituation(pathname, { force: true });
+    if (!navInFlightRef.current) {
+      setPending(false);
+      emitCompanionSituation(pathname, { force: true });
+      return;
+    }
+
+    navInFlightRef.current = false;
+    const elapsed = Date.now() - jumpRopeStartedAtRef.current;
+    const delay = Math.max(POST_PATH_SETTLE_MS, MIN_JUMP_ROPE_MS - elapsed);
+    const timer = window.setTimeout(() => {
+      setPending(false);
+      emitCompanionSituation(pathname, { force: true });
+    }, delay);
+
+    return () => window.clearTimeout(timer);
   }, [pathname]);
 
   return (
     <NavigationPendingContext.Provider
       value={(next) => {
         setPending(next);
-        if (next) emitCompanionReaction("jumpRopeLoading", { force: true });
+        if (next) {
+          navInFlightRef.current = true;
+          jumpRopeStartedAtRef.current = Date.now();
+          emitCompanionReaction("jumpRopeLoading", { force: true });
+        }
       }}
     >
       {pending ? (

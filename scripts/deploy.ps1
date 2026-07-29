@@ -1,5 +1,6 @@
-# Полный деплой Track Anime: tar -> scp -> server-deploy.sh
+# Полный деплой сайта Track Anime: tar -> scp -> server-deploy.sh
 # Сборка выполняется на сервере (без WSL).
+# RPC/APK отдельно: deploy-rpc.ps1 / deploy-apk.ps1; авто-выбор: deploy-auto.ps1
 #
 # Использование:
 #   .\scripts\deploy.ps1
@@ -8,6 +9,7 @@
 #   .\scripts\deploy.ps1 -Remote "root@1.2.3.4"
 #   .\scripts\deploy.ps1 -SkipBuild
 #   .\scripts\deploy.ps1 -ApkPath "android\app\build\outputs\apk\release\app-release.apk"
+#   .\scripts\deploy.ps1 -SkipTrayPublish -ExcludeRpcExe -ExcludeApk
 #
 # См. docs/DEPLOY.md
 
@@ -19,10 +21,20 @@ param(
     [string]$ApkPath = "",
     [switch]$DryRun,
     [switch]$ForceTrayRebuild,
-    [switch]$SkipBuild
+    [switch]$SkipBuild,
+    [switch]$SkipTrayPublish,
+    [switch]$ExcludeRpcExe,
+    [switch]$ExcludeApk
 )
 
 $ErrorActionPreference = "Stop"
+
+. (Join-Path $PSScriptRoot "deploy-config.ps1")
+
+$DefaultRemote = "root@195.26.230.35"
+$DefaultSshKey = "$env:USERPROFILE\.ssh\id_rsa"
+$DefaultServerAppDir = "/var/www/ta_new"
+$DefaultUploadChunkSizeMB = 48
 
 $ProjectRoot = (Resolve-Path (Join-Path $PSScriptRoot "..")).Path
 $DeployTempDir = Join-Path $ProjectRoot "temp\deploy"
@@ -30,6 +42,16 @@ $TarPath = Join-Path $DeployTempDir ("ta_deploy_{0:yyyyMMddHHmmss}.tar.gz" -f (G
 $ProgressIdPack = 1
 $ProgressIdUpload = 2
 $ProgressIdServer = 3
+
+Merge-TaDeployLocalParams `
+    -Remote ([ref]$Remote) `
+    -DefaultRemote $DefaultRemote `
+    -SshKey ([ref]$SshKey) `
+    -DefaultSshKey $DefaultSshKey `
+    -ServerAppDir ([ref]$ServerAppDir) `
+    -DefaultServerAppDir $DefaultServerAppDir `
+    -UploadChunkSizeMB ([ref]$UploadChunkSizeMB) `
+    -DefaultUploadChunkSizeMB $DefaultUploadChunkSizeMB | Out-Null
 
 function Write-Step {
     param(
@@ -72,58 +94,9 @@ function Format-Megabytes {
     return [math]::Round($Bytes / 1MB, 1)
 }
 
-function Publish-AndroidApk {
-    param([string]$SourcePath)
-
-    if (-not $SourcePath) {
-        Write-Step "Android APK: not specified, skip"
-        return
-    }
-
-    $resolvedSource = Resolve-Path -LiteralPath $SourcePath -ErrorAction SilentlyContinue
-    if (-not $resolvedSource -or -not (Test-Path -LiteralPath $resolvedSource -PathType Leaf)) {
-        throw "Android APK not found: $SourcePath"
-    }
-
-    $downloadsDir = Join-Path $ProjectRoot "public\downloads"
-    $targetPath = Join-Path $downloadsDir "TrackAnime.apk"
-    $manifestPath = Join-Path $downloadsDir "TrackAnime.json"
-    New-Item -ItemType Directory -Path $downloadsDir -Force | Out-Null
-    Copy-Item -LiteralPath $resolvedSource.Path -Destination $targetPath -Force
-    $sdkRoot = if ($env:ANDROID_HOME) { $env:ANDROID_HOME } else { Join-Path $env:LOCALAPPDATA "Android\Sdk" }
-    $aaptCandidates = Get-ChildItem -Path (Join-Path $sdkRoot "build-tools") -Filter "aapt.exe" -Recurse -ErrorAction SilentlyContinue |
-        Sort-Object FullName -Descending
-    if (-not $aaptCandidates) {
-        throw "Android Build Tools (aapt.exe) not found under $sdkRoot. Install Android SDK Build-Tools before deployment."
-    }
-    $badging = & $aaptCandidates[0].FullName dump badging $targetPath
-    $packageLine = $badging | Where-Object { $_ -like "package:*" } | Select-Object -First 1
-    if ($LASTEXITCODE -ne 0 -or -not $packageLine -or $packageLine -notmatch "versionCode='(?<code>\d+)'\s+versionName='(?<name>[^']*)'") {
-        throw "Could not read versionCode/versionName from Android APK: $targetPath"
-    }
-    $versionCode = [int64]$Matches["code"]
-    $versionName = $Matches["name"]
-    $sha256 = (Get-FileHash -Algorithm SHA256 -LiteralPath $targetPath).Hash.ToLowerInvariant()
-    [ordered]@{
-        versionCode = $versionCode
-        versionName = $versionName
-        apkUrl = "/downloads/TrackAnime.apk"
-        sha256 = $sha256
-    } | ConvertTo-Json | Set-Content -LiteralPath $manifestPath -Encoding utf8
-    $apkSizeMb = Format-Megabytes (Get-Item -LiteralPath $targetPath).Length
-    Write-Step "Android APK: published $targetPath ($apkSizeMb MB), manifest $manifestPath (v$versionName, code $versionCode)"
-}
-
 function Get-SshBaseOptions {
     param([string]$Key)
-    return @(
-        "-i", $Key,
-        "-o", "BatchMode=yes",
-        "-o", "ConnectTimeout=25",
-        "-o", "ConnectionAttempts=1",
-        "-o", "ServerAliveInterval=15",
-        "-o", "ServerAliveCountMax=8"
-    )
+    return @(Get-TaDeploySshOptions -Key $Key)
 }
 
 function Invoke-SshQuiet {
@@ -151,9 +124,13 @@ function Invoke-SshWithRetry {
         [string]$Key,
         [string]$RemoteHost,
         [string]$Command,
-        [int]$MaxAttempts = 5,
+        [int]$MaxAttempts = -1,
         [string]$Step = "SSH"
     )
+
+    if ($MaxAttempts -lt 0) {
+        $MaxAttempts = Get-TaDeployRetryAttempts -Kind ssh -Default 5
+    }
 
     $lastExit = 255
     $lastOutput = $null
@@ -179,17 +156,15 @@ function Invoke-ScpWithRetry {
         [string]$Key,
         [string]$ArchivePath,
         [string]$Target,
-        [int]$MaxAttempts = 5,
+        [int]$MaxAttempts = -1,
         [string]$Step = "scp upload"
     )
 
-    $scpOpts = @(
-        "-i", $Key,
-        "-o", "ConnectTimeout=30",
-        "-o", "ConnectionAttempts=1",
-        "-o", "ServerAliveInterval=15",
-        "-o", "ServerAliveCountMax=8"
-    )
+    if ($MaxAttempts -lt 0) {
+        $MaxAttempts = Get-TaDeployRetryAttempts -Kind scp -Default 5
+    }
+
+    $scpOpts = @(Get-TaDeployScpOptions -Key $Key)
 
     $lastExit = 255
     for ($attempt = 1; $attempt -le $MaxAttempts; $attempt++) {
@@ -269,6 +244,7 @@ function Test-DeployExcludedFile {
         $Name -eq ".workspace.json" -or
         $Name -eq "Desktop.ini" -or
         $Name -eq "tsconfig.tsbuildinfo" -or
+        $Name -eq "Aqua_Coder_Chibi_Codex_Handoff_v2.zip" -or
         $Name -like "*.tar.gz" -or
         $Name -like "*~ov.ico" -or
         $Name -like "*.mp4" -or
@@ -279,8 +255,17 @@ function Test-DeployExcludedFile {
 function Get-DeploySourceBytes {
     param([string]$Root)
 
+    # Top-level only. Do NOT put "avatar-decorations" here for tar — bsdtar would also
+    # drop public/avatar-decorations. Size estimate skips root scratch copy separately.
     $excludedTop = [System.Collections.Generic.HashSet[string]]::new(
-        [string[]]@("node_modules", ".next", ".git", "tmp", "temp", ".cursor", ".kilo", ".roo", ".idea"),
+        [string[]]@(
+            "node_modules", ".next", ".git", "tmp", "temp",
+            ".cursor", ".kilo", ".roo", ".idea", "android",
+            ".chats", ".embeddings", ".memory",
+            "Aqua_Coder_Chibi_Codex_Handoff_v2",
+            "aqua-coder-web",
+            "backups", "e"
+        ),
         [StringComparer]::OrdinalIgnoreCase
     )
     $total = [int64]0
@@ -293,6 +278,26 @@ function Get-DeploySourceBytes {
             foreach ($item in Get-ChildItem -LiteralPath $dir -Force -ErrorAction Stop) {
                 if ($item.PSIsContainer) {
                     if ($excludedTop.Contains($item.Name)) {
+                        continue
+                    }
+                    # Runtime caches under data/ (gitignored; rebuilt on server).
+                    if ($item.Name -eq "data") {
+                        foreach ($dataChild in Get-ChildItem -LiteralPath $item.FullName -Force -ErrorAction SilentlyContinue) {
+                            if ($dataChild.PSIsContainer -and (
+                                $dataChild.Name -eq "cover-cache" -or $dataChild.Name -eq "image-cache"
+                            )) {
+                                continue
+                            }
+                            if ($dataChild.PSIsContainer) {
+                                $stack.Push($dataChild.FullName)
+                            } elseif (-not (Test-DeployExcludedFile -Name $dataChild.Name)) {
+                                $total += $dataChild.Length
+                            }
+                        }
+                        continue
+                    }
+                    # Root scratch PNGs; keep public/avatar-decorations in the archive.
+                    if ($item.Name -eq "avatar-decorations" -and $dir -eq $Root) {
                         continue
                     }
                     $stack.Push($item.FullName)
@@ -530,18 +535,29 @@ Write-Step "project: $ProjectRoot"
 Write-Step "remote:  $Remote"
 Write-Step "app dir: $ServerAppDir"
 Write-Step "local temp: $DeployTempDir"
+Write-Step "upload chunk: $UploadChunkSizeMB MB"
+Write-TaDeployConfigStatus -Prefix "[deploy]"
 
-Publish-AndroidApk -SourcePath $ApkPath
-
-Write-Step "discord tray publish..."
-$distExe = Join-Path $ProjectRoot "scripts\discord-rpc-tray\dist\TrackAnimeDiscordRPC.exe"
-if ($ForceTrayRebuild -or -not (Test-Path $distExe)) {
-  npm run discord:tray:publish
+if ($ApkPath) {
+    Write-Step "Android APK: publish locally..."
+    & (Join-Path $PSScriptRoot "publish-android-apk.ps1") -SourcePath $ApkPath -ProjectRoot $ProjectRoot
 } else {
-  Write-Step "discord tray: copy existing exe (use -ForceTrayRebuild to rebuild)"
-  node scripts/publish-discord-tray-exe.mjs
+    Write-Step "Android APK: not specified, skip local publish"
 }
-Assert-LastExit "discord tray publish"
+
+if ($SkipTrayPublish -and -not $ForceTrayRebuild) {
+    Write-Step "discord tray: skip publish (-SkipTrayPublish)"
+} else {
+    Write-Step "discord tray publish..."
+    $distExe = Join-Path $ProjectRoot "scripts\discord-rpc-tray\dist\TrackAnimeDiscordRPC.exe"
+    if ($ForceTrayRebuild -or -not (Test-Path $distExe)) {
+        npm run discord:tray:publish
+    } else {
+        Write-Step "discord tray: copy existing exe (use -ForceTrayRebuild to rebuild)"
+        node scripts/publish-discord-tray-exe.mjs
+    }
+    Assert-LastExit "discord tray publish"
+}
 
 $tarExcludes = @(
     "--exclude=node_modules",
@@ -552,11 +568,23 @@ $tarExcludes = @(
     "--exclude=tmp",
     "--exclude=temp",
     "--exclude=scripts/discord-rpc-tray",
+    "--exclude=android",
     "--exclude=.cursor",
     "--exclude=.kilo",
     "--exclude=.roo",
     "--exclude=.workspace.json",
     "--exclude=.idea",
+    "--exclude=.chats",
+    "--exclude=.embeddings",
+    "--exclude=.memory",
+    "--exclude=Aqua_Coder_Chibi_Codex_Handoff_v2",
+    "--exclude=Aqua_Coder_Chibi_Codex_Handoff_v2.zip",
+    "--exclude=aqua-coder-web",
+    "--exclude=data/cover-cache",
+    "--exclude=data/image-cache",
+    "--exclude=backups",
+    "--exclude=e",
+    "--exclude=avatar-decorations.__deploy_exclude__",
     "--exclude=Desktop.ini",
     "--exclude=*.tar.gz",
     "--exclude=*~ov.ico",
@@ -565,8 +593,42 @@ $tarExcludes = @(
     "--exclude=tsconfig.tsbuildinfo"
 )
 
+# Root avatar-decorations is local scratch (~27 MB). bsdtar --exclude=avatar-decorations
+# also drops public/avatar-decorations, so rename briefly around tar instead.
+$rootAvatarDecorations = Join-Path $ProjectRoot "avatar-decorations"
+$rootAvatarDecorationsParked = Join-Path $ProjectRoot "avatar-decorations.__deploy_exclude__"
+$parkedRootAvatar = $false
+if (Test-Path -LiteralPath $rootAvatarDecorations) {
+    if (Test-Path -LiteralPath $rootAvatarDecorationsParked) {
+        Remove-Item -LiteralPath $rootAvatarDecorationsParked -Recurse -Force
+    }
+    Rename-Item -LiteralPath $rootAvatarDecorations -NewName "avatar-decorations.__deploy_exclude__"
+    $parkedRootAvatar = $true
+    Write-Step "tar: park root avatar-decorations (keep public/avatar-decorations)"
+}
+
+if ($ExcludeRpcExe) {
+    $tarExcludes += "--exclude=public/downloads/TrackAnimeDiscordRPC.exe"
+    Write-Step "tar: exclude TrackAnimeDiscordRPC.exe (keep server copy)"
+}
+if ($ExcludeApk) {
+    $tarExcludes += "--exclude=public/downloads/TrackAnime.apk"
+    $tarExcludes += "--exclude=public/downloads/TrackAnime.json"
+    Write-Step "tar: exclude TrackAnime.apk/json (keep server copy)"
+}
+
 Write-Step "pack..."
-$tarBytes = Invoke-PackWithProgress -ArchivePath $TarPath -TarExcludes $tarExcludes
+try {
+    $tarBytes = Invoke-PackWithProgress -ArchivePath $TarPath -TarExcludes $tarExcludes
+} finally {
+    if ($parkedRootAvatar -and (Test-Path -LiteralPath $rootAvatarDecorationsParked)) {
+        if (Test-Path -LiteralPath $rootAvatarDecorations) {
+            Remove-Item -LiteralPath $rootAvatarDecorations -Recurse -Force
+        }
+        Rename-Item -LiteralPath $rootAvatarDecorationsParked -NewName "avatar-decorations"
+        Write-Step "tar: restored root avatar-decorations"
+    }
+}
 $tarSizeMb = Format-Megabytes $tarBytes
 Write-Step "archive: $TarPath ($tarSizeMb MB)"
 

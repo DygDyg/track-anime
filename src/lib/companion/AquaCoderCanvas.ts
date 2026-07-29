@@ -44,6 +44,11 @@ export type PlayOptions = {
   playbackRate?: number;
 };
 
+type PendingPlay = {
+  name: string;
+  playbackRate: number;
+};
+
 /** Framework-independent sprite player. It fetches the manifest once and each atlas only on first use. */
 export class AquaCoderCanvas {
   private readonly context: CanvasRenderingContext2D;
@@ -62,6 +67,8 @@ export class AquaCoderCanvas {
   private staticMode = false;
   /** When > 0, loop animation holds the last frame until this timestamp. */
   private loopGapUntil = 0;
+  /** Latest requested animation; applied when the current cycle finishes. */
+  private pending: PendingPlay | null = null;
   /** Monotonic token so a slower `play()` load cannot overwrite a newer request. */
   private playToken = 0;
   private animationFrame?: number;
@@ -90,14 +97,9 @@ export class AquaCoderCanvas {
       const token = ++this.playToken;
       await this.load(name);
       if (token !== this.playToken) return;
-      this.current = name;
-      this.playbackRate = animation.playbackRate;
-      this.frame = 0;
-      this.loopGapUntil = 0;
-      this.transitioning = false;
-      this.resize();
+      this.pending = null;
+      this.applyPlay(name, animation.playbackRate);
       this.observeVisibility();
-      this.frameStartedAt = performance.now();
       this.animationFrame = requestAnimationFrame(this.draw);
       if (this.staticMode) this.finishOnceIfNeeded();
     } catch (error) {
@@ -106,15 +108,28 @@ export class AquaCoderCanvas {
     }
   }
 
-  /** Downloads an atlas only once and then uses browser plus memory cache. */
+  /**
+   * Downloads an atlas only once and then uses browser plus memory cache.
+   * If another animation is mid-cycle, queues this request and switches only when that cycle ends.
+   */
   async play(name: string, options: PlayOptions = {}): Promise<void> {
     const animation = this.manifest.animations[name];
     if (!animation) throw new Error(`Unknown Aqua Coder animation: ${name}`);
     const playbackRate = options.playbackRate ?? animation.playbackRate;
     this.assertPlaybackRate(playbackRate);
     const token = ++this.playToken;
+    this.pending = { name, playbackRate };
     await this.load(name);
     if (token !== this.playToken) return;
+    if (this.isMidCycle() && name !== this.current) {
+      return;
+    }
+    this.pending = null;
+    this.applyPlay(name, playbackRate);
+    if (this.staticMode) this.finishOnceIfNeeded();
+  }
+
+  private applyPlay(name: string, playbackRate: number): void {
     this.current = name;
     this.playbackRate = playbackRate;
     this.frame = 0;
@@ -122,7 +137,28 @@ export class AquaCoderCanvas {
     this.loopGapUntil = 0;
     this.transitioning = false;
     this.resize();
+  }
+
+  /** True while the current clip still has frames left in this cycle. */
+  private isMidCycle(): boolean {
+    if (this.staticMode || !this.current || !this.manifest) return false;
+    if (this.transitioning) return false;
+    if (this.loopGapUntil > 0) return false;
+    return true;
+  }
+
+  /** Apply queued play at a cycle boundary. Returns true if a switch happened. */
+  private flushPendingPlay(): boolean {
+    const next = this.pending;
+    if (!next) return false;
+    if (!this.images.has(next.name)) {
+      // Atlas still loading — hold last frame until it arrives.
+      return false;
+    }
+    this.pending = null;
+    this.applyPlay(next.name, next.playbackRate);
     if (this.staticMode) this.finishOnceIfNeeded();
+    return true;
   }
 
   /** Changes the on-screen size without restarting the animation. */
@@ -141,7 +177,10 @@ export class AquaCoderCanvas {
     this.frame = 0;
     this.loopGapUntil = 0;
     this.frameStartedAt = performance.now();
-    if (enabled) this.finishOnceIfNeeded();
+    if (enabled) {
+      this.flushPendingPlay();
+      this.finishOnceIfNeeded();
+    }
   }
 
   /** Changes the speed of the currently playing animation without restarting its frame sequence. */
@@ -160,6 +199,7 @@ export class AquaCoderCanvas {
 
   destroy(): void {
     this.stop();
+    this.pending = null;
     this.images.clear();
   }
 
@@ -232,10 +272,12 @@ export class AquaCoderCanvas {
 
   private draw = (now: number): void => {
     if (!this.paused) {
-      const animation = this.manifest.animations[this.current];
+      let animation = this.manifest.animations[this.current];
       if (!this.staticMode) {
         if (this.loopGapUntil > 0) {
-          if (now >= this.loopGapUntil) {
+          if (this.pending && this.flushPendingPlay()) {
+            animation = this.manifest.animations[this.current];
+          } else if (now >= this.loopGapUntil) {
             this.loopGapUntil = 0;
             this.frame = 0;
             this.frameStartedAt = now;
@@ -247,12 +289,31 @@ export class AquaCoderCanvas {
             this.frameStartedAt += steps * duration;
             this.frame += steps;
             if (this.frame >= animation.frames) {
-              if (animation.mode === "loop") {
-                this.frame = animation.frames - 1;
-                this.loopGapUntil = now + Math.random() * 5000;
+              if (this.pending) {
+                if (this.flushPendingPlay()) {
+                  animation = this.manifest.animations[this.current];
+                } else {
+                  // Keep last frame until the queued atlas finishes loading.
+                  this.frame = animation.frames - 1;
+                }
+              } else if (animation.mode === "loop") {
+                // Continuous motion poses — no idle-style pause between cycles.
+                if (
+                  this.current === "jumpRopeLoading"
+                  || this.current === "runRight"
+                  || this.current === "runLeft"
+                  || this.current === "jump"
+                  || this.current === "work"
+                ) {
+                  this.frame %= animation.frames;
+                } else {
+                  this.frame = animation.frames - 1;
+                  this.loopGapUntil = now + Math.random() * 5000;
+                }
               } else if (!this.transitioning) {
                 this.frame = animation.frames - 1;
                 this.finishOnceAnimation(animation.returnTo ?? this.manifest.fallback);
+                animation = this.manifest.animations[this.current];
               }
             }
           }
@@ -261,7 +322,7 @@ export class AquaCoderCanvas {
         this.frame = 0;
       }
       const image = this.images.get(this.current);
-      if (image && image.naturalWidth > 0) {
+      if (image && image.naturalWidth > 0 && animation) {
         const { cellWidth, cellHeight } = this.sourceCell(image, animation);
         const atlasColumns = Math.max(1, Math.round(image.naturalWidth / cellWidth));
         const column = this.frame % atlasColumns;
@@ -298,15 +359,31 @@ export class AquaCoderCanvas {
   private finishOnceAnimation(returnTo: string): void {
     if (this.transitioning) return;
     this.transitioning = true;
-    const event: AnimationCompleteEvent = { animation: this.current, returnTo };
+    const queued = this.pending;
+    const event: AnimationCompleteEvent = {
+      animation: this.current,
+      returnTo: queued?.name ?? returnTo,
+    };
     this.onAnimationComplete?.(event);
     if (event.cancelAutoReturn) {
       this.transitioning = false;
-    } else {
-      void this.play(returnTo).finally(() => {
-        this.transitioning = false;
-      });
+      this.flushPendingPlay();
+      return;
     }
+    if (queued) {
+      this.pending = null;
+      void this.load(queued.name)
+        .then(() => {
+          this.applyPlay(queued.name, queued.playbackRate);
+        })
+        .finally(() => {
+          this.transitioning = false;
+        });
+      return;
+    }
+    void this.play(returnTo).finally(() => {
+      this.transitioning = false;
+    });
   }
 
   private assertPlaybackRate(playbackRate: number): void {
