@@ -4,6 +4,7 @@ import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } fr
 import { ReleaseCard } from "@/components/ReleaseCard";
 import { useSiteSettings } from "@/components/SiteSettingsProvider";
 import {
+  isHomeScoreVisible,
   isHomeTranslationVisible,
   matchesHomeStatusFilter,
   readHomeStatusFilter,
@@ -117,9 +118,10 @@ export function ReleaseFeed({
         (item) =>
           !excludeIdSet.has(item.id) &&
           isHomeTranslationVisible(item.translationName, settings.homeTranslationFilter) &&
-          matchesHomeStatusFilter(item.status, statusFilter),
+          matchesHomeStatusFilter(item.status, statusFilter) &&
+          isHomeScoreVisible(item.score, settings.hideZeroScoreOnHome),
       ),
-    [items, excludeIdSet, settings.homeTranslationFilter, statusFilter],
+    [items, excludeIdSet, settings.homeTranslationFilter, settings.hideZeroScoreOnHome, statusFilter],
   );
 
   const loadMore = useCallback(async () => {
@@ -160,6 +162,7 @@ export function ReleaseFeed({
           itemsRef.current,
           settings.homeTranslationFilter,
           statusFilter,
+          settings.hideZeroScoreOnHome,
         );
         if (visibleCount >= pageSize) break;
 
@@ -177,7 +180,7 @@ export function ReleaseFeed({
       loadingRef.current = false;
       setLoading(false);
     }
-  }, [pageSize, settings.homeTranslationFilter, statusFilter]);
+  }, [pageSize, settings.homeTranslationFilter, settings.hideZeroScoreOnHome, statusFilter]);
 
   const pollForNewReleases = useCallback(async () => {
     if (document.hidden) return;
@@ -274,12 +277,14 @@ export function ReleaseFeed({
     if (loadingRef.current || !hasMoreRef.current) return;
     if (visibleItems.length >= pageSize) return;
     void loadMoreRef.current();
-  }, [visibleItems.length, pageSize, settings.homeTranslationFilter, statusFilter]);
+  }, [visibleItems.length, pageSize, settings.homeTranslationFilter, settings.hideZeroScoreOnHome, statusFilter]);
 
   const emptyMessage =
     statusFilter !== "all"
       ? "Нет серий для выбранного фильтра статуса."
-      : "Нет серий для выбранных озвучек. Откройте настройки и отметьте нужные студии.";
+      : settings.hideZeroScoreOnHome
+        ? "Нет серий для выбранных озвучек или фильтров. Откройте настройки, если нужно показать тайтлы без рейтинга."
+        : "Нет серий для выбранных озвучек. Откройте настройки и отметьте нужные студии.";
 
   return (
     <>
@@ -393,11 +398,13 @@ function visibleItemsCount(
   items: ReleaseItemDto[],
   translationFilter: HomeTranslationFilter,
   statusFilter: HomeStatusFilter,
+  hideZeroScore: boolean,
 ): number {
   return items.filter(
     (item) =>
       isHomeTranslationVisible(item.translationName, translationFilter) &&
-      matchesHomeStatusFilter(item.status, statusFilter),
+      matchesHomeStatusFilter(item.status, statusFilter) &&
+      isHomeScoreVisible(item.score, hideZeroScore),
   ).length;
 }
 

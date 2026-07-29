@@ -757,6 +757,12 @@ export function SiteSettingsHomeTab({
           onChange={(checked) => updateSettings({ preferPosterOverScreenshot: checked })}
         />
         <ToggleRow
+          label="Скрывать тайтлы без рейтинга"
+          hint="Убирает из ленты карточки с пустым рейтингом Shikimori (и с 0 — бейдж не показывается)"
+          checked={settings.hideZeroScoreOnHome}
+          onChange={(checked) => updateSettings({ hideZeroScoreOnHome: checked })}
+        />
+        <ToggleRow
           label="Относительное время"
           hint="«2 часа назад» вместо точной даты на карточках"
           checked={settings.showRelativeTime}

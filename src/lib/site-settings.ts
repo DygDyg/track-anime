@@ -1,3 +1,4 @@
+import { parseAnimeScore } from "@/lib/anime-score";
 import { normalizeAvatarDecorationId } from "@/lib/avatar-decorations";
 import { filterPopularTranslationNames } from "@/lib/translation-colors";
 import {
@@ -38,6 +39,20 @@ export function matchesHomeStatusFilter(
   return normalized === "released";
 }
 
+/** Нет отображаемого рейтинга: пустой score или ≤0 (как у AnimeScoreBadge). */
+export function isEmptyOrZeroHomeScore(score: string | null | undefined): boolean {
+  return parseAnimeScore(score) == null;
+}
+
+/** Видимость карточки на главной с учётом hideZeroScoreOnHome. */
+export function isHomeScoreVisible(
+  score: string | null | undefined,
+  hideEmptyScore: boolean,
+): boolean {
+  if (!hideEmptyScore) return true;
+  return !isEmptyOrZeroHomeScore(score);
+}
+
 /** null = без фона; строка = URL выбранного изображения */
 export type SiteBackgroundImageUrl = string | null;
 
@@ -76,6 +91,8 @@ export type SiteSettings = {
   preferPosterOverScreenshot: boolean;
   showRelativeTime: boolean;
   showClock: boolean;
+  /** Скрывать на главной тайтлы без рейтинга (пустой score или ≤0) */
+  hideZeroScoreOnHome: boolean;
   homeTranslationFilter: HomeTranslationFilter;
   hoverTrailerEnabled: boolean;
   hoverTrailerDelaySec: number;
@@ -127,6 +144,7 @@ export const DEFAULT_SITE_SETTINGS: SiteSettings = {
   preferPosterOverScreenshot: false,
   showRelativeTime: true,
   showClock: false,
+  hideZeroScoreOnHome: true,
   homeTranslationFilter: null,
   hoverTrailerEnabled: true,
   hoverTrailerDelaySec: HOVER_TRAILER_DELAY_DEFAULT_SEC,
@@ -321,6 +339,7 @@ export function normalizeSiteSettings(raw: unknown): SiteSettings {
     preferPosterOverScreenshot: raw.preferPosterOverScreenshot === true,
     showRelativeTime: raw.showRelativeTime !== false,
     showClock: raw.showClock === true,
+    hideZeroScoreOnHome: raw.hideZeroScoreOnHome !== false,
     homeTranslationFilter: parseHomeTranslationFilter(raw.homeTranslationFilter),
     hoverTrailerEnabled: raw.hoverTrailerEnabled !== false,
     hoverTrailerDelaySec: parseHoverTrailerDelaySec(raw.hoverTrailerDelaySec),
