@@ -118,6 +118,12 @@ export type SiteSettings = {
   autoSkipTranslationIds: AutoSkipTranslationIds;
   /** Видимость полосы прогресса, когда интерфейс TA-плеера скрыт; 0 = выключена */
   betaHiddenProgressOpacity: number;
+  /**
+   * Динамическое изменение ширины панели управления TA-плеера:
+   * true — раздвижка при наведении на зону качества Kodik;
+   * false — панель всегда раздвинута (доступ к качеству Kodik).
+   */
+  playerControlsDynamicWidth: boolean;
   /** Локально для устройства: навигация стрелками по карточкам сайта */
   tvNavigationEnabled: boolean;
   /** Показывать companion Aqua Coder в правом нижнем углу */
@@ -159,6 +165,7 @@ export const DEFAULT_SITE_SETTINGS: SiteSettings = {
   autoSkipOpeningsEndings: false,
   autoSkipTranslationIds: {},
   betaHiddenProgressOpacity: BETA_HIDDEN_PROGRESS_OPACITY_DEFAULT,
+  playerControlsDynamicWidth: true,
   tvNavigationEnabled: true,
   companionEnabled: true,
   companionScale: COMPANION_SCALE_DEFAULT,
@@ -354,6 +361,7 @@ export function normalizeSiteSettings(raw: unknown): SiteSettings {
     autoSkipOpeningsEndings: raw.autoSkipOpeningsEndings === true,
     autoSkipTranslationIds: parseAutoSkipTranslationIds(raw.autoSkipTranslationIds),
     betaHiddenProgressOpacity: normalizeBetaHiddenProgressOpacity(raw.betaHiddenProgressOpacity),
+    playerControlsDynamicWidth: raw.playerControlsDynamicWidth !== false,
     tvNavigationEnabled: raw.tvNavigationEnabled !== false,
     companionEnabled: raw.companionEnabled !== false,
     companionScale: normalizeCompanionScale(raw.companionScale),

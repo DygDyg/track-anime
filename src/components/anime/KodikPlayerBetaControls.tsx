@@ -50,6 +50,13 @@ type Props = {
   qualityHover?: boolean;
   /** True when controls are docked below the player (portrait mobile). */
   controlsDocked?: boolean;
+  /**
+   * When false, quality panel stays split open (always).
+   * When true (default), split only on hover/tap.
+   */
+  qualityPanelDynamicWidth?: boolean;
+  /** Fires when the quality gap is open (hover, tap, or always-split). */
+  onQualityPanelActiveChange?: (active: boolean) => void;
 };
 
 type RangeStyle = CSSProperties & {
@@ -272,12 +279,21 @@ export function KodikPlayerBetaControls({
   interactive = true,
   qualityHover = false,
   controlsDocked = false,
+  qualityPanelDynamicWidth = true,
+  onQualityPanelActiveChange,
 }: Props) {
   const duration = Math.max(playback.durationSeconds, 0);
   const position = Math.min(Math.max(playback.positionSeconds, 0), duration || playback.positionSeconds);
   const [qualityTapOpen, setQualityTapOpen] = useState(false);
   const qualityTapTimerRef = useRef<number | null>(null);
-  const qualitySplit = !controlsDocked && (qualityHover || qualityTapOpen) && playback.mediaUnlocked;
+  const qualitySplit =
+    !controlsDocked &&
+    playback.mediaUnlocked &&
+    (!qualityPanelDynamicWidth || qualityHover || qualityTapOpen);
+
+  useEffect(() => {
+    onQualityPanelActiveChange?.(qualitySplit);
+  }, [qualitySplit, onQualityPanelActiveChange]);
 
   const handleQualityTap = useCallback(() => {
     if (!playback.mediaUnlocked) return;
@@ -582,15 +598,25 @@ export function KodikPlayerBetaControls({
           overlay ? "rounded-none border-0" : "",
         ].join(" ")}
       >
-        <div className="flex items-end gap-[clamp(2.5rem,6vw,5rem)] px-2 pb-2 sm:px-3">
+        <div className="flex items-stretch gap-[clamp(2.5rem,6vw,5rem)] px-2 pb-2 sm:px-3">
           <div className={["pointer-events-auto min-w-0 flex-1 px-2 py-1.5 sm:px-3 -mr-6", panelClass].join(" ")}>
             {progressBar}
             <div className="kodik-player-beta-controls-row flex items-center gap-1 sm:gap-2">
               {leftControls}
             </div>
           </div>
-          <div className={["pointer-events-auto shrink-0 pl-6 pr-1 py-1.5", panelClass].join(" ")}>
-            {rightControls}
+          <div
+            className={[
+              "pointer-events-auto relative flex shrink-0 items-center self-stretch pl-6 pr-1",
+              panelClass,
+            ].join(" ")}
+          >
+            <span className="invisible" aria-hidden>
+              {rightControls}
+            </span>
+            <div className="pointer-events-auto absolute inset-0 flex items-center justify-center">
+              {rightControls}
+            </div>
           </div>
         </div>
         {translationsToggle}

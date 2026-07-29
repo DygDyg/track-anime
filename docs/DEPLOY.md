@@ -223,7 +223,7 @@ ssh -i "$env:USERPROFILE\.ssh\id_rsa" root@195.26.230.35 "echo ok"
 
 ```
 extract tar
-  → npm ci (quiet: deprecated warnings suppressed, errors visible, heartbeat каждые 15 секунд, timeout 10 минут)
+  → npm ci (quiet: deprecated warnings suppressed, errors visible, heartbeat каждые 15 секунд, timeout 10 минут + SIGKILL через 15с если npm игнорирует SIGTERM)
   → prisma generate + db push
   → increment .build-number
   → cleanup stale source files from older deploys

@@ -1,21 +1,29 @@
 package ru.dygdyg.trackanime;
 
 import android.app.Activity;
-import android.app.AlertDialog;
+import android.app.Dialog;
 import android.Manifest;
+import android.app.UiModeManager;
 import android.content.pm.PackageManager;
 import android.content.Intent;
 import android.content.pm.ApplicationInfo;
 import android.content.pm.ActivityInfo;
 import android.content.SharedPreferences;
+import android.content.res.ColorStateList;
+import android.content.res.Configuration;
 import android.graphics.Color;
+import android.graphics.Typeface;
+import android.graphics.drawable.ColorDrawable;
 import android.net.Uri;
 import android.os.Build;
 import android.os.Bundle;
 import android.os.Handler;
 import android.os.Looper;
 import android.text.InputType;
+import android.util.DisplayMetrics;
 import android.util.Log;
+import android.util.TypedValue;
+import android.view.Gravity;
 import android.view.View;
 import android.view.ViewGroup;
 import android.view.Window;
@@ -26,6 +34,7 @@ import android.webkit.CookieManager;
 import android.webkit.ConsoleMessage;
 import android.webkit.DownloadListener;
 import android.webkit.HttpAuthHandler;
+import android.webkit.JavascriptInterface;
 import android.webkit.PermissionRequest;
 import android.webkit.WebChromeClient;
 import android.webkit.WebResourceRequest;
@@ -34,7 +43,10 @@ import android.webkit.WebResourceError;
 import android.webkit.WebView;
 import android.webkit.WebViewClient;
 import android.webkit.ValueCallback;
+import android.widget.Button;
 import android.widget.EditText;
+import android.widget.FrameLayout;
+import android.widget.HorizontalScrollView;
 import android.widget.LinearLayout;
 import android.widget.RadioButton;
 import android.widget.RadioGroup;
@@ -74,6 +86,7 @@ abstract class BaseWebActivity extends Activity {
     private PermissionRequest pendingCameraRequest;
     private ProxyFallback proxyFallback;
     private boolean proxyFallbackAttempted;
+    private float windowBrightnessOverride = WindowManager.LayoutParams.BRIGHTNESS_OVERRIDE_NONE;
 
     protected abstract boolean isTvMode();
 
@@ -98,6 +111,7 @@ abstract class BaseWebActivity extends Activity {
         webView.getSettings().setAllowFileAccess(false);
         webView.getSettings().setAllowContentAccess(false);
         webView.getSettings().setMixedContentMode(android.webkit.WebSettings.MIXED_CONTENT_NEVER_ALLOW);
+        webView.addJavascriptInterface(new TrackAnimeJsBridge(), "TrackAnimeAndroid");
         chromeClient = new TrackAnimeChromeClient();
         webView.setWebChromeClient(chromeClient);
         webView.setWebViewClient(new TrackAnimeWebViewClient());
@@ -431,15 +445,190 @@ abstract class BaseWebActivity extends Activity {
         return Math.round(value * getResources().getDisplayMetrics().density);
     }
 
+    private int color(int resId) {
+        return getResources().getColor(resId, getTheme());
+    }
+
+    private TextView settingsSectionTitle(String text) {
+        TextView title = new TextView(this);
+        title.setText(text);
+        title.setTextColor(color(R.color.foreground));
+        title.setTextSize(TypedValue.COMPLEX_UNIT_SP, 14);
+        title.setTypeface(Typeface.DEFAULT_BOLD);
+        return title;
+    }
+
+    private TextView settingsSectionHint(String text) {
+        TextView hint = new TextView(this);
+        hint.setText(text);
+        hint.setTextColor(color(R.color.muted));
+        hint.setTextSize(TypedValue.COMPLEX_UNIT_SP, 12);
+        hint.setLineSpacing(dp(2), 1f);
+        LinearLayout.LayoutParams params = new LinearLayout.LayoutParams(
+                ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT);
+        params.topMargin = dp(4);
+        hint.setLayoutParams(params);
+        return hint;
+    }
+
+    private RadioButton settingsOption(String label) {
+        RadioButton option = new RadioButton(this);
+        option.setId(View.generateViewId());
+        option.setText(label);
+        option.setTextColor(color(R.color.foreground));
+        option.setTextSize(TypedValue.COMPLEX_UNIT_SP, 14);
+        option.setButtonTintList(ColorStateList.valueOf(color(R.color.accent)));
+        option.setBackgroundResource(R.drawable.settings_option_bg);
+        option.setPadding(dp(12), dp(10), dp(12), dp(10));
+        option.setMinHeight(dp(44));
+        LinearLayout.LayoutParams params = new LinearLayout.LayoutParams(
+                ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT);
+        params.topMargin = dp(8);
+        option.setLayoutParams(params);
+        return option;
+    }
+
     private EditText createProxyField(String hint, int inputType, String value) {
         EditText field = new EditText(this);
         field.setHint(hint);
+        field.setHintTextColor(color(R.color.muted));
+        field.setTextColor(color(R.color.foreground));
+        field.setTextSize(TypedValue.COMPLEX_UNIT_SP, 14);
         field.setInputType(inputType);
         field.setText(value);
         field.setSingleLine(true);
-        field.setLayoutParams(new LinearLayout.LayoutParams(
-                ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT));
+        field.setBackgroundResource(R.drawable.settings_field_bg);
+        field.setPadding(dp(12), dp(12), dp(12), dp(12));
+        LinearLayout.LayoutParams params = new LinearLayout.LayoutParams(
+                ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT);
+        params.topMargin = dp(8);
+        field.setLayoutParams(params);
         return field;
+    }
+
+    private Button settingsGhostButton(String label) {
+        Button button = new Button(this, null, android.R.attr.borderlessButtonStyle);
+        button.setText(label);
+        button.setAllCaps(false);
+        button.setTextColor(color(R.color.foreground));
+        button.setTextSize(TypedValue.COMPLEX_UNIT_SP, 14);
+        button.setBackgroundResource(R.drawable.settings_btn_ghost);
+        button.setPadding(dp(14), dp(10), dp(14), dp(10));
+        button.setMinHeight(dp(40));
+        return button;
+    }
+
+    private Button settingsAccentButton(String label) {
+        Button button = new Button(this, null, android.R.attr.borderlessButtonStyle);
+        button.setText(label);
+        button.setAllCaps(false);
+        button.setTextColor(Color.WHITE);
+        button.setTextSize(TypedValue.COMPLEX_UNIT_SP, 14);
+        button.setTypeface(Typeface.DEFAULT_BOLD);
+        button.setBackgroundResource(R.drawable.settings_btn_accent);
+        button.setPadding(dp(16), dp(10), dp(16), dp(10));
+        button.setMinHeight(dp(40));
+        return button;
+    }
+
+    private TextView settingsNavItem(String label) {
+        TextView item = new TextView(this);
+        item.setText(label);
+        item.setTextSize(TypedValue.COMPLEX_UNIT_SP, 14);
+        item.setTypeface(Typeface.DEFAULT_BOLD);
+        item.setBackgroundResource(R.drawable.settings_nav_item_bg);
+        item.setPadding(dp(12), dp(10), dp(12), dp(10));
+        item.setClickable(true);
+        item.setFocusable(true);
+        LinearLayout.LayoutParams params = new LinearLayout.LayoutParams(
+                ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT);
+        params.bottomMargin = dp(4);
+        item.setLayoutParams(params);
+        return item;
+    }
+
+    private void setSettingsNavSelected(TextView item, boolean selected) {
+        item.setSelected(selected);
+        item.setTextColor(selected ? color(R.color.accent) : color(R.color.muted));
+    }
+
+    private boolean isTelevisionUiMode() {
+        UiModeManager uiMode = (UiModeManager) getSystemService(UI_MODE_SERVICE);
+        return uiMode != null && uiMode.getCurrentModeType() == Configuration.UI_MODE_TYPE_TELEVISION;
+    }
+
+    private String deviceTypeLabel() {
+        if (isTvMode() || isTelevisionUiMode()) return "Android TV";
+        if (getResources().getConfiguration().smallestScreenWidthDp >= 600) return "Планшет";
+        return "Телефон";
+    }
+
+    private String deviceShellLabel() {
+        return isTvMode() ? "Оболочка Android TV" : "Оболочка телефона / планшета";
+    }
+
+    private String deviceModelDescription() {
+        String manufacturer = Build.MANUFACTURER == null ? "" : Build.MANUFACTURER.trim();
+        String model = Build.MODEL == null ? "" : Build.MODEL.trim();
+        if (manufacturer.isEmpty() && model.isEmpty()) return "Неизвестно";
+        if (manufacturer.isEmpty()) return model;
+        if (model.isEmpty()) return manufacturer;
+        if (model.toLowerCase().startsWith(manufacturer.toLowerCase())) return model;
+        return manufacturer + " " + model;
+    }
+
+    private View settingsInfoRow(String label, String value) {
+        LinearLayout row = new LinearLayout(this);
+        row.setOrientation(LinearLayout.VERTICAL);
+        row.setBackgroundResource(R.drawable.settings_option_bg);
+        row.setPadding(dp(12), dp(10), dp(12), dp(10));
+        LinearLayout.LayoutParams params = new LinearLayout.LayoutParams(
+                ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT);
+        params.topMargin = dp(8);
+        row.setLayoutParams(params);
+
+        TextView labelView = new TextView(this);
+        labelView.setText(label);
+        labelView.setTextColor(color(R.color.muted));
+        labelView.setTextSize(TypedValue.COMPLEX_UNIT_SP, 12);
+        row.addView(labelView);
+
+        TextView valueView = new TextView(this);
+        valueView.setText(value);
+        valueView.setTextColor(color(R.color.foreground));
+        valueView.setTextSize(TypedValue.COMPLEX_UNIT_SP, 14);
+        valueView.setTypeface(Typeface.DEFAULT_BOLD);
+        LinearLayout.LayoutParams valueParams = new LinearLayout.LayoutParams(
+                ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT);
+        valueParams.topMargin = dp(2);
+        valueView.setLayoutParams(valueParams);
+        row.addView(valueView);
+        return row;
+    }
+
+    private void styleSiteDialogWindow(Dialog dialog, int maxWidthDp) {
+        Window window = dialog.getWindow();
+        if (window == null) return;
+        window.setBackgroundDrawable(new ColorDrawable(Color.TRANSPARENT));
+        int width = Math.min(
+                getResources().getDisplayMetrics().widthPixels - dp(24),
+                dp(maxWidthDp));
+        window.setLayout(width, ViewGroup.LayoutParams.WRAP_CONTENT);
+        window.setGravity(Gravity.CENTER);
+    }
+
+    private LinearLayout settingsDialogShell() {
+        LinearLayout shell = new LinearLayout(this);
+        shell.setOrientation(LinearLayout.VERTICAL);
+        shell.setBackgroundResource(R.drawable.settings_dialog_bg);
+        return shell;
+    }
+
+    private LinearLayout settingsTabPanel() {
+        LinearLayout panel = new LinearLayout(this);
+        panel.setOrientation(LinearLayout.VERTICAL);
+        panel.setPadding(dp(16), dp(16), dp(16), dp(12));
+        return panel;
     }
 
     private void showAppSettings() {
@@ -447,69 +636,130 @@ abstract class BaseWebActivity extends Activity {
         ProxyFallback.Settings saved = proxyFallback.getSettings();
         String barsMode = readSystemBarsMode();
 
-        LinearLayout content = new LinearLayout(this);
-        content.setOrientation(LinearLayout.VERTICAL);
-        content.setPadding(dp(24), dp(8), dp(24), dp(8));
+        Dialog dialog = new Dialog(this, R.style.Theme_TrackAnime_Dialog);
+        dialog.requestWindowFeature(Window.FEATURE_NO_TITLE);
+        dialog.setCanceledOnTouchOutside(true);
 
-        TextView barsHint = new TextView(this);
-        barsHint.setText("Системные панели Android (статус и навигация)");
-        barsHint.setTextSize(14);
-        barsHint.setPadding(0, 0, 0, dp(8));
-        content.addView(barsHint);
+        LinearLayout shell = settingsDialogShell();
 
+        LinearLayout header = new LinearLayout(this);
+        header.setOrientation(LinearLayout.VERTICAL);
+        header.setPadding(dp(20), dp(18), dp(20), dp(14));
+        TextView title = new TextView(this);
+        title.setText("Настройки приложения");
+        title.setTextColor(color(R.color.foreground));
+        title.setTextSize(TypedValue.COMPLEX_UNIT_SP, 18);
+        title.setTypeface(Typeface.DEFAULT_BOLD);
+        TextView subtitle = new TextView(this);
+        subtitle.setText("Прокси, панели, кэш и сведения об устройстве");
+        subtitle.setTextColor(color(R.color.muted));
+        subtitle.setTextSize(TypedValue.COMPLEX_UNIT_SP, 13);
+        LinearLayout.LayoutParams subtitleParams = new LinearLayout.LayoutParams(
+                ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT);
+        subtitleParams.topMargin = dp(4);
+        subtitle.setLayoutParams(subtitleParams);
+        header.addView(title);
+        header.addView(subtitle);
+        shell.addView(header);
+
+        View headerDivider = new View(this);
+        headerDivider.setBackgroundColor(color(R.color.border));
+        shell.addView(headerDivider, new LinearLayout.LayoutParams(
+                ViewGroup.LayoutParams.MATCH_PARENT, Math.max(1, dp(1))));
+
+        boolean wide = getResources().getDisplayMetrics().widthPixels >= dp(520);
+        LinearLayout body = new LinearLayout(this);
+        body.setOrientation(wide ? LinearLayout.HORIZONTAL : LinearLayout.VERTICAL);
+
+        LinearLayout nav = new LinearLayout(this);
+        nav.setOrientation(wide ? LinearLayout.VERTICAL : LinearLayout.HORIZONTAL);
+        nav.setPadding(dp(8), dp(12), dp(8), dp(12));
+        if (wide) {
+            LinearLayout.LayoutParams navParams = new LinearLayout.LayoutParams(dp(148), ViewGroup.LayoutParams.MATCH_PARENT);
+            nav.setLayoutParams(navParams);
+        } else {
+            nav.setLayoutParams(new LinearLayout.LayoutParams(
+                    ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT));
+        }
+
+        TextView navBars = settingsNavItem("Панели");
+        TextView navProxy = settingsNavItem("Прокси");
+        TextView navCache = settingsNavItem("Кэш");
+        TextView navDevice = settingsNavItem("Устройство");
+        if (!wide) {
+            LinearLayout.LayoutParams tabParams = new LinearLayout.LayoutParams(
+                    ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT);
+            tabParams.setMargins(dp(2), 0, dp(2), 0);
+            navBars.setLayoutParams(new LinearLayout.LayoutParams(tabParams));
+            navProxy.setLayoutParams(new LinearLayout.LayoutParams(tabParams));
+            navCache.setLayoutParams(new LinearLayout.LayoutParams(tabParams));
+            navDevice.setLayoutParams(new LinearLayout.LayoutParams(tabParams));
+            navBars.setGravity(Gravity.CENTER);
+            navProxy.setGravity(Gravity.CENTER);
+            navCache.setGravity(Gravity.CENTER);
+            navDevice.setGravity(Gravity.CENTER);
+        }
+        nav.addView(navBars);
+        nav.addView(navProxy);
+        nav.addView(navCache);
+        nav.addView(navDevice);
+        if (wide) {
+            body.addView(nav);
+        } else {
+            HorizontalScrollView navScroll = new HorizontalScrollView(this);
+            navScroll.setHorizontalScrollBarEnabled(false);
+            navScroll.addView(nav);
+            navScroll.setLayoutParams(new LinearLayout.LayoutParams(
+                    ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT));
+            body.addView(navScroll);
+        }
+
+        View bodyDivider = new View(this);
+        bodyDivider.setBackgroundColor(color(R.color.border));
+        if (wide) {
+            body.addView(bodyDivider, new LinearLayout.LayoutParams(Math.max(1, dp(1)), ViewGroup.LayoutParams.MATCH_PARENT));
+        } else {
+            body.addView(bodyDivider, new LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, Math.max(1, dp(1))));
+        }
+
+        FrameLayout panelsHost = new FrameLayout(this);
+        LinearLayout.LayoutParams panelsParams = new LinearLayout.LayoutParams(
+                ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT, wide ? 1f : 0f);
+        if (wide) panelsParams.width = 0;
+        panelsHost.setLayoutParams(panelsParams);
+
+        LinearLayout barsPanel = settingsTabPanel();
+        barsPanel.addView(settingsSectionTitle("Системные панели"));
+        barsPanel.addView(settingsSectionHint("Статус-бар и навигация Android"));
         RadioGroup barsModes = new RadioGroup(this);
         barsModes.setOrientation(RadioGroup.VERTICAL);
-        RadioButton barsShow = new RadioButton(this);
-        barsShow.setId(View.generateViewId());
-        barsShow.setText("Показывать панели");
-        RadioButton barsAlways = new RadioButton(this);
-        barsAlways.setId(View.generateViewId());
-        barsAlways.setText("Всегда скрывать (полноэкранный режим)");
-        RadioButton barsVideo = new RadioButton(this);
-        barsVideo.setId(View.generateViewId());
-        barsVideo.setText("Скрывать только в полноэкранном видео");
+        RadioButton barsShow = settingsOption("Показывать панели");
+        RadioButton barsAlways = settingsOption("Всегда скрывать (полноэкранный режим)");
+        RadioButton barsVideo = settingsOption("Скрывать только в полноэкранном видео");
         barsModes.addView(barsShow);
         barsModes.addView(barsAlways);
         barsModes.addView(barsVideo);
-        content.addView(barsModes);
-
+        barsPanel.addView(barsModes);
         int barsCheckedId = SYSTEM_BARS_MODE_ALWAYS.equals(barsMode) ? barsAlways.getId()
                 : SYSTEM_BARS_MODE_SHOW.equals(barsMode) ? barsShow.getId() : barsVideo.getId();
         barsModes.check(barsCheckedId);
 
-        View barsDivider = new View(this);
-        barsDivider.setBackgroundColor(Color.argb(60, 255, 255, 255));
-        LinearLayout.LayoutParams dividerParams = new LinearLayout.LayoutParams(
-                ViewGroup.LayoutParams.MATCH_PARENT, Math.max(1, dp(1)));
-        dividerParams.topMargin = dp(16);
-        dividerParams.bottomMargin = dp(16);
-        content.addView(barsDivider, dividerParams);
-
-        TextView hint = new TextView(this);
-        hint.setText("Прокси используется только после ошибки всех прямых зеркал. Поддерживается HTTP/HTTPS proxy.");
-        hint.setTextSize(14);
-        hint.setPadding(0, 0, 0, dp(12));
-        content.addView(hint);
-
+        LinearLayout proxyPanel = settingsTabPanel();
+        proxyPanel.addView(settingsSectionTitle("Прокси"));
+        proxyPanel.addView(settingsSectionHint(
+                "Используется только после ошибки всех прямых зеркал. Поддерживается HTTP/HTTPS proxy."));
         RadioGroup modes = new RadioGroup(this);
         modes.setOrientation(RadioGroup.VERTICAL);
-        RadioButton noProxy = new RadioButton(this);
-        noProxy.setId(View.generateViewId());
-        noProxy.setText("Без прокси");
-        RadioButton serverProxy = new RadioButton(this);
-        serverProxy.setId(View.generateViewId());
-        serverProxy.setText("Прокси сервера");
-        RadioButton manualProxy = new RadioButton(this);
-        manualProxy.setId(View.generateViewId());
-        manualProxy.setText("Указать вручную");
+        RadioButton noProxy = settingsOption("Без прокси");
+        RadioButton serverProxy = settingsOption("Прокси сервера");
+        RadioButton manualProxy = settingsOption("Указать вручную");
         modes.addView(noProxy);
         modes.addView(serverProxy);
         modes.addView(manualProxy);
-        content.addView(modes);
-
+        proxyPanel.addView(modes);
         LinearLayout manualFields = new LinearLayout(this);
         manualFields.setOrientation(LinearLayout.VERTICAL);
-        manualFields.setPadding(0, dp(8), 0, 0);
+        manualFields.setPadding(0, dp(4), 0, 0);
         EditText host = createProxyField("Адрес прокси", InputType.TYPE_CLASS_TEXT | InputType.TYPE_TEXT_VARIATION_URI, saved.host);
         EditText port = createProxyField("Порт", InputType.TYPE_CLASS_NUMBER, saved.port > 0 ? String.valueOf(saved.port) : "");
         EditText username = createProxyField("Логин (необязательно)", InputType.TYPE_CLASS_TEXT, saved.username);
@@ -518,8 +768,7 @@ abstract class BaseWebActivity extends Activity {
         manualFields.addView(port);
         manualFields.addView(username);
         manualFields.addView(password);
-        content.addView(manualFields);
-
+        proxyPanel.addView(manualFields);
         int checkedId = saved.mode == ProxyFallback.Mode.NONE ? noProxy.getId()
                 : saved.mode == ProxyFallback.Mode.MANUAL ? manualProxy.getId() : serverProxy.getId();
         modes.check(checkedId);
@@ -527,66 +776,247 @@ abstract class BaseWebActivity extends Activity {
         modes.setOnCheckedChangeListener((group, checked) ->
                 manualFields.setVisibility(checked == manualProxy.getId() ? View.VISIBLE : View.GONE));
 
-        ScrollView scroll = new ScrollView(this);
-        scroll.addView(content);
+        LinearLayout cachePanel = settingsTabPanel();
+        cachePanel.addView(settingsSectionTitle("Кэш WebView"));
+        cachePanel.addView(settingsSectionHint(
+                "Удаляет кэш страниц и изображений. Вход и настройки сайта сохранятся."));
+        Button clearInPanel = settingsGhostButton("Очистить кэш");
+        LinearLayout.LayoutParams clearInPanelParams = new LinearLayout.LayoutParams(
+                ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT);
+        clearInPanelParams.topMargin = dp(16);
+        clearInPanel.setLayoutParams(clearInPanelParams);
+        clearInPanel.setOnClickListener(v -> confirmCacheClear());
+        cachePanel.addView(clearInPanel);
 
-        AlertDialog dialog = new AlertDialog.Builder(this)
-                .setTitle("Настройки приложения")
-                .setView(scroll)
-                .setNegativeButton("Отмена", null)
-                .setNeutralButton("Очистить кэш", null)
-                .setPositiveButton("Сохранить", null)
-                .create();
-        dialog.setOnShowListener(ignored -> {
-            dialog.getButton(AlertDialog.BUTTON_NEUTRAL).setOnClickListener(view -> confirmCacheClear());
-            dialog.getButton(AlertDialog.BUTTON_POSITIVE).setOnClickListener(view -> {
-                ProxyFallback.Mode mode = modes.getCheckedRadioButtonId() == noProxy.getId()
-                        ? ProxyFallback.Mode.NONE
-                        : modes.getCheckedRadioButtonId() == manualProxy.getId()
-                                ? ProxyFallback.Mode.MANUAL : ProxyFallback.Mode.SERVER;
-                int manualPort = 0;
-                if (mode == ProxyFallback.Mode.MANUAL) {
-                    try { manualPort = Integer.parseInt(port.getText().toString().trim()); } catch (NumberFormatException ignoredError) { }
-                    if (host.getText().toString().trim().isEmpty() || manualPort < 1 || manualPort > 65535) {
-                        Toast.makeText(this, "Укажите адрес и порт от 1 до 65535.", Toast.LENGTH_LONG).show();
-                        return;
-                    }
+        LinearLayout devicePanel = settingsTabPanel();
+        devicePanel.addView(settingsSectionTitle("Устройство"));
+        devicePanel.addView(settingsSectionHint("Тип запуска оболочки и сведения о текущем устройстве"));
+        devicePanel.addView(settingsInfoRow("Тип устройства", deviceTypeLabel()));
+        devicePanel.addView(settingsInfoRow("Режим приложения", deviceShellLabel()));
+        devicePanel.addView(settingsInfoRow("Устройство", deviceModelDescription()));
+        devicePanel.addView(settingsInfoRow(
+                "Android",
+                "Android " + Build.VERSION.RELEASE + " (API " + Build.VERSION.SDK_INT + ")"));
+        DisplayMetrics metrics = getResources().getDisplayMetrics();
+        int widthDp = Math.round(metrics.widthPixels / metrics.density);
+        int heightDp = Math.round(metrics.heightPixels / metrics.density);
+        devicePanel.addView(settingsInfoRow(
+                "Экран",
+                widthDp + "×" + heightDp + " dp · sw"
+                        + getResources().getConfiguration().smallestScreenWidthDp + " dp"));
+        devicePanel.addView(settingsInfoRow(
+                "Приложение",
+                "Track Anime " + BuildConfig.VERSION_NAME + " (" + BuildConfig.VERSION_CODE + ")"));
+
+        ScrollView barsScroll = new ScrollView(this);
+        barsScroll.addView(barsPanel);
+        ScrollView proxyScroll = new ScrollView(this);
+        proxyScroll.addView(proxyPanel);
+        ScrollView cacheScroll = new ScrollView(this);
+        cacheScroll.addView(cachePanel);
+        ScrollView deviceScroll = new ScrollView(this);
+        deviceScroll.addView(devicePanel);
+        FrameLayout.LayoutParams panelLp = new FrameLayout.LayoutParams(
+                ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT);
+        panelsHost.addView(barsScroll, panelLp);
+        panelsHost.addView(proxyScroll, panelLp);
+        panelsHost.addView(cacheScroll, panelLp);
+        panelsHost.addView(deviceScroll, panelLp);
+        body.addView(panelsHost);
+
+        int bodyHeight = Math.round(getResources().getDisplayMetrics().heightPixels * 0.52f);
+        body.setLayoutParams(new LinearLayout.LayoutParams(
+                ViewGroup.LayoutParams.MATCH_PARENT, Math.max(dp(280), bodyHeight)));
+        shell.addView(body);
+
+        TextView[] navItems = { navBars, navProxy, navCache, navDevice };
+        View[] panelViews = { barsScroll, proxyScroll, cacheScroll, deviceScroll };
+        View.OnClickListener selectTab = clicked -> {
+            int index = clicked == navProxy ? 1
+                    : clicked == navCache ? 2
+                    : clicked == navDevice ? 3 : 0;
+            for (int i = 0; i < navItems.length; i++) {
+                setSettingsNavSelected(navItems[i], i == index);
+                panelViews[i].setVisibility(i == index ? View.VISIBLE : View.GONE);
+            }
+        };
+        navBars.setOnClickListener(selectTab);
+        navProxy.setOnClickListener(selectTab);
+        navCache.setOnClickListener(selectTab);
+        navDevice.setOnClickListener(selectTab);
+        selectTab.onClick(navBars);
+
+        View footerDivider = new View(this);
+        footerDivider.setBackgroundColor(color(R.color.border));
+        shell.addView(footerDivider, new LinearLayout.LayoutParams(
+                ViewGroup.LayoutParams.MATCH_PARENT, Math.max(1, dp(1))));
+
+        LinearLayout footer = new LinearLayout(this);
+        footer.setOrientation(LinearLayout.HORIZONTAL);
+        footer.setGravity(Gravity.END | Gravity.CENTER_VERTICAL);
+        footer.setPadding(dp(16), dp(12), dp(16), dp(14));
+
+        Button cancel = settingsGhostButton("Отмена");
+        cancel.setOnClickListener(v -> dialog.dismiss());
+        LinearLayout.LayoutParams cancelParams = new LinearLayout.LayoutParams(
+                ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT);
+        cancelParams.setMarginEnd(dp(8));
+        footer.addView(cancel, cancelParams);
+
+        Button save = settingsAccentButton("Сохранить");
+        save.setOnClickListener(v -> {
+            ProxyFallback.Mode mode = modes.getCheckedRadioButtonId() == noProxy.getId()
+                    ? ProxyFallback.Mode.NONE
+                    : modes.getCheckedRadioButtonId() == manualProxy.getId()
+                            ? ProxyFallback.Mode.MANUAL : ProxyFallback.Mode.SERVER;
+            int manualPort = 0;
+            if (mode == ProxyFallback.Mode.MANUAL) {
+                try { manualPort = Integer.parseInt(port.getText().toString().trim()); } catch (NumberFormatException ignoredError) { }
+                if (host.getText().toString().trim().isEmpty() || manualPort < 1 || manualPort > 65535) {
+                    selectTab.onClick(navProxy);
+                    Toast.makeText(this, "Укажите адрес и порт от 1 до 65535.", Toast.LENGTH_LONG).show();
+                    return;
                 }
-                String nextBarsMode = barsModes.getCheckedRadioButtonId() == barsAlways.getId()
-                        ? SYSTEM_BARS_MODE_ALWAYS
-                        : barsModes.getCheckedRadioButtonId() == barsShow.getId()
-                                ? SYSTEM_BARS_MODE_SHOW : SYSTEM_BARS_MODE_VIDEO;
-                saveSystemBarsMode(nextBarsMode);
-                proxyFallback.saveSettings(new ProxyFallback.Settings(mode, host.getText().toString(), manualPort,
-                        username.getText().toString(), password.getText().toString()));
-                proxyFallback.clearOverride(() -> {
-                    applySystemBarsPolicy();
-                    Toast.makeText(this, "Настройки сохранены.", Toast.LENGTH_SHORT).show();
-                });
-                dialog.dismiss();
+            }
+            String nextBarsMode = barsModes.getCheckedRadioButtonId() == barsAlways.getId()
+                    ? SYSTEM_BARS_MODE_ALWAYS
+                    : barsModes.getCheckedRadioButtonId() == barsShow.getId()
+                            ? SYSTEM_BARS_MODE_SHOW : SYSTEM_BARS_MODE_VIDEO;
+            saveSystemBarsMode(nextBarsMode);
+            proxyFallback.saveSettings(new ProxyFallback.Settings(mode, host.getText().toString(), manualPort,
+                    username.getText().toString(), password.getText().toString()));
+            proxyFallback.clearOverride(() -> {
+                applySystemBarsPolicy();
+                Toast.makeText(this, "Настройки сохранены.", Toast.LENGTH_SHORT).show();
             });
+            dialog.dismiss();
         });
+        footer.addView(save);
+        shell.addView(footer);
+
+        dialog.setContentView(shell);
+        styleSiteDialogWindow(dialog, 640);
         dialog.show();
     }
 
     private void confirmCacheClear() {
-        new AlertDialog.Builder(this)
-                .setTitle("Очистить кэш?")
-                .setMessage("Кэш страниц и изображений будет удалён. Вход и настройки сайта сохранятся.")
-                .setNegativeButton("Отмена", null)
-                .setPositiveButton("Очистить", (dialog, ignored) -> {
-                    webView.clearCache(true);
-                    webView.clearHistory();
-                    proxyFallbackAttempted = false;
-                    String url = webView.getUrl();
-                    loadSite(isAllowedSiteUrl(url == null ? null : Uri.parse(url)) ? url : SITE_URL);
-                    Toast.makeText(this, "Кэш очищен.", Toast.LENGTH_SHORT).show();
-                })
-                .show();
+        if (isFinishing()) return;
+
+        Dialog dialog = new Dialog(this, R.style.Theme_TrackAnime_Dialog);
+        dialog.requestWindowFeature(Window.FEATURE_NO_TITLE);
+        dialog.setCanceledOnTouchOutside(true);
+
+        LinearLayout shell = settingsDialogShell();
+        shell.setPadding(dp(20), dp(18), dp(20), dp(16));
+
+        TextView title = new TextView(this);
+        title.setText("Очистить кэш?");
+        title.setTextColor(color(R.color.foreground));
+        title.setTextSize(TypedValue.COMPLEX_UNIT_SP, 18);
+        title.setTypeface(Typeface.DEFAULT_BOLD);
+        shell.addView(title);
+
+        TextView message = new TextView(this);
+        message.setText("Кэш страниц и изображений будет удалён. Вход и настройки сайта сохранятся.");
+        message.setTextColor(color(R.color.muted));
+        message.setTextSize(TypedValue.COMPLEX_UNIT_SP, 14);
+        message.setLineSpacing(dp(2), 1f);
+        LinearLayout.LayoutParams messageParams = new LinearLayout.LayoutParams(
+                ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT);
+        messageParams.topMargin = dp(8);
+        messageParams.bottomMargin = dp(18);
+        message.setLayoutParams(messageParams);
+        shell.addView(message);
+
+        LinearLayout actions = new LinearLayout(this);
+        actions.setOrientation(LinearLayout.HORIZONTAL);
+        actions.setGravity(Gravity.END | Gravity.CENTER_VERTICAL);
+
+        Button cancel = settingsGhostButton("Отмена");
+        cancel.setOnClickListener(v -> dialog.dismiss());
+        LinearLayout.LayoutParams cancelParams = new LinearLayout.LayoutParams(
+                ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT);
+        cancelParams.setMarginEnd(dp(8));
+        actions.addView(cancel, cancelParams);
+
+        Button clear = settingsAccentButton("Очистить");
+        clear.setOnClickListener(v -> {
+            webView.clearCache(true);
+            webView.clearHistory();
+            proxyFallbackAttempted = false;
+            String url = webView.getUrl();
+            loadSite(isAllowedSiteUrl(url == null ? null : Uri.parse(url)) ? url : SITE_URL);
+            Toast.makeText(this, "Кэш очищен.", Toast.LENGTH_SHORT).show();
+            dialog.dismiss();
+        });
+        actions.addView(clear);
+        shell.addView(actions);
+
+        dialog.setContentView(shell);
+        styleSiteDialogWindow(dialog, 400);
+        dialog.show();
     }
 
     private void openExternal(Uri uri) {
         try { startActivity(new Intent(Intent.ACTION_VIEW, uri)); } catch (Exception ignored) { }
+    }
+
+    private final class TrackAnimeJsBridge {
+        @JavascriptInterface
+        public boolean hasScreenBrightnessControl() {
+            return true;
+        }
+
+        @JavascriptInterface
+        public void setScreenBrightness(double value) {
+            float clamped = (float) Math.max(0.01, Math.min(1.0, value));
+            if (Looper.myLooper() == Looper.getMainLooper()) {
+                applyWindowBrightness(clamped);
+            } else {
+                handler.post(() -> applyWindowBrightness(clamped));
+            }
+        }
+
+        @JavascriptInterface
+        public float getScreenBrightness() {
+            if (windowBrightnessOverride >= 0f && windowBrightnessOverride <= 1f) {
+                return windowBrightnessOverride;
+            }
+            try {
+                int raw = android.provider.Settings.System.getInt(
+                        getContentResolver(),
+                        android.provider.Settings.System.SCREEN_BRIGHTNESS
+                );
+                return Math.max(0.01f, Math.min(1f, raw / 255f));
+            } catch (Exception ignored) {
+                return 0.85f;
+            }
+        }
+
+        @JavascriptInterface
+        public void clearScreenBrightness() {
+            if (Looper.myLooper() == Looper.getMainLooper()) {
+                clearWindowBrightness();
+            } else {
+                handler.post(this::clearWindowBrightness);
+            }
+        }
+
+        private void applyWindowBrightness(float clamped) {
+            windowBrightnessOverride = clamped;
+            Window window = getWindow();
+            WindowManager.LayoutParams lp = window.getAttributes();
+            lp.screenBrightness = clamped;
+            window.setAttributes(lp);
+        }
+
+        private void clearWindowBrightness() {
+            windowBrightnessOverride = WindowManager.LayoutParams.BRIGHTNESS_OVERRIDE_NONE;
+            Window window = getWindow();
+            WindowManager.LayoutParams lp = window.getAttributes();
+            lp.screenBrightness = WindowManager.LayoutParams.BRIGHTNESS_OVERRIDE_NONE;
+            window.setAttributes(lp);
+        }
     }
 
     private final class TrackAnimeWebViewClient extends WebViewClient {

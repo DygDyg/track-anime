@@ -92,6 +92,7 @@ const DEFAULT_PLAYBACK_STATE: KodikPlayerPlaybackState = {
   volume: 1,
   muted: false,
   mediaUnlocked: false,
+  videoReady: false,
 };
 
 function IconPlayerRefresh({ spinning = false }: { spinning?: boolean }) {
@@ -1568,7 +1569,7 @@ export function AnimeWatchPanel({
 
       event.preventDefault();
       event.stopPropagation();
-      const open = delta < 0;
+      const open = delta > 0;
       setFullscreenTranslationsHovered(open);
       setFullscreenTranslationsOpen(open);
     },
@@ -2362,20 +2363,23 @@ export function AnimeWatchPanel({
         disabled={continueLoading}
         aria-busy={continueLoading}
         className={[
-          "inline-flex max-w-full items-center gap-[clamp(0.375rem,0.32vw,0.65rem)] rounded-md border border-white/10 bg-black/35 px-[clamp(0.5rem,0.42vw,0.8rem)] py-[clamp(0.25rem,0.21vw,0.4rem)] text-[clamp(11px,0.58vw,15px)] font-medium text-white/85 backdrop-blur-sm transition",
+          "inline-flex max-w-full items-center gap-2 rounded-[0.75rem] border border-white/[0.12] bg-black/50 px-3 py-2 text-sm font-medium text-white/90 backdrop-blur-[12px] transition",
           continueLoading
             ? "cursor-wait opacity-80"
-            : "hover:border-white/20 hover:bg-black/45 active:scale-[0.98]",
+            : "hover:border-white/20 hover:bg-black/60 active:scale-[0.98]",
         ].join(" ")}
       >
         {continueLoading ? (
           <span
             aria-hidden
-            className="inline-block h-3 w-3 shrink-0 animate-spin rounded-full border-2 border-current border-r-transparent"
+            className="inline-block h-4 w-4 shrink-0 animate-spin rounded-full border-2 border-current border-r-transparent"
           />
         ) : null}
         <span className="shrink-0">{continueLoading ? "Переход…" : "Продолжить"}</span>
-        <span className="min-w-0 truncate font-normal text-white/85">
+        <span className="min-w-0 truncate text-xs font-normal text-white/70">
+          {continueTranslation?.translationTitle
+            ? `${continueTranslation.translationTitle} · `
+            : ""}
           {formatEpisodeOfTotal(continueProgress.episodeNumber, episodesTotal ?? null)} ·{" "}
           {formatWatchPosition(continueProgress.positionSeconds)}
         </span>

@@ -27,6 +27,13 @@ import { KodikPlayerBetaEpisodeStrip } from "@/components/anime/KodikPlayerBetaE
 import { SiteClock } from "@/components/SiteClock";
 import { useSiteSettings } from "@/components/SiteSettingsProvider";
 import { toKodikPlayerEmbedUrl } from "@/lib/player-url";
+import {
+  applyPlayerBrightness,
+  clearNativePlayerBrightness,
+  hasNativePlayerBrightness,
+  playerBrightnessOverlayOpacity,
+  readStoredPlayerBrightness,
+} from "@/lib/player-screen-brightness";
 
 const CONTROLS_IDLE_MS = 2_500;
 const SINGLE_CLICK_DELAY_MS = 220;
@@ -36,6 +43,8 @@ const MOBILE_DOCK_CONTROLS_MQ = "(max-width: 639px) and (orientation: portrait)"
 const TOUCH_LIKE_MQ = "(hover: none), (pointer: coarse)";
 const MOBILE_TRANSLATIONS_SWIPE_ZONE_PX = 96;
 const MOBILE_TRANSLATIONS_SWIPE_THRESHOLD_PX = 56;
+const BRIGHTNESS_GESTURE_ACTIVATE_PX = 8;
+const BRIGHTNESS_HUD_MS = 900;
 const KODIK_NATIVE_SKIP_PASSTHROUGH_WIDTH = "min(18rem, 44vw)";
 const KODIK_NATIVE_SKIP_PASSTHROUGH_HEIGHT = "3.75rem";
 const KODIK_NATIVE_SKIP_PASSTHROUGH_RIGHT = "0.5rem";
@@ -158,28 +167,48 @@ export function KodikPlayerBetaViewport({
     return window.matchMedia(TOUCH_LIKE_MQ).matches;
   });
   const [seekFeedback, setSeekFeedback] = useState({ backward: 0, forward: 0 });
+  const [brightnessHud, setBrightnessHud] = useState<number | null>(null);
+  const [overlayBrightness, setOverlayBrightness] = useState(1);
+  const [nativeBrightness, setNativeBrightness] = useState(false);
   const viewportRef = useRef<HTMLDivElement>(null);
   const videoShellRef = useRef<HTMLDivElement>(null);
   const hideTimerRef = useRef<number | null>(null);
   const clickTimerRef = useRef<number | null>(null);
   const [qualityHover, setQualityHover] = useState(false);
+  const [qualityPanelActive, setQualityPanelActive] = useState(false);
   const seekFeedbackTimersRef = useRef<{ backward: number | null; forward: number | null }>({
     backward: null,
     forward: null,
   });
+  const brightnessHudTimerRef = useRef<number | null>(null);
+  const brightnessValueRef = useRef(readStoredPlayerBrightness());
+  const suppressClickAfterGestureRef = useRef(false);
   const touchGestureRef = useRef<{
     startX: number;
     startY: number;
     startedNearBottom: boolean;
+    startedOnRight: boolean;
+    mode: "none" | "brightness" | "translations";
+    startBrightness: number;
+    shellHeight: number;
   } | null>(null);
   const wakeLockRef = useRef<WakeLockSentinel | null>(null);
   const playbackRef = useRef(playback);
   const volumeReady = playback.durationSeconds > 0;
   const controlsDocked = dockControlsBelow && !fullscreenActive;
+  // Overlay only when native device/window brightness is unavailable (browser/PWA).
+  const brightnessOverlay = nativeBrightness
+    ? 0
+    : playerBrightnessOverlayOpacity(overlayBrightness);
 
   useEffect(() => {
     playbackRef.current = playback;
   }, [playback]);
+
+  useEffect(() => {
+    setNativeBrightness(hasNativePlayerBrightness());
+    brightnessValueRef.current = readStoredPlayerBrightness();
+  }, []);
 
   useEffect(() => {
     if (typeof window === "undefined") return;
@@ -325,6 +354,47 @@ export function KodikPlayerBetaViewport({
     }
   }, []);
 
+  const clearBrightnessHudTimer = useCallback(() => {
+    if (brightnessHudTimerRef.current != null) {
+      window.clearTimeout(brightnessHudTimerRef.current);
+      brightnessHudTimerRef.current = null;
+    }
+  }, []);
+
+  const showBrightnessHud = useCallback(
+    (value: number) => {
+      clearBrightnessHudTimer();
+      setBrightnessHud(value);
+      brightnessHudTimerRef.current = window.setTimeout(() => {
+        setBrightnessHud(null);
+        brightnessHudTimerRef.current = null;
+      }, BRIGHTNESS_HUD_MS);
+    },
+    [clearBrightnessHudTimer],
+  );
+
+  const setBrightnessFromGesture = useCallback(
+    (value: number) => {
+      const applied = applyPlayerBrightness(value);
+      brightnessValueRef.current = applied.value;
+      setNativeBrightness(applied.native);
+      if (applied.native) {
+        setOverlayBrightness(1);
+      } else {
+        setOverlayBrightness(applied.value);
+      }
+      showBrightnessHud(applied.value);
+    },
+    [showBrightnessHud],
+  );
+
+  useEffect(() => {
+    return () => {
+      clearNativePlayerBrightness();
+      clearBrightnessHudTimer();
+    };
+  }, [clearBrightnessHudTimer]);
+
   const clearSeekFeedbackTimer = useCallback((direction: "backward" | "forward") => {
     const timer = seekFeedbackTimersRef.current[direction];
     if (timer != null) {
@@ -392,38 +462,51 @@ export function KodikPlayerBetaViewport({
       }
 
       const touch = event.touches[0];
-      const node = viewportRef.current;
-      if (!touch || !node) {
+      const shell = videoShellRef.current;
+      if (!touch || !shell || event.touches.length > 1) {
         touchGestureRef.current = null;
         return;
       }
 
-      const rect = node.getBoundingClientRect();
+      const target = event.target;
+      if (
+        target instanceof Element &&
+        target.closest(
+          "button, input, a, .kodik-player-beta-controls, .kodik-player-beta-episodes, .kodik-player-beta-range",
+        )
+      ) {
+        touchGestureRef.current = null;
+        return;
+      }
+
+      const rect = shell.getBoundingClientRect();
+      if (rect.width <= 0 || rect.height <= 0) {
+        touchGestureRef.current = null;
+        return;
+      }
+
+      const ratioX = (touch.clientX - rect.left) / rect.width;
       touchGestureRef.current = {
         startX: touch.clientX,
         startY: touch.clientY,
-        startedNearBottom: fullscreenActive && rect.bottom - touch.clientY <= MOBILE_TRANSLATIONS_SWIPE_ZONE_PX,
+        startedNearBottom:
+          fullscreenActive && rect.bottom - touch.clientY <= MOBILE_TRANSLATIONS_SWIPE_ZONE_PX,
+        startedOnRight: ratioX >= 0.5,
+        mode: "none",
+        startBrightness: brightnessValueRef.current,
+        shellHeight: rect.height,
       };
+      suppressClickAfterGestureRef.current = false;
     },
     [fullscreenActive, revealUi, touchLikeUi],
   );
 
   const handleTouchMove = useCallback(
-    (event: ReactTouchEvent<HTMLDivElement>) => {
-      const gesture = touchGestureRef.current;
-      const touch = event.touches[0];
-      if (!gesture?.startedNearBottom || !touch || fullscreenTranslationsOpen) return;
-
-      const deltaX = touch.clientX - gesture.startX;
-      const deltaY = touch.clientY - gesture.startY;
-      if (
-        deltaY < -MOBILE_TRANSLATIONS_SWIPE_THRESHOLD_PX &&
-        Math.abs(deltaY) > Math.abs(deltaX) * 1.2
-      ) {
-        event.preventDefault();
-      }
+    (_event: ReactTouchEvent<HTMLDivElement>) => {
+      // Brightness / translations vertical handling lives on a non-passive capture listener
+      // attached to the video shell (see useEffect above). React's touchmove is passive.
     },
-    [fullscreenTranslationsOpen],
+    [],
   );
 
   const handleTouchEnd = useCallback(
@@ -431,7 +514,14 @@ export function KodikPlayerBetaViewport({
       const gesture = touchGestureRef.current;
       touchGestureRef.current = null;
       const touch = event.changedTouches[0];
-      if (!gesture?.startedNearBottom || !touch || fullscreenTranslationsOpen) return;
+      if (!gesture || !touch) return;
+
+      if (gesture.mode === "brightness") {
+        suppressClickAfterGestureRef.current = true;
+        return;
+      }
+
+      if (!gesture.startedNearBottom || fullscreenTranslationsOpen) return;
 
       const deltaX = touch.clientX - gesture.startX;
       const deltaY = touch.clientY - gesture.startY;
@@ -444,6 +534,64 @@ export function KodikPlayerBetaViewport({
     },
     [fullscreenTranslationsOpen, onFullscreenTranslationsIntent],
   );
+
+  // Non-passive listeners: React's synthetic touchmove is often passive, so preventDefault
+  // never sticks and the browser/page steals the vertical swipe before brightness activates.
+  useEffect(() => {
+    const shell = videoShellRef.current;
+    if (!shell || !touchLikeUi) return;
+
+    const onTouchMove = (event: TouchEvent) => {
+      const gesture = touchGestureRef.current;
+      const touch = event.touches[0];
+      if (!gesture || !touch || event.touches.length > 1) return;
+
+      const deltaX = touch.clientX - gesture.startX;
+      const deltaY = touch.clientY - gesture.startY;
+
+      if (gesture.mode === "none") {
+        if (
+          gesture.startedNearBottom &&
+          !fullscreenTranslationsOpen &&
+          deltaY < -MOBILE_TRANSLATIONS_SWIPE_THRESHOLD_PX &&
+          Math.abs(deltaY) > Math.abs(deltaX) * 1.2
+        ) {
+          gesture.mode = "translations";
+        } else if (
+          gesture.startedOnRight &&
+          !gesture.startedNearBottom &&
+          Math.abs(deltaY) >= BRIGHTNESS_GESTURE_ACTIVATE_PX &&
+          Math.abs(deltaY) > Math.abs(deltaX) * 1.2
+        ) {
+          gesture.mode = "brightness";
+          clearClickTimer();
+          suppressClickAfterGestureRef.current = true;
+          setUiVisible(false);
+        }
+      }
+
+      if (gesture.mode === "brightness") {
+        event.preventDefault();
+        const span = Math.max(gesture.shellHeight * 0.55, 140);
+        setBrightnessFromGesture(gesture.startBrightness - deltaY / span);
+      } else if (gesture.mode === "translations") {
+        if (
+          deltaY < -MOBILE_TRANSLATIONS_SWIPE_THRESHOLD_PX &&
+          Math.abs(deltaY) > Math.abs(deltaX) * 1.2
+        ) {
+          event.preventDefault();
+        }
+      }
+    };
+
+    shell.addEventListener("touchmove", onTouchMove, { passive: false, capture: true });
+    return () => shell.removeEventListener("touchmove", onTouchMove, true);
+  }, [
+    clearClickTimer,
+    fullscreenTranslationsOpen,
+    setBrightnessFromGesture,
+    touchLikeUi,
+  ]);
 
   const handleCast = useCallback(async () => {
     const PresentationRequestCtor = (window as Window & {
@@ -480,7 +628,7 @@ export function KodikPlayerBetaViewport({
 
       event.preventDefault();
       event.stopPropagation();
-      onFullscreenTranslationsIntent?.(delta < 0);
+      onFullscreenTranslationsIntent?.(delta > 0);
     },
     [fullscreenActive, onFullscreenTranslationsIntent],
   );
@@ -666,6 +814,11 @@ export function KodikPlayerBetaViewport({
   ]);
 
   const handleViewportClick = useCallback(() => {
+    if (suppressClickAfterGestureRef.current) {
+      suppressClickAfterGestureRef.current = false;
+      clearClickTimer();
+      return;
+    }
     if (controlsDisabled || kodikUiAccess) return;
     clearClickTimer();
     clickTimerRef.current = window.setTimeout(() => {
@@ -733,8 +886,13 @@ export function KodikPlayerBetaViewport({
   const position = Math.min(Math.max(playback.positionSeconds, 0), duration || playback.positionSeconds);
   const progressMax = duration > 0 ? duration : Math.max(position, 1);
   const progressFill = `${(position / progressMax) * 100}%`;
-  // Until Kodik unlocks media (Android WebView), taps must reach the iframe — postMessage play is ignored.
-  const clickLayerInteractive = !kodikUiAccess && !awaitKodikGesture && !(qualityHover && playback.mediaUnlocked);
+  // Until the stream is fully ready (video_started + duration), no click-layer — taps go to iframe.
+  // After videoReady the stub stays so taps can show/hide TA UI (including on pause).
+  // When quality panel is open (hover/tap/always-split), pass clicks through to Kodik quality UI.
+  const clickLayerInteractive =
+    !kodikUiAccess &&
+    playback.videoReady &&
+    !qualityPanelActive;
   const hideCursor = playback.isPlaying && !uiInteractive && !kodikUiAccess;
   const clickLayerClass = [
     "absolute z-10 bg-transparent",
@@ -745,6 +903,7 @@ export function KodikPlayerBetaViewport({
     controlsDisabled ? "cursor-wait" : "",
   ].join(" ");
   const clickLayerStyle = hideCursor ? { cursor: "none" } : undefined;
+  const showClickLayer = !controlsDocked && playback.videoReady;
 
   const controlsNode = (
     <KodikPlayerBetaControls
@@ -777,6 +936,8 @@ export function KodikPlayerBetaViewport({
       interactive={controlsDocked ? !kodikUiAccess : uiInteractive}
       qualityHover={qualityHover}
       controlsDocked={controlsDocked}
+      qualityPanelDynamicWidth={settings.playerControlsDynamicWidth}
+      onQualityPanelActiveChange={setQualityPanelActive}
     />
   );
 
@@ -800,18 +961,6 @@ export function KodikPlayerBetaViewport({
             <span className="sm:hidden">{kodikUiAccess ? "TA UI" : "Kodik UI"}</span>
           </button>
         )}
-        {!controlsDocked && continueAction ? (
-          <div
-            className={[
-              "flex min-w-0 flex-1 flex-wrap justify-center gap-2",
-              uiInteractive
-                ? "pointer-events-auto"
-                : "pointer-events-none",
-            ].join(" ")}
-          >
-            {continueAction}
-          </div>
-        ) : null}
         <span className="hidden min-w-[7.5rem] sm:block" aria-hidden />
       </div>
     </div>
@@ -856,7 +1005,28 @@ export function KodikPlayerBetaViewport({
           onPlaybackStateChange={onPlaybackStateChange}
           onEnded={onEnded}
         />
-        {!controlsDocked && <div
+        {brightnessOverlay > 0.01 ? (
+          <div
+            className="pointer-events-none absolute inset-0 z-[5] bg-black"
+            style={{ opacity: brightnessOverlay }}
+            aria-hidden
+          />
+        ) : null}
+        {brightnessHud != null ? (
+          <div className="pointer-events-none absolute right-[10%] top-1/2 z-30 flex -translate-y-1/2 flex-col items-center gap-2 rounded-2xl border border-white/15 bg-black/65 px-4 py-3 text-white shadow-2xl shadow-black/40 backdrop-blur-sm sm:right-[14%]">
+            <svg viewBox="0 0 24 24" className="h-7 w-7 fill-current opacity-90" aria-hidden>
+              <path d="M12 7.5a4.5 4.5 0 1 1 0 9 4.5 4.5 0 0 1 0-9Zm0-5.2.9 2.7h2.8l-2.3 1.7.9 2.7L12 12.7l-2.3 1.7.9-2.7-2.3-1.7h2.8L12 2.3Zm0 19.4-.9-2.7H8.3l2.3-1.7-.9-2.7 2.3 1.7 2.3-1.7-.9 2.7 2.3 1.7h-2.8L12 21.7Z" />
+            </svg>
+            <div className="flex h-24 w-1.5 flex-col justify-end overflow-hidden rounded-full bg-white/20">
+              <div
+                className="w-full rounded-full bg-white transition-[height] duration-75"
+                style={{ height: `${Math.round(brightnessHud * 100)}%` }}
+              />
+            </div>
+            <span className="text-sm font-semibold tabular-nums">{Math.round(brightnessHud * 100)}%</span>
+          </div>
+        ) : null}
+        {showClickLayer && <div
           className="pointer-events-none absolute inset-0 z-10"
           aria-hidden="true"
         >
@@ -961,8 +1131,13 @@ export function KodikPlayerBetaViewport({
             </button>
           </div>
         ) : null}
-        {controlsDocked && continueAction ? (
-          <div className="pointer-events-auto absolute inset-x-0 bottom-6 z-30 flex justify-center px-2">
+        {continueAction ? (
+          <div
+            className={[
+              "pointer-events-auto absolute inset-x-0 z-30 flex justify-center px-2",
+              controlsDocked ? "bottom-10" : "bottom-20 sm:bottom-24",
+            ].join(" ")}
+          >
             {continueAction}
           </div>
         ) : null}

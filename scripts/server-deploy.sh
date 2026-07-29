@@ -67,8 +67,10 @@ rm -f scripts/ws-create-test.mjs scripts/test-ws.mjs scripts/fix-nginx-ws.sh
 rm -f src/middleware.ts src/src/middleware.ts src/src/proxy.ts
 
 deploy_progress 2 "npm ci"
-echo "[deploy] npm ci uses quiet output; errors remain visible; timeout ${NPM_CI_TIMEOUT}"
-run_with_heartbeat "npm ci" 15 timeout "$NPM_CI_TIMEOUT" npm ci --no-audit --no-fund --progress=false --loglevel=error
+echo "[deploy] npm ci uses quiet output; errors remain visible; timeout ${NPM_CI_TIMEOUT} (SIGKILL +15s)"
+# Without -k, GNU timeout only sends SIGTERM and can wait forever if npm ignores it
+# (seen on prod: npm ci hung 15m+ with ~21s CPU while heartbeat kept printing).
+run_with_heartbeat "npm ci" 15 timeout -k 15s "$NPM_CI_TIMEOUT" npm ci --no-audit --no-fund --progress=false --loglevel=error
 
 deploy_progress 3 "prisma generate"
 npx prisma generate

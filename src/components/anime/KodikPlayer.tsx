@@ -35,6 +35,11 @@ export type KodikPlayerPlaybackState = {
   muted: boolean;
   /** True after Kodik actually started media (needed for Android WebView gesture unlock). */
   mediaUnlocked: boolean;
+  /**
+   * True after the video stream is ready for playback UI overlays:
+   * `kodik_player_video_started` and a known duration (not just `play` / mediaUnlocked).
+   */
+  videoReady: boolean;
 };
 
 export type KodikPlayerProgressPayload = {
@@ -71,6 +76,7 @@ const DEFAULT_PLAYBACK_STATE: KodikPlayerPlaybackState = {
   volume: 1,
   muted: false,
   mediaUnlocked: false,
+  videoReady: false,
 };
 
 type Props = {
@@ -376,6 +382,7 @@ export const KodikPlayer = forwardRef<KodikPlayerHandle, Props>(function KodikPl
   const translationIdRef = useRef<number | null>(null);
   const resumeAppliedRef = useRef(false);
   const playerReadyRef = useRef(false);
+  const videoStreamStartedRef = useRef(false);
   const continueFlowRef = useRef<ContinueFlow | null>(null);
   const bufferedSeekTargetRef = useRef<number | null>(null);
   const bufferedSeekTimerRef = useRef<number | null>(null);
@@ -486,6 +493,7 @@ export const KodikPlayer = forwardRef<KodikPlayerHandle, Props>(function KodikPl
   useEffect(() => {
     resumeAppliedRef.current = false;
     playerReadyRef.current = false;
+    videoStreamStartedRef.current = false;
     episodeRef.current = { seasonNumber: 1, episodeNumber: 1 };
     positionRef.current = 0;
     playbackRef.current = { ...DEFAULT_PLAYBACK_STATE };
@@ -695,11 +703,34 @@ export const KodikPlayer = forwardRef<KodikPlayerHandle, Props>(function KodikPl
       }
 
       if (event.data.key === "kodik_player_video_started") {
-        patchPlayback({ isPlaying: true, mediaUnlocked: true });
+        const flow = continueFlowRef.current;
+        // Pause-resume briefly starts media to unlock seek — don't treat that as "video ready".
+        const pauseResume =
+          Boolean(flow) &&
+          !flow!.autoplay &&
+          (flow!.stage === "seek" || flow!.stage === "pausing" || flow!.stage === "play");
+        if (!pauseResume) {
+          videoStreamStartedRef.current = true;
+        }
+        patchPlayback({
+          isPlaying: true,
+          mediaUnlocked: true,
+          videoReady:
+            !pauseResume && playbackRef.current.durationSeconds > 0
+              ? true
+              : playbackRef.current.videoReady,
+        });
       }
 
       if (event.data.key === "kodik_player_duration_update" && typeof event.data.value === "number") {
-        patchPlayback({ durationSeconds: event.data.value });
+        const durationSeconds = event.data.value;
+        patchPlayback({
+          durationSeconds,
+          videoReady:
+            videoStreamStartedRef.current && durationSeconds > 0
+              ? true
+              : playbackRef.current.videoReady,
+        });
       }
 
       if (event.data.key === "kodik_player_volume_change" && event.data.value) {
