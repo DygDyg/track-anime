@@ -682,7 +682,7 @@ export function AnimeWatchPanel({
         silentContinueFlowRef.current = true;
         window.setTimeout(() => {
           silentContinueFlowRef.current = false;
-        }, 5_000);
+        }, 10_000);
         setContinueLoading(false);
         setContinueTarget(null);
       } else {

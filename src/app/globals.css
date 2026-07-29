@@ -1275,6 +1275,68 @@ html[data-card-size="compact"] .release-card-title {
   isolation: isolate;
 }
 
+.kodik-player-beta-viewport--dock-controls {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+}
+
+.kodik-player-beta-viewport--dock-controls .kodik-player-beta-docked-chrome {
+  flex: 0 0 auto;
+  border-top: 1px solid var(--border);
+  background: #0f0f0f;
+}
+
+.kodik-player-beta-viewport--dock-controls .kodik-player-beta-docked-chrome .kodik-player-beta-bottom-stack {
+  padding-top: 0.375rem;
+}
+
+.kodik-player-beta-viewport--dock-controls .kodik-player-beta-docked-chrome .kodik-player-beta-controls {
+  margin: 0;
+  border: 0;
+  border-radius: 0;
+  background: transparent;
+  backdrop-filter: none;
+}
+
+.kodik-player-beta-viewport--dock-controls .kodik-player-beta-docked-chrome .kodik-player-beta-kodik-ui-toggle {
+  border-color: rgba(255, 255, 255, 0.14);
+  background: rgba(255, 255, 255, 0.08);
+}
+
+.kodik-player-beta-center-play {
+  display: inline-flex;
+  height: 4.25rem;
+  width: 4.25rem;
+  align-items: center;
+  justify-content: center;
+  border-radius: 9999px;
+  border: 1px solid rgba(255, 255, 255, 0.18);
+  background: rgba(0, 0, 0, 0.55);
+  color: #fff;
+  box-shadow: 0 10px 28px rgba(0, 0, 0, 0.35);
+  backdrop-filter: blur(10px);
+  transition:
+    background-color 0.15s ease,
+    transform 0.15s ease,
+    opacity 0.2s ease;
+  -webkit-tap-highlight-color: transparent;
+  touch-action: manipulation;
+}
+
+.kodik-player-beta-center-play:hover {
+  background: rgba(0, 0, 0, 0.68);
+}
+
+.kodik-player-beta-center-play:active {
+  transform: scale(0.96);
+}
+
+.kodik-player-beta-center-play:disabled {
+  cursor: wait;
+  opacity: 0.45;
+}
+
 .kodik-player-beta-viewport,
 .kodik-player-beta-viewport iframe,
 .kodik-player-beta-viewport button {
@@ -1406,6 +1468,19 @@ html[data-card-size="compact"] .release-card-title {
   height: min(var(--kodik-beta-theater-max-h), calc(var(--kodik-beta-theater-max-w) * 9 / 16));
   max-width: var(--kodik-beta-theater-max-w);
   max-height: var(--kodik-beta-theater-max-h);
+  aspect-ratio: 16 / 9;
+}
+
+.kodik-player-beta-stage--height-expanded:has(.kodik-player-beta-viewport--dock-controls)
+  .kodik-player-beta-player-host {
+  height: auto;
+  max-height: none;
+  aspect-ratio: auto;
+}
+
+.kodik-player-beta-stage--height-expanded:has(.kodik-player-beta-viewport--dock-controls)
+  .kodik-player-beta-video-shell {
+  width: 100%;
   aspect-ratio: 16 / 9;
 }
 

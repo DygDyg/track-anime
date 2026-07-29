@@ -261,12 +261,11 @@ export function AquaCoderCompanion() {
   if (!visible) return null;
 
   const setMenuOpenSafe = (open: boolean) => {
-    setMenuOpen((wasOpen) => {
-      if (wasOpen && !open) {
-        restoreSituation({ force: true });
-      }
-      return open;
-    });
+    const wasOpen = menuOpenRef.current;
+    setMenuOpen(open);
+    if (wasOpen && !open) {
+      restoreSituation({ force: true });
+    }
   };
 
   return (

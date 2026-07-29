@@ -31,6 +31,9 @@ import { toKodikPlayerEmbedUrl } from "@/lib/player-url";
 const CONTROLS_IDLE_MS = 2_500;
 const SINGLE_CLICK_DELAY_MS = 220;
 const SEEK_FEEDBACK_MS = 900;
+const MOBILE_DOUBLE_TAP_SEEK_SECONDS = 10;
+const MOBILE_DOCK_CONTROLS_MQ = "(max-width: 639px) and (orientation: portrait)";
+const TOUCH_LIKE_MQ = "(hover: none), (pointer: coarse)";
 const MOBILE_TRANSLATIONS_SWIPE_ZONE_PX = 96;
 const MOBILE_TRANSLATIONS_SWIPE_THRESHOLD_PX = 56;
 const KODIK_NATIVE_SKIP_PASSTHROUGH_WIDTH = "min(18rem, 44vw)";
@@ -146,8 +149,17 @@ export function KodikPlayerBetaViewport({
   const [uiVisible, setUiVisible] = useState(true);
   const [kodikUiAccess, setKodikUiAccess] = useState(false);
   const [castAvailable, setCastAvailable] = useState(false);
+  const [dockControlsBelow, setDockControlsBelow] = useState(() => {
+    if (typeof window === "undefined") return false;
+    return window.matchMedia(MOBILE_DOCK_CONTROLS_MQ).matches;
+  });
+  const [touchLikeUi, setTouchLikeUi] = useState(() => {
+    if (typeof window === "undefined") return false;
+    return window.matchMedia(TOUCH_LIKE_MQ).matches;
+  });
   const [seekFeedback, setSeekFeedback] = useState({ backward: 0, forward: 0 });
   const viewportRef = useRef<HTMLDivElement>(null);
+  const videoShellRef = useRef<HTMLDivElement>(null);
   const hideTimerRef = useRef<number | null>(null);
   const clickTimerRef = useRef<number | null>(null);
   const seekFeedbackTimersRef = useRef<{ backward: number | null; forward: number | null }>({
@@ -162,6 +174,7 @@ export function KodikPlayerBetaViewport({
   const wakeLockRef = useRef<WakeLockSentinel | null>(null);
   const playbackRef = useRef(playback);
   const volumeReady = playback.durationSeconds > 0;
+  const controlsDocked = dockControlsBelow && !fullscreenActive;
 
   useEffect(() => {
     playbackRef.current = playback;
@@ -170,6 +183,24 @@ export function KodikPlayerBetaViewport({
   useEffect(() => {
     if (typeof window === "undefined") return;
     setCastAvailable("PresentationRequest" in window && "presentation" in navigator);
+  }, []);
+
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+    const media = window.matchMedia(MOBILE_DOCK_CONTROLS_MQ);
+    const sync = () => setDockControlsBelow(media.matches);
+    sync();
+    media.addEventListener("change", sync);
+    return () => media.removeEventListener("change", sync);
+  }, []);
+
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+    const media = window.matchMedia(TOUCH_LIKE_MQ);
+    const sync = () => setTouchLikeUi(media.matches);
+    sync();
+    media.addEventListener("change", sync);
+    return () => media.removeEventListener("change", sync);
   }, []);
 
   useEffect(() => {
@@ -257,6 +288,25 @@ export function KodikPlayerBetaViewport({
     scheduleHide();
   }, [kodikUiAccess, scheduleHide]);
 
+  const hideUi = useCallback(() => {
+    clearHideTimer();
+    setUiVisible(false);
+    onFullscreenTranslationsIntent?.(false);
+    viewportRef.current
+      ?.closest(".kodik-player-beta-stage:fullscreen")
+      ?.scrollTo({ top: 0, behavior: "smooth" });
+  }, [clearHideTimer, onFullscreenTranslationsIntent]);
+
+  const toggleUi = useCallback(() => {
+    if (kodikUiAccess) return;
+    if (uiVisible) {
+      hideUi();
+      return;
+    }
+    setUiVisible(true);
+    scheduleHide();
+  }, [hideUi, kodikUiAccess, scheduleHide, uiVisible]);
+
   const toggleKodikUiAccess = useCallback(() => {
     setKodikUiAccess((current) => {
       const next = !current;
@@ -325,7 +375,11 @@ export function KodikPlayerBetaViewport({
 
   const handleTouchStart = useCallback(
     (event: ReactTouchEvent<HTMLDivElement>) => {
-      revealUi();
+      // Touch/mobile: single tap toggles UI via click handler — don't force-reveal here
+      // or a show+hide race happens with toggle.
+      if (!touchLikeUi) {
+        revealUi();
+      }
 
       const touch = event.touches[0];
       const node = viewportRef.current;
@@ -341,7 +395,7 @@ export function KodikPlayerBetaViewport({
         startedNearBottom: fullscreenActive && rect.bottom - touch.clientY <= MOBILE_TRANSLATIONS_SWIPE_ZONE_PX,
       };
     },
-    [fullscreenActive, revealUi],
+    [fullscreenActive, revealUi, touchLikeUi],
   );
 
   const handleTouchMove = useCallback(
@@ -605,19 +659,62 @@ export function KodikPlayerBetaViewport({
     if (controlsDisabled || kodikUiAccess) return;
     clearClickTimer();
     clickTimerRef.current = window.setTimeout(() => {
-      onPlayPause();
+      // YouTube-like mobile: tap toggles chrome; play/pause is the center button.
+      if (touchLikeUi) {
+        toggleUi();
+      } else {
+        onPlayPause();
+      }
       clickTimerRef.current = null;
     }, SINGLE_CLICK_DELAY_MS);
-  }, [clearClickTimer, controlsDisabled, kodikUiAccess, onPlayPause]);
+  }, [
+    clearClickTimer,
+    controlsDisabled,
+    kodikUiAccess,
+    onPlayPause,
+    toggleUi,
+    touchLikeUi,
+  ]);
+
+  const handleCenterPlayPause = useCallback(
+    (event: ReactMouseEvent<HTMLButtonElement>) => {
+      event.preventDefault();
+      event.stopPropagation();
+      clearClickTimer();
+      if (controlsDisabled || kodikUiAccess) return;
+      onPlayPause();
+      scheduleHide();
+    },
+    [clearClickTimer, controlsDisabled, kodikUiAccess, onPlayPause, scheduleHide],
+  );
 
   const handleViewportDoubleClick = useCallback(
     (event: ReactMouseEvent<HTMLDivElement>) => {
       event.preventDefault();
       clearClickTimer();
       if (controlsDisabled || kodikUiAccess) return;
+
+      // Phone / touch: double-tap left/right seeks; desktop keeps fullscreen toggle.
+      if (touchLikeUi) {
+        const rect = videoShellRef.current?.getBoundingClientRect();
+        if (!rect || rect.width <= 0) return;
+        const ratio = (event.clientX - rect.left) / rect.width;
+        handleSeekSkip(
+          ratio < 0.5 ? -MOBILE_DOUBLE_TAP_SEEK_SECONDS : MOBILE_DOUBLE_TAP_SEEK_SECONDS,
+        );
+        return;
+      }
+
       onFullscreenToggle();
     },
-    [clearClickTimer, controlsDisabled, kodikUiAccess, onFullscreenToggle],
+    [
+      clearClickTimer,
+      controlsDisabled,
+      handleSeekSkip,
+      kodikUiAccess,
+      onFullscreenToggle,
+      touchLikeUi,
+    ],
   );
 
   const uiInteractive = uiVisible && !kodikUiAccess;
@@ -637,11 +734,81 @@ export function KodikPlayerBetaViewport({
   ].join(" ");
   const clickLayerStyle = hideCursor ? { cursor: "none" } : undefined;
 
+  const controlsNode = (
+    <KodikPlayerBetaControls
+      disabled={controlsDisabled}
+      playback={playback}
+      timelineSegments={timelineSegments}
+      fullscreenActive={fullscreenActive}
+      seekSkipLabelSeconds={seekSkipLabelSeconds}
+      overlay={!controlsDocked}
+      onPlayPause={onPlayPause}
+      onPreviousEpisode={onPreviousEpisode}
+      onNextEpisode={onNextEpisode}
+      previousEpisodeDisabled={previousEpisodeDisabled}
+      nextEpisodeDisabled={nextEpisodeDisabled}
+      onSeek={onSeek}
+      onSeekSkip={handleSeekSkip}
+      onVolumeChange={onVolumeChange}
+      onMuteToggle={onMuteToggle}
+      theaterMode={theaterMode}
+      onTheaterToggle={onTheaterToggle}
+      onFullscreenToggle={onFullscreenToggle}
+      pipAvailable={false}
+      onPictureInPicture={undefined}
+      castAvailable={castAvailable}
+      onCast={handleCast}
+      fullscreenTranslationsOpen={fullscreenTranslationsOpen}
+      onFullscreenTranslationsToggle={() =>
+        onFullscreenTranslationsIntent?.(!fullscreenTranslationsOpen)
+      }
+      interactive={controlsDocked ? !kodikUiAccess : uiInteractive}
+    />
+  );
+
+  const bottomStackNode = (
+    <div className="kodik-player-beta-bottom-stack pointer-events-none space-y-1 px-2 pb-1 sm:space-y-2 sm:px-3">
+      <div className="flex items-center justify-between gap-2">
+        <button
+          type="button"
+          onClick={toggleKodikUiAccess}
+          className={[
+            "kodik-player-beta-kodik-ui-toggle inline-flex rounded-md border border-white/10 bg-black/35 px-[clamp(0.5rem,0.42vw,0.8rem)] py-[clamp(0.25rem,0.21vw,0.4rem)] text-[clamp(11px,0.58vw,15px)] font-medium text-white/85 backdrop-blur-sm transition hover:bg-black/50 hover:text-white",
+            (controlsDocked ? !kodikUiAccess : uiInteractive)
+              ? "pointer-events-auto"
+              : "pointer-events-none",
+          ].join(" ")}
+        >
+          <span className="hidden sm:inline">
+            Shift — {kodikUiAccess ? "интерфейс TA" : "интерфейс Kodik"}
+          </span>
+          <span className="sm:hidden">{kodikUiAccess ? "TA UI" : "Kodik UI"}</span>
+        </button>
+        {continueAction ? (
+          <div
+            className={[
+              "flex min-w-0 flex-1 flex-wrap justify-center gap-2",
+              (controlsDocked ? !kodikUiAccess : uiInteractive)
+                ? "pointer-events-auto"
+                : "pointer-events-none",
+            ].join(" ")}
+          >
+            {continueAction}
+          </div>
+        ) : null}
+        <span className="hidden min-w-[7.5rem] sm:block" aria-hidden />
+      </div>
+    </div>
+  );
+
   return (
     <div
       ref={viewportRef}
       tabIndex={-1}
-      className="kodik-player-beta-viewport relative min-w-0"
+      className={[
+        "kodik-player-beta-viewport relative min-w-0",
+        controlsDocked ? "kodik-player-beta-viewport--dock-controls" : "",
+      ].join(" ")}
       data-player-keyboard-scope
       onMouseMove={handleMouseMove}
       onMouseDown={markPlayerInteraction}
@@ -654,71 +821,28 @@ export function KodikPlayerBetaViewport({
       }}
       onFocusCapture={revealUi}
     >
-      {continueOverlay}
-      <KodikPlayer
-        ref={playerRef}
-        key={playerKey}
-        src={src}
-        title={title}
-        sizeMode={sizeMode}
-        chromelessBeta
-        initialResume={initialResume}
-        onReady={onReady}
-        onContinueStateChange={onContinueStateChange}
-        onProgress={onProgress}
-        onPause={onPause}
-        onTranslationChange={onTranslationChange}
-        onPlaybackStateChange={onPlaybackStateChange}
-        onEnded={onEnded}
-      />
-      <div
-        className="pointer-events-none absolute inset-0 z-10"
-        aria-hidden="true"
-      >
-        <div
-          onClick={handleViewportClick}
-          onDoubleClick={handleViewportDoubleClick}
-          className={clickLayerClass}
-          style={{
-            ...clickLayerStyle,
-            insetInline: 0,
-            top: 0,
-            bottom: `calc(${KODIK_NATIVE_SKIP_PASSTHROUGH_BOTTOM} + ${KODIK_NATIVE_SKIP_PASSTHROUGH_HEIGHT})`,
-          }}
+      <div ref={videoShellRef} className="kodik-player-beta-video-shell relative min-w-0">
+        {continueOverlay}
+        <KodikPlayer
+          ref={playerRef}
+          key={playerKey}
+          src={src}
+          title={title}
+          sizeMode={sizeMode}
+          chromelessBeta
+          initialResume={initialResume}
+          onReady={onReady}
+          onContinueStateChange={onContinueStateChange}
+          onProgress={onProgress}
+          onPause={onPause}
+          onTranslationChange={onTranslationChange}
+          onPlaybackStateChange={onPlaybackStateChange}
+          onEnded={onEnded}
         />
         <div
-          onClick={handleViewportClick}
-          onDoubleClick={handleViewportDoubleClick}
-          className={clickLayerClass}
-          style={{
-            ...clickLayerStyle,
-            left: 0,
-            right: `calc(${KODIK_NATIVE_SKIP_PASSTHROUGH_RIGHT} + ${KODIK_NATIVE_SKIP_PASSTHROUGH_WIDTH})`,
-            bottom: KODIK_NATIVE_SKIP_PASSTHROUGH_BOTTOM,
-            height: KODIK_NATIVE_SKIP_PASSTHROUGH_HEIGHT,
-          }}
-        />
-        <div
-          onClick={handleViewportClick}
-          onDoubleClick={handleViewportDoubleClick}
-          className={clickLayerClass}
-          style={{
-            ...clickLayerStyle,
-            right: 0,
-            bottom: KODIK_NATIVE_SKIP_PASSTHROUGH_BOTTOM,
-            width: KODIK_NATIVE_SKIP_PASSTHROUGH_RIGHT,
-            height: KODIK_NATIVE_SKIP_PASSTHROUGH_HEIGHT,
-          }}
-        />
-        {fullscreenActive ? (
-          <div
-            className={[
-              "absolute inset-x-0 bottom-0 z-10",
-              clickLayerInteractive ? "pointer-events-auto" : "pointer-events-none",
-            ].join(" ")}
-            style={{ height: KODIK_NATIVE_SKIP_PASSTHROUGH_BOTTOM }}
-          />
-        ) : (
+          className="pointer-events-none absolute inset-0 z-10"
+          aria-hidden="true"
+        >
           <div
             onClick={handleViewportClick}
             onDoubleClick={handleViewportDoubleClick}
@@ -726,146 +850,180 @@ export function KodikPlayerBetaViewport({
             style={{
               ...clickLayerStyle,
               insetInline: 0,
-              bottom: 0,
-              height: KODIK_NATIVE_SKIP_PASSTHROUGH_BOTTOM,
+              top: 0,
+              bottom: `calc(${KODIK_NATIVE_SKIP_PASSTHROUGH_BOTTOM} + ${KODIK_NATIVE_SKIP_PASSTHROUGH_HEIGHT})`,
             }}
           />
-        )}
-      </div>
-      {fullscreenActive && settings.showClock ? (
-        <div className="pointer-events-none absolute right-2 top-2 z-30 sm:right-3 sm:top-3">
-          <SiteClock className="border-white/10 bg-black/45 text-white/90" />
-        </div>
-      ) : null}
-      {skipAction && !kodikUiAccess ? (
-        <div className="pointer-events-none absolute inset-x-2 bottom-14 z-30 flex justify-center sm:bottom-16">
-          <div className={uiInteractive ? "pointer-events-auto" : "pointer-events-none"}>
-            {skipAction}
-          </div>
-        </div>
-      ) : null}
-      {seekFeedback.backward > 0 ? (
-        <div className="pointer-events-none absolute left-[12%] top-1/2 z-30 flex h-20 min-w-20 -translate-y-1/2 items-center justify-center rounded-full border border-white/20 bg-black/60 px-4 text-xl font-bold tabular-nums text-white shadow-2xl shadow-black/40 backdrop-blur-sm sm:left-[16%] sm:h-24 sm:min-w-24 sm:text-2xl">
-          -{seekFeedback.backward}
-        </div>
-      ) : null}
-      {seekFeedback.forward > 0 ? (
-        <div className="pointer-events-none absolute right-[12%] top-1/2 z-30 flex h-20 min-w-20 -translate-y-1/2 items-center justify-center rounded-full border border-white/20 bg-black/60 px-4 text-xl font-bold tabular-nums text-white shadow-2xl shadow-black/40 backdrop-blur-sm sm:right-[16%] sm:h-24 sm:min-w-24 sm:text-2xl">
-          +{seekFeedback.forward}
-        </div>
-      ) : null}
-      {kodikUiAccess ? (
-        <div className="pointer-events-none absolute inset-x-0 bottom-[4.25rem] z-40 px-2 pb-1 sm:px-3">
-          <button
-            type="button"
-            onClick={toggleKodikUiAccess}
-            className="kodik-player-beta-kodik-ui-toggle pointer-events-auto inline-flex rounded-md border border-white/10 bg-black/35 px-[clamp(0.5rem,0.42vw,0.8rem)] py-[clamp(0.25rem,0.21vw,0.4rem)] text-[clamp(11px,0.58vw,15px)] font-medium text-white/85 backdrop-blur-sm transition hover:bg-black/50 hover:text-white"
-          >
-            <span className="hidden sm:inline">Shift — интерфейс TA</span>
-            <span className="sm:hidden">TA UI</span>
-          </button>
-        </div>
-      ) : null}
-      <div
-        className={[
-          "kodik-player-beta-ui pointer-events-none absolute inset-0 z-20 flex flex-col justify-between transition-opacity duration-300",
-          uiInteractive ? "opacity-100" : "opacity-0",
-        ].join(" ")}
-        aria-hidden={!uiInteractive}
-      >
-        <div
-          className={[
-            "kodik-player-beta-ui-top",
-            uiInteractive ? "pointer-events-auto" : "pointer-events-none",
-          ].join(" ")}
-        >
-          <KodikPlayerBetaEpisodeStrip
-            shikimoriId={shikimoriId}
-            kodikId={kodikId}
-            seasonNumber={seasonNumber}
-            currentEpisode={currentEpisode}
-            disabled={controlsDisabled}
-            onSelect={onEpisodeSelect}
-            overlay
+          <div
+            onClick={handleViewportClick}
+            onDoubleClick={handleViewportDoubleClick}
+            className={clickLayerClass}
+            style={{
+              ...clickLayerStyle,
+              left: 0,
+              right: `calc(${KODIK_NATIVE_SKIP_PASSTHROUGH_RIGHT} + ${KODIK_NATIVE_SKIP_PASSTHROUGH_WIDTH})`,
+              bottom: KODIK_NATIVE_SKIP_PASSTHROUGH_BOTTOM,
+              height: KODIK_NATIVE_SKIP_PASSTHROUGH_HEIGHT,
+            }}
           />
+          <div
+            onClick={handleViewportClick}
+            onDoubleClick={handleViewportDoubleClick}
+            className={clickLayerClass}
+            style={{
+              ...clickLayerStyle,
+              right: 0,
+              bottom: KODIK_NATIVE_SKIP_PASSTHROUGH_BOTTOM,
+              width: KODIK_NATIVE_SKIP_PASSTHROUGH_RIGHT,
+              height: KODIK_NATIVE_SKIP_PASSTHROUGH_HEIGHT,
+            }}
+          />
+          {fullscreenActive ? (
+            <div
+              className={[
+                "absolute inset-x-0 bottom-0 z-10",
+                clickLayerInteractive ? "pointer-events-auto" : "pointer-events-none",
+              ].join(" ")}
+              style={{ height: KODIK_NATIVE_SKIP_PASSTHROUGH_BOTTOM }}
+            />
+          ) : (
+            <div
+              onClick={handleViewportClick}
+              onDoubleClick={handleViewportDoubleClick}
+              className={clickLayerClass}
+              style={{
+                ...clickLayerStyle,
+                insetInline: 0,
+                bottom: 0,
+                height: KODIK_NATIVE_SKIP_PASSTHROUGH_BOTTOM,
+              }}
+            />
+          )}
         </div>
+        {fullscreenActive && settings.showClock ? (
+          <div className="pointer-events-none absolute right-2 top-2 z-30 sm:right-3 sm:top-3">
+            <SiteClock className="border-white/10 bg-black/45 text-white/90" />
+          </div>
+        ) : null}
+        {skipAction && !kodikUiAccess ? (
+          <div
+            className={[
+              "pointer-events-none absolute inset-x-2 z-30 flex justify-center",
+              controlsDocked ? "bottom-2" : "bottom-14 sm:bottom-16",
+            ].join(" ")}
+          >
+            <div className={uiInteractive || controlsDocked ? "pointer-events-auto" : "pointer-events-none"}>
+              {skipAction}
+            </div>
+          </div>
+        ) : null}
+        {seekFeedback.backward > 0 ? (
+          <div className="pointer-events-none absolute left-[12%] top-1/2 z-30 flex h-20 min-w-20 -translate-y-1/2 items-center justify-center rounded-full border border-white/20 bg-black/60 px-4 text-xl font-bold tabular-nums text-white shadow-2xl shadow-black/40 backdrop-blur-sm sm:left-[16%] sm:h-24 sm:min-w-24 sm:text-2xl">
+            -{seekFeedback.backward}
+          </div>
+        ) : null}
+        {seekFeedback.forward > 0 ? (
+          <div className="pointer-events-none absolute right-[12%] top-1/2 z-30 flex h-20 min-w-20 -translate-y-1/2 items-center justify-center rounded-full border border-white/20 bg-black/60 px-4 text-xl font-bold tabular-nums text-white shadow-2xl shadow-black/40 backdrop-blur-sm sm:right-[16%] sm:h-24 sm:min-w-24 sm:text-2xl">
+            +{seekFeedback.forward}
+          </div>
+        ) : null}
+        {kodikUiAccess ? (
+          <div
+            className={[
+              "pointer-events-none absolute inset-x-0 z-40 px-2 pb-1 sm:px-3",
+              controlsDocked ? "bottom-2" : "bottom-[4.25rem]",
+            ].join(" ")}
+          >
+            <button
+              type="button"
+              onClick={toggleKodikUiAccess}
+              className="kodik-player-beta-kodik-ui-toggle pointer-events-auto inline-flex rounded-md border border-white/10 bg-black/35 px-[clamp(0.5rem,0.42vw,0.8rem)] py-[clamp(0.25rem,0.21vw,0.4rem)] text-[clamp(11px,0.58vw,15px)] font-medium text-white/85 backdrop-blur-sm transition hover:bg-black/50 hover:text-white"
+            >
+              <span className="hidden sm:inline">Shift — интерфейс TA</span>
+              <span className="sm:hidden">TA UI</span>
+            </button>
+          </div>
+        ) : null}
         <div
           className={[
-            "kodik-player-beta-ui-bottom",
-            "pointer-events-none",
+            "kodik-player-beta-ui pointer-events-none absolute inset-0 z-20 flex flex-col justify-between transition-opacity duration-300",
+            uiInteractive ? "opacity-100" : "opacity-0",
           ].join(" ")}
+          aria-hidden={!uiInteractive}
         >
-          <div className="kodik-player-beta-bottom-stack pointer-events-none space-y-1 px-2 pb-1 sm:space-y-2 sm:px-3">
-            <div className="flex items-center justify-between gap-2">
+          <div
+            className={[
+              "kodik-player-beta-ui-top",
+              uiInteractive ? "pointer-events-auto" : "pointer-events-none",
+            ].join(" ")}
+          >
+            <KodikPlayerBetaEpisodeStrip
+              shikimoriId={shikimoriId}
+              kodikId={kodikId}
+              seasonNumber={seasonNumber}
+              currentEpisode={currentEpisode}
+              disabled={controlsDisabled}
+              onSelect={onEpisodeSelect}
+              overlay
+            />
+          </div>
+          {touchLikeUi ? (
+            <div className="pointer-events-none absolute inset-0 z-[1] flex items-center justify-center">
               <button
                 type="button"
-                onClick={toggleKodikUiAccess}
+                disabled={controlsDisabled}
+                aria-label={playback.isPlaying ? "Пауза" : "Воспроизведение"}
+                onClick={handleCenterPlayPause}
+                onDoubleClick={(event) => {
+                  event.preventDefault();
+                  event.stopPropagation();
+                }}
                 className={[
-                  "kodik-player-beta-kodik-ui-toggle inline-flex rounded-md border border-white/10 bg-black/35 px-[clamp(0.5rem,0.42vw,0.8rem)] py-[clamp(0.25rem,0.21vw,0.4rem)] text-[clamp(11px,0.58vw,15px)] font-medium text-white/85 backdrop-blur-sm transition hover:bg-black/50 hover:text-white",
+                  "kodik-player-beta-center-play",
                   uiInteractive ? "pointer-events-auto" : "pointer-events-none",
                 ].join(" ")}
               >
-                <span className="hidden sm:inline">
-                  Shift — {kodikUiAccess ? "интерфейс TA" : "интерфейс Kodik"}
-                </span>
-                <span className="sm:hidden">{kodikUiAccess ? "TA UI" : "Kodik UI"}</span>
+                {playback.isPlaying ? (
+                  <svg viewBox="0 0 24 24" className="h-10 w-10 fill-current" aria-hidden>
+                    <path d="M6 5h4v14H6V5zm8 0h4v14h-4V5z" />
+                  </svg>
+                ) : (
+                  <svg viewBox="0 0 24 24" className="h-10 w-10 fill-current" aria-hidden>
+                    <path d="M8 5v14l11-7z" />
+                  </svg>
+                )}
               </button>
-              {continueAction ? (
-                <div
-                  className={[
-                    "flex min-w-0 flex-1 flex-wrap justify-center gap-2",
-                    uiInteractive ? "pointer-events-auto" : "pointer-events-none",
-                  ].join(" ")}
-                >
-                  {continueAction}
-                </div>
-              ) : null}
-              <span className="hidden min-w-[7.5rem] sm:block" aria-hidden />
             </div>
-          </div>
-          <KodikPlayerBetaControls
-            disabled={controlsDisabled}
-            playback={playback}
-            timelineSegments={timelineSegments}
-            fullscreenActive={fullscreenActive}
-            seekSkipLabelSeconds={seekSkipLabelSeconds}
-            overlay
-            onPlayPause={onPlayPause}
-            onPreviousEpisode={onPreviousEpisode}
-            onNextEpisode={onNextEpisode}
-            previousEpisodeDisabled={previousEpisodeDisabled}
-            nextEpisodeDisabled={nextEpisodeDisabled}
-            onSeek={onSeek}
-            onSeekSkip={handleSeekSkip}
-            onVolumeChange={onVolumeChange}
-            onMuteToggle={onMuteToggle}
-            theaterMode={theaterMode}
-            onTheaterToggle={onTheaterToggle}
-            onFullscreenToggle={onFullscreenToggle}
-            pipAvailable={false}
-            onPictureInPicture={undefined}
-            castAvailable={castAvailable}
-            onCast={handleCast}
-            fullscreenTranslationsOpen={fullscreenTranslationsOpen}
-            onFullscreenTranslationsToggle={() =>
-              onFullscreenTranslationsIntent?.(!fullscreenTranslationsOpen)
-            }
-            interactive={uiInteractive}
-          />
+          ) : null}
+          {!controlsDocked ? (
+            <div className="kodik-player-beta-ui-bottom pointer-events-none">
+              {bottomStackNode}
+              {controlsNode}
+            </div>
+          ) : null}
         </div>
+        {settings.betaHiddenProgressOpacity > 0 ? (
+          <div
+            className={[
+              "pointer-events-none absolute inset-x-0 bottom-0 z-20 h-1 bg-white/20 transition-opacity duration-300",
+              !uiInteractive && !kodikUiAccess && !controlsDocked ? "" : "opacity-0",
+            ].join(" ")}
+            style={{
+              opacity:
+                !uiInteractive && !kodikUiAccess && !controlsDocked
+                  ? settings.betaHiddenProgressOpacity
+                  : 0,
+            }}
+            aria-hidden
+          >
+            <div className="h-full bg-accent" style={{ width: progressFill }} />
+          </div>
+        ) : null}
       </div>
-      {settings.betaHiddenProgressOpacity > 0 ? (
-        <div
-          className={[
-            "pointer-events-none absolute inset-x-0 bottom-0 z-20 h-1 bg-white/20 transition-opacity duration-300",
-            !uiInteractive && !kodikUiAccess ? "" : "opacity-0",
-          ].join(" ")}
-          style={{
-            opacity: !uiInteractive && !kodikUiAccess ? settings.betaHiddenProgressOpacity : 0,
-          }}
-          aria-hidden
-        >
-          <div className="h-full bg-accent" style={{ width: progressFill }} />
+      {controlsDocked && !kodikUiAccess ? (
+        <div className="kodik-player-beta-docked-chrome">
+          {bottomStackNode}
+          {controlsNode}
         </div>
       ) : null}
     </div>

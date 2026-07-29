@@ -57,6 +57,8 @@ export type KodikPlayerHandle = {
 };
 
 const CONTINUE_HARD_TIMEOUT_MS = 15_000;
+const CONTINUE_PAUSE_AFTER_SEEK_MS = 500;
+const CONTINUE_PAUSE_RETRY_DELAYS_MS = [200, 500, 1000, 1800] as const;
 const SEEK_BY_FLUSH_DELAY_MS = 120;
 const INITIAL_STATE_REQUEST_DELAYS_MS = [0, 250, 750, 1500] as const;
 
@@ -94,9 +96,54 @@ type EpisodeState = { seasonNumber: number; episodeNumber: number };
 type ContinueFlow = {
   resume: KodikPlayerResume;
   autoplay: boolean;
-  stage: "episode" | "play";
+  stage: "episode" | "play" | "seek" | "pausing";
   timers: number[];
 };
+
+function clearFlowTimers(flow: ContinueFlow): void {
+  for (const id of flow.timers) window.clearTimeout(id);
+  flow.timers.length = 0;
+}
+
+function completeContinueFlow(
+  flow: ContinueFlow,
+  continueFlowRef: MutableRefObject<ContinueFlow | null>,
+  onContinueStateChange?: (active: boolean) => void,
+): void {
+  clearContinueFlow(flow);
+  if (continueFlowRef.current === flow) {
+    continueFlowRef.current = null;
+  }
+  onContinueStateChange?.(false);
+}
+
+function beginPausingAfterSeek(
+  iframe: HTMLIFrameElement,
+  flow: ContinueFlow,
+  continueFlowRef: MutableRefObject<ContinueFlow | null>,
+  onContinueStateChange?: (active: boolean) => void,
+): void {
+  clearFlowTimers(flow);
+  flow.stage = "pausing";
+  sendKodikCommand(iframe, { method: "pause" });
+
+  for (const delay of CONTINUE_PAUSE_RETRY_DELAYS_MS) {
+    flow.timers.push(
+      window.setTimeout(() => {
+        if (continueFlowRef.current !== flow || flow.stage !== "pausing") return;
+        sendKodikCommand(iframe, { method: "pause" });
+      }, delay),
+    );
+  }
+
+  const lastRetry = CONTINUE_PAUSE_RETRY_DELAYS_MS[CONTINUE_PAUSE_RETRY_DELAYS_MS.length - 1] ?? 0;
+  flow.timers.push(
+    window.setTimeout(() => {
+      if (continueFlowRef.current !== flow) return;
+      completeContinueFlow(flow, continueFlowRef, onContinueStateChange);
+    }, lastRetry + 400),
+  );
+}
 
 function commandSeason(seasonNumber: number): number | undefined {
   return seasonNumber === 1 ? undefined : seasonNumber;
@@ -157,9 +204,9 @@ function finishContinueSeek(
   episodeRef: MutableRefObject<EpisodeState>,
   onContinueStateChange?: (active: boolean) => void,
 ): void {
+  clearFlowTimers(flow);
+
   if (!episodeMatches(flow.resume, episodeRef.current)) {
-    for (const id of flow.timers) window.clearTimeout(id);
-    flow.timers.length = 0;
     flow.stage = "episode";
     sendKodikCommand(iframe, {
       method: "change_episode",
@@ -176,18 +223,31 @@ function finishContinueSeek(
   }
 
   if (flow.resume.positionSeconds >= 1) {
+    if (!flow.autoplay) {
+      flow.stage = "seek";
+      sendKodikCommand(iframe, { method: "seek", seconds: flow.resume.positionSeconds });
+      // Kodik often ignores an immediate pause and/or resumes after buffering.
+      // Wait for seek ack (or timeout), then pause with retries.
+      flow.timers.push(
+        window.setTimeout(() => {
+          if (continueFlowRef.current !== flow || flow.stage !== "seek") return;
+          beginPausingAfterSeek(iframe, flow, continueFlowRef, onContinueStateChange);
+        }, CONTINUE_PAUSE_AFTER_SEEK_MS),
+      );
+      return;
+    }
+
     sendKodikCommand(iframe, { method: "seek", seconds: flow.resume.positionSeconds });
+    completeContinueFlow(flow, continueFlowRef, onContinueStateChange);
+    return;
   }
 
   if (!flow.autoplay) {
-    window.setTimeout(() => {
-      sendKodikCommand(iframe, { method: "pause" });
-    }, 350);
+    beginPausingAfterSeek(iframe, flow, continueFlowRef, onContinueStateChange);
+    return;
   }
 
-  clearContinueFlow(flow);
-  continueFlowRef.current = null;
-  onContinueStateChange?.(false);
+  completeContinueFlow(flow, continueFlowRef, onContinueStateChange);
 }
 
 function requestPlayThenSeek(
@@ -197,13 +257,15 @@ function requestPlayThenSeek(
   episodeRef: MutableRefObject<EpisodeState>,
   onContinueStateChange?: (active: boolean) => void,
 ): void {
+  clearFlowTimers(flow);
   flow.stage = "play";
   sendKodikCommand(iframe, { method: "play" });
 
+  // Pause resume needs the media to actually start; `play` alone is too early.
   const fallbackId = window.setTimeout(() => {
     if (continueFlowRef.current !== flow || flow.stage !== "play") return;
     finishContinueSeek(iframe, flow, continueFlowRef, episodeRef, onContinueStateChange);
-  }, flow.autoplay ? 5_000 : 900);
+  }, flow.autoplay ? 5_000 : 2_500);
   flow.timers.push(fallbackId);
 }
 
@@ -236,9 +298,7 @@ function startContinueFlow(
 
   const hardTimeoutId = window.setTimeout(() => {
     if (continueFlowRef.current !== flow) return;
-    clearContinueFlow(flow);
-    continueFlowRef.current = null;
-    onContinueStateChange?.(false);
+    completeContinueFlow(flow, continueFlowRef, onContinueStateChange);
   }, CONTINUE_HARD_TIMEOUT_MS);
   flow.timers.push(hardTimeoutId);
 }
@@ -260,18 +320,32 @@ function handleContinueFlowMessage(
   ) {
     const episode = normalizeEpisode(event.data.value as KodikCurrentEpisode);
     if (episodeMatches(flow.resume, episode)) {
-      for (const id of flow.timers) window.clearTimeout(id);
-      flow.timers.length = 0;
+      clearFlowTimers(flow);
       requestPlayThenSeek(iframe, flow, continueFlowRef, episodeRef, onContinueStateChange);
     }
     return;
   }
 
+  if (flow.stage === "play") {
+    const playReady = event.data.key === "kodik_player_play";
+    const videoStarted = event.data.key === "kodik_player_video_started";
+    // For pause resume, wait until media actually started — early `play` + pause is ignored.
+    if (videoStarted || (flow.autoplay && playReady)) {
+      finishContinueSeek(iframe, flow, continueFlowRef, episodeRef, onContinueStateChange);
+    }
+    return;
+  }
+
+  if (flow.stage === "seek" && event.data.key === "kodik_player_seek") {
+    beginPausingAfterSeek(iframe, flow, continueFlowRef, onContinueStateChange);
+    return;
+  }
+
   if (
-    flow.stage === "play" &&
+    flow.stage === "pausing" &&
     (event.data.key === "kodik_player_play" || event.data.key === "kodik_player_video_started")
   ) {
-    finishContinueSeek(iframe, flow, continueFlowRef, episodeRef, onContinueStateChange);
+    sendKodikCommand(iframe, { method: "pause" });
   }
 }
 
@@ -609,6 +683,11 @@ export const KodikPlayer = forwardRef<KodikPlayerHandle, Props>(function KodikPl
       }
 
       if (event.data.key === "kodik_player_play") {
+        const flow = continueFlowRef.current;
+        // Pause-resume briefly plays to unlock seek; don't flip UI to playing while we force-pause.
+        if (flow && !flow.autoplay && (flow.stage === "seek" || flow.stage === "pausing")) {
+          return;
+        }
         patchPlayback({ isPlaying: true });
       }
 
