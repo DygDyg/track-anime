@@ -11,6 +11,7 @@ import {
 type EpisodeItem = {
   episodeNumber: number;
   seasonNumber: number;
+  playerLink: string | null;
 };
 
 type SeasonItem = {
@@ -24,7 +25,7 @@ type Props = {
   seasonNumber: number;
   currentEpisode: number;
   disabled?: boolean;
-  onSelect: (seasonNumber: number, episodeNumber: number) => void;
+  onSelect: (seasonNumber: number, episodeNumber: number, playerLink?: string | null) => void;
   overlay?: boolean;
 };
 
@@ -72,6 +73,7 @@ export function KodikPlayerBetaEpisodeStrip({
         if (!res.ok) throw new Error("load failed");
         const data = (await res.json()) as {
           seasonNumber?: number;
+          seasonPlayerLink?: string | null;
           seasons?: SeasonItem[];
           episodes?: EpisodeItem[];
         };
@@ -80,7 +82,13 @@ export function KodikPlayerBetaEpisodeStrip({
             setSelectedSeason(data.seasonNumber);
           }
           setSeasons(data.seasons ?? []);
-          setEpisodes(data.episodes ?? []);
+          setEpisodes(
+            (data.episodes ?? []).map((episode) => ({
+              episodeNumber: episode.episodeNumber,
+              seasonNumber: episode.seasonNumber,
+              playerLink: episode.playerLink ?? data.seasonPlayerLink ?? null,
+            })),
+          );
         }
       } catch {
         if (!cancelled) {
@@ -238,7 +246,9 @@ export function KodikPlayerBetaEpisodeStrip({
               aria-current={active ? "true" : undefined}
               aria-label={`Сезон ${episode.seasonNumber}, серия ${episode.episodeNumber}`}
               onMouseDown={(event) => event.preventDefault()}
-              onClick={() => onSelect(episode.seasonNumber, episode.episodeNumber)}
+              onClick={() =>
+                onSelect(episode.seasonNumber, episode.episodeNumber, episode.playerLink)
+              }
               className={[
                 "inline-flex aspect-square h-9 w-9 shrink-0 items-center justify-center rounded-md border text-xs font-semibold tabular-nums transition",
                 active

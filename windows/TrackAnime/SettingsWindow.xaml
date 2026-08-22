@@ -1,0 +1,319 @@
+<Window x:Class="TrackAnime.SettingsWindow"
+        xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        Title="Настройки приложения"
+        Icon="Assets/app.ico"
+        Width="720"
+        Height="520"
+        MinWidth="560"
+        MinHeight="420"
+        WindowStartupLocation="CenterOwner"
+        Background="#141824"
+        ResizeMode="CanResizeWithGrip"
+        Loaded="Window_Loaded">
+  <Window.Resources>
+    <SolidColorBrush x:Key="Fg" Color="#EEF0F4"/>
+    <SolidColorBrush x:Key="Muted" Color="#A3ABBD"/>
+    <SolidColorBrush x:Key="Accent" Color="#6C8CFF"/>
+    <SolidColorBrush x:Key="Border" Color="#2A3142"/>
+    <SolidColorBrush x:Key="Field" Color="#1A2030"/>
+    <SolidColorBrush x:Key="ScrollThumb" Color="#73A3ABBD"/>
+    <SolidColorBrush x:Key="ScrollThumbHover" Color="#A3A3ABBD"/>
+    <SolidColorBrush x:Key="ScrollTrack" Color="#00000000"/>
+
+    <Style x:Key="SiteScrollBarThumb" TargetType="Thumb">
+      <Setter Property="OverridesDefaultStyle" Value="True"/>
+      <Setter Property="IsTabStop" Value="False"/>
+      <Setter Property="Template">
+        <Setter.Value>
+          <ControlTemplate TargetType="Thumb">
+            <Border x:Name="Pill"
+                    Background="{StaticResource ScrollThumb}"
+                    CornerRadius="4"
+                    Margin="1"/>
+            <ControlTemplate.Triggers>
+              <Trigger Property="IsMouseOver" Value="True">
+                <Setter TargetName="Pill" Property="Background" Value="{StaticResource ScrollThumbHover}"/>
+              </Trigger>
+              <Trigger Property="IsDragging" Value="True">
+                <Setter TargetName="Pill" Property="Background" Value="{StaticResource Accent}"/>
+              </Trigger>
+            </ControlTemplate.Triggers>
+          </ControlTemplate>
+        </Setter.Value>
+      </Setter>
+    </Style>
+
+    <Style x:Key="SiteScrollBar" TargetType="ScrollBar">
+      <Setter Property="Width" Value="10"/>
+      <Setter Property="MinWidth" Value="10"/>
+      <Setter Property="Background" Value="{StaticResource ScrollTrack}"/>
+      <Setter Property="Opacity" Value="0.9"/>
+      <Setter Property="Template">
+        <Setter.Value>
+          <ControlTemplate TargetType="ScrollBar">
+            <Grid Background="Transparent">
+              <Track x:Name="PART_Track" IsDirectionReversed="True">
+                <Track.DecreaseRepeatButton>
+                  <RepeatButton Command="ScrollBar.PageUpCommand" Opacity="0" Height="0"/>
+                </Track.DecreaseRepeatButton>
+                <Track.Thumb>
+                  <Thumb Style="{StaticResource SiteScrollBarThumb}" MinHeight="28"/>
+                </Track.Thumb>
+                <Track.IncreaseRepeatButton>
+                  <RepeatButton Command="ScrollBar.PageDownCommand" Opacity="0" Height="0"/>
+                </Track.IncreaseRepeatButton>
+              </Track>
+            </Grid>
+          </ControlTemplate>
+        </Setter.Value>
+      </Setter>
+      <Style.Triggers>
+        <Trigger Property="Orientation" Value="Horizontal">
+          <Setter Property="Width" Value="Auto"/>
+          <Setter Property="Height" Value="10"/>
+          <Setter Property="MinHeight" Value="10"/>
+          <Setter Property="Template">
+            <Setter.Value>
+              <ControlTemplate TargetType="ScrollBar">
+                <Grid Background="Transparent">
+                  <Track x:Name="PART_Track" IsDirectionReversed="False">
+                    <Track.DecreaseRepeatButton>
+                      <RepeatButton Command="ScrollBar.PageLeftCommand" Opacity="0" Width="0"/>
+                    </Track.DecreaseRepeatButton>
+                    <Track.Thumb>
+                      <Thumb Style="{StaticResource SiteScrollBarThumb}" MinWidth="28"/>
+                    </Track.Thumb>
+                    <Track.IncreaseRepeatButton>
+                      <RepeatButton Command="ScrollBar.PageRightCommand" Opacity="0" Width="0"/>
+                    </Track.IncreaseRepeatButton>
+                  </Track>
+                </Grid>
+              </ControlTemplate>
+            </Setter.Value>
+          </Setter>
+        </Trigger>
+      </Style.Triggers>
+    </Style>
+
+    <Style TargetType="ScrollViewer">
+      <Setter Property="Template">
+        <Setter.Value>
+          <ControlTemplate TargetType="ScrollViewer">
+            <Grid>
+              <Grid.ColumnDefinitions>
+                <ColumnDefinition Width="*"/>
+                <ColumnDefinition Width="Auto"/>
+              </Grid.ColumnDefinitions>
+              <Grid.RowDefinitions>
+                <RowDefinition Height="*"/>
+                <RowDefinition Height="Auto"/>
+              </Grid.RowDefinitions>
+              <ScrollContentPresenter Grid.Column="0" Grid.Row="0"
+                                      Margin="{TemplateBinding Padding}"
+                                      Content="{TemplateBinding Content}"
+                                      ContentTemplate="{TemplateBinding ContentTemplate}"
+                                      CanContentScroll="{TemplateBinding CanContentScroll}"/>
+              <ScrollBar x:Name="PART_VerticalScrollBar"
+                         Grid.Column="1" Grid.Row="0"
+                         Style="{StaticResource SiteScrollBar}"
+                         Orientation="Vertical"
+                         Maximum="{TemplateBinding ScrollableHeight}"
+                         ViewportSize="{TemplateBinding ViewportHeight}"
+                         Value="{TemplateBinding VerticalOffset}"
+                         Visibility="{TemplateBinding ComputedVerticalScrollBarVisibility}"/>
+              <ScrollBar x:Name="PART_HorizontalScrollBar"
+                         Grid.Column="0" Grid.Row="1"
+                         Style="{StaticResource SiteScrollBar}"
+                         Orientation="Horizontal"
+                         Maximum="{TemplateBinding ScrollableWidth}"
+                         ViewportSize="{TemplateBinding ViewportWidth}"
+                         Value="{TemplateBinding HorizontalOffset}"
+                         Visibility="{TemplateBinding ComputedHorizontalScrollBarVisibility}"/>
+            </Grid>
+          </ControlTemplate>
+        </Setter.Value>
+      </Setter>
+    </Style>
+
+    <Style TargetType="TextBlock">
+      <Setter Property="Foreground" Value="{StaticResource Fg}"/>
+    </Style>
+    <Style TargetType="RadioButton">
+      <Setter Property="Foreground" Value="{StaticResource Fg}"/>
+      <Setter Property="Margin" Value="0,6,0,0"/>
+    </Style>
+    <Style TargetType="TextBox">
+      <Setter Property="Background" Value="{StaticResource Field}"/>
+      <Setter Property="Foreground" Value="{StaticResource Fg}"/>
+      <Setter Property="BorderBrush" Value="{StaticResource Border}"/>
+      <Setter Property="CaretBrush" Value="{StaticResource Fg}"/>
+      <Setter Property="Padding" Value="8,6"/>
+      <Setter Property="Margin" Value="0,6,0,0"/>
+    </Style>
+    <Style TargetType="PasswordBox">
+      <Setter Property="Background" Value="{StaticResource Field}"/>
+      <Setter Property="Foreground" Value="{StaticResource Fg}"/>
+      <Setter Property="BorderBrush" Value="{StaticResource Border}"/>
+      <Setter Property="CaretBrush" Value="{StaticResource Fg}"/>
+      <Setter Property="Padding" Value="8,6"/>
+      <Setter Property="Margin" Value="0,6,0,0"/>
+    </Style>
+    <Style x:Key="NavButton" TargetType="Button">
+      <Setter Property="Background" Value="Transparent"/>
+      <Setter Property="Foreground" Value="{StaticResource Muted}"/>
+      <Setter Property="BorderThickness" Value="0"/>
+      <Setter Property="Padding" Value="12,10"/>
+      <Setter Property="HorizontalContentAlignment" Value="Left"/>
+      <Setter Property="Margin" Value="0,0,0,4"/>
+      <Setter Property="Cursor" Value="Hand"/>
+      <Setter Property="Template">
+        <Setter.Value>
+          <ControlTemplate TargetType="Button">
+            <Border Background="{TemplateBinding Background}" CornerRadius="8" Padding="{TemplateBinding Padding}">
+              <ContentPresenter HorizontalAlignment="{TemplateBinding HorizontalContentAlignment}"
+                                VerticalAlignment="Center"/>
+            </Border>
+          </ControlTemplate>
+        </Setter.Value>
+      </Setter>
+    </Style>
+    <Style x:Key="GhostButton" TargetType="Button">
+      <Setter Property="Background" Value="{StaticResource Field}"/>
+      <Setter Property="Foreground" Value="{StaticResource Fg}"/>
+      <Setter Property="BorderBrush" Value="{StaticResource Border}"/>
+      <Setter Property="Padding" Value="14,8"/>
+      <Setter Property="Margin" Value="0,0,8,0"/>
+      <Setter Property="Cursor" Value="Hand"/>
+      <Setter Property="Template">
+        <Setter.Value>
+          <ControlTemplate TargetType="Button">
+            <Border Background="{TemplateBinding Background}"
+                    BorderBrush="{TemplateBinding BorderBrush}"
+                    BorderThickness="1"
+                    CornerRadius="8"
+                    Padding="{TemplateBinding Padding}">
+              <ContentPresenter HorizontalAlignment="Center" VerticalAlignment="Center"/>
+            </Border>
+          </ControlTemplate>
+        </Setter.Value>
+      </Setter>
+    </Style>
+    <Style x:Key="AccentButton" TargetType="Button">
+      <Setter Property="Background" Value="{StaticResource Accent}"/>
+      <Setter Property="Foreground" Value="White"/>
+      <Setter Property="BorderThickness" Value="0"/>
+      <Setter Property="Padding" Value="16,8"/>
+      <Setter Property="FontWeight" Value="SemiBold"/>
+      <Setter Property="Cursor" Value="Hand"/>
+      <Setter Property="Template">
+        <Setter.Value>
+          <ControlTemplate TargetType="Button">
+            <Border Background="{TemplateBinding Background}" CornerRadius="8" Padding="{TemplateBinding Padding}">
+              <ContentPresenter HorizontalAlignment="Center" VerticalAlignment="Center"/>
+            </Border>
+          </ControlTemplate>
+        </Setter.Value>
+      </Setter>
+    </Style>
+  </Window.Resources>
+
+  <DockPanel Margin="0">
+    <Border DockPanel.Dock="Top" Padding="20,18" BorderBrush="{StaticResource Border}" BorderThickness="0,0,0,1">
+      <StackPanel>
+        <TextBlock Text="Настройки приложения" FontSize="18" FontWeight="Bold"/>
+        <TextBlock Text="HTTP-прокси, кэш и сведения об устройстве"
+                   Foreground="{StaticResource Muted}" Margin="0,4,0,0"/>
+      </StackPanel>
+    </Border>
+
+    <Border DockPanel.Dock="Bottom" Padding="16" BorderBrush="{StaticResource Border}" BorderThickness="0,1,0,0">
+      <StackPanel Orientation="Horizontal" HorizontalAlignment="Right">
+        <Button Content="Отмена" Style="{StaticResource GhostButton}" Click="Cancel_Click"/>
+        <Button Content="Сохранить" Style="{StaticResource AccentButton}" Click="Save_Click"/>
+      </StackPanel>
+    </Border>
+
+    <Grid>
+      <Grid.ColumnDefinitions>
+        <ColumnDefinition Width="160"/>
+        <ColumnDefinition Width="1"/>
+        <ColumnDefinition Width="*"/>
+      </Grid.ColumnDefinitions>
+
+      <StackPanel Margin="8,12">
+        <Button x:Name="NavProxy" Content="HTTP-прокси" Style="{StaticResource NavButton}" Click="Nav_Click" Tag="proxy"/>
+        <Button x:Name="NavCache" Content="Кэш" Style="{StaticResource NavButton}" Click="Nav_Click" Tag="cache"/>
+        <Button x:Name="NavDevice" Content="Устройство" Style="{StaticResource NavButton}" Click="Nav_Click" Tag="device"/>
+      </StackPanel>
+
+      <Border Grid.Column="1" Background="{StaticResource Border}"/>
+
+      <ScrollViewer Grid.Column="2"
+                    VerticalScrollBarVisibility="Auto"
+                    HorizontalScrollBarVisibility="Disabled"
+                    Padding="16">
+        <Grid>
+          <StackPanel x:Name="ProxyPanel">
+            <TextBlock Text="HTTP-прокси" FontWeight="SemiBold"/>
+            <TextBlock Text="Используется, если прямые зеркала недоступны. Только HTTP-прокси, не SOCKS/VPN."
+                       Foreground="{StaticResource Muted}" TextWrapping="Wrap" Margin="0,4,0,8"/>
+            <RadioButton x:Name="ProxyNone" Content="Без прокси" GroupName="proxy"/>
+            <RadioButton x:Name="ProxyServer" Content="Прокси из local.properties" GroupName="proxy"/>
+            <RadioButton x:Name="ProxyManual" Content="Ручной адрес" GroupName="proxy"/>
+            <TextBox x:Name="ProxyHostBox" ToolTip="Хост"/>
+            <TextBox x:Name="ProxyPortBox" ToolTip="Порт"/>
+            <TextBox x:Name="ProxyUserBox" ToolTip="Логин (необязательно)"/>
+            <PasswordBox x:Name="ProxyPassBox"/>
+            <TextBlock x:Name="ProxyLinkHint"
+                       Foreground="{StaticResource Muted}"
+                       TextWrapping="Wrap"
+                       Margin="0,12,0,0"
+                       Text="Ссылка taproxy://host:port или taproxy://user:pass@host:port; taproxy://clear отключает; taproxy://server — прокси из local.properties."/>
+            <Button Content="Скопировать ссылку на прокси"
+                    Style="{StaticResource GhostButton}"
+                    Margin="0,10,0,0"
+                    HorizontalAlignment="Left"
+                    Click="CopyProxyLink_Click"/>
+          </StackPanel>
+
+          <StackPanel x:Name="CachePanel" Visibility="Collapsed">
+            <TextBlock Text="Кэш" FontWeight="SemiBold"/>
+            <TextBlock Text="Очищает кэш страниц и изображений WebView2. Cookie сессии сохраняются."
+                       Foreground="{StaticResource Muted}" TextWrapping="Wrap" Margin="0,4,0,12"/>
+            <Button Content="Очистить кэш" Style="{StaticResource AccentButton}" HorizontalAlignment="Left" Click="ClearCache_Click"/>
+            <TextBlock x:Name="CacheStatus" Foreground="{StaticResource Muted}" Margin="0,10,0,0"/>
+          </StackPanel>
+
+          <StackPanel x:Name="DevicePanel" Visibility="Collapsed">
+            <TextBlock Text="Устройство" FontWeight="SemiBold" Margin="0,0,0,8"/>
+            <Border Background="#1A2030" CornerRadius="8" Padding="12" Margin="0,0,0,8">
+              <StackPanel>
+                <TextBlock Text="Тип" Foreground="{StaticResource Muted}" FontSize="12"/>
+                <TextBlock Text="ПК / Windows" FontWeight="SemiBold"/>
+              </StackPanel>
+            </Border>
+            <Border Background="#1A2030" CornerRadius="8" Padding="12" Margin="0,0,0,8">
+              <StackPanel>
+                <TextBlock Text="Оболочка" Foreground="{StaticResource Muted}" FontSize="12"/>
+                <TextBlock Text="WPF + WebView2" FontWeight="SemiBold"/>
+              </StackPanel>
+            </Border>
+            <Border Background="#1A2030" CornerRadius="8" Padding="12" Margin="0,0,0,8">
+              <StackPanel>
+                <TextBlock Text="Система" Foreground="{StaticResource Muted}" FontSize="12"/>
+                <TextBlock x:Name="OsInfo" FontWeight="SemiBold" TextWrapping="Wrap"/>
+              </StackPanel>
+            </Border>
+            <Border Background="#1A2030" CornerRadius="8" Padding="12">
+              <StackPanel>
+                <TextBlock Text="Версия приложения" Foreground="{StaticResource Muted}" FontSize="12"/>
+                <TextBlock x:Name="AppVersionInfo" FontWeight="SemiBold"/>
+              </StackPanel>
+            </Border>
+          </StackPanel>
+        </Grid>
+      </ScrollViewer>
+    </Grid>
+  </DockPanel>
+</Window>

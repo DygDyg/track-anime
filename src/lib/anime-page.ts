@@ -1,6 +1,7 @@
 import { isShikimoriStubMaterial } from "@/db/save-shikimori-material";
 import { cache } from "react";
 import { resolveAnnouncedEpisodesTotalForShikimoriMaterials } from "@/lib/episode-totals";
+import { ensureKodikMaterialsForShikimoriId } from "@/lib/kodik-ensure-materials";
 import { prisma } from "@/lib/prisma";
 import { extractKodikMaterialMeta } from "@/lib/kodik-material-meta";
 import { resolveMaterialPosterUrl, type MaterialPosterSource } from "@/lib/material-poster";
@@ -368,31 +369,37 @@ function mapAnimeToDto(
   };
 }
 
+const animePageMaterialSelect = {
+  kodikId: true,
+  translationId: true,
+  title: true,
+  translationTitle: true,
+  translationType: true,
+  lastSeason: true,
+  lastEpisode: true,
+  episodesCount: true,
+  playerLink: true,
+  quality: true,
+  materialData: true,
+  seasons: {
+    orderBy: { seasonNumber: "asc" as const },
+    select: { seasonNumber: true },
+  },
+};
+
+async function loadAnimePageMaterials(shikimoriId: number) {
+  return prisma.kodikMaterial.findMany({
+    where: { shikimoriId },
+    orderBy: { kodikUpdatedAt: "desc" },
+    select: animePageMaterialSelect,
+  });
+}
+
 export const getAnimePageData = cache(async (shikimoriId: number): Promise<AnimePageDto | null> => {
   await getShikimoriEndpoints();
 
-  const [materials, releasePoster] = await Promise.all([
-    prisma.kodikMaterial.findMany({
-      where: { shikimoriId },
-      orderBy: { kodikUpdatedAt: "desc" },
-      select: {
-        kodikId: true,
-        translationId: true,
-        title: true,
-        translationTitle: true,
-        translationType: true,
-        lastSeason: true,
-        lastEpisode: true,
-        episodesCount: true,
-        playerLink: true,
-        quality: true,
-        materialData: true,
-        seasons: {
-          orderBy: { seasonNumber: "asc" },
-          select: { seasonNumber: true },
-        },
-      },
-    }),
+  let [materials, releasePoster] = await Promise.all([
+    loadAnimePageMaterials(shikimoriId),
     prisma.kodikEpisodeRelease.findFirst({
       where: { shikimoriId },
       orderBy: { releasedAt: "desc" },
@@ -400,7 +407,14 @@ export const getAnimePageData = cache(async (shikimoriId: number): Promise<Anime
     }),
   ]);
 
-  const hasRealMaterials = materials.some((m) => !isShikimoriStubMaterial(m.kodikId));
+  let hasRealMaterials = materials.some((m) => !isShikimoriStubMaterial(m.kodikId));
+  if (!hasRealMaterials) {
+    const saved = await ensureKodikMaterialsForShikimoriId(shikimoriId);
+    if (saved > 0) {
+      materials = await loadAnimePageMaterials(shikimoriId);
+      hasRealMaterials = materials.some((m) => !isShikimoriStubMaterial(m.kodikId));
+    }
+  }
 
   let anime: ShikimoriAnime | null = null;
   if (hasRealMaterials) {

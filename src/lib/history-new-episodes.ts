@@ -12,7 +12,7 @@ import {
 import { prisma } from "@/lib/prisma";
 import type { ReleaseItem } from "@/lib/releases";
 import { pickScreenshotUrl } from "@/lib/screenshots";
-import { watchProgressPercent } from "@/lib/watch-history";
+import { watchProgressPercent, isWatchHistoryBookmark } from "@/lib/watch-history";
 
 export type HistoryNewEpisodeItem = ReleaseItem & {
   watchedSeasonNumber: number;
@@ -134,6 +134,8 @@ export async function getHistoryNewEpisodes(userId: string, limit = 48): Promise
   const candidates: Candidate[] = [];
 
   for (const progress of progressRows) {
+    if (isWatchHistoryBookmark(progress)) continue;
+
     const userMaterial = materialByKodikId.get(progress.kodikId);
     if (!userMaterial?.lastEpisode) continue;
 

@@ -3,7 +3,7 @@
 /**
  * Полный импорт базы Kodik в PostgreSQL.
  *
- * Фаза 1 (catalog): все материалы anime-serial + метаданные (быстро)
+ * Фаза 1 (catalog): все материалы anime + anime-serial + метаданные (быстро)
  * Фаза 2 (episodes): все серии всех озвучек через /search?id=...
  *
  * Запуск:
@@ -16,6 +16,7 @@
 import "dotenv/config";
 import { PrismaClient, type KodikImportJob } from "@prisma/client";
 import { finishCatalogImportSession, startCatalogImportSession } from "../src/lib/admin/import-job.js";
+import { KODIK_ANIME_LIST_TYPES } from "../src/kodik/anime-types.js";
 import { buildListUrl, kodikListByUrl } from "../src/kodik/client.js";
 import { saveKodikMaterial } from "../src/db/save-material.js";
 
@@ -134,7 +135,7 @@ async function importCatalogPhase() {
   let nextUrl =
     job?.nextPageUrl ||
     buildListUrl({
-      types: "anime-serial",
+      types: KODIK_ANIME_LIST_TYPES,
       has_field: "shikimori_id",
       limit: 100,
       sort: "updated_at",

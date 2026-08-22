@@ -152,9 +152,14 @@ function FavoriteAnimeCard({
     !tabMatchesList &&
     (Boolean(item.listStatus) || activeTab === "bookmarks" || activeTab === "all");
   const listInfo = item.listStatus
-    ? { listStatus: item.listStatus, isBookmark: false, rewatches: item.rewatches }
+    ? {
+        listStatus: item.listStatus,
+        isBookmark: false,
+        rewatches: item.rewatches,
+        userScore: item.userScore,
+      }
     : showListBadge
-      ? { listStatus: null, isBookmark: true, rewatches: null }
+      ? { listStatus: null, isBookmark: true, rewatches: null, userScore: null }
       : null;
   const viewerAccent = useViewerListStatusAccent(item.shikimoriId, showViewerStatus);
 

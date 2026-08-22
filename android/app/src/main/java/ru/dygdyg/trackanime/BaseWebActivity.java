@@ -5,6 +5,8 @@ import android.app.Dialog;
 import android.Manifest;
 import android.app.UiModeManager;
 import android.content.pm.PackageManager;
+import android.content.ClipData;
+import android.content.ClipboardManager;
 import android.content.Intent;
 import android.content.pm.ApplicationInfo;
 import android.content.pm.ActivityInfo;
@@ -19,11 +21,14 @@ import android.os.Build;
 import android.os.Bundle;
 import android.os.Handler;
 import android.os.Looper;
+import android.text.Editable;
 import android.text.InputType;
+import android.text.TextWatcher;
 import android.util.DisplayMetrics;
 import android.util.Log;
 import android.util.TypedValue;
 import android.view.Gravity;
+import android.view.KeyEvent;
 import android.view.View;
 import android.view.ViewGroup;
 import android.view.Window;
@@ -48,6 +53,7 @@ import android.widget.EditText;
 import android.widget.FrameLayout;
 import android.widget.HorizontalScrollView;
 import android.widget.LinearLayout;
+import android.widget.ProgressBar;
 import android.widget.RadioButton;
 import android.widget.RadioGroup;
 import android.widget.ScrollView;
@@ -80,6 +86,9 @@ abstract class BaseWebActivity extends Activity {
     private WebChromeClient.CustomViewCallback customFullscreenCallback;
     private int previousOrientation = ActivityInfo.SCREEN_ORIENTATION_UNSPECIFIED;
     private boolean currentLoadStarted;
+    private boolean siteReady;
+    private boolean softReloadPending;
+    private String lastSuccessfulUrl = SITE_URL;
     private String currentHost;
     private SharedPreferences preferences;
     private UpdateManager updateManager;
@@ -87,6 +96,12 @@ abstract class BaseWebActivity extends Activity {
     private ProxyFallback proxyFallback;
     private boolean proxyFallbackAttempted;
     private float windowBrightnessOverride = WindowManager.LayoutParams.BRIGHTNESS_OVERRIDE_NONE;
+    private FrameLayout rootLayout;
+    private View bootstrapOverlay;
+    private TextView bootstrapStatus;
+    private boolean bootstrapActive;
+    private boolean keepScreenForPlayback;
+    private boolean keepScreenForFullscreen;
 
     protected abstract boolean isTvMode();
 
@@ -98,9 +113,15 @@ abstract class BaseWebActivity extends Activity {
         CookieManager cookies = CookieManager.getInstance();
         cookies.setAcceptCookie(true);
         CookieManager.setAcceptFileSchemeCookies(false);
-        webView = new WebView(this);
         preferences = getSharedPreferences(PREFERENCES_NAME, MODE_PRIVATE);
         proxyFallback = new ProxyFallback(preferences);
+
+        rootLayout = new FrameLayout(this);
+        rootLayout.setBackgroundColor(Color.rgb(12, 14, 20));
+        rootLayout.setLayoutParams(new ViewGroup.LayoutParams(
+                ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT));
+
+        webView = new WebView(this);
         cookies.setAcceptThirdPartyCookies(webView, true);
         webView.setBackgroundColor(Color.rgb(12, 14, 20));
         webView.setLayoutParams(new ViewGroup.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT));
@@ -117,14 +138,23 @@ abstract class BaseWebActivity extends Activity {
         webView.setWebViewClient(new TrackAnimeWebViewClient());
         webView.setDownloadListener(new ExternalDownloadListener());
         updateManager = new UpdateManager(this);
-        setContentView(webView);
+
+        rootLayout.addView(webView);
+        bootstrapOverlay = buildBootstrapOverlay();
+        rootLayout.addView(bootstrapOverlay, new FrameLayout.LayoutParams(
+                ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT));
+        setContentView(rootLayout);
         applyDarkSystemBars();
         applySystemBarsPolicy();
+        showBootstrapStatus("Поиск рабочего зеркала…");
         handleLaunchUri(getIntent().getData());
     }
 
     @Override protected void onDestroy() {
         handler.removeCallbacks(mirrorFallback);
+        keepScreenForPlayback = false;
+        keepScreenForFullscreen = false;
+        applyKeepScreenOn();
         exitCustomFullscreen();
         if (webView != null) webView.destroy();
         if (updateManager != null) updateManager.destroy();
@@ -155,8 +185,30 @@ abstract class BaseWebActivity extends Activity {
             exitCustomFullscreen();
             return;
         }
-        if (webView != null && webView.canGoBack()) { webView.goBack(); return; }
-        super.onBackPressed();
+        if (webView == null) {
+            super.onBackPressed();
+            return;
+        }
+
+        // Let the site close modals / exit TV search before WebView history or finishing the Activity.
+        webView.evaluateJavascript(
+                "(function(){try{if(typeof window.__taAndroidBack==='function'){return window.__taAndroidBack()?'1':'0';}"
+                        + "var m=document.querySelector('[role=\"dialog\"][aria-modal=\"true\"]');"
+                        + "if(m){document.dispatchEvent(new KeyboardEvent('keydown',{key:'Escape',bubbles:true}));return '1';}"
+                        + "return '0';}catch(e){return '0';}})()",
+                value -> {
+                    boolean handled = "\"1\"".equals(value) || "1".equals(value);
+                    if (handled) return;
+                    runOnUiThread(() -> {
+                        if (isFinishing()) return;
+                        if (webView != null && webView.canGoBack()) {
+                            webView.goBack();
+                            return;
+                        }
+                        BaseWebActivity.super.onBackPressed();
+                    });
+                }
+        );
     }
 
     @Override public void onRequestPermissionsResult(int requestCode, String[] permissions, int[] grantResults) {
@@ -168,6 +220,81 @@ abstract class BaseWebActivity extends Activity {
             request.grant(new String[] { PermissionRequest.RESOURCE_VIDEO_CAPTURE });
         } else {
             request.deny();
+        }
+    }
+
+    private View buildBootstrapOverlay() {
+        LinearLayout overlay = new LinearLayout(this);
+        overlay.setOrientation(LinearLayout.VERTICAL);
+        overlay.setGravity(Gravity.CENTER);
+        overlay.setBackgroundColor(Color.rgb(12, 14, 20));
+        overlay.setPadding(dp(28), dp(28), dp(28), dp(28));
+        overlay.setClickable(true);
+
+        TextView title = new TextView(this);
+        title.setText("Track Anime");
+        title.setTextColor(Color.rgb(238, 240, 244));
+        title.setTextSize(TypedValue.COMPLEX_UNIT_SP, 22);
+        title.setTypeface(Typeface.create(Typeface.SANS_SERIF, Typeface.BOLD));
+        title.setGravity(Gravity.CENTER_HORIZONTAL);
+        overlay.addView(title);
+
+        ProgressBar progress = new ProgressBar(this);
+        progress.setIndeterminate(true);
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.LOLLIPOP) {
+            progress.setIndeterminateTintList(ColorStateList.valueOf(Color.rgb(108, 140, 255)));
+        }
+        LinearLayout.LayoutParams progressParams = new LinearLayout.LayoutParams(dp(40), dp(40));
+        progressParams.topMargin = dp(28);
+        progressParams.gravity = Gravity.CENTER_HORIZONTAL;
+        overlay.addView(progress, progressParams);
+
+        bootstrapStatus = new TextView(this);
+        bootstrapStatus.setText("Поиск рабочего зеркала…");
+        bootstrapStatus.setTextColor(Color.rgb(163, 171, 189));
+        bootstrapStatus.setTextSize(TypedValue.COMPLEX_UNIT_SP, 14);
+        bootstrapStatus.setGravity(Gravity.CENTER_HORIZONTAL);
+        bootstrapStatus.setLineSpacing(dp(2), 1f);
+        LinearLayout.LayoutParams statusParams = new LinearLayout.LayoutParams(
+                ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT);
+        statusParams.topMargin = dp(18);
+        overlay.addView(bootstrapStatus, statusParams);
+
+        return overlay;
+    }
+
+    private void showBootstrapStatus(String status) {
+        bootstrapActive = true;
+        if (bootstrapStatus != null) bootstrapStatus.setText(status);
+        if (bootstrapOverlay != null) bootstrapOverlay.setVisibility(View.VISIBLE);
+    }
+
+    private void hideBootstrapOverlay() {
+        bootstrapActive = false;
+        if (bootstrapOverlay != null) bootstrapOverlay.setVisibility(View.GONE);
+    }
+
+    private void finishBootstrapIfReady(String url) {
+        if (!bootstrapActive) return;
+        handler.post(() -> {
+            if (!bootstrapActive) return;
+            // Mirror switch resets currentLoadStarted before the failed page's onPageFinished.
+            if (!currentLoadStarted) return;
+            if (url != null && url.startsWith("data:")) {
+                hideBootstrapOverlay();
+                return;
+            }
+            Uri uri = url == null ? null : Uri.parse(url);
+            if (isAllowedSiteUrl(uri)) hideBootstrapOverlay();
+        });
+    }
+
+    private void applyKeepScreenOn() {
+        Window window = getWindow();
+        if (keepScreenForPlayback || keepScreenForFullscreen) {
+            window.addFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON);
+        } else {
+            window.clearFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON);
         }
     }
 
@@ -185,6 +312,8 @@ abstract class BaseWebActivity extends Activity {
                 ViewGroup.LayoutParams.MATCH_PARENT
         ));
         webView.setVisibility(View.GONE);
+        keepScreenForFullscreen = true;
+        applyKeepScreenOn();
         applySystemBarsPolicy();
         if (!isTvMode()) setRequestedOrientation(ActivityInfo.SCREEN_ORIENTATION_SENSOR_LANDSCAPE);
     }
@@ -198,6 +327,8 @@ abstract class BaseWebActivity extends Activity {
         customFullscreenView = null;
         webView.setVisibility(View.VISIBLE);
         if (!isTvMode()) setRequestedOrientation(previousOrientation);
+        keepScreenForFullscreen = false;
+        applyKeepScreenOn();
         applySystemBarsPolicy();
 
         if (customFullscreenCallback != null) {
@@ -287,7 +418,25 @@ abstract class BaseWebActivity extends Activity {
                 && "settings".equalsIgnoreCase(uri.getHost());
     }
 
+    private boolean isRetryUri(Uri uri) {
+        return uri != null
+                && "trackanime".equalsIgnoreCase(uri.getScheme())
+                && "retry".equalsIgnoreCase(uri.getHost());
+    }
+
+    private boolean isTaProxyUri(Uri uri) {
+        return uri != null && "taproxy".equalsIgnoreCase(uri.getScheme());
+    }
+
     private void handleLaunchUri(Uri requestedUri) {
+        if (isTaProxyUri(requestedUri)) {
+            applyTaProxyDeepLink(requestedUri);
+            return;
+        }
+        if (isRetryUri(requestedUri)) {
+            retrySiteLoad();
+            return;
+        }
         if (isAppSettingsUri(requestedUri)) {
             String currentUrl = webView != null ? webView.getUrl() : null;
             if (!isAllowedSiteUrl(currentUrl == null ? null : Uri.parse(currentUrl))) {
@@ -297,6 +446,63 @@ abstract class BaseWebActivity extends Activity {
             return;
         }
         loadSite(isAllowedSiteUrl(requestedUri) ? requestedUri.toString() : SITE_URL);
+    }
+
+    /** Full reconnect from the error stub or deep link — restarts mirror/proxy chain. */
+    private void retrySiteLoad() {
+        softReloadPending = false;
+        proxyFallbackAttempted = false;
+        siteReady = false;
+        String target = lastSuccessfulUrl;
+        if (!isAllowedSiteUrl(Uri.parse(target))) target = SITE_URL;
+        loadSite(target);
+    }
+
+    /** Soft reload without switching mirrors — used after lock/unlock transient errors. */
+    private void softReloadWithoutMirrorSwitch() {
+        handler.removeCallbacks(mirrorFallback);
+        String target = lastSuccessfulUrl;
+        if (!isAllowedSiteUrl(Uri.parse(target))) target = SITE_URL;
+        Log.w(LOG_TAG, "Soft reload without mirror switch: " + target);
+        webView.loadUrl(target);
+    }
+
+    private void applyTaProxyDeepLink(Uri uri) {
+        ProxyFallback.DeepLinkResult parsed = ProxyFallback.parseDeepLink(uri);
+        if (!parsed.isOk()) {
+            Toast.makeText(this, parsed.error, Toast.LENGTH_LONG).show();
+            String currentUrl = webView != null ? webView.getUrl() : null;
+            if (!isAllowedSiteUrl(currentUrl == null ? null : Uri.parse(currentUrl))) {
+                loadSite(SITE_URL);
+            }
+            return;
+        }
+
+        ProxyFallback.Settings next = parsed.settings;
+        if (next.mode == ProxyFallback.Mode.SERVER) {
+            proxyFallback.saveSettings(new ProxyFallback.Settings(ProxyFallback.Mode.SERVER, "", 0, "", ""));
+        } else if (next.mode == ProxyFallback.Mode.NONE) {
+            proxyFallback.saveSettings(new ProxyFallback.Settings(ProxyFallback.Mode.NONE, "", 0, "", ""));
+        } else {
+            proxyFallback.saveSettings(next);
+        }
+
+        proxyFallbackAttempted = false;
+        final String toastMessage;
+        if (next.mode == ProxyFallback.Mode.NONE) {
+            toastMessage = "Прокси отключён.";
+        } else if (next.mode == ProxyFallback.Mode.SERVER) {
+            toastMessage = "Выбран прокси сервера.";
+        } else {
+            toastMessage = "Прокси сохранён: " + next.host + ":" + next.port;
+        }
+
+        showBootstrapStatus("Применение прокси…");
+        proxyFallback.clearOverride(() -> {
+            Toast.makeText(this, toastMessage, Toast.LENGTH_SHORT).show();
+            String currentUrl = webView != null ? webView.getUrl() : null;
+            loadSite(isAllowedSiteUrl(currentUrl == null ? null : Uri.parse(currentUrl)) ? currentUrl : SITE_URL);
+        });
     }
 
     private boolean isAllowedSiteUrl(Uri uri) {
@@ -350,8 +556,14 @@ abstract class BaseWebActivity extends Activity {
         String targetHost = Uri.parse(url).getHost();
         currentHost = targetHost;
         currentLoadStarted = false;
+        siteReady = false;
+        softReloadPending = false;
         handler.removeCallbacks(mirrorFallback);
         handler.postDelayed(mirrorFallback, MIRROR_FALLBACK_DELAY_MS);
+        String status = proxyFallbackAttempted
+                ? "Подключение через прокси к " + targetHost + "…"
+                : "Подключение к " + targetHost + "…";
+        showBootstrapStatus(status);
         String sourceHost = preferences.getString(LAST_SESSION_HOST_KEY, null);
         copySessionCookie(sourceHost, targetHost, () -> {
             Log.d(LOG_TAG, "Loading: " + url);
@@ -384,9 +596,33 @@ abstract class BaseWebActivity extends Activity {
         if (!proxyFallbackAttempted && proxyFallback.isConfigured()) {
             proxyFallbackAttempted = true;
             Log.w(LOG_TAG, "All direct mirrors failed; trying proxy fallback.");
+            showBootstrapStatus("Прямые зеркала недоступны.\nПодключение через прокси…");
             proxyFallback.enable(() -> loadSite(SITE_URL));
             return;
         }
+        showLoadErrorPage(webView, reason);
+    }
+
+    /**
+     * After the site has loaded once, do not cycle mirrors (lock/unlock often aborts the main frame).
+     * Soft-reload once; only then show the error stub.
+     */
+    private void handleMainFrameFailure(String reason) {
+        if (!siteReady) {
+            if (!loadNextMirror()) recoverWithProxyOrShowError(reason);
+            return;
+        }
+        if (!softReloadPending) {
+            softReloadPending = true;
+            Log.w(LOG_TAG, "Main-frame error after site ready; soft reload. " + reason);
+            handler.postDelayed(() -> {
+                if (isFinishing()) return;
+                softReloadWithoutMirrorSwitch();
+            }, 350);
+            return;
+        }
+        softReloadPending = false;
+        Log.w(LOG_TAG, "Soft reload also failed; showing error page. " + reason);
         showLoadErrorPage(webView, reason);
     }
 
@@ -438,7 +674,7 @@ abstract class BaseWebActivity extends Activity {
 
     private void enableTvSiteNavigation() {
         if (!isTvMode()) return;
-        webView.evaluateJavascript("(function(){try{var k='track-anime-site-settings';var s=JSON.parse(localStorage.getItem(k)||'{}');s.tvNavigationEnabled=true;localStorage.setItem(k,JSON.stringify(s));document.documentElement.dataset.tvNav='true';}catch(e){}})();", null);
+        webView.evaluateJavascript("(function(){try{var k='track-anime-site-settings';var s=JSON.parse(localStorage.getItem(k)||'{}');s.tvNavigationEnabled=true;s.companionEnabled=false;s.reduceMotion=true;localStorage.setItem(k,JSON.stringify(s));document.documentElement.dataset.tvNav='true';document.documentElement.setAttribute('data-reduce-motion','true');document.documentElement.setAttribute('data-tv-nav-enabled','true');}catch(e){}})();", null);
     }
 
     private int dp(int value) {
@@ -471,6 +707,21 @@ abstract class BaseWebActivity extends Activity {
         return hint;
     }
 
+    private void enableDpadActivation(View view) {
+        view.setFocusable(true);
+        // On phones/tablets focusableInTouchMode makes the first tap only move focus.
+        view.setFocusableInTouchMode(isTvMode());
+        view.setOnKeyListener((v, keyCode, event) -> {
+            if (event.getAction() != KeyEvent.ACTION_DOWN) return false;
+            if (keyCode == KeyEvent.KEYCODE_DPAD_CENTER
+                    || keyCode == KeyEvent.KEYCODE_ENTER
+                    || keyCode == KeyEvent.KEYCODE_NUMPAD_ENTER) {
+                return v.performClick();
+            }
+            return false;
+        });
+    }
+
     private RadioButton settingsOption(String label) {
         RadioButton option = new RadioButton(this);
         option.setId(View.generateViewId());
@@ -480,7 +731,8 @@ abstract class BaseWebActivity extends Activity {
         option.setButtonTintList(ColorStateList.valueOf(color(R.color.accent)));
         option.setBackgroundResource(R.drawable.settings_option_bg);
         option.setPadding(dp(12), dp(10), dp(12), dp(10));
-        option.setMinHeight(dp(44));
+        option.setMinHeight(dp(isTvMode() ? 52 : 44));
+        enableDpadActivation(option);
         LinearLayout.LayoutParams params = new LinearLayout.LayoutParams(
                 ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT);
         params.topMargin = dp(8);
@@ -499,6 +751,8 @@ abstract class BaseWebActivity extends Activity {
         field.setSingleLine(true);
         field.setBackgroundResource(R.drawable.settings_field_bg);
         field.setPadding(dp(12), dp(12), dp(12), dp(12));
+        field.setFocusable(true);
+        field.setFocusableInTouchMode(true);
         LinearLayout.LayoutParams params = new LinearLayout.LayoutParams(
                 ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT);
         params.topMargin = dp(8);
@@ -514,7 +768,8 @@ abstract class BaseWebActivity extends Activity {
         button.setTextSize(TypedValue.COMPLEX_UNIT_SP, 14);
         button.setBackgroundResource(R.drawable.settings_btn_ghost);
         button.setPadding(dp(14), dp(10), dp(14), dp(10));
-        button.setMinHeight(dp(40));
+        button.setMinHeight(dp(isTvMode() ? 48 : 40));
+        enableDpadActivation(button);
         return button;
     }
 
@@ -527,7 +782,8 @@ abstract class BaseWebActivity extends Activity {
         button.setTypeface(Typeface.DEFAULT_BOLD);
         button.setBackgroundResource(R.drawable.settings_btn_accent);
         button.setPadding(dp(16), dp(10), dp(16), dp(10));
-        button.setMinHeight(dp(40));
+        button.setMinHeight(dp(isTvMode() ? 48 : 40));
+        enableDpadActivation(button);
         return button;
     }
 
@@ -539,7 +795,8 @@ abstract class BaseWebActivity extends Activity {
         item.setBackgroundResource(R.drawable.settings_nav_item_bg);
         item.setPadding(dp(12), dp(10), dp(12), dp(10));
         item.setClickable(true);
-        item.setFocusable(true);
+        item.setMinHeight(dp(isTvMode() ? 48 : 40));
+        enableDpadActivation(item);
         LinearLayout.LayoutParams params = new LinearLayout.LayoutParams(
                 ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT);
         params.bottomMargin = dp(4);
@@ -651,7 +908,7 @@ abstract class BaseWebActivity extends Activity {
         title.setTextSize(TypedValue.COMPLEX_UNIT_SP, 18);
         title.setTypeface(Typeface.DEFAULT_BOLD);
         TextView subtitle = new TextView(this);
-        subtitle.setText("Прокси, панели, кэш и сведения об устройстве");
+        subtitle.setText("HTTP-прокси, панели, кэш и сведения об устройстве");
         subtitle.setTextColor(color(R.color.muted));
         subtitle.setTextSize(TypedValue.COMPLEX_UNIT_SP, 13);
         LinearLayout.LayoutParams subtitleParams = new LinearLayout.LayoutParams(
@@ -683,7 +940,7 @@ abstract class BaseWebActivity extends Activity {
         }
 
         TextView navBars = settingsNavItem("Панели");
-        TextView navProxy = settingsNavItem("Прокси");
+        TextView navProxy = settingsNavItem("HTTP-прокси");
         TextView navCache = settingsNavItem("Кэш");
         TextView navDevice = settingsNavItem("Устройство");
         if (!wide) {
@@ -745,14 +1002,19 @@ abstract class BaseWebActivity extends Activity {
         barsModes.check(barsCheckedId);
 
         LinearLayout proxyPanel = settingsTabPanel();
-        proxyPanel.addView(settingsSectionTitle("Прокси"));
+        proxyPanel.addView(settingsSectionTitle("HTTP-прокси"));
         proxyPanel.addView(settingsSectionHint(
-                "Используется только после ошибки всех прямых зеркал. Поддерживается HTTP/HTTPS proxy."));
+                "Только HTTP-прокси (не SOCKS и не VPN). Включается после ошибки всех прямых зеркал.\n\n"
+                        + "Ссылка для другого устройства:\n"
+                        + "• taproxy://адрес:порт\n"
+                        + "• taproxy://логин:пароль@адрес:порт\n"
+                        + "• taproxy://адрес:порт?user=логин&pass=пароль\n"
+                        + "Откройте ссылку на устройстве с Track Anime — прокси сохранится сам."));
         RadioGroup modes = new RadioGroup(this);
         modes.setOrientation(RadioGroup.VERTICAL);
         RadioButton noProxy = settingsOption("Без прокси");
-        RadioButton serverProxy = settingsOption("Прокси сервера");
-        RadioButton manualProxy = settingsOption("Указать вручную");
+        RadioButton serverProxy = settingsOption("HTTP-прокси сервера");
+        RadioButton manualProxy = settingsOption("Указать HTTP-прокси вручную");
         modes.addView(noProxy);
         modes.addView(serverProxy);
         modes.addView(manualProxy);
@@ -760,21 +1022,70 @@ abstract class BaseWebActivity extends Activity {
         LinearLayout manualFields = new LinearLayout(this);
         manualFields.setOrientation(LinearLayout.VERTICAL);
         manualFields.setPadding(0, dp(4), 0, 0);
-        EditText host = createProxyField("Адрес прокси", InputType.TYPE_CLASS_TEXT | InputType.TYPE_TEXT_VARIATION_URI, saved.host);
+        EditText host = createProxyField("Адрес HTTP-прокси", InputType.TYPE_CLASS_TEXT | InputType.TYPE_TEXT_VARIATION_URI, saved.host);
         EditText port = createProxyField("Порт", InputType.TYPE_CLASS_NUMBER, saved.port > 0 ? String.valueOf(saved.port) : "");
         EditText username = createProxyField("Логин (необязательно)", InputType.TYPE_CLASS_TEXT, saved.username);
         EditText password = createProxyField("Пароль (необязательно)", InputType.TYPE_CLASS_TEXT | InputType.TYPE_TEXT_VARIATION_PASSWORD, saved.password);
+        Button copyProxyLink = settingsGhostButton("Скопировать ссылку на прокси");
+        LinearLayout.LayoutParams copyParams = new LinearLayout.LayoutParams(
+                ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT);
+        copyParams.topMargin = dp(12);
+        copyProxyLink.setLayoutParams(copyParams);
+        copyProxyLink.setOnClickListener(v -> {
+            int manualPort = 0;
+            try { manualPort = Integer.parseInt(port.getText().toString().trim()); } catch (NumberFormatException ignored) { }
+            String link = ProxyFallback.buildDeepLink(
+                    host.getText().toString(),
+                    manualPort,
+                    username.getText().toString(),
+                    password.getText().toString());
+            if (link == null) {
+                Toast.makeText(this, "Укажите адрес и порт от 1 до 65535.", Toast.LENGTH_LONG).show();
+                return;
+            }
+            ClipboardManager clipboard = (ClipboardManager) getSystemService(CLIPBOARD_SERVICE);
+            if (clipboard == null) {
+                Toast.makeText(this, "Буфер обмена недоступен.", Toast.LENGTH_SHORT).show();
+                return;
+            }
+            clipboard.setPrimaryClip(ClipData.newPlainText("taproxy", link));
+            Toast.makeText(this, "Ссылка скопирована.", Toast.LENGTH_SHORT).show();
+        });
+        Runnable refreshCopyButton = () -> {
+            int manualPort = 0;
+            try { manualPort = Integer.parseInt(port.getText().toString().trim()); } catch (NumberFormatException ignored) { }
+            boolean ready = ProxyFallback.buildDeepLink(
+                    host.getText().toString(),
+                    manualPort,
+                    username.getText().toString(),
+                    password.getText().toString()) != null;
+            copyProxyLink.setVisibility(ready ? View.VISIBLE : View.GONE);
+            copyProxyLink.setEnabled(ready);
+        };
+        TextWatcher proxyFieldsWatcher = new TextWatcher() {
+            @Override public void beforeTextChanged(CharSequence s, int start, int count, int after) { }
+            @Override public void onTextChanged(CharSequence s, int start, int before, int count) { }
+            @Override public void afterTextChanged(Editable s) { refreshCopyButton.run(); }
+        };
+        host.addTextChangedListener(proxyFieldsWatcher);
+        port.addTextChangedListener(proxyFieldsWatcher);
+        username.addTextChangedListener(proxyFieldsWatcher);
+        password.addTextChangedListener(proxyFieldsWatcher);
         manualFields.addView(host);
         manualFields.addView(port);
         manualFields.addView(username);
         manualFields.addView(password);
+        manualFields.addView(copyProxyLink);
         proxyPanel.addView(manualFields);
         int checkedId = saved.mode == ProxyFallback.Mode.NONE ? noProxy.getId()
                 : saved.mode == ProxyFallback.Mode.MANUAL ? manualProxy.getId() : serverProxy.getId();
         modes.check(checkedId);
         manualFields.setVisibility(saved.mode == ProxyFallback.Mode.MANUAL ? View.VISIBLE : View.GONE);
-        modes.setOnCheckedChangeListener((group, checked) ->
-                manualFields.setVisibility(checked == manualProxy.getId() ? View.VISIBLE : View.GONE));
+        refreshCopyButton.run();
+        modes.setOnCheckedChangeListener((group, checked) -> {
+            manualFields.setVisibility(checked == manualProxy.getId() ? View.VISIBLE : View.GONE);
+            refreshCopyButton.run();
+        });
 
         LinearLayout cachePanel = settingsTabPanel();
         cachePanel.addView(settingsSectionTitle("Кэш WebView"));
@@ -809,12 +1120,16 @@ abstract class BaseWebActivity extends Activity {
                 "Track Anime " + BuildConfig.VERSION_NAME + " (" + BuildConfig.VERSION_CODE + ")"));
 
         ScrollView barsScroll = new ScrollView(this);
+        barsScroll.setDescendantFocusability(ViewGroup.FOCUS_AFTER_DESCENDANTS);
         barsScroll.addView(barsPanel);
         ScrollView proxyScroll = new ScrollView(this);
+        proxyScroll.setDescendantFocusability(ViewGroup.FOCUS_AFTER_DESCENDANTS);
         proxyScroll.addView(proxyPanel);
         ScrollView cacheScroll = new ScrollView(this);
+        cacheScroll.setDescendantFocusability(ViewGroup.FOCUS_AFTER_DESCENDANTS);
         cacheScroll.addView(cachePanel);
         ScrollView deviceScroll = new ScrollView(this);
+        deviceScroll.setDescendantFocusability(ViewGroup.FOCUS_AFTER_DESCENDANTS);
         deviceScroll.addView(devicePanel);
         FrameLayout.LayoutParams panelLp = new FrameLayout.LayoutParams(
                 ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT);
@@ -896,6 +1211,18 @@ abstract class BaseWebActivity extends Activity {
 
         dialog.setContentView(shell);
         styleSiteDialogWindow(dialog, 640);
+        dialog.setCancelable(true);
+        dialog.setCanceledOnTouchOutside(true);
+        dialog.setOnKeyListener((d, keyCode, event) -> {
+            if (event.getAction() == KeyEvent.ACTION_UP && keyCode == KeyEvent.KEYCODE_BACK) {
+                d.dismiss();
+                return true;
+            }
+            return false;
+        });
+        if (isTvMode()) {
+            dialog.setOnShowListener(shown -> navBars.post(navBars::requestFocus));
+        }
         dialog.show();
     }
 
@@ -945,6 +1272,7 @@ abstract class BaseWebActivity extends Activity {
             webView.clearHistory();
             proxyFallbackAttempted = false;
             String url = webView.getUrl();
+            showBootstrapStatus("Очистка кэша. Повторное подключение…");
             loadSite(isAllowedSiteUrl(url == null ? null : Uri.parse(url)) ? url : SITE_URL);
             Toast.makeText(this, "Кэш очищен.", Toast.LENGTH_SHORT).show();
             dialog.dismiss();
@@ -954,6 +1282,18 @@ abstract class BaseWebActivity extends Activity {
 
         dialog.setContentView(shell);
         styleSiteDialogWindow(dialog, 400);
+        dialog.setCancelable(true);
+        dialog.setCanceledOnTouchOutside(true);
+        dialog.setOnKeyListener((d, keyCode, event) -> {
+            if (event.getAction() == KeyEvent.ACTION_UP && keyCode == KeyEvent.KEYCODE_BACK) {
+                d.dismiss();
+                return true;
+            }
+            return false;
+        });
+        if (isTvMode()) {
+            dialog.setOnShowListener(shown -> clear.post(clear::requestFocus));
+        }
         dialog.show();
     }
 
@@ -965,6 +1305,19 @@ abstract class BaseWebActivity extends Activity {
         @JavascriptInterface
         public boolean hasScreenBrightnessControl() {
             return true;
+        }
+
+        @JavascriptInterface
+        public void setKeepScreenOn(boolean enabled) {
+            if (Looper.myLooper() == Looper.getMainLooper()) {
+                keepScreenForPlayback = enabled;
+                applyKeepScreenOn();
+            } else {
+                handler.post(() -> {
+                    keepScreenForPlayback = enabled;
+                    applyKeepScreenOn();
+                });
+            }
         }
 
         @JavascriptInterface
@@ -1026,6 +1379,14 @@ abstract class BaseWebActivity extends Activity {
                 showAppSettings();
                 return true;
             }
+            if (isRetryUri(uri)) {
+                retrySiteLoad();
+                return true;
+            }
+            if (isTaProxyUri(uri)) {
+                applyTaProxyDeepLink(uri);
+                return true;
+            }
             if (isInAppUrl(uri)) return false;
             openExternal(uri);
             return true;
@@ -1046,9 +1407,16 @@ abstract class BaseWebActivity extends Activity {
             super.onPageFinished(view, url);
             handler.removeCallbacks(mirrorFallback);
             Log.d(LOG_TAG, "Page loaded: " + url);
-            synchronizeSessionFromCurrentHost(Uri.parse(url).getHost());
-            enableTvSiteNavigation();
-            updateManager.checkForUpdate(Uri.parse(url));
+            Uri uri = url == null ? null : Uri.parse(url);
+            if (isAllowedSiteUrl(uri)) {
+                siteReady = true;
+                softReloadPending = false;
+                lastSuccessfulUrl = url;
+                synchronizeSessionFromCurrentHost(uri.getHost());
+                enableTvSiteNavigation();
+                updateManager.checkForUpdate(uri);
+            }
+            finishBootstrapIfReady(url);
         }
 
         @Override public void onReceivedError(WebView view, WebResourceRequest request, WebResourceError error) {
@@ -1056,15 +1424,20 @@ abstract class BaseWebActivity extends Activity {
             if (!request.isForMainFrame()) return;
             CharSequence description = error.getDescription();
             Log.e(LOG_TAG, "Page load failed: " + error.getErrorCode() + " " + description);
-            if (!loadNextMirror()) recoverWithProxyOrShowError(description != null ? description.toString() : "ошибка сети");
+            handleMainFrameFailure(description != null ? description.toString() : "ошибка сети");
         }
 
         @Override public void onReceivedHttpError(WebView view, WebResourceRequest request, WebResourceResponse response) {
             super.onReceivedHttpError(view, request, response);
-            if (request.isForMainFrame()) {
-                Log.e(LOG_TAG, "Page HTTP error: " + response.getStatusCode() + " " + request.getUrl());
-                if (!loadNextMirror()) recoverWithProxyOrShowError("HTTP " + response.getStatusCode());
+            if (!request.isForMainFrame()) return;
+            int code = response.getStatusCode();
+            // Ignore client errors on deep pages after bootstrap (404 etc.) — not a mirror outage.
+            if (siteReady && code >= 400 && code < 500) {
+                Log.w(LOG_TAG, "Ignoring HTTP " + code + " after site ready: " + request.getUrl());
+                return;
             }
+            Log.e(LOG_TAG, "Page HTTP error: " + code + " " + request.getUrl());
+            handleMainFrameFailure("HTTP " + code);
         }
 
         @Override public void onReceivedHttpAuthRequest(WebView view, HttpAuthHandler handler, String host, String realm) {
@@ -1077,20 +1450,57 @@ abstract class BaseWebActivity extends Activity {
     }
 
     private void showLoadErrorPage(WebView view, String reason) {
+        hideBootstrapOverlay();
+        siteReady = false;
         String safeReason = reason == null ? "ошибка сети" : reason.replace("&", "&amp;").replace("<", "&lt;").replace(">", "&gt;");
         String html = "<!DOCTYPE html><html><head><meta charset=\"utf-8\">"
-                + "<meta name=\"viewport\" content=\"width=device-width, initial-scale=1\">"
-                + "<style>body{margin:0;min-height:100vh;display:flex;align-items:center;justify-content:center;"
-                + "background:#0c0e14;color:#e8ecf4;font-family:sans-serif;padding:24px;text-align:center}"
+                + "<meta name=\"viewport\" content=\"width=device-width, initial-scale=1, maximum-scale=1\">"
+                + "<style>"
+                + "html,body{margin:0;min-height:100%;background:#0c0e14;color:#e8ecf4;font-family:sans-serif;"
+                + "touch-action:pan-y;-webkit-user-select:none;user-select:none}"
+                + "body{display:flex;align-items:center;justify-content:center;padding:24px;text-align:center;"
+                + "box-sizing:border-box;min-height:100vh}"
                 + "h1{font-size:1.25rem;margin:0 0 12px}p{opacity:.8;line-height:1.45;margin:0 0 20px}"
-                + "button{background:#6c8cff;color:#fff;border:0;border-radius:10px;padding:12px 18px;font-size:1rem;margin:4px}button.secondary{background:#252b3b}"
-                + "small{display:block;margin-top:16px;opacity:.55;word-break:break-word}</style></head><body>"
+                + "a.btn,button{display:inline-block;background:#6c8cff;color:#fff;border:0;border-radius:10px;"
+                + "padding:12px 18px;font-size:1rem;margin:4px;text-decoration:none}"
+                + "a.btn.secondary,button.secondary{background:#252b3b}"
+                + "small{display:block;margin-top:16px;opacity:.55;word-break:break-word}"
+                + "#ptr{position:fixed;left:50%;top:0;transform:translate(-50%,-100%);opacity:0;"
+                + "background:#141824;border:1px solid #252b3b;border-top:0;border-radius:0 0 12px 12px;"
+                + "padding:10px 16px;font-size:13px;pointer-events:none;transition:opacity .15s}"
+                + "#ptr.show{opacity:1}"
+                + "</style></head><body>"
+                + "<div id=\"ptr\">Потяните, чтобы обновить</div>"
                 + "<div><h1>Нет соединения с сайтом</h1>"
                 + "<p>Не удалось загрузить Track Anime. Проверьте интернет и VPN (V2Ray/прокси), затем повторите.</p>"
-                + "<button onclick=\"location.replace('" + SITE_URL + "')\">Повторить</button>"
-                + "<button class=\"secondary\" onclick=\"location.href='trackanime://settings'\">Настройки приложения</button>"
-                + "<small>" + safeReason + "<br>" + SITE_URL + "</small></div></body></html>";
-        view.loadDataWithBaseURL(SITE_URL, html, "text/html", "utf-8", SITE_URL);
+                + "<a class=\"btn\" href=\"trackanime://retry\">Повторить</a>"
+                + "<a class=\"btn secondary\" href=\"trackanime://settings\">Настройки приложения</a>"
+                + "<small>" + safeReason + "<br>" + SITE_URL + "</small></div>"
+                + "<script>(function(){"
+                + "var startY=0,pulling=false,armed=false,ptr=document.getElementById('ptr');"
+                + "function reset(){pulling=false;armed=false;if(ptr){ptr.className='';ptr.style.transform='translate(-50%,-100%)';}}"
+                + "document.addEventListener('touchstart',function(e){"
+                + "if(e.touches.length!==1||window.scrollY>0)return;"
+                + "startY=e.touches[0].clientY;pulling=true;armed=false;"
+                + "}, {passive:true});"
+                + "document.addEventListener('touchmove',function(e){"
+                + "if(!pulling||e.touches.length!==1)return;"
+                + "var dy=e.touches[0].clientY-startY;"
+                + "if(dy<=0){reset();return;}"
+                + "if(e.cancelable)e.preventDefault();"
+                + "var d=Math.min(96,dy*0.5);armed=d>=64;"
+                + "if(ptr){ptr.className='show';ptr.textContent=armed?'Отпустите, чтобы обновить':'Потяните, чтобы обновить';"
+                + "ptr.style.transform='translate(-50%, calc(-100% + '+d+'px))';}"
+                + "}, {passive:false});"
+                + "document.addEventListener('touchend',function(){"
+                + "if(!pulling)return;var go=armed;reset();"
+                + "if(go)location.href='trackanime://retry';"
+                + "});"
+                + "document.addEventListener('touchcancel',reset);"
+                + "})();</script>"
+                + "</body></html>";
+        // about:blank base avoids location.replace(SITE_URL) no-op when history already equals SITE_URL.
+        view.loadDataWithBaseURL("about:blank", html, "text/html", "utf-8", null);
     }
 
     private final class TrackAnimeChromeClient extends WebChromeClient {

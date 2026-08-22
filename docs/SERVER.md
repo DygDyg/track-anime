@@ -91,7 +91,7 @@ NODE_ENV="production"
 | `KODIK_USER_AGENT` | нет | User-Agent для запросов к Kodik |
 | `SHIKIMORI_REQUEST_TIMEOUT_MS` | нет | Таймаут одной публичной попытки Shikimori API (по умолчанию 8000 мс) |
 | `SHIKIMORI_TOTAL_TIMEOUT_MS` | нет | Общий бюджет публичного Shikimori API-запроса с retry (по умолчанию 15000 мс) |
-| `WATCH_PARTY_PORT` | нет | Порт отдельного WebSocket-сервера совместного просмотра (по умолчанию 3001) |
+| `WATCH_PARTY_PORT` | нет | Порт отдельного WebSocket-сервера совместного просмотра (по умолчанию 3001). На текущем prod: Next.js `PORT=3001`, watch-party `WATCH_PARTY_PORT=3002` |
 | `WATCH_PARTY_ROOMS_URL` | нет | Внутренний HTTP URL списка активных комнат для админки. Если не задан, админка пробует `WATCH_PARTY_PORT`, затем локальные `3001`/`3002`. |
 | `NEXT_PUBLIC_WATCH_PARTY_WS_URL` | нет | Публичный WebSocket URL, если `/watch-party-ws` не проксируется на том же origin |
 | `NODE_ENV` | для prod | `production` при `npm run start` |
@@ -245,8 +245,10 @@ server {
         proxy_set_header Connection "upgrade";
     }
 
+    # Must match WATCH_PARTY_PORT (prod currently uses 3002; default docs example is 3001).
+    # Without this location, browser wss://…/watch-party-ws hits Next.js and room create fails.
     location /watch-party-ws {
-        proxy_pass http://127.0.0.1:3001;
+        proxy_pass http://127.0.0.1:3002;
         proxy_http_version 1.1;
         proxy_set_header Host $host;
         proxy_set_header X-Real-IP $remote_addr;
@@ -254,6 +256,8 @@ server {
         proxy_set_header X-Forwarded-Proto $scheme;
         proxy_set_header Upgrade $http_upgrade;
         proxy_set_header Connection "upgrade";
+        proxy_read_timeout 86400;
+        proxy_send_timeout 86400;
     }
 }
 ```

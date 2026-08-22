@@ -6,6 +6,7 @@ import { NavLink } from "@/components/NavLink";
 import { useAuth } from "@/components/auth/AuthProvider";
 import { profileMenuItemClass, profileMenuLogoutClass } from "@/components/auth/profile-menu-styles";
 import { isTrackAnimeAndroidApp, TRACK_ANIME_ANDROID_SETTINGS_URL } from "@/lib/android-app";
+import { isTrackAnimeWindowsApp, TRACK_ANIME_WINDOWS_SETTINGS_URL } from "@/lib/windows-app";
 import { userProfilePath } from "@/lib/public-user";
 
 export function LocalCredentialWarningIcon({
@@ -32,9 +33,13 @@ export function ProfileMenuItems({ centered = false, onNavigate, onScanQr }: Pro
   const { user, logout, loggingOut } = useAuth();
   const pathname = usePathname();
   const [nativeApp, setNativeApp] = useState(false);
+  const [settingsUrl, setSettingsUrl] = useState(TRACK_ANIME_ANDROID_SETTINGS_URL);
 
   useEffect(() => {
-    setNativeApp(isTrackAnimeAndroidApp());
+    const android = isTrackAnimeAndroidApp();
+    const windows = isTrackAnimeWindowsApp();
+    setNativeApp(android || windows);
+    setSettingsUrl(windows ? TRACK_ANIME_WINDOWS_SETTINGS_URL : TRACK_ANIME_ANDROID_SETTINGS_URL);
   }, []);
 
   if (!user) return null;
@@ -63,7 +68,7 @@ export function ProfileMenuItems({ centered = false, onNavigate, onScanQr }: Pro
       </button>
       {nativeApp ? (
         <a
-          href={TRACK_ANIME_ANDROID_SETTINGS_URL}
+          href={settingsUrl}
           role="menuitem"
           className={profileMenuItemClass(false, centered)}
           onClick={onNavigate}

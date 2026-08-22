@@ -11,6 +11,7 @@ import {
 } from "react";
 import type { KodikPlayerPlaybackState } from "@/components/anime/KodikPlayer";
 import { formatWatchPosition } from "@/lib/watch-history";
+import { PLAYER_CONTROLS_IDLE_MS_DEFAULT } from "@/lib/site-settings";
 
 export type KodikPlayerBetaTheaterMode = "normal" | "height";
 
@@ -46,17 +47,14 @@ type Props = {
   fullscreenTranslationsOpen?: boolean;
   overlay?: boolean;
   interactive?: boolean;
-  /** Controlled by viewport: true when the mouse is in the Kodik quality hotspot zone. */
-  qualityHover?: boolean;
   /** True when controls are docked below the player (portrait mobile). */
   controlsDocked?: boolean;
-  /**
-   * When false, quality panel stays split open (always).
-   * When true (default), split only on hover/tap.
-   */
-  qualityPanelDynamicWidth?: boolean;
-  /** Fires when the quality gap is open (hover, tap, or always-split). */
+  /** Idle delay used to collapse the quality gap while paused (ms). */
+  qualityPanelIdleMs?: number;
+  /** Fires when the quality gap is open after pressing «Авто». */
   onQualityPanelActiveChange?: (active: boolean) => void;
+  /** Mark bottom-bar play as TV primary focus when «Продолжить» is absent. */
+  tvBarPlayPrimary?: boolean;
 };
 
 type RangeStyle = CSSProperties & {
@@ -184,6 +182,8 @@ function ControlButton({
   onClick,
   pressed,
   className = "",
+  tvBarPlay,
+  tvPrimary,
 }: {
   children: ReactNode;
   label: string;
@@ -191,6 +191,10 @@ function ControlButton({
   onClick: () => void;
   pressed?: boolean;
   className?: string;
+  /** Bottom-bar play/pause — TV primary / bar focus target. */
+  tvBarPlay?: boolean;
+  /** Also mark as data-tv-player-primary (no Continue overlay). */
+  tvPrimary?: boolean;
 }) {
   return (
     <button
@@ -199,6 +203,8 @@ function ControlButton({
       title={label}
       disabled={disabled}
       aria-pressed={pressed}
+      data-tv-player-bar-play={tvBarPlay ? true : undefined}
+      data-tv-player-primary={tvPrimary ? true : undefined}
       onMouseDown={(event) => event.preventDefault()}
       onClick={onClick}
       className={[
@@ -277,40 +283,68 @@ export function KodikPlayerBetaControls({
   fullscreenTranslationsOpen = false,
   overlay = false,
   interactive = true,
-  qualityHover = false,
   controlsDocked = false,
-  qualityPanelDynamicWidth = true,
+  qualityPanelIdleMs = PLAYER_CONTROLS_IDLE_MS_DEFAULT,
   onQualityPanelActiveChange,
+  tvBarPlayPrimary = false,
 }: Props) {
   const duration = Math.max(playback.durationSeconds, 0);
   const position = Math.min(Math.max(playback.positionSeconds, 0), duration || playback.positionSeconds);
   const [qualityTapOpen, setQualityTapOpen] = useState(false);
-  const qualityTapTimerRef = useRef<number | null>(null);
-  const qualitySplit =
-    !controlsDocked &&
-    playback.mediaUnlocked &&
-    (!qualityPanelDynamicWidth || qualityHover || qualityTapOpen);
+  const qualitySplit = !controlsDocked && playback.mediaUnlocked && qualityTapOpen;
 
   useEffect(() => {
-    onQualityPanelActiveChange?.(qualitySplit);
-  }, [qualitySplit, onQualityPanelActiveChange]);
+    // Click-through to Kodik only while «Авто» keeps the quality gap open.
+    const passthrough = !controlsDocked && playback.mediaUnlocked && qualityTapOpen;
+    onQualityPanelActiveChange?.(passthrough);
+  }, [controlsDocked, playback.mediaUnlocked, qualityTapOpen, onQualityPanelActiveChange]);
+
+  // While playing, chrome auto-hide collapses the gap via `interactive`.
+  useEffect(() => {
+    if (!interactive && qualityTapOpen) {
+      setQualityTapOpen(false);
+    }
+  }, [interactive, qualityTapOpen]);
+
+  // While paused, chrome stays visible — collapse the gap after the same idle delay.
+  useEffect(() => {
+    if (!qualityTapOpen || playback.isPlaying) return;
+    const timer = window.setTimeout(() => setQualityTapOpen(false), qualityPanelIdleMs);
+    return () => window.clearTimeout(timer);
+  }, [qualityTapOpen, playback.isPlaying, qualityPanelIdleMs]);
 
   const handleQualityTap = useCallback(() => {
     if (!playback.mediaUnlocked) return;
-    setQualityTapOpen((prev) => {
-      if (qualityTapTimerRef.current) window.clearTimeout(qualityTapTimerRef.current);
-      if (!prev) {
-        qualityTapTimerRef.current = window.setTimeout(() => setQualityTapOpen(false), 5000);
-      }
-      return !prev;
-    });
+    setQualityTapOpen((prev) => !prev);
   }, [playback.mediaUnlocked]);
 
-  useEffect(() => {
-    return () => {
-      if (qualityTapTimerRef.current) window.clearTimeout(qualityTapTimerRef.current);
-    };
-  }, []);
+  const qualityButton = !controlsDocked ? (
+      <button
+        type="button"
+        disabled={disabled || !playback.mediaUnlocked}
+        aria-label={qualityTapOpen ? "Закрыть выбор качества" : "Качество видео"}
+        aria-pressed={qualityTapOpen}
+        title={
+          qualityTapOpen
+            ? "Закрыть выбор качества Kodik"
+            : "Качество видео — нажмите, чтобы открыть меню Kodik"
+        }
+        onClick={handleQualityTap}
+        onMouseDown={(e) => e.preventDefault()}
+        className={[
+          "inline-flex h-10 shrink-0 items-center justify-center rounded-md text-[11px] font-semibold transition select-none disabled:cursor-not-allowed disabled:opacity-40 sm:h-9 sm:text-xs",
+          playback.mediaUnlocked
+            ? [
+                "cursor-pointer hover:bg-white/15 active:scale-95",
+                qualityTapOpen ? "bg-white/15 text-white" : "text-white/80",
+              ].join(" ")
+            : "cursor-default text-white/40",
+        ].join(" ")}
+        style={{ width: "clamp(2.5rem, 6vw, 5rem)" }}
+      >
+        Авто
+      </button>
+    ) : null;
 
   const [dragPosition, setDragPosition] = useState<number | null>(null);
   const progressDraggingRef = useRef(false);
@@ -459,6 +493,8 @@ export function KodikPlayerBetaControls({
         }
         disabled={disabled || !playback.mediaUnlocked}
         onClick={onPlayPause}
+        tvBarPlay
+        tvPrimary={tvBarPlayPrimary}
       >
         {playback.isPlaying ? <IconPause /> : <IconPlay />}
       </ControlButton>
@@ -476,6 +512,7 @@ export function KodikPlayerBetaControls({
       <button
         type="button"
         disabled={disabled}
+        aria-label={`Назад на ${seekSkipLabelSeconds} секунд`}
         onMouseDown={(event) => event.preventDefault()}
         onClick={() => handleSeekSkipButton(-seekSkipLabelSeconds)}
         className="kodik-player-beta-seek-button h-10 select-none rounded-md px-2 py-1 text-xs font-medium text-white/90 transition hover:bg-white/15 disabled:cursor-not-allowed disabled:opacity-40 sm:h-auto"
@@ -485,6 +522,7 @@ export function KodikPlayerBetaControls({
       <button
         type="button"
         disabled={disabled}
+        aria-label={`Вперёд на ${seekSkipLabelSeconds} секунд`}
         onMouseDown={(event) => event.preventDefault()}
         onClick={() => handleSeekSkipButton(seekSkipLabelSeconds)}
         className="kodik-player-beta-seek-button h-10 select-none rounded-md px-2 py-1 text-xs font-medium text-white/90 transition hover:bg-white/15 disabled:cursor-not-allowed disabled:opacity-40 sm:h-auto"
@@ -637,23 +675,7 @@ export function KodikPlayerBetaControls({
       {progressBar}
       <div className="kodik-player-beta-controls-row flex items-center gap-1 sm:gap-2">
         {leftControls}
-        {!controlsDocked && (
-          <button
-            type="button"
-            disabled={disabled || !playback.mediaUnlocked}
-            aria-label="Качество видео"
-            title="Качество видео (наведите в правый нижний угол)"
-            onClick={handleQualityTap}
-            onMouseDown={(e) => e.preventDefault()}
-            className={[
-              "inline-flex h-10 shrink-0 items-center justify-center rounded-md text-[11px] font-semibold transition select-none disabled:cursor-not-allowed disabled:opacity-40 sm:h-9 sm:text-xs",
-              playback.mediaUnlocked ? "cursor-pointer hover:bg-white/15 active:scale-95 text-white/80" : "cursor-default text-white/40",
-            ].join(" ")}
-            style={{ width: "clamp(2.5rem, 6vw, 5rem)" }}
-          >
-            Авто
-          </button>
-        )}
+        {qualityButton}
         {rightControls}
       </div>
       {translationsToggle}

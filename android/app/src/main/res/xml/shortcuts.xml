@@ -1,17 +1,6 @@
 <?xml version="1.0" encoding="utf-8"?>
 <shortcuts xmlns:android="http://schemas.android.com/apk/res/android">
     <shortcut
-        android:shortcutId="home"
-        android:enabled="true"
-        android:icon="@drawable/shortcut_home"
-        android:shortcutShortLabel="@string/shortcut_home">
-        <intent
-            android:action="android.intent.action.VIEW"
-            android:targetPackage="ru.dygdyg.trackanime"
-            android:targetClass="ru.dygdyg.trackanime.MainActivity"
-            android:data="https://track-anime.dygdyg.ru/" />
-    </shortcut>
-    <shortcut
         android:shortcutId="calendar"
         android:enabled="true"
         android:icon="@drawable/shortcut_calendar"
@@ -43,5 +32,16 @@
             android:targetPackage="ru.dygdyg.trackanime"
             android:targetClass="ru.dygdyg.trackanime.MainActivity"
             android:data="https://track-anime.dygdyg.ru/favorites" />
+    </shortcut>
+    <shortcut
+        android:shortcutId="settings"
+        android:enabled="true"
+        android:icon="@drawable/shortcut_settings"
+        android:shortcutShortLabel="@string/shortcut_settings">
+        <intent
+            android:action="android.intent.action.VIEW"
+            android:targetPackage="ru.dygdyg.trackanime"
+            android:targetClass="ru.dygdyg.trackanime.MainActivity"
+            android:data="trackanime://settings" />
     </shortcut>
 </shortcuts>

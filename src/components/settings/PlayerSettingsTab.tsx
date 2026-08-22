@@ -7,6 +7,14 @@ import {
   BETA_HIDDEN_PROGRESS_OPACITY_MAX,
   BETA_HIDDEN_PROGRESS_OPACITY_MIN,
   BETA_HIDDEN_PROGRESS_OPACITY_STEP,
+  BETA_HIDDEN_PROGRESS_THICKNESS_DEFAULT,
+  BETA_HIDDEN_PROGRESS_THICKNESS_MAX,
+  BETA_HIDDEN_PROGRESS_THICKNESS_MIN,
+  BETA_HIDDEN_PROGRESS_THICKNESS_STEP,
+  PLAYER_CONTROLS_IDLE_MS_DEFAULT,
+  PLAYER_CONTROLS_IDLE_MS_MAX,
+  PLAYER_CONTROLS_IDLE_MS_MIN,
+  PLAYER_CONTROLS_IDLE_MS_STEP,
   type SiteSettings,
 } from "@/lib/site-settings";
 import {
@@ -77,6 +85,8 @@ export function PlayerSettingsTab({ settings, updateSettings, updateLocalSetting
     updateSettings({ translationIntroOffsets: next });
   };
 
+  const thicknessPx = settings.betaHiddenProgressThickness ?? BETA_HIDDEN_PROGRESS_THICKNESS_DEFAULT;
+
   return (
     <div className="space-y-4">
       <section className="space-y-2 rounded-lg border border-amber-500/30 bg-amber-500/5 p-3">
@@ -126,50 +136,77 @@ export function PlayerSettingsTab({ settings, updateSettings, updateLocalSetting
         </div>
       </section>
 
-      <section className="space-y-2 rounded-lg border border-border bg-background/60 p-3">
-        <div className="flex flex-wrap items-center justify-between gap-3">
-          <div className="min-w-0">
-            <SectionTitle>Динамическое изменение ширины панели управления</SectionTitle>
-            <SectionHint>
-              Раздвигать нижнюю панель TA-плеера при наведении на зону качества Kodik. Если
-              выключено — панель всегда раздвинута, и качество Kodik доступно без наведения.
-            </SectionHint>
+      <section className="space-y-3 rounded-lg border border-border bg-background/60 p-3">
+        <div className="min-w-0">
+          <SectionTitle>Полоса прогресса при скрытом интерфейсе</SectionTitle>
+          <SectionHint>
+            Тонкая полоса внизу TA-плеера, когда панель управления исчезает. Пока открыта эта
+            вкладка, снизу экрана видно превью поверх окна настроек. 0% прозрачности — выключить.
+          </SectionHint>
+        </div>
+
+        <div className="space-y-2">
+          <div className="flex flex-wrap items-center justify-between gap-3">
+            <span className="text-xs font-medium text-muted">Прозрачность</span>
+            <span className="shrink-0 text-sm font-semibold tabular-nums text-accent">
+              {Math.round(settings.betaHiddenProgressOpacity * 100)}%
+            </span>
           </div>
-          <label className="flex shrink-0 cursor-pointer items-center gap-2 text-sm font-medium text-foreground">
-            <input
-              type="checkbox"
-              checked={settings.playerControlsDynamicWidth}
-              onChange={(event) =>
-                updateSettings({ playerControlsDynamicWidth: event.target.checked })
-              }
-              className="h-4 w-4 rounded border-border accent-accent"
-            />
-            Включить
-          </label>
+          <input
+            type="range"
+            min={BETA_HIDDEN_PROGRESS_OPACITY_MIN}
+            max={BETA_HIDDEN_PROGRESS_OPACITY_MAX}
+            step={BETA_HIDDEN_PROGRESS_OPACITY_STEP}
+            value={settings.betaHiddenProgressOpacity}
+            onChange={(event) =>
+              updateSettings({ betaHiddenProgressOpacity: Number(event.target.value) })
+            }
+            className="site-range w-full"
+          />
+        </div>
+
+        <div className="space-y-2">
+          <div className="flex flex-wrap items-center justify-between gap-3">
+            <span className="text-xs font-medium text-muted">Толщина</span>
+            <span className="shrink-0 text-sm font-semibold tabular-nums text-accent">
+              {thicknessPx} px
+            </span>
+          </div>
+          <input
+            type="range"
+            min={BETA_HIDDEN_PROGRESS_THICKNESS_MIN}
+            max={BETA_HIDDEN_PROGRESS_THICKNESS_MAX}
+            step={BETA_HIDDEN_PROGRESS_THICKNESS_STEP}
+            value={thicknessPx}
+            onChange={(event) =>
+              updateSettings({ betaHiddenProgressThickness: Number(event.target.value) })
+            }
+            className="site-range w-full"
+          />
         </div>
       </section>
 
-      <section className="space-y-2 rounded-lg border border-border bg-background/60 p-3">
+      <section className="space-y-2 rounded-lg border border-amber-500/30 bg-amber-500/5 p-3">
         <div className="flex flex-wrap items-start justify-between gap-3">
           <div className="min-w-0">
-            <SectionTitle>Полоса прогресса при скрытом интерфейсе</SectionTitle>
+            <SectionTitle>Автоскрытие UI TA-плеера</SectionTitle>
             <SectionHint>
-              Видимость тонкой полосы внизу TA-плеера, когда панель управления исчезает.
-              0% — выключить.
+              Отладка: сколько ждать бездействия перед скрытием панели при воспроизведении.
+              У Kodik ≈ 4,0 с. По умолчанию {PLAYER_CONTROLS_IDLE_MS_DEFAULT / 1000} с.
             </SectionHint>
           </div>
           <span className="shrink-0 text-sm font-semibold tabular-nums text-accent">
-            {Math.round(settings.betaHiddenProgressOpacity * 100)}%
+            {(settings.playerControlsIdleMs / 1000).toFixed(1)} с
           </span>
         </div>
         <input
           type="range"
-          min={BETA_HIDDEN_PROGRESS_OPACITY_MIN}
-          max={BETA_HIDDEN_PROGRESS_OPACITY_MAX}
-          step={BETA_HIDDEN_PROGRESS_OPACITY_STEP}
-          value={settings.betaHiddenProgressOpacity}
+          min={PLAYER_CONTROLS_IDLE_MS_MIN}
+          max={PLAYER_CONTROLS_IDLE_MS_MAX}
+          step={PLAYER_CONTROLS_IDLE_MS_STEP}
+          value={settings.playerControlsIdleMs}
           onChange={(event) =>
-            updateSettings({ betaHiddenProgressOpacity: Number(event.target.value) })
+            updateSettings({ playerControlsIdleMs: Number(event.target.value) })
           }
           className="site-range w-full"
         />
@@ -229,7 +266,6 @@ export function PlayerSettingsTab({ settings, updateSettings, updateLocalSetting
         </ul>
       )}
       {remoteSaving ? <p className="text-xs text-muted">Сохраняем настройки…</p> : null}
-
     </div>
   );
 }

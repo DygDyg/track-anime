@@ -6,7 +6,16 @@ export type UserAnimeListInfo = {
   listStatus: string | null;
   isBookmark: boolean;
   rewatches: number | null;
+  /** Оценка пользователя на Shikimori (1–10); null / 0 = без оценки */
+  userScore: number | null;
 };
+
+export function normalizeUserAnimeScore(score: number | null | undefined): number | null {
+  if (score == null || !Number.isFinite(score)) return null;
+  const rounded = Math.round(score);
+  if (rounded <= 0) return null;
+  return Math.min(10, Math.max(1, rounded));
+}
 
 export function shouldShowListBadge(info: UserAnimeListInfo | null | undefined): boolean {
   return Boolean(info && (info.listStatus || info.isBookmark));
@@ -30,12 +39,14 @@ function mergeListInfo(
     if (patch.listStatus != null) existing.listStatus = patch.listStatus;
     if (patch.isBookmark) existing.isBookmark = true;
     if (patch.rewatches != null) existing.rewatches = patch.rewatches;
+    if (patch.userScore !== undefined) existing.userScore = patch.userScore;
     return;
   }
   map.set(shikimoriId, {
     listStatus: patch.listStatus ?? null,
     isBookmark: patch.isBookmark ?? false,
     rewatches: patch.rewatches ?? null,
+    userScore: patch.userScore ?? null,
   });
 }
 
@@ -46,7 +57,7 @@ export async function getUserAnimeListStatus(
   const [entry, bookmark] = await Promise.all([
     prisma.userAnimeListEntry.findUnique({
       where: { userId_shikimoriId: { userId, shikimoriId } },
-      select: { listStatus: true, rewatches: true },
+      select: { listStatus: true, rewatches: true, userScore: true },
     }),
     prisma.userAnimeBookmark.findUnique({
       where: { userId_shikimoriId: { userId, shikimoriId } },
@@ -61,6 +72,7 @@ export async function getUserAnimeListStatus(
     listStatus,
     isBookmark: Boolean(bookmark),
     rewatches: entry ? effectiveRewatches(entry.rewatches, listStatus) : null,
+    userScore: entry ? normalizeUserAnimeScore(entry.userScore) : null,
   };
 }
 
@@ -68,7 +80,7 @@ export async function getUserAnimeListStatusMap(userId: string): Promise<Map<num
   const [entries, bookmarks] = await Promise.all([
     prisma.userAnimeListEntry.findMany({
       where: { userId },
-      select: { shikimoriId: true, listStatus: true, rewatches: true },
+      select: { shikimoriId: true, listStatus: true, rewatches: true, userScore: true },
     }),
     prisma.userAnimeBookmark.findMany({
       where: { userId },
@@ -82,6 +94,7 @@ export async function getUserAnimeListStatusMap(userId: string): Promise<Map<num
     mergeListInfo(map, entry.shikimoriId, {
       listStatus: entry.listStatus,
       rewatches: effectiveRewatches(entry.rewatches, entry.listStatus),
+      userScore: normalizeUserAnimeScore(entry.userScore),
     });
   }
   for (const bookmark of bookmarks) {

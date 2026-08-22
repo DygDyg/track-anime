@@ -2,6 +2,7 @@ import { prisma } from "@/lib/prisma";
 import { saveKodikMaterial } from "@/db/save-material";
 import { normalizeKodikMaterialMetadata } from "@/lib/kodik-material-metadata-normalizer";
 import { scheduleMalIdRefreshForShikimoriIds } from "@/lib/admin/mal-id-sync";
+import { KODIK_ANIME_LIST_TYPES } from "@/kodik/anime-types";
 import { buildListUrl, kodikListByUrl, kodikSearch } from "@/kodik/client";
 import {
   finishImportJobSession,
@@ -63,7 +64,7 @@ export async function runKodikIncrementalSync(
   const startedAt = Date.now();
 
   let url = buildListUrl({
-    types: "anime-serial",
+    types: KODIK_ANIME_LIST_TYPES,
     has_field: "shikimori_id",
     limit: 100,
     sort: "updated_at",
@@ -134,9 +135,10 @@ export async function runKodikIncrementalSync(
           trackReleases: true,
         });
 
+        // After detail fetch: seasons loaded, or film/no seasons — do not leave pending forever.
         await prisma.kodikMaterial.update({
           where: { kodikId: material.id },
-          data: { episodesLoaded: Boolean(toSave.seasons) || existing?.episodesLoaded || false },
+          data: { episodesLoaded: true },
         });
 
         updatedMaterials += 1;

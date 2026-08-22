@@ -3,6 +3,10 @@ import type { ReleaseItemDto, ReleasesCursor } from "@/lib/releases";
 const NAV_RETURN_KEY = "ta:nav-return";
 const FEED_STATE_PREFIX = "ta:feed:";
 const MAX_AGE_MS = 30 * 60 * 1000;
+/** Keep restore payloads under typical sessionStorage quotas (~5MB). */
+const FEED_ITEMS_SOFT_MAX = 96;
+const FEED_ITEMS_HARD_MAX = 48;
+const FEED_DESCRIPTION_MAX = 240;
 
 export const BEFORE_ANIME_NAV_EVENT = "ta:before-anime-nav";
 
@@ -40,7 +44,7 @@ export function saveNavReturn(): void {
     scrollY: window.scrollY,
     savedAt: Date.now(),
   };
-  sessionStorage.setItem(NAV_RETURN_KEY, JSON.stringify(state));
+  trySetSessionItem(NAV_RETURN_KEY, JSON.stringify(state));
 }
 
 export function notifyBeforeAnimeNav(): void {
@@ -93,9 +97,77 @@ function feedStateKey(path: string): string {
   return `${FEED_STATE_PREFIX}${path}`;
 }
 
+function slimFeedState(
+  data: FeedPersistState,
+  options: { maxItems: number | null; keepDescription: boolean },
+): FeedPersistState {
+  const truncated =
+    options.maxItems != null && data.items.length > options.maxItems;
+  const sourceItems =
+    options.maxItems == null ? data.items : data.items.slice(0, options.maxItems);
+  const items = sourceItems.map((item) => ({
+    ...item,
+    description:
+      options.keepDescription && item.description
+        ? item.description.slice(0, FEED_DESCRIPTION_MAX)
+        : null,
+  }));
+
+  const last = items[items.length - 1];
+  if (!truncated || !last) {
+    return { items, hasMore: data.hasMore, nextCursor: data.nextCursor };
+  }
+
+  return {
+    items,
+    hasMore: true,
+    // loadMore dedupes by id; prefer releases so skipped middle pages can refill.
+    nextCursor: {
+      phase: "releases",
+      releasedAt: last.releasedAt,
+      id: last.id,
+    },
+  };
+}
+
+function clearFeedStates(): void {
+  const keys: string[] = [];
+  for (let i = 0; i < sessionStorage.length; i += 1) {
+    const key = sessionStorage.key(i);
+    if (key?.startsWith(FEED_STATE_PREFIX)) keys.push(key);
+  }
+  for (const key of keys) sessionStorage.removeItem(key);
+}
+
+function trySetSessionItem(key: string, value: string): boolean {
+  try {
+    sessionStorage.setItem(key, value);
+    return true;
+  } catch {
+    return false;
+  }
+}
+
 export function saveFeedState(path: string, data: FeedPersistState): void {
   if (typeof window === "undefined") return;
-  sessionStorage.setItem(feedStateKey(path), JSON.stringify(data));
+
+  const key = feedStateKey(path);
+  const attempts: FeedPersistState[] = [
+    slimFeedState(data, { maxItems: null, keepDescription: true }),
+    slimFeedState(data, { maxItems: null, keepDescription: false }),
+    slimFeedState(data, { maxItems: FEED_ITEMS_SOFT_MAX, keepDescription: false }),
+    slimFeedState(data, { maxItems: FEED_ITEMS_HARD_MAX, keepDescription: false }),
+  ];
+
+  for (const attempt of attempts) {
+    if (trySetSessionItem(key, JSON.stringify(attempt))) return;
+  }
+
+  clearFeedStates();
+  for (const attempt of attempts) {
+    if (trySetSessionItem(key, JSON.stringify(attempt))) return;
+  }
+  // Give up quietly: nav-return scroll still works without feed snapshot.
 }
 
 export function consumeFeedState(path: string): FeedPersistState | null {

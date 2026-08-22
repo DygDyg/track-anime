@@ -24,6 +24,7 @@ Next.js anime streaming site with Shikimori OAuth + Kodik player. Data lives in 
 | Fix home feed | `src/lib/releases.ts`, `src/components/ReleaseFeed.tsx` |
 | Fix calendar | `src/lib/calendar.ts`, `src/components/calendar/CalendarView.tsx`, `src/lib/shikimori/calendar-api.ts` |
 | Fix history cards | `src/components/history/HistoryWatchCard.tsx`, `src/lib/history-watch-card.ts` — единый UI для /history и «Новое в вашей истории» |
+| Fix history upcoming | `src/lib/history-upcoming-soon.ts`, `HistoryUpcomingSoonPanel.tsx` — блок «Скоро выйдут» на `/history` и на главной над «Новое в вашей истории» (если count > 0; озвучка: last ep + 7д, окно 12ч) |
 | Fix anime page | `src/lib/anime-page.ts`, `src/app/anime/[shikimoriId]/page.tsx` |
 | Fix lists/favorites | `src/lib/favorites-sync.ts`, `src/lib/shikimori/user-list-mutations.ts` |
 | Fix search | `src/lib/search.ts` (server-only, raw SQL) |
@@ -48,11 +49,13 @@ Codex: использовать эту таблицу напрямую и чит
 | Covers / posters | обложк, poster, thumb, cover | `AnimePoster.tsx`, `src/lib/poster.ts`, `cover-cache.ts`, `src/app/api/cover/route.ts` |
 | Lists / sync | списк, sync, rewatches, shikimori | `favorites-sync.ts`, `user-list-mutations.ts` |
 | Player | kodik, плеер, progress | `KodikPlayer.tsx`, `kodik-player-api.ts` |
-| Deploy | деплой, deploy, prod | `scripts/deploy-auto.ps1`, `deploy.ps1`, `deploy-rpc.ps1`, `deploy-apk.ps1`, `docs/DEPLOY.md` |
+| Deploy | деплой, deploy, prod | `scripts/deploy-auto.ps1`, `deploy.ps1`, `deploy-rpc.ps1`, `deploy-apk.ps1`, `deploy-windows-app.ps1`, `docs/DEPLOY.md` |
 | Auth | oauth, login, session | `shikimori-oauth.ts`, `src/app/api/auth/` |
 | Home feed | главная, лента | `releases.ts`, `ReleaseFeed.tsx` |
 | Notifications | уведомлен, push, telegram, vk, discord | `src/lib/notifications/`, `src/app/api/notifications/`, `NotificationSettingsPanel.tsx` |
 | Brand rotation | лого, логотип, favicon, бренд | `src/lib/brand-rotation.ts`, `src/components/admin/BrandRotationSettingsPanel.tsx`, `public/brand-logos/` |
+| Android TV | android tv, d-pad, тв-навигац | `TvNavigationProvider.tsx`, `tv-navigation.ts`, `HeaderSearch.tsx`, `BaseWebActivity.java`, `docs/ANDROID.md` |
+| Windows app | windows app, webview2, win shell | `windows/TrackAnime/`, `src/lib/windows-app.ts`, `docs/WINDOWS.md` |
 
 ## Shikimori sync policy (lists)
 
@@ -109,7 +112,7 @@ Calendar: `/calendar` → calendar.ts → local Kodik DB or Shikimori `/api/cale
 | OAuth fails | Redirect URI mismatch, HTTP instead of HTTPS in prod |
 | 401 on list update | Expired Shikimori token — check `auth-client.ts` refresh |
 | Anime page 404 | Invalid shikimoriId or no Shikimori data |
-| No player | No KodikMaterial for shikimoriId — need import |
+| No player | No KodikMaterial for shikimoriId — page auto-ensures via Kodik search; import/sync use `anime,anime-serial` (films are `type=anime`) |
 | Rate limit errors | Shikimori/Kodik rate limiter — check `rate-limiter.ts` |
 | Poster missing | Fallback chain exhausted — check materialData, Shikimori cache |
 | Import stuck | Check `KodikImportJob` status in DB or admin panel |
@@ -117,6 +120,11 @@ Calendar: `/calendar` → calendar.ts → local Kodik DB or Shikimori `/api/cale
 | Phone dev: no JS, TitleCover only | Open via LAN IP without `allowedDevOrigins` — restart `npm run dev`, use `http://192.168.x.x:3000` |
 | `dygdyg:3000` unreachable | Add `192.168.x.x dygdyg` to hosts; dev must bind `0.0.0.0` (`npm run dev`) |
 | Brand logo does not rotate | No `.webp` files in `public/brand-logos`, `BrandRotationSettings.enabled=false`, or interval slot has not changed yet |
+| Android TV lag / blur | Full desktop UI in WebView; TV sets `data-tv-nav` which disables blur/companion — check inject in `BaseWebActivity.enableTvSiteNavigation` |
+| Kodik video freezes, audio continues | GPU pressure from page chrome (screenshot `blur-md`, pattern parallax, companion RAF). Playback sets `data-player-playing` to ease load; refresh / «Перезапустить плеер» remounts iframe |
+| TV search opens IME on focus | HeaderSearch idle uses wrapper `data-tv-focus`; OK/Enter required to edit |
+| App settings dialog ignores D-pad | Native dialog needs focus drawables + `requestFocus` — see `showAppSettings` |
+| TV player arrows move focus instead of seek | Center Play has `data-tv-player-seek-keys`; arrows seek / jump chrome — see `KodikPlayerBetaViewport` |
 
 ## Debugging Notes
 

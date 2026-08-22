@@ -1,8 +1,10 @@
 import type { Metadata } from "next";
 import { HistoryNewEpisodesSection, type HistoryNewEpisodeDto } from "@/components/HistoryNewEpisodesSection";
+import { HistoryUpcomingSoonPanel } from "@/components/history/HistoryUpcomingSoonPanel";
 import { ReleaseFeed } from "@/components/ReleaseFeed";
 import { getSession } from "@/lib/auth/session";
 import { getHistoryNewEpisodes } from "@/lib/history-new-episodes";
+import { getHistoryUpcomingSoon } from "@/lib/history-upcoming-soon";
 import { getRecentReleasesPage, serializeRelease } from "@/lib/releases";
 import { buildSitePageMetadata, defaultSiteDescription } from "@/lib/site-metadata";
 
@@ -18,9 +20,10 @@ const PAGE_SIZE = 24;
 
 export default async function HomePage() {
   const session = await getSession();
-  const [{ items, hasMore, nextCursor }, historyNewEpisodes] = await Promise.all([
+  const [{ items, hasMore, nextCursor }, historyNewEpisodes, upcomingSoon] = await Promise.all([
     getRecentReleasesPage(PAGE_SIZE),
     session ? getHistoryNewEpisodes(session.user.id) : Promise.resolve([]),
+    session ? getHistoryUpcomingSoon(session.user.id) : Promise.resolve([]),
   ]);
 
   const initialItems = items.map(serializeRelease);
@@ -33,12 +36,19 @@ export default async function HomePage() {
     watchedProgressPercent: item.watchedProgressPercent,
   }));
   const historyIds = historyItems.map((item) => item.id);
+  const hasPersonalizedBlocks = historyItems.length > 0 || upcomingSoon.length > 0;
 
   return (
     <div className="py-5 sm:py-8">
+      {upcomingSoon.length > 0 ? (
+        <div className="mb-6 sm:mb-8">
+          <HistoryUpcomingSoonPanel items={upcomingSoon} />
+        </div>
+      ) : null}
+
       {historyItems.length > 0 ? <HistoryNewEpisodesSection items={historyItems} /> : null}
 
-      {initialItems.length === 0 && historyItems.length === 0 ? (
+      {initialItems.length === 0 && !hasPersonalizedBlocks ? (
         <div className="mx-3 rounded-xl border border-dashed border-border bg-card/50 p-6 text-center sm:mx-6 sm:p-10 lg:mx-8">
           <p className="text-muted">Пока нет данных. Запустите синхронизацию:</p>
           <code className="mt-3 inline-block rounded bg-background px-3 py-1 text-sm text-accent">

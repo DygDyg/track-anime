@@ -32,6 +32,13 @@ import {
   type SearchResultDto,
 } from "@/lib/search-shared";
 import { emitCompanionReaction } from "@/lib/companion/companion-bus";
+import { useSiteSettings } from "@/components/SiteSettingsProvider";
+import {
+  focusTvElement,
+  isTvNavigationSessionActive,
+  registerTvSearchEditingExit,
+  setTvSearchEditing,
+} from "@/lib/tv-navigation";
 
 const HEADER_SEARCH_LIMIT = 12;
 const HEADER_SEARCH_INPUT_CLASS = `${siteClass.input} site-search-input !bg-card !pl-10 !pr-11 focus:ring-2 focus:ring-accent/25`;
@@ -107,15 +114,18 @@ export function HeaderSearch({
 }: Props) {
   const pathname = usePathname();
   const router = useRouter();
+  const { settings } = useSiteSettings();
   const [, startTransition] = useTransition();
   const setNavPending = useNavigationPendingSetter();
   const listboxId = useId();
   const rootRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLInputElement>(null);
+  const tvWrapperRef = useRef<HTMLDivElement>(null);
   const debounceRef = useRef<number | null>(null);
   const requestIdRef = useRef(0);
   const abortRef = useRef<AbortController | null>(null);
   const resultsScrollRef = useRef<HTMLDivElement>(null);
+  const tvEditingRef = useRef(false);
 
   const isBottomSheet = variant === "bottom";
 
@@ -129,12 +139,82 @@ export function HeaderSearch({
   const [expandingSearch, setExpandingSearch] = useState(false);
   const [searchDebounceMs, setSearchDebounceMs] = useState(DEFAULT_HEADER_SEARCH_DEBOUNCE_MS);
   const [open, setOpen] = useState(false);
+  const [tvNavActive, setTvNavActive] = useState(false);
+  const [tvEditing, setTvEditing] = useState(false);
   const [panelRect, setPanelRect] = useState<{
     top: number;
     left: number;
     width: number;
     maxHeight: number;
   } | null>(null);
+
+  tvEditingRef.current = tvEditing;
+  const tvMode = Boolean(settings.tvNavigationEnabled && tvNavActive);
+  const tvSearchIdle = tvMode && !tvEditing;
+
+  useEffect(() => {
+    const sync = () => setTvNavActive(isTvNavigationSessionActive());
+    sync();
+    const observer = new MutationObserver(sync);
+    observer.observe(document.documentElement, {
+      attributes: true,
+      attributeFilter: ["data-tv-nav", "data-tv-nav-enabled"],
+    });
+    return () => observer.disconnect();
+  }, []);
+
+  const exitTvEditing = useCallback(() => {
+    if (!tvEditingRef.current) return false;
+    setTvEditing(false);
+    setTvSearchEditing(false);
+    setOpen(false);
+    inputRef.current?.blur();
+    const wrapper = tvWrapperRef.current;
+    if (wrapper) {
+      focusTvElement(wrapper);
+    }
+    return true;
+  }, []);
+
+  const beginTvEditing = useCallback(() => {
+    setTvEditing(true);
+    setTvSearchEditing(true);
+    setOpen(true);
+    window.requestAnimationFrame(() => {
+      inputRef.current?.focus({ preventScroll: true });
+    });
+  }, []);
+
+  useEffect(() => {
+    if (!settings.tvNavigationEnabled || !tvNavActive) {
+      registerTvSearchEditingExit(null);
+      return;
+    }
+    registerTvSearchEditingExit(() => exitTvEditing());
+    return () => registerTvSearchEditingExit(null);
+  }, [settings.tvNavigationEnabled, tvNavActive, exitTvEditing]);
+
+  useEffect(() => {
+    return () => {
+      setTvSearchEditing(false);
+      registerTvSearchEditingExit(null);
+    };
+  }, []);
+
+  useEffect(() => {
+    if (!tvMode) return;
+    const root = rootRef.current;
+    if (!root) return;
+
+    const onFocusOut = (event: FocusEvent) => {
+      const next = event.relatedTarget;
+      if (next instanceof Node && root.contains(next)) return;
+      exitTvEditing();
+    };
+
+    root.addEventListener("focusout", onFocusOut);
+    return () => root.removeEventListener("focusout", onFocusOut);
+  }, [tvMode, exitTvEditing]);
 
   const updatePanelRect = useCallback(() => {
     const root = rootRef.current;
@@ -450,12 +530,26 @@ export function HeaderSearch({
 
   const handleKeyDown = (event: KeyboardEvent<HTMLInputElement>) => {
     if (event.key === "Escape") {
+      if (tvNavActive && tvEditingRef.current) {
+        event.preventDefault();
+        exitTvEditing();
+        return;
+      }
       setOpen(false);
       if (isBottomSheet) {
         onNavigate?.();
         return;
       }
       inputRef.current?.blur();
+    }
+  };
+
+  const handleTvWrapperKeyDown = (event: KeyboardEvent<HTMLDivElement>) => {
+    if (!tvSearchIdle) return;
+    if (event.key === "Enter" || event.key === " " || event.key === "MediaEnter") {
+      event.preventDefault();
+      event.stopPropagation();
+      beginTvEditing();
     }
   };
 
@@ -470,59 +564,84 @@ export function HeaderSearch({
   const showSearchBusy = loading || expandingSearch;
 
   const searchInput = (
-    <div className="relative">
-      <input
-        ref={inputRef}
-        id={`${listboxId}-input`}
-        type="search"
-        value={query}
-        onChange={(event) => {
-          setQuery(event.target.value);
-          setOpen(true);
-        }}
-        onFocus={() => {
-          setOpen(true);
-        }}
-        onKeyDown={handleKeyDown}
-        placeholder="Поиск аниме…"
-        autoComplete="off"
-        role="combobox"
-        aria-expanded={showPanel}
-        aria-controls={`${listboxId}-listbox`}
-        aria-autocomplete="list"
-        className={HEADER_SEARCH_INPUT_CLASS}
-      />
-      <svg
-        viewBox="0 0 24 24"
-        aria-hidden
-        className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted"
-        fill="none"
-        stroke="currentColor"
-        strokeWidth="2"
-      >
-        <circle cx="11" cy="11" r="7" />
-        <path d="M20 20l-3-3" strokeLinecap="round" />
-      </svg>
-      {showSearchBusy ? (
-        <span
+    <div
+      ref={tvWrapperRef}
+      data-tv-focus={tvSearchIdle ? true : undefined}
+      tabIndex={tvSearchIdle ? 0 : -1}
+      onKeyDown={handleTvWrapperKeyDown}
+      className={tvSearchIdle ? "rounded-lg outline-none" : undefined}
+    >
+      <div className="relative">
+        <input
+          ref={inputRef}
+          id={`${listboxId}-input`}
+          type="search"
+          value={query}
+          readOnly={tvSearchIdle}
+          inputMode={tvSearchIdle ? "none" : undefined}
+          tabIndex={tvMode ? -1 : undefined}
+          onChange={(event) => {
+            setQuery(event.target.value);
+            setOpen(true);
+          }}
+          onFocus={() => {
+            if (tvSearchIdle) {
+              inputRef.current?.blur();
+              return;
+            }
+            setOpen(true);
+          }}
+          onBlur={() => {
+            if (!tvMode || !tvEditingRef.current) return;
+            window.setTimeout(() => {
+              if (!tvEditingRef.current) return;
+              if (document.activeElement === inputRef.current) return;
+              if (rootRef.current?.contains(document.activeElement)) return;
+              exitTvEditing();
+            }, 0);
+          }}
+          onKeyDown={handleKeyDown}
+          placeholder="Поиск аниме…"
+          autoComplete="off"
+          role="combobox"
+          aria-expanded={showPanel}
+          aria-controls={`${listboxId}-listbox`}
+          aria-autocomplete="list"
+          className={HEADER_SEARCH_INPUT_CLASS}
+        />
+        <svg
+          viewBox="0 0 24 24"
           aria-hidden
-          className="pointer-events-none absolute inset-y-0 right-3 z-10 flex items-center"
+          className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted"
+          fill="none"
+          stroke="currentColor"
+          strokeWidth="2"
         >
-          <span className="site-search-spinner inline-block h-4 w-4 rounded-full border-2 border-accent border-r-transparent" />
-        </span>
-      ) : (
-        <Link
-          href={ADVANCED_SEARCH_HREF}
-          onClick={handleSelect}
-          className="absolute inset-y-0 right-1.5 z-10 inline-flex w-8 items-center justify-center rounded-md text-muted transition hover:bg-foreground/5 hover:text-accent"
-          aria-label="Подробный поиск"
-          title="Подробный поиск"
-        >
-          <svg viewBox="0 0 24 24" className="h-4 w-4" fill="none" stroke="currentColor" strokeWidth="2" aria-hidden>
-            <path d="M4 6h16M7 12h10M10 18h4" strokeLinecap="round" />
-          </svg>
-        </Link>
-      )}
+          <circle cx="11" cy="11" r="7" />
+          <path d="M20 20l-3-3" strokeLinecap="round" />
+        </svg>
+        {showSearchBusy ? (
+          <span
+            aria-hidden
+            className="pointer-events-none absolute inset-y-0 right-3 z-10 flex items-center"
+          >
+            <span className="site-search-spinner inline-block h-4 w-4 rounded-full border-2 border-accent border-r-transparent" />
+          </span>
+        ) : (
+          <Link
+            href={ADVANCED_SEARCH_HREF}
+            onClick={handleSelect}
+            className="absolute inset-y-0 right-1.5 z-10 inline-flex w-8 items-center justify-center rounded-md text-muted transition hover:bg-foreground/5 hover:text-accent"
+            aria-label="Подробный поиск"
+            title="Подробный поиск"
+            tabIndex={tvMode ? -1 : undefined}
+          >
+            <svg viewBox="0 0 24 24" className="h-4 w-4" fill="none" stroke="currentColor" strokeWidth="2" aria-hidden>
+              <path d="M4 6h16M7 12h10M10 18h4" strokeLinecap="round" />
+            </svg>
+          </Link>
+        )}
+      </div>
     </div>
   );
 

@@ -1,8 +1,8 @@
 import { NextResponse } from "next/server";
-import { listBackgroundImageEntries } from "@/lib/background-images";
+import { listPatternBackgroundEntries } from "@/lib/pattern-backgrounds";
 
 export async function GET() {
-  const backgrounds = listBackgroundImageEntries();
+  const backgrounds = listPatternBackgroundEntries().map(({ url, label }) => ({ url, label }));
 
   return NextResponse.json(
     { backgrounds },

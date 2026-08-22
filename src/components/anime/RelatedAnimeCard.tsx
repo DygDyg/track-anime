@@ -64,7 +64,7 @@ export function RelatedAnimeCard({
               loading="lazy"
               decoding="async"
               {...EXTERNAL_IMG_ATTRS}
-              className="absolute inset-0 h-full w-full scale-105 object-cover blur-[4px]"
+              className="tv-decorative-blur absolute inset-0 h-full w-full scale-105 object-cover blur-[4px]"
             />
             <div className="card-screenshot-dim absolute inset-0" />
           </>
@@ -79,15 +79,23 @@ export function RelatedAnimeCard({
               alt={item.title}
               className="h-full w-full object-cover transition duration-300 group-hover:scale-105"
             />
-            <ListStatusBadge info={listInfo} className="absolute right-1.5 top-1.5 z-10" />
-            <AnimeScoreBadge score={item.score} className="absolute bottom-1.5 left-1.5 z-10" size="sm" />
+            <ListStatusBadge
+              info={listInfo}
+              className="pointer-events-none absolute right-1.5 top-1.5 z-10 w-fit max-w-[calc(100%-0.75rem)]"
+            />
             {!hideRelation && item.relationLabel ? (
               <span
-                className={`absolute left-2 top-2 z-10 max-w-[calc(100%-0.75rem)] truncate ${relationBadgeClass(item.relation)}`}
+                className={[
+                  "pointer-events-none absolute top-1.5 z-10 origin-top-left whitespace-nowrap",
+                  // translateX ≈ высота плашки: после rotate(90) она не уезжает влево за overflow
+                  "left-1.5 [transform:translateX(1.5rem)_rotate(90deg)]",
+                  relationBadgeClass(item.relation),
+                ].join(" ")}
               >
                 {item.relationLabel}
               </span>
             ) : null}
+            <AnimeScoreBadge score={item.score} className="absolute bottom-1.5 left-1.5 z-10" size="sm" />
           </div>
 
           <div className="flex min-h-0 flex-1 flex-col gap-1 p-2.5">

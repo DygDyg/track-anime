@@ -66,10 +66,14 @@ export async function PUT(request: NextRequest, { params }: RouteParams) {
   if (!Number.isFinite(seasonNumber) || seasonNumber < 1) {
     return NextResponse.json({ error: "Некорректный сезон" }, { status: 400 });
   }
-  if (!Number.isFinite(episodeNumber) || episodeNumber < 1) {
+  if (!Number.isFinite(episodeNumber) || episodeNumber < 0) {
     return NextResponse.json({ error: "Некорректная серия" }, { status: 400 });
   }
-  if (!Number.isFinite(positionSeconds) || positionSeconds < 0) {
+  if (episodeNumber === 0) {
+    if (seasonNumber !== 1 || positionSeconds !== 0) {
+      return NextResponse.json({ error: "Некорректная закладка в истории" }, { status: 400 });
+    }
+  } else if (!Number.isFinite(positionSeconds) || positionSeconds < 0) {
     return NextResponse.json({ error: "Некорректная позиция" }, { status: 400 });
   }
 

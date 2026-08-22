@@ -49,6 +49,8 @@
     "deploy:release": "powershell -NoProfile -ExecutionPolicy Bypass -File scripts/deploy.ps1 -ForceTrayRebuild",
     "deploy:rpc": "powershell -NoProfile -ExecutionPolicy Bypass -File scripts/deploy-rpc.ps1",
     "deploy:apk": "powershell -NoProfile -ExecutionPolicy Bypass -File scripts/deploy-apk.ps1",
+    "windows:publish": "powershell -NoProfile -ExecutionPolicy Bypass -File scripts/publish-windows-app.ps1",
+    "deploy:windows": "powershell -NoProfile -ExecutionPolicy Bypass -File scripts/deploy-windows-app.ps1",
     "deploy:all": "powershell -NoProfile -ExecutionPolicy Bypass -File scripts/deploy-auto.ps1 -ForceSite -ForceTrayRebuild",
     "notifications:generate-vapid": "tsx scripts/generate-vapid-keys.ts",
     "notifications:telegram-bot": "tsx scripts/telegram-notification-bot.ts",

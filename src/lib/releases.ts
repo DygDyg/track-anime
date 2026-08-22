@@ -1,8 +1,43 @@
+import { Prisma } from "@prisma/client";
 import { unstable_cache } from "next/cache";
 import { toDate, toIsoString } from "@/lib/dates";
 import { resolveMaterialPosterUrl } from "@/lib/material-poster";
 import { prisma } from "@/lib/prisma";
 import { pickScreenshotUrl } from "@/lib/screenshots";
+
+/**
+ * Дата сортировки/отображения в ленте.
+ * У `released` — конец показа (`animeReleasedAt`), чтобы поздняя доозвучка
+ * не поднимала тайтл; у онгоингов/анонсов — дата серии или обновления Kodik.
+ */
+const FEED_STATUS_EXPR = Prisma.sql`
+  LOWER(COALESCE(
+    NULLIF(m."materialData"->>'anime_status', ''),
+    NULLIF(m."materialData"->>'all_status', ''),
+    NULLIF(m."materialData"->'anime_full'->>'status', '')
+  ))
+`;
+
+const FEED_SORT_DATE_RELEASES = Prisma.sql`
+  CASE
+    WHEN ${FEED_STATUS_EXPR} = 'released' AND m."animeReleasedAt" IS NOT NULL
+      THEN m."animeReleasedAt"
+    ELSE r."releasedAt"
+  END
+`;
+
+const FEED_SORT_DATE_CATALOG_SQL = `
+  CASE
+    WHEN LOWER(COALESCE(
+      NULLIF(m."materialData"->>'anime_status', ''),
+      NULLIF(m."materialData"->>'all_status', ''),
+      NULLIF(m."materialData"->'anime_full'->>'status', '')
+    )) = 'released'
+    AND m."animeReleasedAt" IS NOT NULL
+      THEN m."animeReleasedAt"
+    ELSE m."kodikUpdatedAt"
+  END
+`;
 
 export type ReleaseItem = {
   /** Shikimori ID тайтла (или materialId, если shikimori нет) */
@@ -222,7 +257,7 @@ async function queryFreshReleasesPerTitle(
           r."translationName",
           COALESCE(r."playerLink", e."playerLink", m."playerLink") AS "playerLink",
           COALESCE(m."shikimoriId", r."shikimoriId") AS "shikimoriId",
-          COALESCE(m."animeReleasedAt", r."releasedAt") AS "releasedAt",
+          ${FEED_SORT_DATE_RELEASES} AS "releasedAt",
           COALESCE(
             m."materialData"->>'anime_description',
             m."materialData"->>'description'
@@ -351,7 +386,7 @@ async function queryCatalogReleaseCandidates(
         m."translationTitle" AS "translationName",
         COALESCE(e."playerLink", m."playerLink") AS "playerLink",
         m."shikimoriId",
-        COALESCE(m."animeReleasedAt", m."kodikUpdatedAt") AS "releasedAt",
+        ${FEED_SORT_DATE_CATALOG_SQL} AS "releasedAt",
         COALESCE(
           m."materialData"->>'anime_description',
           m."materialData"->>'description'
@@ -384,7 +419,7 @@ async function queryCatalogReleaseCandidates(
         AND (
           $2::timestamptz IS NULL
           OR (
-            COALESCE(m."animeReleasedAt", m."kodikUpdatedAt"),
+            ${FEED_SORT_DATE_CATALOG_SQL},
             CASE
               WHEN m."shikimoriId" IS NOT NULL THEN m."shikimoriId"::text
               ELSE m."kodikId"
@@ -422,7 +457,7 @@ async function queryCatalogReleaseCandidates(
           )
         )
       ORDER BY
-        COALESCE(m."animeReleasedAt", m."kodikUpdatedAt") DESC,
+        ${FEED_SORT_DATE_CATALOG_SQL} DESC,
         CASE
           WHEN m."shikimoriId" IS NOT NULL THEN m."shikimoriId"::text
           ELSE m."kodikId"

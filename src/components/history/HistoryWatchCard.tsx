@@ -2,7 +2,7 @@
 
 /**
  * Единая карточка истории просмотра.
- * Используется на /history и в блоке «Новое в вашей истории» на главной.
+ * Используется на /history, во вкладке «Скоро выйдут» и в блоке «Новое в вашей истории» на главной.
  * При изменении дизайна править только этот файл.
  */
 
@@ -50,6 +50,7 @@ export type HistoryWatchCardProps = {
     watchProgressPercent: number;
     watchPositionSeconds: number;
     watchDurationSeconds: number;
+    isBookmark?: boolean;
   };
   footer: ReactNode;
   /** Ссылка на страницу аниме; по умолчанию /anime/{id} */
@@ -84,7 +85,10 @@ export function HistoryWatchCard({
   const showScreenshotBackground =
     Boolean(release.screenshotUrl) && !settings.preferPosterOverScreenshot;
 
-  const historyHint = formatHistoryWatchHint(progress.watchedEpisodeNumber);
+  const historyHint = formatHistoryWatchHint(
+    progress.watchedEpisodeNumber,
+    progress.isBookmark ?? progress.watchedEpisodeNumber <= 0,
+  );
 
   const posterInner = (
     <AnimePoster
@@ -144,7 +148,7 @@ export function HistoryWatchCard({
               loading="lazy"
               decoding="async"
               {...EXTERNAL_IMG_ATTRS}
-              className="absolute inset-0 h-full w-full scale-105 object-cover blur-[4px]"
+              className="tv-decorative-blur absolute inset-0 h-full w-full scale-105 object-cover blur-[4px]"
             />
             <div className="card-screenshot-dim absolute inset-0" />
           </>
@@ -163,7 +167,9 @@ export function HistoryWatchCard({
             />
             <AnimeKindCornerBadge kind={release.kind} className="absolute bottom-0 left-0 z-20" />
             <div className="pointer-events-none absolute bottom-0 right-0 z-20">
-              <EpisodeNumberBadge episode={release.episodeNumber} status={release.status} />
+              {release.episodeNumber > 0 ? (
+                <EpisodeNumberBadge episode={release.episodeNumber} status={release.status} />
+              ) : null}
             </div>
           </div>
 
@@ -171,9 +177,22 @@ export function HistoryWatchCard({
             <HistoryWatchProgressBlock
               hint={historyHint}
               percent={progress.watchProgressPercent}
-              positionSeconds={progress.watchPositionSeconds}
-              durationSeconds={progress.watchDurationSeconds}
-              episodeNumber={progress.watchedEpisodeNumber}
+              positionSeconds={
+                progress.isBookmark || progress.watchedEpisodeNumber <= 0
+                  ? undefined
+                  : progress.watchPositionSeconds
+              }
+              durationSeconds={
+                progress.isBookmark || progress.watchedEpisodeNumber <= 0
+                  ? undefined
+                  : progress.watchDurationSeconds
+              }
+              episodeNumber={
+                progress.isBookmark || progress.watchedEpisodeNumber <= 0
+                  ? undefined
+                  : progress.watchedEpisodeNumber
+              }
+              showBar={!(progress.isBookmark ?? progress.watchedEpisodeNumber <= 0)}
               className="mb-1 md:mb-1.5"
             />
             {title}

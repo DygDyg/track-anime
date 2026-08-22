@@ -26,7 +26,13 @@ import {
 import { KodikPlayerBetaEpisodeStrip } from "@/components/anime/KodikPlayerBetaEpisodeStrip";
 import { SiteClock } from "@/components/SiteClock";
 import { useSiteSettings } from "@/components/SiteSettingsProvider";
+import { isTrackAnimeAndroidApp } from "@/lib/android-app";
 import { toKodikPlayerEmbedUrl } from "@/lib/player-url";
+import {
+  focusTvElement,
+  invalidateTvFocusableCache,
+  isTvNavigationSessionActive,
+} from "@/lib/tv-navigation";
 import {
   applyPlayerBrightness,
   clearNativePlayerBrightness,
@@ -35,8 +41,10 @@ import {
   readStoredPlayerBrightness,
 } from "@/lib/player-screen-brightness";
 
-const CONTROLS_IDLE_MS = 2_500;
 const SINGLE_CLICK_DELAY_MS = 220;
+const CLICK_LAYER_APPEAR_DELAY_MS = 2_000;
+/** Kodik iframe steals focus; reclaim so Space/arrows reach TA keyboard handlers. */
+const PLAYER_FOCUS_RECLAIM_MS = 2_500;
 const SEEK_FEEDBACK_MS = 900;
 const MOBILE_DOUBLE_TAP_SEEK_SECONDS = 10;
 const MOBILE_DOCK_CONTROLS_MQ = "(max-width: 639px) and (orientation: portrait)";
@@ -49,6 +57,9 @@ const KODIK_NATIVE_SKIP_PASSTHROUGH_WIDTH = "min(18rem, 44vw)";
 const KODIK_NATIVE_SKIP_PASSTHROUGH_HEIGHT = "3.75rem";
 const KODIK_NATIVE_SKIP_PASSTHROUGH_RIGHT = "0.5rem";
 const KODIK_NATIVE_SKIP_PASSTHROUGH_BOTTOM = "4.25rem";
+/** Hole over Kodik’s big center play/pause so TA chrome doesn’t steal the tap. */
+const KODIK_CENTER_PLAY_HOLE = "min(10.5rem, 34vmin)";
+const KODIK_CENTER_PLAY_HOLE_HALF = "min(5.25rem, 17vmin)";
 
 type WakeLockSentinel = {
   released: boolean;
@@ -94,7 +105,7 @@ type Props = {
   }) => void;
   onTranslationChange?: (translation: { id: number; title: string }) => void;
   onPlaybackStateChange?: (state: KodikPlayerPlaybackState) => void;
-  onEpisodeSelect: (seasonNumber: number, episodeNumber: number) => void;
+  onEpisodeSelect: (seasonNumber: number, episodeNumber: number, playerLink?: string | null) => void;
   onPlayPause: () => void;
   onPreviousEpisode?: () => void;
   onNextEpisode?: () => void;
@@ -166,6 +177,13 @@ export function KodikPlayerBetaViewport({
     if (typeof window === "undefined") return false;
     return window.matchMedia(TOUCH_LIKE_MQ).matches;
   });
+  const [tvNavActive, setTvNavActive] = useState(() => {
+    if (typeof document === "undefined") return false;
+    return isTvNavigationSessionActive();
+  });
+  /** Keep chrome visible while TV focus is on episodes / bottom bar (not center seek surface). */
+  const [tvChromePinned, setTvChromePinned] = useState(false);
+  const primaryFocusDoneRef = useRef(false);
   const [seekFeedback, setSeekFeedback] = useState({ backward: 0, forward: 0 });
   const [brightnessHud, setBrightnessHud] = useState<number | null>(null);
   const [overlayBrightness, setOverlayBrightness] = useState(1);
@@ -174,8 +192,11 @@ export function KodikPlayerBetaViewport({
   const videoShellRef = useRef<HTMLDivElement>(null);
   const hideTimerRef = useRef<number | null>(null);
   const clickTimerRef = useRef<number | null>(null);
-  const [qualityHover, setQualityHover] = useState(false);
   const [qualityPanelActive, setQualityPanelActive] = useState(false);
+  const [clickLayerArmed, setClickLayerArmed] = useState(false);
+  /** Android WebView only: pass taps through to Kodik while continue/episode switch loads. */
+  const [passThroughUntilPlay, setPassThroughUntilPlay] = useState(false);
+  const [androidShell, setAndroidShell] = useState(false);
   const seekFeedbackTimersRef = useRef<{ backward: number | null; forward: number | null }>({
     backward: null,
     forward: null,
@@ -231,6 +252,66 @@ export function KodikPlayerBetaViewport({
     sync();
     media.addEventListener("change", sync);
     return () => media.removeEventListener("change", sync);
+  }, []);
+
+  useEffect(() => {
+    setAndroidShell(isTrackAnimeAndroidApp());
+  }, []);
+
+  useEffect(() => {
+    if (!androidShell) {
+      setPassThroughUntilPlay(false);
+      return;
+    }
+    if (controlsDisabled) {
+      setPassThroughUntilPlay(true);
+      return;
+    }
+    // Episode switch often keeps isPlaying=true, so a separate "on play" effect never re-runs.
+    // Restore hit-testing when loading ends while already playing, or when play starts later.
+    if (playback.isPlaying) {
+      setPassThroughUntilPlay(false);
+    }
+  }, [androidShell, controlsDisabled, playback.isPlaying]);
+
+  // Effective only inside the Android WebView shell — desktop/browser keep previous hit-testing.
+  const passThroughHits = androidShell && passThroughUntilPlay;
+
+  useEffect(() => {
+    if (!playback.mediaUnlocked || passThroughHits) {
+      setClickLayerArmed(false);
+      return;
+    }
+    const timer = window.setTimeout(() => setClickLayerArmed(true), CLICK_LAYER_APPEAR_DELAY_MS);
+    return () => window.clearTimeout(timer);
+  }, [playback.mediaUnlocked, passThroughHits]);
+
+  useEffect(() => {
+    if (!playback.mediaUnlocked || kodikUiAccess || qualityPanelActive || passThroughHits) return;
+
+    const reclaimFromKodikIframe = () => {
+      if (!document.hasFocus()) return;
+      const root = viewportRef.current;
+      if (!root) return;
+      const active = document.activeElement;
+      if (!(active instanceof HTMLIFrameElement) || !root.contains(active)) return;
+      root.focus({ preventScroll: true });
+    };
+
+    reclaimFromKodikIframe();
+    const timer = window.setInterval(reclaimFromKodikIframe, PLAYER_FOCUS_RECLAIM_MS);
+    return () => window.clearInterval(timer);
+  }, [playback.mediaUnlocked, kodikUiAccess, qualityPanelActive, passThroughHits]);
+
+  useEffect(() => {
+    const sync = () => setTvNavActive(isTvNavigationSessionActive());
+    sync();
+    const observer = new MutationObserver(sync);
+    observer.observe(document.documentElement, {
+      attributes: true,
+      attributeFilter: ["data-tv-nav", "data-tv-nav-enabled"],
+    });
+    return () => observer.disconnect();
   }, []);
 
   useEffect(() => {
@@ -294,7 +375,15 @@ export function KodikPlayerBetaViewport({
 
   const scheduleHide = useCallback(() => {
     clearHideTimer();
-    if (!playback.isPlaying || controlsDisabled || kodikUiAccess || keepUiVisible) return;
+    if (
+      !playback.isPlaying ||
+      controlsDisabled ||
+      kodikUiAccess ||
+      keepUiVisible ||
+      tvChromePinned
+    ) {
+      return;
+    }
     hideTimerRef.current = window.setTimeout(() => {
       setUiVisible(false);
       onFullscreenTranslationsIntent?.(false);
@@ -302,7 +391,7 @@ export function KodikPlayerBetaViewport({
         ?.closest(".kodik-player-beta-stage:fullscreen")
         ?.scrollTo({ top: 0, behavior: "smooth" });
       hideTimerRef.current = null;
-    }, CONTROLS_IDLE_MS);
+    }, settings.playerControlsIdleMs);
   }, [
     clearHideTimer,
     controlsDisabled,
@@ -310,6 +399,98 @@ export function KodikPlayerBetaViewport({
     kodikUiAccess,
     onFullscreenTranslationsIntent,
     playback.isPlaying,
+    settings.playerControlsIdleMs,
+    tvChromePinned,
+  ]);
+
+  useEffect(() => {
+    if (!tvNavActive) {
+      setTvChromePinned(false);
+      return;
+    }
+
+    const root = viewportRef.current;
+    if (!root) return;
+
+    const syncTvChromePin = () => {
+      const active = document.activeElement;
+      if (!(active instanceof HTMLElement) || !root.contains(active)) {
+        setTvChromePinned(false);
+        return;
+      }
+      setUiVisible(true);
+      // Center seek surface may auto-hide; bar / episodes / continue stay visible.
+      const pinChrome = !active.hasAttribute("data-tv-player-seek-keys");
+      setTvChromePinned(pinChrome);
+      if (pinChrome) {
+        clearHideTimer();
+      } else {
+        scheduleHide();
+      }
+    };
+
+    const onFocusOut = () => {
+      window.setTimeout(syncTvChromePin, 0);
+    };
+
+    root.addEventListener("focusin", syncTvChromePin);
+    root.addEventListener("focusout", onFocusOut);
+    syncTvChromePin();
+    return () => {
+      root.removeEventListener("focusin", syncTvChromePin);
+      root.removeEventListener("focusout", onFocusOut);
+    };
+  }, [tvNavActive, clearHideTimer, scheduleHide]);
+
+  useEffect(() => {
+    if (!fullscreenActive) {
+      primaryFocusDoneRef.current = false;
+    }
+  }, [fullscreenActive]);
+
+  useEffect(() => {
+    // One-shot: only when entering fullscreen while paused (Continue / bottom Play).
+    if (!tvNavActive || !fullscreenActive || playback.isPlaying || controlsDisabled) return;
+    if (primaryFocusDoneRef.current) return;
+
+    const focusPrimary = () => {
+      const root = viewportRef.current;
+      if (!root) return false;
+      const primary = root.querySelector<HTMLElement>("[data-tv-player-primary]");
+      if (!primary) return false;
+      if (primary instanceof HTMLButtonElement && primary.disabled) return false;
+      if (primaryFocusDoneRef.current) return true;
+      primaryFocusDoneRef.current = true;
+      setUiVisible(true);
+      clearHideTimer();
+      invalidateTvFocusableCache();
+      focusTvElement(primary);
+      return true;
+    };
+
+    let retryId: number | null = null;
+    const timer = window.setTimeout(() => {
+      if (focusPrimary()) return;
+      let tries = 0;
+      retryId = window.setInterval(() => {
+        tries += 1;
+        if (focusPrimary() || tries >= 20) {
+          if (retryId != null) window.clearInterval(retryId);
+          retryId = null;
+        }
+      }, 100);
+    }, 80);
+
+    return () => {
+      window.clearTimeout(timer);
+      if (retryId != null) window.clearInterval(retryId);
+    };
+  }, [
+    tvNavActive,
+    fullscreenActive,
+    playback.isPlaying,
+    controlsDisabled,
+    clearHideTimer,
   ]);
 
   const revealUi = useCallback(() => {
@@ -317,6 +498,15 @@ export function KodikPlayerBetaViewport({
     setUiVisible(true);
     scheduleHide();
   }, [kodikUiAccess, scheduleHide]);
+
+  const handleQualityPanelActiveChange = useCallback(
+    (active: boolean) => {
+      setQualityPanelActive(active);
+      // Restart idle hide so the quality gap stays open until chrome auto-hides.
+      if (active) revealUi();
+    },
+    [revealUi],
+  );
 
   const hideUi = useCallback(() => {
     clearHideTimer();
@@ -436,15 +626,6 @@ export function KodikPlayerBetaViewport({
       }
 
       revealUi();
-
-      const node = viewportRef.current;
-      if (node) {
-        const rect = node.getBoundingClientRect();
-        const inHotspot =
-          event.clientX >= rect.right - 200 &&
-          event.clientY >= rect.bottom - 120;
-        setQualityHover((prev) => (prev === inHotspot ? prev : inHotspot));
-      }
     },
     [revealUi],
   );
@@ -455,6 +636,10 @@ export function KodikPlayerBetaViewport({
 
   const handleTouchStart = useCallback(
     (event: ReactTouchEvent<HTMLDivElement>) => {
+      if (kodikUiAccess || passThroughHits) {
+        touchGestureRef.current = null;
+        return;
+      }
       // Touch/mobile: single tap toggles UI via click handler — don't force-reveal here
       // or a show+hide race happens with toggle.
       if (!touchLikeUi) {
@@ -498,7 +683,7 @@ export function KodikPlayerBetaViewport({
       };
       suppressClickAfterGestureRef.current = false;
     },
-    [fullscreenActive, revealUi, touchLikeUi],
+    [fullscreenActive, kodikUiAccess, passThroughHits, revealUi, touchLikeUi],
   );
 
   const handleTouchMove = useCallback(
@@ -539,7 +724,7 @@ export function KodikPlayerBetaViewport({
   // never sticks and the browser/page steals the vertical swipe before brightness activates.
   useEffect(() => {
     const shell = videoShellRef.current;
-    if (!shell || !touchLikeUi) return;
+    if (!shell || !touchLikeUi || kodikUiAccess || passThroughHits) return;
 
     const onTouchMove = (event: TouchEvent) => {
       const gesture = touchGestureRef.current;
@@ -589,6 +774,8 @@ export function KodikPlayerBetaViewport({
   }, [
     clearClickTimer,
     fullscreenTranslationsOpen,
+    kodikUiAccess,
+    passThroughHits,
     setBrightnessFromGesture,
     touchLikeUi,
   ]);
@@ -611,7 +798,7 @@ export function KodikPlayerBetaViewport({
 
   const handleViewportWheel = useCallback(
     (event: ReactWheelEvent<HTMLDivElement>) => {
-      if (!fullscreenActive) return;
+      if (!fullscreenActive || kodikUiAccess || passThroughHits) return;
 
       const target = event.target;
       if (
@@ -630,7 +817,7 @@ export function KodikPlayerBetaViewport({
       event.stopPropagation();
       onFullscreenTranslationsIntent?.(delta > 0);
     },
-    [fullscreenActive, onFullscreenTranslationsIntent],
+    [fullscreenActive, kodikUiAccess, onFullscreenTranslationsIntent, passThroughHits],
   );
 
   useEffect(() => {
@@ -640,7 +827,7 @@ export function KodikPlayerBetaViewport({
       return;
     }
 
-    if (!playback.isPlaying || controlsDisabled || keepUiVisible) {
+    if (!playback.isPlaying || controlsDisabled || keepUiVisible || tvChromePinned) {
       clearHideTimer();
       setUiVisible(true);
       return;
@@ -654,6 +841,7 @@ export function KodikPlayerBetaViewport({
     kodikUiAccess,
     playback.isPlaying,
     scheduleHide,
+    tvChromePinned,
   ]);
 
   useEffect(() => {
@@ -666,6 +854,42 @@ export function KodikPlayerBetaViewport({
   }, [clearClickTimer, clearHideTimer, clearSeekFeedbackTimer]);
 
   useEffect(() => {
+    const focusPlayerChrome = (kind: "episodes" | "bar") => {
+      const root = viewportRef.current;
+      if (!root) return false;
+      setUiVisible(true);
+      clearHideTimer();
+      invalidateTvFocusableCache();
+
+      if (kind === "episodes") {
+        const current =
+          root.querySelector<HTMLElement>(
+            ".kodik-player-beta-episodes button[aria-current='true']",
+          ) ?? root.querySelector<HTMLElement>(".kodik-player-beta-episodes button:not([disabled])");
+        if (!current) return false;
+        focusTvElement(current);
+        return true;
+      }
+
+      const continueBtn = root.querySelector<HTMLElement>("[data-tv-player-primary]");
+      if (
+        continueBtn &&
+        continueBtn.hasAttribute("data-tv-player-primary") &&
+        !continueBtn.hasAttribute("data-tv-player-seek-keys") &&
+        !(continueBtn instanceof HTMLButtonElement && continueBtn.disabled)
+      ) {
+        focusTvElement(continueBtn);
+        return true;
+      }
+
+      const barPlay =
+        root.querySelector<HTMLElement>("[data-tv-player-bar-play]:not([disabled])") ??
+        root.querySelector<HTMLElement>(".kodik-player-beta-controls button:not([disabled])");
+      if (!barPlay) return false;
+      focusTvElement(barPlay);
+      return true;
+    };
+
     const onKeyDown = (event: KeyboardEvent) => {
       const target = event.target;
       const targetInput = target instanceof HTMLInputElement ? target : null;
@@ -680,6 +904,48 @@ export function KodikPlayerBetaViewport({
         fullscreenActive ||
         Boolean(activeElement && viewportRef.current?.contains(activeElement));
 
+      const focusOnControl =
+        activeElement instanceof HTMLElement &&
+        activeElement !== viewportRef.current &&
+        Boolean(viewportRef.current?.contains(activeElement)) &&
+        (activeElement.tagName === "BUTTON" ||
+          activeElement.tagName === "SELECT" ||
+          activeElement.tagName === "A" ||
+          activeElement.hasAttribute("data-tv-focus"));
+
+      const seekKeysFocus =
+        activeElement instanceof HTMLElement &&
+        activeElement.hasAttribute("data-tv-player-seek-keys") &&
+        Boolean(viewportRef.current?.contains(activeElement));
+
+      const tvNavOn = isTvNavigationSessionActive();
+
+      // TV: chrome buttons keep spatial nav + native OK. Seek surface owns arrows.
+      if (tvNavOn && focusOnControl && !seekKeysFocus) {
+        if (
+          event.key === "ArrowUp" ||
+          event.key === "ArrowDown" ||
+          event.key === "ArrowLeft" ||
+          event.key === "ArrowRight" ||
+          event.code === "Space" ||
+          event.key === "Enter" ||
+          event.key === "MediaEnter"
+        ) {
+          return;
+        }
+      }
+
+      if (tvNavOn && seekKeysFocus) {
+        if (
+          event.code === "Space" ||
+          event.key === "Enter" ||
+          event.key === "MediaEnter"
+        ) {
+          // Native button activation (play/pause).
+          return;
+        }
+      }
+
       if (keyboardActive && event.key === "Tab") {
         event.preventDefault();
         return;
@@ -692,6 +958,39 @@ export function KodikPlayerBetaViewport({
         !event.altKey &&
         !event.metaKey
       ) {
+        if (tvNavOn && seekKeysFocus) {
+          if (event.key === "ArrowLeft") {
+            event.preventDefault();
+            handleSeekSkip(-10);
+            return;
+          }
+          if (event.key === "ArrowRight") {
+            event.preventDefault();
+            handleSeekSkip(10);
+            return;
+          }
+          if (event.key === "ArrowUp") {
+            event.preventDefault();
+            if (event.repeat) return;
+            if (!focusPlayerChrome("episodes") && volumeReady) {
+              const nextVolume = Math.min(1, playbackRef.current.volume + 0.05);
+              playbackRef.current = { ...playbackRef.current, volume: nextVolume };
+              onVolumeChange(nextVolume);
+            }
+            return;
+          }
+          if (event.key === "ArrowDown") {
+            event.preventDefault();
+            if (event.repeat) return;
+            if (!focusPlayerChrome("bar") && volumeReady) {
+              const nextVolume = Math.max(0, playbackRef.current.volume - 0.05);
+              playbackRef.current = { ...playbackRef.current, volume: nextVolume };
+              onVolumeChange(nextVolume);
+            }
+            return;
+          }
+        }
+
         if (event.code === "Space" || event.code === "KeyK") {
           event.preventDefault();
           if (event.repeat) return;
@@ -777,7 +1076,12 @@ export function KodikPlayerBetaViewport({
 
         if (!document.hasFocus()) {
           clearHideTimer();
-          if (playbackRef.current.isPlaying && !controlsDisabled && !keepUiVisible) {
+          if (
+            playbackRef.current.isPlaying &&
+            !controlsDisabled &&
+            !keepUiVisible &&
+            !tvChromePinned
+          ) {
             setUiVisible(false);
             onFullscreenTranslationsIntent?.(false);
           }
@@ -811,6 +1115,7 @@ export function KodikPlayerBetaViewport({
     scheduleHide,
     toggleKodikUiAccess,
     volumeReady,
+    tvChromePinned,
   ]);
 
   const handleViewportClick = useCallback(() => {
@@ -822,7 +1127,7 @@ export function KodikPlayerBetaViewport({
     if (controlsDisabled || kodikUiAccess) return;
     clearClickTimer();
     clickTimerRef.current = window.setTimeout(() => {
-      // YouTube-like mobile: tap toggles chrome; play/pause is the center button.
+      // YouTube-like mobile: tap toggles chrome; play/pause via Kodik center hole or bottom bar.
       if (touchLikeUi) {
         toggleUi();
       } else {
@@ -838,18 +1143,6 @@ export function KodikPlayerBetaViewport({
     toggleUi,
     touchLikeUi,
   ]);
-
-  const handleCenterPlayPause = useCallback(
-    (event: ReactMouseEvent<HTMLButtonElement>) => {
-      event.preventDefault();
-      event.stopPropagation();
-      clearClickTimer();
-      if (controlsDisabled || kodikUiAccess) return;
-      onPlayPause();
-      scheduleHide();
-    },
-    [clearClickTimer, controlsDisabled, kodikUiAccess, onPlayPause, scheduleHide],
-  );
 
   const handleViewportDoubleClick = useCallback(
     (event: ReactMouseEvent<HTMLDivElement>) => {
@@ -881,18 +1174,20 @@ export function KodikPlayerBetaViewport({
   );
 
   const uiInteractive = uiVisible && !kodikUiAccess;
-  const awaitKodikGesture = !playback.mediaUnlocked;
+  const chromeHitTest = uiInteractive && !passThroughHits;
   const duration = Math.max(playback.durationSeconds, 0);
   const position = Math.min(Math.max(playback.positionSeconds, 0), duration || playback.positionSeconds);
   const progressMax = duration > 0 ? duration : Math.max(position, 1);
   const progressFill = `${(position / progressMax) * 100}%`;
-  // Until the stream is fully ready (video_started + duration), no click-layer — taps go to iframe.
-  // After videoReady the stub stays so taps can show/hide TA UI (including on pause).
-  // When quality panel is open (hover/tap/always-split), pass clicks through to Kodik quality UI.
+  // Until first media unlock (+ short delay), no click-layer — taps go to iframe (Android WebView first play).
+  // After arming, the stub appears so mouse/taps can show/hide TA UI during watching.
+  // Quality «Авто» press temporarily pass clicks through to Kodik.
+  // During continue/episode switch, keep overlays non-hit-testable until playback resumes.
   const clickLayerInteractive =
     !kodikUiAccess &&
-    playback.videoReady &&
-    !qualityPanelActive;
+    clickLayerArmed &&
+    !qualityPanelActive &&
+    !passThroughHits;
   const hideCursor = playback.isPlaying && !uiInteractive && !kodikUiAccess;
   const clickLayerClass = [
     "absolute z-10 bg-transparent",
@@ -903,7 +1198,10 @@ export function KodikPlayerBetaViewport({
     controlsDisabled ? "cursor-wait" : "",
   ].join(" ");
   const clickLayerStyle = hideCursor ? { cursor: "none" } : undefined;
-  const showClickLayer = !controlsDocked && playback.videoReady;
+  const showClickLayer = !controlsDocked && clickLayerArmed;
+  const clickLayerAboveSkipBottom = `calc(${KODIK_NATIVE_SKIP_PASSTHROUGH_BOTTOM} + ${KODIK_NATIVE_SKIP_PASSTHROUGH_HEIGHT})`;
+  const centerHoleTop = `calc(50% - ${KODIK_CENTER_PLAY_HOLE_HALF})`;
+  const centerHoleSideWidth = `calc(50% - ${KODIK_CENTER_PLAY_HOLE_HALF})`;
 
   const controlsNode = (
     <KodikPlayerBetaControls
@@ -933,11 +1231,11 @@ export function KodikPlayerBetaViewport({
       onFullscreenTranslationsToggle={() =>
         onFullscreenTranslationsIntent?.(!fullscreenTranslationsOpen)
       }
-      interactive={controlsDocked ? !kodikUiAccess : uiInteractive}
-      qualityHover={qualityHover}
+      interactive={controlsDocked ? !kodikUiAccess && !passThroughHits : chromeHitTest}
       controlsDocked={controlsDocked}
-      qualityPanelDynamicWidth={settings.playerControlsDynamicWidth}
-      onQualityPanelActiveChange={setQualityPanelActive}
+      qualityPanelIdleMs={settings.playerControlsIdleMs}
+      onQualityPanelActiveChange={handleQualityPanelActiveChange}
+      tvBarPlayPrimary={!continueAction}
     />
   );
 
@@ -950,9 +1248,7 @@ export function KodikPlayerBetaViewport({
             onClick={toggleKodikUiAccess}
             className={[
               "kodik-player-beta-kodik-ui-toggle inline-flex rounded-md border border-white/10 bg-black/35 px-[clamp(0.5rem,0.42vw,0.8rem)] py-[clamp(0.25rem,0.21vw,0.4rem)] text-[clamp(11px,0.58vw,15px)] font-medium text-white/85 backdrop-blur-sm transition hover:bg-black/50 hover:text-white",
-              uiInteractive
-                ? "pointer-events-auto"
-                : "pointer-events-none",
+              chromeHitTest ? "pointer-events-auto" : "pointer-events-none",
             ].join(" ")}
           >
             <span className="hidden sm:inline">
@@ -975,17 +1271,21 @@ export function KodikPlayerBetaViewport({
         controlsDocked ? "kodik-player-beta-viewport--dock-controls" : "",
       ].join(" ")}
       data-player-keyboard-scope
-      onMouseMove={handleMouseMove}
-      onMouseLeave={() => setQualityHover(false)}
-      onMouseDown={markPlayerInteraction}
-      onWheel={handleViewportWheel}
-      onTouchStart={handleTouchStart}
-      onTouchMove={handleTouchMove}
-      onTouchEnd={handleTouchEnd}
-      onTouchCancel={() => {
-        touchGestureRef.current = null;
-      }}
-      onFocusCapture={revealUi}
+      data-kodik-ui-access={kodikUiAccess ? "true" : undefined}
+      onMouseMove={kodikUiAccess ? undefined : handleMouseMove}
+      onMouseDown={kodikUiAccess ? undefined : markPlayerInteraction}
+      onWheel={kodikUiAccess ? undefined : handleViewportWheel}
+      onTouchStart={kodikUiAccess ? undefined : handleTouchStart}
+      onTouchMove={kodikUiAccess ? undefined : handleTouchMove}
+      onTouchEnd={kodikUiAccess ? undefined : handleTouchEnd}
+      onTouchCancel={
+        kodikUiAccess
+          ? undefined
+          : () => {
+              touchGestureRef.current = null;
+            }
+      }
+      onFocusCapture={kodikUiAccess ? undefined : revealUi}
     >
       <div ref={videoShellRef} className="kodik-player-beta-video-shell relative min-w-0">
         {continueOverlay}
@@ -997,6 +1297,7 @@ export function KodikPlayerBetaViewport({
           sizeMode={sizeMode}
           chromelessBeta
           initialResume={initialResume}
+          activeEpisode={{ seasonNumber, episodeNumber: currentEpisode }}
           onReady={onReady}
           onContinueStateChange={onContinueStateChange}
           onProgress={onProgress}
@@ -1026,54 +1327,12 @@ export function KodikPlayerBetaViewport({
             <span className="text-sm font-semibold tabular-nums">{Math.round(brightnessHud * 100)}%</span>
           </div>
         ) : null}
-        {showClickLayer && <div
-          className="pointer-events-none absolute inset-0 z-10"
-          aria-hidden="true"
-        >
+        {showClickLayer && !kodikUiAccess ? (
           <div
-            onClick={handleViewportClick}
-            onDoubleClick={handleViewportDoubleClick}
-            className={clickLayerClass}
-            style={{
-              ...clickLayerStyle,
-              insetInline: 0,
-              top: 0,
-              bottom: `calc(${KODIK_NATIVE_SKIP_PASSTHROUGH_BOTTOM} + ${KODIK_NATIVE_SKIP_PASSTHROUGH_HEIGHT})`,
-            }}
-          />
-          <div
-            onClick={handleViewportClick}
-            onDoubleClick={handleViewportDoubleClick}
-            className={clickLayerClass}
-            style={{
-              ...clickLayerStyle,
-              left: 0,
-              right: `calc(${KODIK_NATIVE_SKIP_PASSTHROUGH_RIGHT} + ${KODIK_NATIVE_SKIP_PASSTHROUGH_WIDTH})`,
-              bottom: KODIK_NATIVE_SKIP_PASSTHROUGH_BOTTOM,
-              height: KODIK_NATIVE_SKIP_PASSTHROUGH_HEIGHT,
-            }}
-          />
-          <div
-            onClick={handleViewportClick}
-            onDoubleClick={handleViewportDoubleClick}
-            className={clickLayerClass}
-            style={{
-              ...clickLayerStyle,
-              right: 0,
-              bottom: KODIK_NATIVE_SKIP_PASSTHROUGH_BOTTOM,
-              width: KODIK_NATIVE_SKIP_PASSTHROUGH_RIGHT,
-              height: KODIK_NATIVE_SKIP_PASSTHROUGH_HEIGHT,
-            }}
-          />
-          {fullscreenActive ? (
-            <div
-              className={[
-                "absolute inset-x-0 bottom-0 z-10",
-                clickLayerInteractive ? "pointer-events-auto" : "pointer-events-none",
-              ].join(" ")}
-              style={{ height: KODIK_NATIVE_SKIP_PASSTHROUGH_BOTTOM }}
-            />
-          ) : (
+            className="kodik-player-beta-ta-chrome pointer-events-none absolute inset-0 z-10"
+            aria-hidden="true"
+          >
+            {/* Top band — above Kodik center play hole */}
             <div
               onClick={handleViewportClick}
               onDoubleClick={handleViewportDoubleClick}
@@ -1081,12 +1340,95 @@ export function KodikPlayerBetaViewport({
               style={{
                 ...clickLayerStyle,
                 insetInline: 0,
-                bottom: 0,
-                height: KODIK_NATIVE_SKIP_PASSTHROUGH_BOTTOM,
+                top: 0,
+                height: centerHoleTop,
               }}
             />
-          )}
-        </div>}
+            {/* Left of center hole */}
+            <div
+              onClick={handleViewportClick}
+              onDoubleClick={handleViewportDoubleClick}
+              className={clickLayerClass}
+              style={{
+                ...clickLayerStyle,
+                left: 0,
+                top: centerHoleTop,
+                width: centerHoleSideWidth,
+                height: KODIK_CENTER_PLAY_HOLE,
+              }}
+            />
+            {/* Right of center hole */}
+            <div
+              onClick={handleViewportClick}
+              onDoubleClick={handleViewportDoubleClick}
+              className={clickLayerClass}
+              style={{
+                ...clickLayerStyle,
+                right: 0,
+                top: centerHoleTop,
+                width: centerHoleSideWidth,
+                height: KODIK_CENTER_PLAY_HOLE,
+              }}
+            />
+            {/* Below center hole, above Kodik skip passthrough */}
+            <div
+              onClick={handleViewportClick}
+              onDoubleClick={handleViewportDoubleClick}
+              className={clickLayerClass}
+              style={{
+                ...clickLayerStyle,
+                insetInline: 0,
+                top: `calc(50% + ${KODIK_CENTER_PLAY_HOLE_HALF})`,
+                bottom: clickLayerAboveSkipBottom,
+              }}
+            />
+            <div
+              onClick={handleViewportClick}
+              onDoubleClick={handleViewportDoubleClick}
+              className={clickLayerClass}
+              style={{
+                ...clickLayerStyle,
+                left: 0,
+                right: `calc(${KODIK_NATIVE_SKIP_PASSTHROUGH_RIGHT} + ${KODIK_NATIVE_SKIP_PASSTHROUGH_WIDTH})`,
+                bottom: KODIK_NATIVE_SKIP_PASSTHROUGH_BOTTOM,
+                height: KODIK_NATIVE_SKIP_PASSTHROUGH_HEIGHT,
+              }}
+            />
+            <div
+              onClick={handleViewportClick}
+              onDoubleClick={handleViewportDoubleClick}
+              className={clickLayerClass}
+              style={{
+                ...clickLayerStyle,
+                right: 0,
+                bottom: KODIK_NATIVE_SKIP_PASSTHROUGH_BOTTOM,
+                width: KODIK_NATIVE_SKIP_PASSTHROUGH_RIGHT,
+                height: KODIK_NATIVE_SKIP_PASSTHROUGH_HEIGHT,
+              }}
+            />
+            {fullscreenActive ? (
+              <div
+                className={[
+                  "absolute inset-x-0 bottom-0 z-10",
+                  clickLayerInteractive ? "pointer-events-auto" : "pointer-events-none",
+                ].join(" ")}
+                style={{ height: KODIK_NATIVE_SKIP_PASSTHROUGH_BOTTOM }}
+              />
+            ) : (
+              <div
+                onClick={handleViewportClick}
+                onDoubleClick={handleViewportDoubleClick}
+                className={clickLayerClass}
+                style={{
+                  ...clickLayerStyle,
+                  insetInline: 0,
+                  bottom: 0,
+                  height: KODIK_NATIVE_SKIP_PASSTHROUGH_BOTTOM,
+                }}
+              />
+            )}
+          </div>
+        ) : null}
         {fullscreenActive && settings.showClock ? (
           <div className="pointer-events-none absolute right-2 top-2 z-30 sm:right-3 sm:top-3">
             <SiteClock className="border-white/10 bg-black/45 text-white/90" />
@@ -1095,11 +1437,11 @@ export function KodikPlayerBetaViewport({
         {skipAction && !kodikUiAccess ? (
           <div
             className={[
-              "pointer-events-none absolute inset-x-2 z-30 flex justify-center",
+              "kodik-player-beta-ta-chrome pointer-events-none absolute inset-x-2 z-30 flex justify-center",
               controlsDocked ? "bottom-2" : "bottom-14 sm:bottom-16",
             ].join(" ")}
           >
-            <div className={uiInteractive || controlsDocked ? "pointer-events-auto" : "pointer-events-none"}>
+            <div className={chromeHitTest || (controlsDocked && !passThroughHits) ? "pointer-events-auto" : "pointer-events-none"}>
               {skipAction}
             </div>
           </div>
@@ -1114,106 +1456,73 @@ export function KodikPlayerBetaViewport({
             +{seekFeedback.forward}
           </div>
         ) : null}
-        {kodikUiAccess && !controlsDocked ? (
+        {kodikUiAccess ? (
           <div
             className={[
               "pointer-events-none absolute inset-x-0 z-40 px-2 pb-1 sm:px-3",
-              "bottom-[4.25rem]",
+              controlsDocked ? "bottom-2" : "bottom-[4.25rem]",
             ].join(" ")}
           >
             <button
               type="button"
               onClick={toggleKodikUiAccess}
-              className="kodik-player-beta-kodik-ui-toggle pointer-events-auto inline-flex rounded-md border border-white/10 bg-black/35 px-[clamp(0.5rem,0.42vw,0.8rem)] py-[clamp(0.25rem,0.21vw,0.4rem)] text-[clamp(11px,0.58vw,15px)] font-medium text-white/85 backdrop-blur-sm transition hover:bg-black/50 hover:text-white"
+              className="kodik-player-beta-kodik-ui-return pointer-events-auto inline-flex rounded-md border border-white/10 bg-black/35 px-[clamp(0.5rem,0.42vw,0.8rem)] py-[clamp(0.25rem,0.21vw,0.4rem)] text-[clamp(11px,0.58vw,15px)] font-medium text-white/85 backdrop-blur-sm transition hover:bg-black/50 hover:text-white"
             >
               <span className="hidden sm:inline">Shift — интерфейс TA</span>
               <span className="sm:hidden">TA UI</span>
             </button>
           </div>
         ) : null}
-        {continueAction ? (
+        {continueAction && !passThroughHits && !kodikUiAccess ? (
           <div
             className={[
-              "pointer-events-auto absolute inset-x-0 z-30 flex justify-center px-2",
+              "kodik-player-beta-ta-chrome pointer-events-auto absolute inset-x-0 z-40 flex justify-center px-2",
               controlsDocked ? "bottom-10" : "bottom-20 sm:bottom-24",
             ].join(" ")}
           >
             {continueAction}
           </div>
         ) : null}
-        <div
-          className={[
-            "kodik-player-beta-ui pointer-events-none absolute inset-0 z-20 flex flex-col justify-between transition-opacity duration-300",
-            uiInteractive ? "opacity-100" : "opacity-0",
-          ].join(" ")}
-          aria-hidden={!uiInteractive}
-        >
+        {!kodikUiAccess ? (
           <div
             className={[
-              "kodik-player-beta-ui-top",
-              uiInteractive ? "pointer-events-auto" : "pointer-events-none",
+              "kodik-player-beta-ta-chrome kodik-player-beta-ui pointer-events-none absolute inset-0 z-20 flex flex-col justify-between transition-opacity duration-300",
+              uiInteractive ? "opacity-100" : "opacity-0",
             ].join(" ")}
+            aria-hidden={!uiInteractive}
           >
-            <KodikPlayerBetaEpisodeStrip
-              shikimoriId={shikimoriId}
-              kodikId={kodikId}
-              seasonNumber={seasonNumber}
-              currentEpisode={currentEpisode}
-              disabled={controlsDisabled}
-              onSelect={onEpisodeSelect}
-              overlay
-            />
+            <div
+              className={[
+                "kodik-player-beta-ui-top",
+                chromeHitTest ? "pointer-events-auto" : "pointer-events-none",
+              ].join(" ")}
+            >
+              <KodikPlayerBetaEpisodeStrip
+                shikimoriId={shikimoriId}
+                kodikId={kodikId}
+                seasonNumber={seasonNumber}
+                currentEpisode={currentEpisode}
+                disabled={controlsDisabled}
+                onSelect={onEpisodeSelect}
+                overlay
+              />
+            </div>
+            {!controlsDocked ? (
+              <div className="kodik-player-beta-ui-bottom pointer-events-none">
+                {bottomStackNode}
+                {controlsNode}
+              </div>
+            ) : null}
           </div>
-          {touchLikeUi ? (
-            <div className="pointer-events-none absolute inset-0 z-[1] flex items-center justify-center">
-              <button
-                type="button"
-                disabled={controlsDisabled || awaitKodikGesture}
-                aria-label={
-                  awaitKodikGesture
-                    ? "Нажмите на видео, чтобы начать"
-                    : playback.isPlaying
-                      ? "Пауза"
-                      : "Воспроизведение"
-                }
-                title={awaitKodikGesture ? "Нажмите на видео, чтобы начать" : undefined}
-                onClick={handleCenterPlayPause}
-                onDoubleClick={(event) => {
-                  event.preventDefault();
-                  event.stopPropagation();
-                }}
-                className={[
-                  "kodik-player-beta-center-play",
-                  uiInteractive && !awaitKodikGesture ? "pointer-events-auto" : "pointer-events-none",
-                  awaitKodikGesture ? "opacity-90" : "",
-                ].join(" ")}
-              >
-                {playback.isPlaying ? (
-                  <svg viewBox="0 0 24 24" className="h-10 w-10 fill-current" aria-hidden>
-                    <path d="M6 5h4v14H6V5zm8 0h4v14h-4V5z" />
-                  </svg>
-                ) : (
-                  <svg viewBox="0 0 24 24" className="h-10 w-10 fill-current" aria-hidden>
-                    <path d="M8 5v14l11-7z" />
-                  </svg>
-                )}
-              </button>
-            </div>
-          ) : null}
-          {!controlsDocked ? (
-            <div className="kodik-player-beta-ui-bottom pointer-events-none">
-              {bottomStackNode}
-              {controlsNode}
-            </div>
-          ) : null}
-        </div>
+        ) : null}
         {settings.betaHiddenProgressOpacity > 0 ? (
           <div
             className={[
-              "pointer-events-none absolute inset-x-0 bottom-0 z-20 h-1 bg-white/20 transition-opacity duration-300",
+              "pointer-events-none absolute inset-x-0 bottom-0 z-20 bg-white/20 transition-opacity duration-300",
               !uiInteractive && !kodikUiAccess && !controlsDocked ? "" : "opacity-0",
             ].join(" ")}
             style={{
+              height: `${settings.betaHiddenProgressThickness}px`,
               opacity:
                 !uiInteractive && !kodikUiAccess && !controlsDocked
                   ? settings.betaHiddenProgressOpacity
@@ -1226,7 +1535,7 @@ export function KodikPlayerBetaViewport({
         ) : null}
       </div>
       {controlsDocked && !kodikUiAccess ? (
-        <div className="kodik-player-beta-docked-chrome">
+        <div className="kodik-player-beta-ta-chrome kodik-player-beta-docked-chrome">
           {bottomStackNode}
           {controlsNode}
         </div>

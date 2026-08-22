@@ -36,9 +36,19 @@ export type WatchHistoryItemDto = WatchProgressDto & {
   score: string | null;
   status: string | null;
   kind: string | null;
+  isBookmark: boolean;
 };
 
 const DEFAULT_EPISODE_SECONDS = 24 * 60;
+
+/** Закладка «В историю»: серия 0, позиция 0 — пользователь ещё не начинал просмотр. */
+export function isWatchHistoryBookmark(input: {
+  episodeNumber: number;
+  positionSeconds?: number;
+}): boolean {
+  if (input.episodeNumber !== 0) return false;
+  return input.positionSeconds == null || input.positionSeconds === 0;
+}
 
 type SeasonCompleteContext = {
   episodesTotal: number;
@@ -327,7 +337,10 @@ export async function upsertWatchProgress(
     positionSeconds: number;
   },
 ): Promise<WatchProgressDto | null> {
-  if (await clearCompletedWatchProgress(userId, input.shikimoriId, input)) {
+  if (
+    !isWatchHistoryBookmark(input) &&
+    (await clearCompletedWatchProgress(userId, input.shikimoriId, input))
+  ) {
     return null;
   }
 
@@ -544,6 +557,7 @@ export async function getWatchHistory(userId: string, limit = 100): Promise<Watc
     const episodeDurationSeconds = meta.episodeDurationSeconds;
 
     if (
+      !isWatchHistoryBookmark(row) &&
       !isAnimeStillAiring(material?.materialData, shikimoriAnime) &&
       isWatchProgressCompleteFromSeasonMeta(
         row.seasonNumber,
@@ -593,12 +607,15 @@ export async function getWatchHistory(userId: string, limit = 100): Promise<Watc
       screenshotUrl,
       episodeDurationSeconds: meta.episodeDurationSeconds,
       episodesTotal: meta.episodesTotal,
-      watchProgressPercent: watchProgressPercent(row.positionSeconds, meta.episodeDurationSeconds),
+      watchProgressPercent: isWatchHistoryBookmark(row)
+        ? 0
+        : watchProgressPercent(row.positionSeconds, meta.episodeDurationSeconds),
       score:
         normalizeAnimeScore(shikimoriAnime?.score) ??
         extractScoreFromMaterialData(material?.materialData),
       status: shikimoriAnime?.status || materialData?.anime_status?.trim() || null,
       kind: shikimoriAnime?.kind || readMaterialKind(material?.materialData),
+      isBookmark: isWatchHistoryBookmark(row),
     });
   }
 

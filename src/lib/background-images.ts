@@ -1,5 +1,6 @@
 import fs from "fs";
 import path from "path";
+import { patternBackgroundLabel } from "@/lib/pattern-backgrounds";
 
 const IMAGE_EXT = /\.(webp|jpe?g|png|gif|avif)$/i;
 
@@ -65,6 +66,8 @@ export function listBackgroundImageUrls(): string[] {
 }
 
 export function backgroundImageLabelFromUrl(url: string): string {
+  const pattern = patternBackgroundLabel(url);
+  if (pattern) return pattern;
   const fileName = decodeURIComponent(url.split("/").pop() ?? url);
   const withoutExt = fileName.replace(/\.(webp|jpe?g|png|gif|avif)$/i, "");
   return withoutExt.replace(/[-_]+/g, " ").trim() || fileName;

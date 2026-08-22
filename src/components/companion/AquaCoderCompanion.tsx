@@ -12,6 +12,7 @@ import {
   subscribeCompanionReactions,
   type CompanionAnimation,
 } from "@/lib/companion/companion-bus";
+import { isTvNavigationSessionActive } from "@/lib/tv-navigation";
 import {
   COMPANION_FRAME_WIDTH,
   normalizeCompanionScale,
@@ -80,7 +81,19 @@ export function AquaCoderCompanion() {
   const companionScale = normalizeCompanionScale(settings.companionScale);
   const displayScale = resolveCompanionDisplayScale(companionScale);
   const companionStatic = settings.companionStaticAnimations === true;
-  const visible = enabled && desktop;
+  const [tvNavActive, setTvNavActive] = useState(false);
+  const visible = enabled && desktop && !tvNavActive;
+
+  useEffect(() => {
+    const sync = () => setTvNavActive(isTvNavigationSessionActive());
+    sync();
+    const observer = new MutationObserver(sync);
+    observer.observe(document.documentElement, {
+      attributes: true,
+      attributeFilter: ["data-tv-nav", "data-tv-nav-enabled"],
+    });
+    return () => observer.disconnect();
+  }, []);
   const isAdmin = Boolean(user?.isAdmin);
 
   const COMPANION_PERMISSION_EVENT = "ta:companion-permission-prompt";
@@ -190,7 +203,23 @@ export function AquaCoderCompanion() {
 
   useEffect(() => {
     if (!visible) return;
-    playerRef.current?.setStaticMode(companionStatic);
+
+    const applyStaticMode = () => {
+      const playing = document.documentElement.hasAttribute("data-player-playing");
+      // Freeze companion RAF while video plays — canvas + CSS blur compete with Kodik decode.
+      playerRef.current?.setStaticMode(companionStatic || playing);
+    };
+    applyStaticMode();
+
+    const observer = new MutationObserver(applyStaticMode);
+    observer.observe(document.documentElement, {
+      attributes: true,
+      attributeFilter: ["data-player-playing"],
+    });
+    return () => {
+      observer.disconnect();
+      playerRef.current?.setStaticMode(companionStatic);
+    };
   }, [visible, companionStatic]);
 
   useEffect(() => {

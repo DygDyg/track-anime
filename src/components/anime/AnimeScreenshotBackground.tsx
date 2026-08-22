@@ -83,12 +83,23 @@ export function AnimeScreenshotBackground({ urls, fallbackUrl, title }: Props) {
     if (images.length <= 1 || !ready) return;
 
     let cancelled = false;
+    let id: number | null = null;
+
+    const clear = () => {
+      if (id != null) {
+        window.clearInterval(id);
+        id = null;
+      }
+    };
 
     const advance = async () => {
+      if (document.documentElement.hasAttribute("data-player-playing")) return;
+
       const nextIndex = (indexRef.current + 1) % images.length;
       const nextUrl = images[nextIndex]!;
       await preloadImage(nextUrl);
       if (cancelled) return;
+      if (document.documentElement.hasAttribute("data-player-playing")) return;
 
       const inactiveSlot = (activeSlotRef.current === 0 ? 1 : 0) as 0 | 1;
 
@@ -100,16 +111,30 @@ export function AnimeScreenshotBackground({ urls, fallbackUrl, title }: Props) {
 
       await waitForPaint();
       if (cancelled) return;
+      if (document.documentElement.hasAttribute("data-player-playing")) return;
 
       activeSlotRef.current = inactiveSlot;
       indexRef.current = nextIndex;
       setActiveSlot(inactiveSlot);
     };
 
-    const id = window.setInterval(() => void advance(), ROTATE_MS);
+    const start = () => {
+      clear();
+      if (document.documentElement.hasAttribute("data-player-playing")) return;
+      id = window.setInterval(() => void advance(), ROTATE_MS);
+    };
+
+    start();
+    const observer = new MutationObserver(start);
+    observer.observe(document.documentElement, {
+      attributes: true,
+      attributeFilter: ["data-player-playing"],
+    });
+
     return () => {
       cancelled = true;
-      window.clearInterval(id);
+      clear();
+      observer.disconnect();
     };
   }, [images, imagesKey, ready]);
 
@@ -121,7 +146,7 @@ export function AnimeScreenshotBackground({ urls, fallbackUrl, title }: Props) {
   return (
     <div
       aria-hidden
-      className="pointer-events-none fixed inset-0 z-[1] overflow-hidden"
+      className="anime-page-screenshot-bg pointer-events-none fixed inset-0 z-[1] overflow-hidden"
     >
       <div className="absolute inset-0 bg-background" />
 
@@ -132,7 +157,7 @@ export function AnimeScreenshotBackground({ urls, fallbackUrl, title }: Props) {
           alt=""
           decoding="async"
           {...EXTERNAL_IMG_ATTRS}
-          className="absolute inset-0 h-full w-full scale-105 object-cover object-center blur-md brightness-[0.35]"
+          className="tv-decorative-blur absolute inset-0 h-full w-full scale-105 object-cover object-center blur-md brightness-[0.35]"
         />
       ) : null}
 

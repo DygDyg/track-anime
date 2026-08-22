@@ -3,15 +3,18 @@
 import { useEffect, useMemo, useState, Suspense } from "react";
 import { createPortal } from "react-dom";
 import { AndroidAppDownloadSection } from "@/components/AndroidAppDownloadSection";
+import { PatternBackgroundPreview } from "@/components/PatternSiteBackground";
 import { TranslationBadge } from "@/components/TranslationBadge";
 import { useAuth } from "@/components/auth/AuthProvider";
 import { AvatarWithDecoration } from "@/components/profile/AvatarWithDecoration";
 import { useSiteSettings } from "@/components/SiteSettingsProvider";
 import { useThemeContext } from "@/components/ThemeProvider";
+import { parsePatternBackgroundId } from "@/lib/pattern-backgrounds";
 import {
   AVATAR_DECORATION_SCALE_MAX,
   AVATAR_DECORATION_SCALE_MIN,
   AVATAR_DECORATION_SCALE_STEP,
+  BETA_HIDDEN_PROGRESS_THICKNESS_DEFAULT,
   COMPANION_SCALE_DEFAULT,
   COMPANION_SCALE_MAX,
   COMPANION_SCALE_MIN,
@@ -38,6 +41,14 @@ import {
 } from "@/lib/site-appearance";
 import { AVATAR_DECORATION_OPTIONS, avatarDecorationUrl } from "@/lib/avatar-decorations";
 import { DiscordRpcSettingsTab } from "@/components/settings/DiscordRpcSettingsTab";
+import {
+  focusTvElement,
+  getTvFocusableElements,
+  invalidateTvFocusableCache,
+  isTvNavigationSessionActive,
+  markTvNavigationActive,
+  registerTvModalClose,
+} from "@/lib/tv-navigation";
 import { NotificationsSettingsTab } from "@/components/settings/NotificationsSettingsTab";
 import { PlayerSettingsTab } from "@/components/settings/PlayerSettingsTab";
 import { useNotificationDiscovery } from "@/hooks/useNotificationDiscovery";
@@ -385,6 +396,8 @@ function BackgroundPickerSection({
 
           {backgrounds.map((item) => {
             const active = selectedUrl === item.url;
+            const patternId = parsePatternBackgroundId(item.url);
+            if (!patternId) return null;
             return (
               <button
                 key={item.url}
@@ -398,13 +411,10 @@ function BackgroundPickerSection({
                 ].join(" ")}
               >
                 <div className="relative aspect-[16/10] overflow-hidden bg-surface-dim">
-                  {/* eslint-disable-next-line @next/next/no-img-element */}
-                  <img
-                    src={item.url}
-                    alt=""
-                    className="h-full w-full object-cover transition duration-300 group-hover:scale-105"
+                  <PatternBackgroundPreview
+                    patternId={patternId}
+                    className="h-full w-full transition duration-300 group-hover:scale-105"
                   />
-                  <div className="absolute inset-0 bg-black/20" />
                   {active ? (
                     <span className="absolute right-1.5 top-1.5 rounded-full bg-accent px-1.5 py-0.5 text-[10px] font-semibold text-white">
                       ✓
@@ -900,6 +910,7 @@ export function SiteSettingsModal() {
   const { shouldShowGearDot, markTabSeen } = useNotificationDiscovery();
   const [tab, setTab] = useState<TabId>("home");
   const [mounted, setMounted] = useState(false);
+  const [playerProgressPreviewFill, setPlayerProgressPreviewFill] = useState(50);
 
   const visibleTabs = useMemo(
     () =>
@@ -909,6 +920,12 @@ export function SiteSettingsModal() {
       }),
     [user],
   );
+
+  useEffect(() => {
+    if (tab !== "player") return;
+    // Случайный прогресс около середины (40–60%), фиксируется на время вкладки.
+    setPlayerProgressPreviewFill(40 + Math.round(Math.random() * 20));
+  }, [tab]);
 
   useEffect(() => {
     if (!settingsOpen || !settingsInitialTab) return;
@@ -933,14 +950,41 @@ export function SiteSettingsModal() {
     if (!settingsOpen) return;
 
     const onKeyDown = (event: KeyboardEvent) => {
-      if (event.key === "Escape") closeSettings();
+      if (
+        event.key === "Escape" ||
+        event.key === "Back" ||
+        event.key === "BrowserBack" ||
+        event.key === "XF86Back"
+      ) {
+        event.preventDefault();
+        closeSettings();
+      }
     };
 
     document.body.style.overflow = "hidden";
     document.addEventListener("keydown", onKeyDown);
+    registerTvModalClose(() => {
+      closeSettings();
+      return true;
+    });
+
+    const focusTimer = window.setTimeout(() => {
+      invalidateTvFocusableCache();
+      const dialog = document.querySelector<HTMLElement>('[role="dialog"][aria-modal="true"]');
+      if (!dialog) return;
+      const focusables = getTvFocusableElements(dialog);
+      // Prefer first side-nav tab over the header close button.
+      const firstTab = focusables.find((el) => el.closest("nav"));
+      focusTvElement(firstTab ?? focusables[0] ?? dialog);
+      // Only enter TV session mode when the device setting allows it.
+      markTvNavigationActive();
+    }, 0);
+
     return () => {
       document.body.style.overflow = "";
       document.removeEventListener("keydown", onKeyDown);
+      registerTvModalClose(null);
+      window.clearTimeout(focusTimer);
     };
   }, [settingsOpen, closeSettings]);
 
@@ -951,7 +995,7 @@ export function SiteSettingsModal() {
       <button
         type="button"
         aria-label="Закрыть настройки"
-        className="absolute inset-0 bg-black/60 backdrop-blur-[2px]"
+        className="absolute inset-0 bg-black/70"
         onClick={closeSettings}
       />
 
@@ -1005,7 +1049,7 @@ export function SiteSettingsModal() {
             ))}
           </nav>
 
-          <div className="min-h-0 flex-1 overflow-y-auto px-4 py-4 sm:px-5 sm:py-5">
+          <div className="min-h-0 min-w-0 flex-1 overflow-y-auto overflow-x-hidden px-4 py-4 sm:px-5 sm:py-5">
             {tab === "appearance" ? (
               <SiteSettingsAppearanceTab settings={settings} updateSettings={updateSettings} />
             ) : null}
@@ -1059,6 +1103,23 @@ export function SiteSettingsModal() {
           </button>
         </footer>
       </div>
+
+      {tab === "player" ? (
+        <div
+          aria-hidden
+          className="pointer-events-none absolute inset-x-0 bottom-0 z-[200]"
+          style={{
+            height: `${settings.betaHiddenProgressThickness ?? BETA_HIDDEN_PROGRESS_THICKNESS_DEFAULT}px`,
+            opacity: settings.betaHiddenProgressOpacity,
+            backgroundColor: "rgba(255, 255, 255, 0.25)",
+          }}
+        >
+          <div
+            className="h-full bg-accent"
+            style={{ width: `${playerProgressPreviewFill}%` }}
+          />
+        </div>
+      ) : null}
     </div>,
     document.body,
   );

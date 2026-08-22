@@ -26,21 +26,22 @@ type Props = {
 };
 
 function computeTooltipStyle(anchor: DOMRect, tooltipHeight: number): CSSProperties {
-  const left = Math.min(
-    Math.max(anchor.left + anchor.width / 2 - TOOLTIP_WIDTH / 2, TOOLTIP_MARGIN),
-    Math.max(TOOLTIP_MARGIN, window.innerWidth - TOOLTIP_WIDTH - TOOLTIP_MARGIN),
+  const leftRight = anchor.right + TOOLTIP_GAP;
+  const leftLeft = anchor.left - TOOLTIP_WIDTH - TOOLTIP_GAP;
+  const fitsRight = leftRight + TOOLTIP_WIDTH <= window.innerWidth - TOOLTIP_MARGIN;
+  const left = fitsRight
+    ? leftRight
+    : Math.max(TOOLTIP_MARGIN, leftLeft);
+
+  const top = Math.min(
+    Math.max(anchor.top + anchor.height / 2 - tooltipHeight / 2, TOOLTIP_MARGIN),
+    Math.max(TOOLTIP_MARGIN, window.innerHeight - tooltipHeight - TOOLTIP_MARGIN),
   );
-  const topAbove = anchor.top - tooltipHeight - TOOLTIP_GAP;
-  const topBelow = anchor.bottom + TOOLTIP_GAP;
-  const top =
-    topAbove >= TOOLTIP_MARGIN
-      ? topAbove
-      : Math.min(topBelow, window.innerHeight - tooltipHeight - TOOLTIP_MARGIN);
 
   return {
     position: "fixed",
     left,
-    top: Math.max(TOOLTIP_MARGIN, top),
+    top,
     width: TOOLTIP_WIDTH,
     zIndex: 260,
   };

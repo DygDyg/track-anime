@@ -9,6 +9,7 @@ import {
 import { sendBrowserPushNotification } from "@/lib/notifications/channels/browser";
 import { buildHistoryNewNotificationPayload, resolveNotificationAnimeMeta } from "@/lib/notifications/payload";
 import { prisma } from "@/lib/prisma";
+import { isWatchHistoryBookmark } from "@/lib/watch-history";
 import { isHomeTranslationVisible, normalizeSiteSettings } from "@/lib/site-settings";
 import type { HistoryNewNotificationPayload, NotificationChannelId } from "@/lib/notifications/types";
 
@@ -100,6 +101,7 @@ export async function findHistoryNewMatchesForRelease(input: {
     : null;
 
   for (const progress of progressRows) {
+    if (isWatchHistoryBookmark(progress)) continue;
     if (
       !isEpisodeNewer(
         progress.seasonNumber,

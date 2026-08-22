@@ -1,5 +1,9 @@
 import { parseAnimeScore } from "@/lib/anime-score";
 import { normalizeAvatarDecorationId } from "@/lib/avatar-decorations";
+import {
+  parsePatternBackgroundId,
+  patternBackgroundLabel,
+} from "@/lib/pattern-backgrounds";
 import { filterPopularTranslationNames } from "@/lib/translation-colors";
 import {
   parseTranslationIntroOffsets,
@@ -78,6 +82,16 @@ export const BETA_HIDDEN_PROGRESS_OPACITY_MIN = 0;
 export const BETA_HIDDEN_PROGRESS_OPACITY_MAX = 1;
 export const BETA_HIDDEN_PROGRESS_OPACITY_DEFAULT = 1;
 export const BETA_HIDDEN_PROGRESS_OPACITY_STEP = 0.05;
+/** Толщина скрытой полосы прогресса TA-плеера (px). */
+export const BETA_HIDDEN_PROGRESS_THICKNESS_MIN = 1;
+export const BETA_HIDDEN_PROGRESS_THICKNESS_MAX = 12;
+export const BETA_HIDDEN_PROGRESS_THICKNESS_DEFAULT = 4;
+export const BETA_HIDDEN_PROGRESS_THICKNESS_STEP = 1;
+/** Автоскрытие панели TA-плеера после бездействия (мс). У Kodik Flowplayer — 4000. */
+export const PLAYER_CONTROLS_IDLE_MS_MIN = 1_000;
+export const PLAYER_CONTROLS_IDLE_MS_MAX = 8_000;
+export const PLAYER_CONTROLS_IDLE_MS_DEFAULT = 2_500;
+export const PLAYER_CONTROLS_IDLE_MS_STEP = 100;
 
 export type SiteSettings = {
   fontFamily: SiteFontFamily;
@@ -118,12 +132,10 @@ export type SiteSettings = {
   autoSkipTranslationIds: AutoSkipTranslationIds;
   /** Видимость полосы прогресса, когда интерфейс TA-плеера скрыт; 0 = выключена */
   betaHiddenProgressOpacity: number;
-  /**
-   * Динамическое изменение ширины панели управления TA-плеера:
-   * true — раздвижка при наведении на зону качества Kodik;
-   * false — панель всегда раздвинута (доступ к качеству Kodik).
-   */
-  playerControlsDynamicWidth: boolean;
+  /** Толщина полосы прогресса при скрытом интерфейсе TA-плеера (px) */
+  betaHiddenProgressThickness: number;
+  /** Задержка автоскрытия UI TA-плеера при воспроизведении (мс) */
+  playerControlsIdleMs: number;
   /** Локально для устройства: навигация стрелками по карточкам сайта */
   tvNavigationEnabled: boolean;
   /** Показывать companion Aqua Coder в правом нижнем углу */
@@ -136,6 +148,7 @@ export type SiteSettings = {
 
 export const SITE_SETTINGS_STORAGE_KEY = "track-anime-site-settings";
 export const HOME_HISTORY_COLLAPSED_STORAGE_KEY = "track-anime-home-history-collapsed";
+export const HOME_UPCOMING_SOON_COLLAPSED_STORAGE_KEY = "track-anime-home-upcoming-soon-collapsed";
 export const HOME_STATUS_FILTER_STORAGE_KEY = "track-anime-home-status-filter";
 
 export const DEFAULT_SITE_SETTINGS: SiteSettings = {
@@ -165,7 +178,8 @@ export const DEFAULT_SITE_SETTINGS: SiteSettings = {
   autoSkipOpeningsEndings: false,
   autoSkipTranslationIds: {},
   betaHiddenProgressOpacity: BETA_HIDDEN_PROGRESS_OPACITY_DEFAULT,
-  playerControlsDynamicWidth: true,
+  betaHiddenProgressThickness: BETA_HIDDEN_PROGRESS_THICKNESS_DEFAULT,
+  playerControlsIdleMs: PLAYER_CONTROLS_IDLE_MS_DEFAULT,
   tvNavigationEnabled: true,
   companionEnabled: true,
   companionScale: COMPANION_SCALE_DEFAULT,
@@ -229,21 +243,14 @@ function parseFontFamily(value: unknown): SiteFontFamily {
   return DEFAULT_SITE_SETTINGS.fontFamily;
 }
 
-function parseBackgroundSlideshowFilter(value: unknown): string[] | null {
-  if (value === null) return null;
-  if (!Array.isArray(value)) return null;
-  return value.filter((item): item is string => typeof item === "string" && item.length > 0);
-}
-
 function parseBackgroundImageUrl(raw: Record<string, unknown>): SiteBackgroundImageUrl {
   if (raw.backgroundImageUrl === null) return null;
   if (typeof raw.backgroundImageUrl === "string") {
-    return raw.backgroundImageUrl.length > 0 ? raw.backgroundImageUrl : null;
+    // Только процедурные паттерны; старые фото-URL сбрасываем.
+    return parsePatternBackgroundId(raw.backgroundImageUrl) ? raw.backgroundImageUrl : null;
   }
 
-  const legacy = parseBackgroundSlideshowFilter(raw.backgroundSlideshowFilter);
-  if (legacy === null || legacy.length === 0) return null;
-  return legacy[0] ?? null;
+  return null;
 }
 
 function parseHoverTrailerDelaySec(value: unknown): number {
@@ -304,6 +311,29 @@ function normalizeBetaHiddenProgressOpacity(value: unknown): number {
   );
 }
 
+function normalizeBetaHiddenProgressThickness(value: unknown): number {
+  const parsed = typeof value === "number" ? value : Number(value);
+  if (!Number.isFinite(parsed)) return BETA_HIDDEN_PROGRESS_THICKNESS_DEFAULT;
+  const stepped =
+    Math.round(parsed / BETA_HIDDEN_PROGRESS_THICKNESS_STEP) *
+    BETA_HIDDEN_PROGRESS_THICKNESS_STEP;
+  return Math.min(
+    BETA_HIDDEN_PROGRESS_THICKNESS_MAX,
+    Math.max(BETA_HIDDEN_PROGRESS_THICKNESS_MIN, stepped),
+  );
+}
+
+function normalizePlayerControlsIdleMs(value: unknown): number {
+  const parsed = typeof value === "number" ? value : Number(value);
+  if (!Number.isFinite(parsed)) return PLAYER_CONTROLS_IDLE_MS_DEFAULT;
+  const stepped =
+    Math.round(parsed / PLAYER_CONTROLS_IDLE_MS_STEP) * PLAYER_CONTROLS_IDLE_MS_STEP;
+  return Math.min(
+    PLAYER_CONTROLS_IDLE_MS_MAX,
+    Math.max(PLAYER_CONTROLS_IDLE_MS_MIN, stepped),
+  );
+}
+
 export function normalizeSiteSettings(raw: unknown): SiteSettings {
   if (!isRecord(raw)) return { ...DEFAULT_SITE_SETTINGS };
 
@@ -361,7 +391,10 @@ export function normalizeSiteSettings(raw: unknown): SiteSettings {
     autoSkipOpeningsEndings: raw.autoSkipOpeningsEndings === true,
     autoSkipTranslationIds: parseAutoSkipTranslationIds(raw.autoSkipTranslationIds),
     betaHiddenProgressOpacity: normalizeBetaHiddenProgressOpacity(raw.betaHiddenProgressOpacity),
-    playerControlsDynamicWidth: raw.playerControlsDynamicWidth !== false,
+    betaHiddenProgressThickness: normalizeBetaHiddenProgressThickness(
+      raw.betaHiddenProgressThickness,
+    ),
+    playerControlsIdleMs: normalizePlayerControlsIdleMs(raw.playerControlsIdleMs),
     tvNavigationEnabled: raw.tvNavigationEnabled !== false,
     companionEnabled: raw.companionEnabled !== false,
     companionScale: normalizeCompanionScale(raw.companionScale),
@@ -390,7 +423,7 @@ export function hasStoredSiteSettings(): boolean {
 
 export function buildSiteSettingsInitScript(defaults: SiteSettings): string {
   const fallback = JSON.stringify(defaults);
-  return `(function(){try{var k="${SITE_SETTINGS_STORAGE_KEY}";var raw=localStorage.getItem(k);var d=raw?JSON.parse(raw):${fallback};var el=document.documentElement;var f=d.fontFamily||"inter";var c=d.cursorStyle||"default";var s=d.cardSize||"normal";var a=d.accentPreset||"blue";var b=d.backgroundDim||"medium";var allowed=${JSON.stringify(SITE_FONT_IDS)};var cursors=${JSON.stringify(SITE_CURSOR_OPTIONS.map((item) => item.id))};if(allowed.indexOf(f)===-1)f="inter";if(cursors.indexOf(c)===-1)c="default";el.setAttribute("data-font",f);el.setAttribute("data-cursor",c);el.setAttribute("data-card-size",s);el.setAttribute("data-accent",a);el.setAttribute("data-bg-dim",b);el.setAttribute("data-tv-nav-enabled",d.tvNavigationEnabled===false?"false":"true");if(d.tvNavigationEnabled===false)el.removeAttribute("data-tv-nav");if(d.reduceMotion===true)el.setAttribute("data-reduce-motion","true");else el.removeAttribute("data-reduce-motion");}catch(e){}})();`;
+  return `(function(){try{var k="${SITE_SETTINGS_STORAGE_KEY}";var raw=localStorage.getItem(k);var d=raw?JSON.parse(raw):${fallback};var el=document.documentElement;var f=d.fontFamily||"inter";var c=d.cursorStyle||"default";var s=d.cardSize||"normal";var a=d.accentPreset||"blue";var b=d.backgroundDim||"medium";var bg=typeof d.backgroundImageUrl==="string"&&d.backgroundImageUrl.length>0;var allowed=${JSON.stringify(SITE_FONT_IDS)};var cursors=${JSON.stringify(SITE_CURSOR_OPTIONS.map((item) => item.id))};if(allowed.indexOf(f)===-1)f="inter";if(cursors.indexOf(c)===-1)c="default";el.setAttribute("data-font",f);el.setAttribute("data-cursor",c);el.setAttribute("data-card-size",s);el.setAttribute("data-accent",a);el.setAttribute("data-bg-dim",b);el.setAttribute("data-site-bg",bg?"true":"false");el.setAttribute("data-tv-nav-enabled",d.tvNavigationEnabled===false?"false":"true");if(d.tvNavigationEnabled===false)el.removeAttribute("data-tv-nav");if(d.reduceMotion===true)el.setAttribute("data-reduce-motion","true");else el.removeAttribute("data-reduce-motion");}catch(e){}})();`;
 }
 
 export const siteSettingsInitScript = buildSiteSettingsInitScript(DEFAULT_SITE_SETTINGS);
@@ -402,6 +435,10 @@ export function applySiteSettings(settings: SiteSettings): void {
   root.setAttribute("data-card-size", settings.cardSize);
   root.setAttribute("data-accent", settings.accentPreset);
   root.setAttribute("data-bg-dim", settings.backgroundDim);
+  root.setAttribute(
+    "data-site-bg",
+    settings.backgroundImageUrl && settings.backgroundImageUrl.length > 0 ? "true" : "false",
+  );
   if (settings.reduceMotion) {
     root.setAttribute("data-reduce-motion", "true");
   } else {
@@ -431,21 +468,14 @@ export function homeTranslationFilterSummary(
   return `Выбрано ${filter.length} из ${totalCount}`;
 }
 
-export function resolveBackgroundImageUrl(
-  allUrls: string[],
-  selectedUrl: SiteBackgroundImageUrl,
-): string | null {
-  if (!selectedUrl) return null;
-  if (allUrls.includes(selectedUrl)) return selectedUrl;
-  return null;
-}
-
 export function backgroundImageSummary(
   selectedUrl: SiteBackgroundImageUrl,
   totalCount: number,
 ): string {
   if (totalCount === 0) return "Нет доступных фонов";
   if (!selectedUrl) return "Фон не выбран";
+  const patternLabel = patternBackgroundLabel(selectedUrl);
+  if (patternLabel) return `Паттерн: ${patternLabel}`;
   return "Выбран один фон";
 }
 
@@ -473,6 +503,26 @@ export function writeHomeHistoryCollapsed(collapsed: boolean): void {
   if (typeof window === "undefined") return;
   try {
     localStorage.setItem(HOME_HISTORY_COLLAPSED_STORAGE_KEY, collapsed ? "true" : "false");
+  } catch {
+    /* ignore */
+  }
+}
+
+export function readHomeUpcomingSoonCollapsed(defaultCollapsed: boolean): boolean {
+  if (typeof window === "undefined") return defaultCollapsed;
+  try {
+    const raw = localStorage.getItem(HOME_UPCOMING_SOON_COLLAPSED_STORAGE_KEY);
+    if (raw === null) return defaultCollapsed;
+    return raw === "true";
+  } catch {
+    return defaultCollapsed;
+  }
+}
+
+export function writeHomeUpcomingSoonCollapsed(collapsed: boolean): void {
+  if (typeof window === "undefined") return;
+  try {
+    localStorage.setItem(HOME_UPCOMING_SOON_COLLAPSED_STORAGE_KEY, collapsed ? "true" : "false");
   } catch {
     /* ignore */
   }

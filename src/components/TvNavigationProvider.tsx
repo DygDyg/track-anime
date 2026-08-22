@@ -3,14 +3,21 @@
 import { useEffect } from "react";
 import { useSiteSettings } from "@/components/SiteSettingsProvider";
 import {
+  exitTvSearchEditingIfNeeded,
   findTvFocusNeighbor,
   focusTvElement,
   getInitialTvFocusTarget,
   getTvFocusableElements,
   handleTvBackNavigation,
+  installAndroidBackBridge,
   isTvBackKey,
+  isTvChromeElement,
+  isTvPageNearTop,
   markTvNavigationActive,
+  isTvNavigationSessionActive,
+  scrollTvPageUp,
   shouldIgnoreTvNavigation,
+  startTvFocusableCacheWatch,
   type TvNavDirection,
 } from "@/lib/tv-navigation";
 
@@ -52,6 +59,15 @@ export function TvNavigationProvider() {
   }, [settings.tvNavigationEnabled]);
 
   useEffect(() => {
+    if (!settings.tvNavigationEnabled) return;
+    return startTvFocusableCacheWatch();
+  }, [settings.tvNavigationEnabled]);
+
+  useEffect(() => {
+    return installAndroidBackBridge();
+  }, []);
+
+  useEffect(() => {
     const onKeyDown = (event: KeyboardEvent) => {
       if (!settings.tvNavigationEnabled) return;
 
@@ -59,40 +75,78 @@ export function TvNavigationProvider() {
       const modalScope = active instanceof HTMLElement
         ? active.closest<HTMLElement>('[role="dialog"][aria-modal="true"]')
         : null;
-      if (!modalScope && shouldIgnoreTvNavigation(event)) return;
+      // Modal open but focus still outside (e.g. gear button) — keep arrows inside dialog.
+      const openModal =
+        modalScope ??
+        document.querySelector<HTMLElement>('[role="dialog"][aria-modal="true"]');
+      const navRoot = openModal ?? document;
+
+      if (!openModal && shouldIgnoreTvNavigation(event)) return;
 
       const direction = DIRECTION_KEYS[event.key];
       if (direction) {
         const current =
           active instanceof HTMLElement && active !== document.body ? active : null;
-        const focusables = getTvFocusableElements(modalScope ?? document);
+        const root = navRoot;
+        let focusables = getTvFocusableElements(root);
         const focusedInScope = Boolean(current && focusables.includes(current));
-        const tvNavActive = document.documentElement.dataset.tvNav === "true";
+        const tvNavActive = isTvNavigationSessionActive();
         const tvLike = isTvLikeDevice();
 
-        if (!tvLike && !tvNavActive && !focusedInScope) {
+        if (!tvLike && !tvNavActive && !focusedInScope && !openModal) {
           return;
         }
 
         event.preventDefault();
         markTvNavigationActive();
 
-        const next = current
-          ? findTvFocusNeighbor(current, direction, modalScope ?? document)
-          : getInitialTvFocusTarget(modalScope ?? document);
+        let navCurrent =
+          current && focusables.includes(current) ? current : null;
+
+        // Leave search editing on D-pad so focus can move away cleanly.
+        if (exitTvSearchEditingIfNeeded()) {
+          focusables = getTvFocusableElements(root);
+          const after = document.activeElement;
+          if (after instanceof HTMLElement && focusables.includes(after)) {
+            navCurrent = after;
+          }
+        }
+
+        // Mid-page Up must not jump into the header — only from page top (or Back).
+        if (
+          !openModal &&
+          direction === "up" &&
+          navCurrent &&
+          !isTvChromeElement(navCurrent) &&
+          !isTvPageNearTop()
+        ) {
+          focusables = focusables.filter((el) => !isTvChromeElement(el));
+        }
+
+        const next = navCurrent
+          ? findTvFocusNeighbor(navCurrent, direction, root, focusables)
+          : getInitialTvFocusTarget(root, focusables);
 
         if (next) {
           focusTvElement(next);
-        } else if (!current) {
-          const initial = getInitialTvFocusTarget(modalScope ?? document);
+        } else if (
+          !openModal &&
+          direction === "up" &&
+          navCurrent &&
+          !isTvChromeElement(navCurrent) &&
+          !isTvPageNearTop()
+        ) {
+          scrollTvPageUp();
+        } else if (!navCurrent) {
+          const initial = getInitialTvFocusTarget(root, focusables);
           if (initial) focusTvElement(initial);
         }
         return;
       }
 
       if (isActivationKey(event.key)) {
-        const active = document.activeElement;
-        if (active instanceof HTMLElement && activateTvCard(active)) {
+        const activeEl = document.activeElement;
+        if (activeEl instanceof HTMLElement && activateTvCard(activeEl)) {
           event.preventDefault();
         }
         return;
@@ -101,13 +155,15 @@ export function TvNavigationProvider() {
       if (isTvBackKey(event.key)) {
         if (handleTvBackNavigation()) {
           event.preventDefault();
+          event.stopPropagation();
         }
         return;
       }
 
-      if (event.key === "Backspace" && document.documentElement.dataset.tvNav === "true") {
+      if (event.key === "Backspace" && isTvNavigationSessionActive()) {
         if (handleTvBackNavigation()) {
           event.preventDefault();
+          event.stopPropagation();
         }
       }
     };

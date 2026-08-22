@@ -9,6 +9,7 @@ import {
   setUserAnimeBookmark,
   setUserAnimeListStatus,
   setUserAnimeRewatches,
+  setUserAnimeScore,
 } from "@/lib/shikimori/user-list-mutations";
 import { LIST_STATUS_TABS, type ShikimoriListStatus } from "@/lib/shikimori/user-rates.types";
 import { getUserAnimeListStatus } from "@/lib/user-anime-list-status";
@@ -29,12 +30,21 @@ function isListStatus(value: string): value is ShikimoriListStatus {
   return (LIST_STATUS_TABS as readonly string[]).includes(value);
 }
 
+function parseScoreInput(value: unknown): number | null {
+  if (typeof value !== "number" || !Number.isFinite(value)) return null;
+  const score = Math.round(value);
+  if (score < 0 || score > 10) return null;
+  return score;
+}
+
 type UpdateBody = {
   listStatus?: string | null;
   bookmark?: boolean;
   removeAll?: boolean;
   rewatch?: boolean;
   rewatches?: number;
+  /** 0 = сбросить; 1–10 = оценка */
+  score?: number;
 };
 
 export async function PUT(request: NextRequest, { params }: RouteParams) {
@@ -61,7 +71,8 @@ export async function PUT(request: NextRequest, { params }: RouteParams) {
     body.bookmark === undefined &&
     !body.removeAll &&
     !body.rewatch &&
-    body.rewatches === undefined
+    body.rewatches === undefined &&
+    body.score === undefined
   ) {
     return NextResponse.json({ error: "Нечего обновлять" }, { status: 400 });
   }
@@ -97,6 +108,20 @@ export async function PUT(request: NextRequest, { params }: RouteParams) {
         session.user.shikimoriId,
         shikimoriId,
         normalized,
+      );
+      return NextResponse.json({ listInfo });
+    }
+
+    if (body.score !== undefined) {
+      const score = parseScoreInput(body.score);
+      if (score == null) {
+        return NextResponse.json({ error: "Оценка должна быть от 0 до 10" }, { status: 400 });
+      }
+      listInfo = await setUserAnimeScore(
+        session.user.id,
+        session.user.shikimoriId,
+        shikimoriId,
+        score,
       );
       return NextResponse.json({ listInfo });
     }

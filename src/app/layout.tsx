@@ -13,7 +13,6 @@ import { SiteSettingsModal } from "@/components/settings/SiteSettingsModal";
 import { AuthProvider } from "@/components/auth/AuthProvider";
 import { UserListStatusProvider } from "@/components/favorites/UserListStatusProvider";
 import { getSiteSettingsDefaults } from "@/lib/admin/site-settings-defaults";
-import { listBackgroundImageUrls } from "@/lib/background-images";
 import { getShikimoriEndpoints } from "@/lib/shikimori/endpoints";
 import { PwaBottomNav } from "@/components/PwaBottomNav";
 import { PwaProvider } from "@/components/PwaProvider";
@@ -99,8 +98,7 @@ export const viewport: Viewport = {
 
 export default async function RootLayout({ children }: { children: React.ReactNode }) {
   await getShikimoriEndpoints();
-  const [backgroundUrls, siteSettingsDefaults, buildFingerprint] = await Promise.all([
-    Promise.resolve(listBackgroundImageUrls()),
+  const [siteSettingsDefaults, buildFingerprint] = await Promise.all([
     getSiteSettingsDefaults(),
     Promise.resolve(getSiteBuildFingerprint()),
   ]);
@@ -127,7 +125,7 @@ export default async function RootLayout({ children }: { children: React.ReactNo
               <SiteSettingsProvider defaults={siteSettingsDefaults}>
                 <NotificationUiLayer />
                 <UserListStatusProvider>
-                  <SiteBackground urls={backgroundUrls} />
+                  <SiteBackground />
                   <NavigationProgressProvider>
                     <Suspense fallback={null}>
                       <ScrollRestoration />

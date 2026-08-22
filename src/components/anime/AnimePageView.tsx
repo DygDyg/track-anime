@@ -15,6 +15,7 @@ import { RelatedAnimeSection } from "@/components/anime/RelatedAnimeSection";
 import { SimilarAnimeSection } from "@/components/anime/SimilarAnimeSection";
 import { AnimeCommentsSection } from "@/components/anime/AnimeCommentsSection";
 import { AnimeShareButtons } from "@/components/anime/AnimeShareButtons";
+import { AnimePosterWatchActions } from "@/components/anime/AnimePosterWatchActions";
 import { AnimeTrailerEmbed } from "@/components/anime/AnimeTrailerEmbed";
 import { RecentAnimeOpenRecorder } from "@/components/anime/RecentAnimeOpenRecorder";
 import type { AnimePageDto } from "@/lib/anime-page";
@@ -180,6 +181,12 @@ export function AnimePageView({ anime }: { anime: AnimePageDto }) {
                   fallbackSrc={anime.screenshots[0] ?? null}
                   title={anime.title}
                 />
+                <div className="px-4 sm:px-0">
+                  <AnimePosterWatchActions
+                    shikimoriId={anime.shikimoriId}
+                    translations={anime.translations}
+                  />
+                </div>
                 <div className="px-4 sm:px-0">
                   <AnimeShareButtons anime={anime} />
                 </div>

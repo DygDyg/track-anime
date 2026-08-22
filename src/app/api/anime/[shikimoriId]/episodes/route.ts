@@ -3,6 +3,7 @@ import type { KodikEpisodeValue, KodikSeason } from "@/kodik/types";
 import { kodikSearch } from "@/kodik/client";
 import { loadEpisodeSeasonStats, resolveEffectiveSeasonNumber } from "@/lib/episode-totals";
 import { prisma } from "@/lib/prisma";
+import { toKodikPlayerEmbedUrl } from "@/lib/player-url";
 
 type RouteParams = {
   params: Promise<{ shikimoriId: string }>;
@@ -13,10 +14,21 @@ type SeasonItemDto = {
   title: string | null;
 };
 
+type EpisodeItemDto = {
+  episodeNumber: number;
+  seasonNumber: number;
+  playerLink: string | null;
+};
+
 function parseShikimoriId(raw: string): number | null {
   const id = Number(raw);
   if (!Number.isInteger(id) || id <= 0) return null;
   return id;
+}
+
+function normalizeStoredPlayerLink(link: string | null | undefined): string | null {
+  if (!link?.trim()) return null;
+  return toKodikPlayerEmbedUrl(link.trim());
 }
 
 function parseKodikEpisode(value: KodikEpisodeValue): boolean {
@@ -24,20 +36,31 @@ function parseKodikEpisode(value: KodikEpisodeValue): boolean {
   return Boolean(value?.link);
 }
 
+function parseLiveEpisodePlayerLink(value: KodikEpisodeValue): string | null {
+  if (typeof value === "string") return normalizeStoredPlayerLink(value);
+  return normalizeStoredPlayerLink(value?.link ?? null);
+}
+
 function mapLiveSeasonEpisodes(
   seasonNumber: number,
   season: KodikSeason | undefined,
-): Array<{ episodeNumber: number; seasonNumber: number }> {
+  seasonPlayerLink: string | null,
+): EpisodeItemDto[] {
   if (!season?.episodes) return [];
 
   return Object.entries(season.episodes)
     .map(([episodeKey, episodeValue]) => ({
       episodeNumber: Number(episodeKey),
       valid: parseKodikEpisode(episodeValue),
+      playerLink: parseLiveEpisodePlayerLink(episodeValue) ?? seasonPlayerLink,
     }))
     .filter((episode) => Number.isInteger(episode.episodeNumber) && episode.episodeNumber > 0 && episode.valid)
     .sort((a, b) => a.episodeNumber - b.episodeNumber)
-    .map((episode) => ({ episodeNumber: episode.episodeNumber, seasonNumber }));
+    .map((episode) => ({
+      episodeNumber: episode.episodeNumber,
+      seasonNumber,
+      playerLink: episode.playerLink,
+    }));
 }
 
 async function loadLiveKodikSeasons(
@@ -53,6 +76,23 @@ async function loadLiveKodikSeasons(
   } catch {
     return null;
   }
+}
+
+async function loadSeasonPlayerLink(
+  kodikId: string,
+  seasonNumber: number,
+  liveSeasons: Record<string, KodikSeason> | null,
+): Promise<string | null> {
+  const dbSeason = await prisma.kodikSeason.findUnique({
+    where: {
+      materialId_seasonNumber: { materialId: kodikId, seasonNumber },
+    },
+    select: { playerLink: true },
+  });
+  const fromDb = normalizeStoredPlayerLink(dbSeason?.playerLink);
+  if (fromDb) return fromDb;
+
+  return normalizeStoredPlayerLink(liveSeasons?.[String(seasonNumber)]?.link ?? null);
 }
 
 export async function GET(request: NextRequest, { params }: RouteParams) {
@@ -118,7 +158,7 @@ export async function GET(request: NextRequest, { params }: RouteParams) {
     for (const [seasonKey, season] of Object.entries(liveSeasons)) {
       const liveSeasonNumber = Number(seasonKey);
       if (!Number.isInteger(liveSeasonNumber) || liveSeasonNumber < 0) continue;
-      if (mapLiveSeasonEpisodes(liveSeasonNumber, season).length > 0) {
+      if (mapLiveSeasonEpisodes(liveSeasonNumber, season, null).length > 0) {
         addSeason(liveSeasonNumber);
       }
     }
@@ -131,6 +171,7 @@ export async function GET(request: NextRequest, { params }: RouteParams) {
     (exactSeason || requestedSeason !== 1) && seasonNumbers.has(requestedSeason)
       ? requestedSeason
       : resolveEffectiveSeasonNumber(requestedSeason, kodikId, material, episodeStats);
+  const seasonPlayerLink = await loadSeasonPlayerLink(kodikId, seasonNumber, liveSeasons);
   const seasons: SeasonItemDto[] = [...seasonNumbers]
     .sort((a, b) => a - b)
     .map((value) => ({
@@ -141,32 +182,39 @@ export async function GET(request: NextRequest, { params }: RouteParams) {
   const dbEpisodes = await prisma.kodikEpisode.findMany({
     where: { materialId: kodikId, seasonNumber },
     orderBy: { episodeNumber: "asc" },
-    select: { episodeNumber: true, seasonNumber: true },
+    select: { episodeNumber: true, seasonNumber: true, playerLink: true },
   });
 
   if (dbEpisodes.length > 0) {
     return NextResponse.json({
       seasonNumber,
+      seasonPlayerLink,
       seasons,
-      episodes: dbEpisodes,
+      episodes: dbEpisodes.map((episode) => ({
+        episodeNumber: episode.episodeNumber,
+        seasonNumber: episode.seasonNumber,
+        playerLink:
+          normalizeStoredPlayerLink(episode.playerLink) ?? seasonPlayerLink,
+      })),
     });
   }
 
   const liveEpisodes = liveSeasons
-    ? mapLiveSeasonEpisodes(seasonNumber, liveSeasons[String(seasonNumber)])
+    ? mapLiveSeasonEpisodes(seasonNumber, liveSeasons[String(seasonNumber)], seasonPlayerLink)
     : [];
   if (liveEpisodes.length > 0) {
-    return NextResponse.json({ seasonNumber, seasons, episodes: liveEpisodes });
+    return NextResponse.json({ seasonNumber, seasonPlayerLink, seasons, episodes: liveEpisodes });
   }
 
   const count = seasonNumber === (material.lastSeason ?? 1)
     ? (material.episodesCount ?? material.lastEpisode ?? 0)
     : 0;
 
-  const episodes = Array.from({ length: Math.max(0, count) }, (_, index) => ({
+  const episodes: EpisodeItemDto[] = Array.from({ length: Math.max(0, count) }, (_, index) => ({
     episodeNumber: index + 1,
     seasonNumber,
+    playerLink: seasonPlayerLink,
   }));
 
-  return NextResponse.json({ seasonNumber, seasons, episodes });
+  return NextResponse.json({ seasonNumber, seasonPlayerLink, seasons, episodes });
 }

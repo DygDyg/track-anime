@@ -5,6 +5,7 @@
 ```
 ta_new/
 ├── android/               # Native WebView shell: Android phone + Android TV launchers, shortcuts, proxy/cache settings, update checker
+├── windows/               # Native WPF + WebView2 shell for Windows (mirrors, proxy, adblock, settings, update checker)
 ├── prisma/schema.prisma     # DB schema
 ├── src/
 │   ├── app/                 # Next.js App Router (pages + API)
@@ -142,7 +143,7 @@ ta_new/
 | `mal-id.ts` | Server-side Shikimori ID → MAL ID mapping for AniSkip-style integrations |
 | `user-rates.ts` | User list entries |
 | `favorites.ts` | User bookmarks |
-| `user-list-mutations.ts` | Add/remove from lists |
+| `user-list-mutations.ts` | Add/remove from lists, set score (1–10) |
 | `endpoints.ts` | Configurable Shikimori host |
 | `rate-limiter.ts` | Global throttle |
 | `users.ts`, `friends.ts`, `related.ts`, `trailer.ts` | Profile/social features |
@@ -174,6 +175,7 @@ ta_new/
 | File | Responsibility |
 |------|----------------|
 | `anime-page.ts` | Anime page data loader |
+| `kodik-ensure-materials.ts` | On-demand Kodik materials by shikimoriId when page has none |
 | `releases.ts` | Home feed queries |
 | `search.ts` | DB search (server-only) |
 | `search-settings.ts` | Search UI settings |
@@ -181,6 +183,7 @@ ta_new/
 | `favorites-sync.ts` | Shikimori list sync |
 | `watch-history.ts` | Watch progress CRUD |
 | `history-new-episodes.ts` | Home history block |
+| `history-upcoming-soon.ts` | History page «Скоро выйдут» block (last ep in dub + 7d, 12h window) |
 | `calendar.ts` | Release calendar, Shikimori/Kodik ongoing sources and anons grouping |
 | `cover-cache.ts` | Poster caching |
 | `image-cache.ts`, `image-cache-url.ts` | Studio logo/screenshot server cache + URL helper |
@@ -191,6 +194,8 @@ ta_new/
 | `notifications/*` | Notification preferences, links, payloads, channels, worker helpers |
 | `prisma.ts` | DB client singleton |
 | `site-settings.ts` | User UI settings |
+| `pattern-backgrounds.ts` | CSS pattern wallpaper catalog (`pattern:*`; only site backgrounds) |
+| `background-images.ts` | Legacy `public/bg` listing (admin storage stats / `/api/bg`) |
 | `theme.ts` | Dark/light theme |
 
 ## `src/kodik/` — Kodik API
@@ -198,6 +203,7 @@ ta_new/
 | File | Responsibility |
 |------|----------------|
 | `client.ts` | `kodikSearch`, `kodikListByUrl`, `buildListUrl` |
+| `anime-types.ts` | `KODIK_ANIME_LIST_TYPES` (`anime,anime-serial`) for import/sync |
 | `types.ts` | Kodik API types |
 | `rate-limiter.ts` | Request throttle |
 
@@ -212,12 +218,12 @@ ta_new/
 
 | Folder | Key components |
 |--------|----------------|
-| `anime/` | `AnimePageView`, `AnimeWatchPanel`, `KodikPlayer`, `AnimeListActions` |
+| `anime/` | `AnimePageView`, `AnimeWatchPanel`, `KodikPlayer`, `AnimeListActions`, `AnimeShikimoriRating` + `AnimeUserScoreVote` |
 | `admin/` | `AdminAnimeDebugButton` — защищённое окно данных тайтла/серии |
 | `auth/` | `AuthProvider` |
 | `header/` | `Header`, `HeaderSearch` |
 | `favorites/` | `FavoritesView`, `UserListStatusProvider` |
-| `history/` | `HistoryView` |
+| `history/` | `HistoryView`, `HistoryWatchCard`, `HistoryUpcomingSoonPanel` |
 | `search/` | `SearchResultsView`, `SearchResultCard` |
 | `calendar/` | `CalendarView` |
 | `profile/` | `ProfileCard`, `ProfileFriendsSection` |
@@ -227,7 +233,7 @@ ta_new/
 | `user/` | `UsersSearchForm` |
 | `admin/` | Import/sync panels, MAL ID sync, notifications, DB explorer, stats |
 
-Root components: `ReleaseFeed`, `ReleaseCard`, `Header`, `RecentAnimeOpensButton`, `SiteBackground`, `ThemeProvider`, `NavigationProgress`, `PullToRefresh`, `AquaCoderCompanion`, `ClientUpdateGuard` (checks new build in an open tab).
+Root components: `ReleaseFeed`, `ReleaseCard`, `Header`, `RecentAnimeOpensButton`, `SiteBackground` → `PatternSiteBackground` (`pattern:*` only), `ThemeProvider`, `NavigationProgress`, `PullToRefresh`, `AquaCoderCompanion`, `ClientUpdateGuard` (checks new build in an open tab).
 
 Brand assets: `public/brand-logos/` contains optional `.webp` logos for global rotation; fallback remains `public/logo.webp`.
 Companion assets: `public/companion/aqua-coder-chibi/` (manifest + per-animation WebP atlases); renderer `src/lib/companion/AquaCoderCanvas.ts`; reactions bus `src/lib/companion/companion-bus.ts`; source package `aqua-coder-web/`.

@@ -1,0 +1,6 @@
+# Optional build-time proxy defaults (same keys as android/local.properties).
+# Copied next to the exe when present.
+# trackAnimeProxyHost=
+# trackAnimeProxyPort=
+# trackAnimeProxyUsername=
+# trackAnimeProxyPassword=

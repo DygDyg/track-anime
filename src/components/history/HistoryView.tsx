@@ -2,12 +2,14 @@
 
 import { Suspense, useEffect, useState } from "react";
 import { RelativeTime } from "@/components/RelativeTime";
+import { HistoryUpcomingSoonPanel } from "@/components/history/HistoryUpcomingSoonPanel";
 import { HistoryWatchCard } from "@/components/history/HistoryWatchCard";
 import { NotificationDiscoveryCta } from "@/components/notifications/NotificationDiscoveryCta";
 import { NotificationsSettingsTab } from "@/components/settings/NotificationsSettingsTab";
 import { useNotificationDiscovery } from "@/hooks/useNotificationDiscovery";
-import { homeFeedGridClassName, homeFeedGutterX } from "@/lib/home-feed-layout";
+import { homeFeedGridClassName, homeFeedGutterX, homeHistoryOuterGutterX } from "@/lib/home-feed-layout";
 import { watchHistoryItemToReleaseDto } from "@/lib/history-watch-card";
+import type { HistoryUpcomingSoonItemDto } from "@/lib/history-upcoming-soon";
 import type { WatchHistoryItemDto } from "@/lib/watch-history";
 
 export const HISTORY_NOTIFICATIONS_SECTION_ID = "history-notifications-settings";
@@ -84,6 +86,7 @@ function HistoryWatchCardItem({
         watchProgressPercent: item.watchProgressPercent,
         watchPositionSeconds: item.positionSeconds,
         watchDurationSeconds: item.episodeDurationSeconds,
+        isBookmark: item.isBookmark,
       }}
       footer={<HistoryAddedAt createdAt={item.createdAt} />}
       animeHref={`/anime/${item.shikimoriId}#player`}
@@ -107,7 +110,13 @@ function HistoryNotificationsSection() {
   );
 }
 
-export function HistoryView({ initialItems }: { initialItems: WatchHistoryItemDto[] }) {
+export function HistoryView({
+  initialItems,
+  upcomingSoon,
+}: {
+  initialItems: WatchHistoryItemDto[];
+  upcomingSoon: HistoryUpcomingSoonItemDto[];
+}) {
   const [items, setItems] = useState(initialItems);
   const { shouldShowCta, dismissCta, markTabSeen } = useNotificationDiscovery();
 
@@ -132,16 +141,21 @@ export function HistoryView({ initialItems }: { initialItems: WatchHistoryItemDt
         <h1 className="text-2xl font-bold text-foreground">История</h1>
       </div>
 
-      <div className={`${homeFeedGutterX} mb-6`}>
-        {shouldShowCta && items.length > 0 ? (
+      {shouldShowCta && items.length > 0 ? (
+        <div className={`${homeHistoryOuterGutterX} mb-6`}>
           <NotificationDiscoveryCta
-            className="mb-6"
             onConfigure={scrollToNotifications}
             onDismiss={dismissCta}
           />
-        ) : null}
+        </div>
+      ) : null}
 
+      <div className={`${homeHistoryOuterGutterX} mb-6`}>
         <HistoryNotificationsSection />
+      </div>
+
+      <div className="mb-6 sm:mb-8">
+        <HistoryUpcomingSoonPanel items={upcomingSoon} />
       </div>
 
       {items.length === 0 ? (

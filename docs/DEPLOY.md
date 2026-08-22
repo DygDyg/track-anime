@@ -11,7 +11,7 @@
 
 ## Быстрый старт
 
-Авто-выбор по `git diff` (site / rpc / apk — только то, что изменилось):
+Авто-выбор по `git diff` (site / rpc / apk / windows — только то, что изменилось):
 
 ```powershell
 npm run deploy
@@ -24,8 +24,9 @@ npm run deploy
 npm run deploy:site    # сайт (Next.js на сервере)
 npm run deploy:rpc     # только TrackAnimeDiscordRPC.exe (~1–2 мин)
 npm run deploy:apk     # только TrackAnime.apk + TrackAnime.json
+npm run deploy:windows # только TrackAnimeWindows.exe + TrackAnimeWindows.json
 npm run deploy:release # сайт + пересборка Discord RPC exe в архиве
-npm run deploy:all     # site + rpc (и apk, если есть изменения/путь)
+npm run deploy:all     # site + rpc (и apk/windows, если есть изменения/путь)
 ```
 
 Или напрямую:
@@ -38,6 +39,7 @@ npm run deploy:all     # site + rpc (и apk, если есть изменени�
 .\scripts\deploy.ps1 -ForceTrayRebuild
 .\scripts\deploy-rpc.ps1
 .\scripts\deploy-apk.ps1 -ApkPath "android\app\build\outputs\apk\release\app-release.apk"
+.\scripts\deploy-windows-app.ps1
 ```
 
 ### Android APK
@@ -58,21 +60,41 @@ npm run deploy:apk -- -ApkPath "android\app\build\outputs\apk\release\app-releas
 
 Скрипт публикации положит APK в `public/downloads/TrackAnime.apk`, посчитает версию и SHA-256 через Android Build-Tools и создаст `public/downloads/TrackAnime.json`.
 
+### Windows exe
+
+Отдельная заливка (без пересборки сайта):
+
+```powershell
+npm run deploy:windows
+# или только залить уже собранное:
+npm run deploy:windows -- -SkipPublish
+.\scripts\deploy-windows-app.ps1
+```
+
+Вместе с полным деплоем сайта (exe попадёт в tar):
+
+```powershell
+.\scripts\deploy.ps1 -PublishWindowsApp
+```
+
+`publish-windows-app.ps1` / `deploy:windows` собирают single-file exe в `public/downloads/TrackAnimeWindows.exe` и манифест `TrackAnimeWindows.json` (versionCode, SHA-256).
+
 ### Авто-деплой (`deploy-auto.ps1`)
 
 1. По умолчанию смотрит только dirty working tree (staged/unstaged/untracked). Для diff с `origin/main` — `-SinceMain` или `-BaseRef`
 2. Классифицирует изменения:
    - `scripts/discord-rpc-tray/**`, exe → **rpc**
    - `android/**`, `public/downloads/TrackAnime.{apk,json}` → **apk**
+   - `windows/**`, `public/downloads/TrackAnimeWindows.{exe,json}` → **windows**
    - остальной код сайта → **site**
    - docs / `.cursor` / сами deploy-скрипты → игнор
-3. Запускает только нужные пайплайны (rpc → apk → site)
-4. Для **site** не тащит в tar уже залитые `TrackAnimeDiscordRPC.exe` и APK (остаются на сервере)
+3. Запускает только нужные пайплайны (rpc → apk → windows → site)
+4. Для **site** не тащит в tar уже залитые `TrackAnimeDiscordRPC.exe`, APK и Windows exe (остаются на сервере)
 
 ### Деплой сайта (`deploy.ps1`)
 
-1. Опционально публикует APK (`-ApkPath`) и Discord RPC exe в `public/downloads/`
-2. Упаковывает исходники в `tar.gz` (без `node_modules`, `.next`, `.env`, `android/`, `scripts/discord-rpc-tray`, `data/cover-cache`, локальных handoff/`aqua-coder-web`/embeddings и т.п.)
+1. Опционально публикует APK (`-ApkPath`), Windows exe (`-PublishWindowsApp`) и Discord RPC exe в `public/downloads/`
+2. Упаковывает исходники в `tar.gz` (без `node_modules`, `.next`, `.env`, `android/`, `windows/`, `scripts/discord-rpc-tray`, `data/cover-cache`, локальных handoff/`aqua-coder-web`/embeddings и т.п.)
 3. Режет архив на чанки и загружает их на сервер через `scp` с retry и проверкой размера каждой части
 4. На сервере в **screen** (`ta_deploy`): `npm ci` → Prisma → `npm run build` → restart `track-anime`
 5. Проверяет HTTP 200 на https://track-anime.dygdyg.ru/
@@ -198,12 +220,14 @@ ssh -i "$env:USERPROFILE\.ssh\id_rsa" root@195.26.230.35 "echo ok"
 | `-ServerAppDir` | `/var/www/ta_new` | Каталог приложения на сервере |
 | `-UploadChunkSizeMB` | `48` | Размер частей архива для `scp`; меньше = устойчивее на плохом интернете |
 | `-ApkPath` | — | Путь к готовому подписанному APK; будет опубликован по `/downloads/TrackAnime.apk` вместе с `/downloads/TrackAnime.json`; требуется Android SDK Build-Tools (`aapt.exe`) |
+| `-PublishWindowsApp` | — | Локально собрать и положить `TrackAnimeWindows.exe` + json в `public/downloads/` перед упаковкой tar |
 | `-DryRun` | — | Только `tar`, без upload |
 | `-SkipBuild` | — | Пропустить локальную precheck-сборку; серверная сборка всё равно выполняется |
 | `-ForceTrayRebuild` | — | Пересобрать `TrackAnimeDiscordRPC.exe` перед деплоем |
 | `-SkipTrayPublish` | — | Не публиковать/копировать Discord RPC exe локально |
 | `-ExcludeRpcExe` | — | Не класть exe в tar (оставить файл на сервере) |
 | `-ExcludeApk` | — | Не класть APK/json в tar (оставить файлы на сервере) |
+| `-ExcludeWindowsApp` | — | Не класть Windows exe/json в tar (оставить файлы на сервере) |
 
 `deploy-auto.ps1` дополнительно:
 
@@ -291,6 +315,7 @@ ssh root@195.26.230.35 "cd /var/www/ta_new && npm run build && chown -R www-data
 - `.git/`, `tmp/`, `temp/`, `*.tar.gz`, `*.mp4`
 - `.build-number` — номер билда ведётся на сервере
 - `android/` — нативная оболочка собирается локально; на сервер уходит только `public/downloads/TrackAnime.apk` (+ json) через `deploy:apk` или `-ApkPath`
+- `windows/` — Windows-оболочка собирается локально; на сервер уходит только `public/downloads/TrackAnimeWindows.exe` (+ json) через `deploy:windows` или `-PublishWindowsApp`
 - `scripts/discord-rpc-tray/` — Electron-проект нужен только локально для сборки exe; на сервер отправляется `public/downloads/TrackAnimeDiscordRPC.exe` через `deploy:rpc` или полный site-деплой
 - `data/cover-cache/`, `data/image-cache/` — runtime-кеш на сервере (в git уже ignore)
 - `Aqua_Coder_Chibi_Codex_Handoff_v2/` (+ `.zip`), `aqua-coder-web/`, `.embeddings/`, `.chats/`, `.memory/` — локальные handoff/scratch

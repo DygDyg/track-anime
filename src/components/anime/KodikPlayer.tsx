@@ -10,6 +10,7 @@ import {
 } from "react";
 import {
   isKodikPlayerMessage,
+  logKodikPlayerDebugMessage,
   sendKodikCommand,
   type KodikCurrentEpisode,
 } from "@/lib/kodik-player-api";
@@ -17,7 +18,11 @@ import {
   readKodikPlayerVolumePreferences,
   writeKodikPlayerVolumePreferences,
 } from "@/lib/kodik-player-volume-preferences";
-import { toKodikPlayerEmbedUrl } from "@/lib/player-url";
+import {
+  detectKodikPlayerLinkMode,
+  toKodikPlayerEmbedUrl,
+  type KodikPlayerLinkMode,
+} from "@/lib/player-url";
 
 export type KodikPlayerResume = {
   seasonNumber: number;
@@ -26,6 +31,16 @@ export type KodikPlayerResume = {
 };
 
 export type KodikPlayerResumeMode = "play" | "pause";
+
+export type KodikPlayerSeekOptions = {
+  /**
+   * UI / bootResume already points at this episode (strip + liveProgress) on the same iframe.
+   * Don't block on a second kodik_player_current_episode — change_episode is often a
+   * no-op when Kodik is already there and won't re-emit the event.
+   * Not for cold iframe after translation switch.
+   */
+  uiEpisodeAlreadyTargeted?: boolean;
+};
 
 export type KodikPlayerPlaybackState = {
   isPlaying: boolean;
@@ -50,7 +65,11 @@ export type KodikPlayerProgressPayload = {
 };
 
 export type KodikPlayerHandle = {
-  seekTo: (resume: KodikPlayerResume, mode?: KodikPlayerResumeMode) => void;
+  seekTo: (
+    resume: KodikPlayerResume,
+    mode?: KodikPlayerResumeMode,
+    options?: KodikPlayerSeekOptions,
+  ) => void;
   seekBy: (deltaSeconds: number) => void;
   abortContinue: () => void;
   play: () => void;
@@ -63,11 +82,29 @@ export type KodikPlayerHandle = {
   unmute: () => void;
 };
 
-const CONTINUE_HARD_TIMEOUT_MS = 15_000;
+const CONTINUE_HARD_TIMEOUT_MS = 20_000;
 const CONTINUE_PAUSE_AFTER_SEEK_MS = 500;
 const CONTINUE_PAUSE_RETRY_DELAYS_MS = [200, 500, 1000, 1800] as const;
+/** After video_started: mobile needs a longer beat before seek sticks. */
+const CONTINUE_SEEK_AFTER_VIDEO_STARTED_MS = 450;
+const CONTINUE_SEEK_AFTER_VIDEO_STARTED_DESKTOP_MS = 180;
+/** Keep re-seeking while Kodik rebuffers from 0 after an early seek. */
+const CONTINUE_AUTOPLAY_SEEK_RETRY_MS = [200, 600, 1_200, 2_000, 3_200] as const;
+const CONTINUE_AUTOPLAY_CONFIRM_MS = 4_500;
+const CONTINUE_POSITION_TOLERANCE_SECONDS = 10;
+const CONTINUE_NEAR_START_SECONDS = 3;
+const CONTINUE_PLAY_RETRY_MS = [700, 1_600, 3_000, 5_000] as const;
+/** Re-send change_episode while waiting for kodik_player_current_episode. */
+const CONTINUE_EPISODE_CHANGE_RETRY_MS = [1_800, 3_600, 6_000] as const;
+/**
+ * Next-episode / start-at-0 only: if Kodik never re-emits current_episode after change_episode,
+ * force play→complete. Not used for resume-with-seek (would seek into the wrong episode).
+ */
+const CONTINUE_EPISODE_FORCE_PLAY_MS = 7_500;
 const SEEK_BY_FLUSH_DELAY_MS = 120;
 const INITIAL_STATE_REQUEST_DELAYS_MS = [0, 250, 750, 1500] as const;
+/** Don't re-render the watch panel on every Kodik time_update (GPU thrash → A/V freeze). */
+const PLAYBACK_POSITION_EMIT_MS = 400;
 
 const DEFAULT_PLAYBACK_STATE: KodikPlayerPlaybackState = {
   isPlaying: false,
@@ -79,12 +116,19 @@ const DEFAULT_PLAYBACK_STATE: KodikPlayerPlaybackState = {
   videoReady: false,
 };
 
+type EpisodeState = { seasonNumber: number; episodeNumber: number };
+
 type Props = {
   src: string;
   title: string;
   initialResume?: KodikPlayerResume | null;
   /** viewport — по высоте окна (минус шапка), с сохранением 16:9 */
   sizeMode?: "default" | "viewport";
+  /**
+   * Intended S/E for this iframe. `/seria/` embeds report episode=null; seed from this
+   * instead of defaulting to 1 so the strip and watch-history stay on the selected series.
+   */
+  activeEpisode?: EpisodeState | null;
   /** TA-плеер: внешний кадр 16:9, внутренний iframe 16:9 на всю область (настройка crop в CSS) */
   chromelessBeta?: boolean;
   onReady?: () => void;
@@ -100,18 +144,43 @@ type Props = {
   onEnded?: () => void;
 };
 
-type EpisodeState = { seasonNumber: number; episodeNumber: number };
-
 type ContinueFlow = {
   resume: KodikPlayerResume;
   autoplay: boolean;
-  stage: "episode" | "play" | "seek" | "pausing";
+  stage: "episode" | "play" | "seek" | "confirm" | "pausing";
   timers: number[];
+  linkMode: KodikPlayerLinkMode;
+  /** Survives clearFlowTimers — otherwise play/episode retries cancel the abort and hang forever. */
+  hardTimeoutId?: number;
+  lastReseekAtMs?: number;
 };
 
 function clearFlowTimers(flow: ContinueFlow): void {
   for (const id of flow.timers) window.clearTimeout(id);
   flow.timers.length = 0;
+}
+
+function clearContinueFlow(flow: ContinueFlow | null): void {
+  if (!flow) return;
+  clearFlowTimers(flow);
+  if (flow.hardTimeoutId != null) {
+    window.clearTimeout(flow.hardTimeoutId);
+    flow.hardTimeoutId = undefined;
+  }
+}
+
+function armContinueHardTimeout(
+  flow: ContinueFlow,
+  continueFlowRef: MutableRefObject<ContinueFlow | null>,
+  onContinueStateChange?: (active: boolean) => void,
+): void {
+  if (flow.hardTimeoutId != null) {
+    window.clearTimeout(flow.hardTimeoutId);
+  }
+  flow.hardTimeoutId = window.setTimeout(() => {
+    if (continueFlowRef.current !== flow) return;
+    completeContinueFlow(flow, continueFlowRef, onContinueStateChange);
+  }, CONTINUE_HARD_TIMEOUT_MS);
 }
 
 function completeContinueFlow(
@@ -124,6 +193,32 @@ function completeContinueFlow(
     continueFlowRef.current = null;
   }
   onContinueStateChange?.(false);
+}
+
+function isResumePositionConfirmed(positionSeconds: number, resumeSeconds: number): boolean {
+  if (resumeSeconds < 1) return true;
+  if (positionSeconds + CONTINUE_POSITION_TOLERANCE_SECONDS >= resumeSeconds) return true;
+  return Math.abs(positionSeconds - resumeSeconds) <= CONTINUE_POSITION_TOLERANCE_SECONDS;
+}
+
+function isNearEpisodeStart(positionSeconds: number, resumeSeconds: number): boolean {
+  return resumeSeconds >= CONTINUE_NEAR_START_SECONDS + 1 && positionSeconds < CONTINUE_NEAR_START_SECONDS;
+}
+
+function prefersTouchContinueTiming(): boolean {
+  if (typeof window === "undefined") return false;
+  return window.matchMedia("(hover: none), (pointer: coarse)").matches;
+}
+
+function seekDelayAfterVideoStartedMs(): number {
+  return prefersTouchContinueTiming()
+    ? CONTINUE_SEEK_AFTER_VIDEO_STARTED_MS
+    : CONTINUE_SEEK_AFTER_VIDEO_STARTED_DESKTOP_MS;
+}
+
+function sendContinueSeek(iframe: HTMLIFrameElement, flow: ContinueFlow): void {
+  sendKodikCommand(iframe, { method: "seek", seconds: flow.resume.positionSeconds });
+  flow.lastReseekAtMs = Date.now();
 }
 
 function beginPausingAfterSeek(
@@ -154,26 +249,66 @@ function beginPausingAfterSeek(
   );
 }
 
-function commandSeason(seasonNumber: number): number | undefined {
+function commandSeason(seasonNumber: number, linkMode: KodikPlayerLinkMode): number | undefined {
+  if (linkMode !== "serial") return undefined;
   return seasonNumber === 1 ? undefined : seasonNumber;
 }
 
-function normalizeEpisode(value: KodikCurrentEpisode): EpisodeState {
+function seedEpisodeState(
+  activeEpisode?: EpisodeState | null,
+  initialResume?: KodikPlayerResume | null,
+): EpisodeState {
+  if (activeEpisode && activeEpisode.episodeNumber > 0) {
+    return {
+      seasonNumber: activeEpisode.seasonNumber,
+      episodeNumber: activeEpisode.episodeNumber,
+    };
+  }
+  if (initialResume) {
+    return {
+      seasonNumber: initialResume.seasonNumber,
+      episodeNumber: initialResume.episodeNumber,
+    };
+  }
+  return { seasonNumber: 1, episodeNumber: 1 };
+}
+
+function normalizeEpisode(value: KodikCurrentEpisode, fallback: EpisodeState): EpisodeState {
   return {
-    seasonNumber: value.season ?? 1,
-    episodeNumber: value.episode ?? 1,
+    seasonNumber: value.season ?? fallback.seasonNumber,
+    episodeNumber: value.episode ?? fallback.episodeNumber,
   };
 }
 
-function episodeMatches(resume: KodikPlayerResume, current: EpisodeState): boolean {
+function hasKodikEpisodeNumbers(value: KodikCurrentEpisode): boolean {
+  return value.episode != null || value.season != null;
+}
+
+function episodeMatches(
+  resume: KodikPlayerResume,
+  current: EpisodeState,
+  linkMode: KodikPlayerLinkMode,
+): boolean {
+  if (linkMode === "single") return true;
+  if (linkMode === "season") {
+    return current.episodeNumber === resume.episodeNumber;
+  }
   return (
     current.episodeNumber === resume.episodeNumber && current.seasonNumber === resume.seasonNumber
   );
 }
 
-function clearContinueFlow(flow: ContinueFlow | null): void {
-  if (!flow) return;
-  for (const id of flow.timers) window.clearTimeout(id);
+function sendContinueEpisodeChange(
+  iframe: HTMLIFrameElement,
+  resume: KodikPlayerResume,
+  linkMode: KodikPlayerLinkMode,
+): void {
+  if (linkMode === "single") return;
+  sendKodikCommand(iframe, {
+    method: "change_episode",
+    season: commandSeason(resume.seasonNumber, linkMode),
+    episode: resume.episodeNumber,
+  });
 }
 
 function savePlaybackVolume(state: KodikPlayerPlaybackState): void {
@@ -183,27 +318,19 @@ function savePlaybackVolume(state: KodikPlayerPlaybackState): void {
   });
 }
 
-function applyInitialSeek(
+function scheduleContinueEpisodeChangeRetries(
   iframe: HTMLIFrameElement,
-  resume: KodikPlayerResume,
-  current: EpisodeState,
+  flow: ContinueFlow,
+  continueFlowRef: MutableRefObject<ContinueFlow | null>,
 ): void {
-  const needsEpisodeChange = !episodeMatches(resume, current);
-
-  if (needsEpisodeChange) {
-    sendKodikCommand(iframe, {
-      method: "change_episode",
-      season: commandSeason(resume.seasonNumber),
-      episode: resume.episodeNumber,
-    });
+  for (const delay of CONTINUE_EPISODE_CHANGE_RETRY_MS) {
+    flow.timers.push(
+      window.setTimeout(() => {
+        if (continueFlowRef.current !== flow || flow.stage !== "episode") return;
+        sendContinueEpisodeChange(iframe, flow.resume, flow.linkMode);
+      }, delay),
+    );
   }
-
-  if (resume.positionSeconds < 1) return;
-
-  const seekDelay = needsEpisodeChange ? 700 : 150;
-  window.setTimeout(() => {
-    sendKodikCommand(iframe, { method: "seek", seconds: resume.positionSeconds });
-  }, seekDelay);
 }
 
 function finishContinueSeek(
@@ -215,26 +342,21 @@ function finishContinueSeek(
 ): void {
   clearFlowTimers(flow);
 
-  if (!episodeMatches(flow.resume, episodeRef.current)) {
+  if (!episodeMatches(flow.resume, episodeRef.current, flow.linkMode)) {
+    // Never seek on an unconfirmed episode — that lands previous video at the new timestamp.
     flow.stage = "episode";
-    sendKodikCommand(iframe, {
-      method: "change_episode",
-      season: commandSeason(flow.resume.seasonNumber),
-      episode: flow.resume.episodeNumber,
-    });
-
-    const retryId = window.setTimeout(() => {
-      if (continueFlowRef.current !== flow || flow.stage !== "episode") return;
-      requestPlayThenSeek(iframe, flow, continueFlowRef, episodeRef, onContinueStateChange);
-    }, 1_800);
-    flow.timers.push(retryId);
+    sendContinueEpisodeChange(iframe, flow.resume, flow.linkMode);
+    scheduleContinueEpisodeChangeRetries(iframe, flow, continueFlowRef);
+    // clearFlowTimers removed stage timers only; keep/re-arm hard abort so we never hang forever.
+    armContinueHardTimeout(flow, continueFlowRef, onContinueStateChange);
     return;
   }
 
   if (flow.resume.positionSeconds >= 1) {
+    flow.stage = "seek";
+    sendContinueSeek(iframe, flow);
+
     if (!flow.autoplay) {
-      flow.stage = "seek";
-      sendKodikCommand(iframe, { method: "seek", seconds: flow.resume.positionSeconds });
       // Kodik often ignores an immediate pause and/or resumes after buffering.
       // Wait for seek ack (or timeout), then pause with retries.
       flow.timers.push(
@@ -246,8 +368,23 @@ function finishContinueSeek(
       return;
     }
 
-    sendKodikCommand(iframe, { method: "seek", seconds: flow.resume.positionSeconds });
-    completeContinueFlow(flow, continueFlowRef, onContinueStateChange);
+    // Autoplays: keep re-seeking — mobile often applies seek then rebuffers from 0.
+    for (const delay of CONTINUE_AUTOPLAY_SEEK_RETRY_MS) {
+      flow.timers.push(
+        window.setTimeout(() => {
+          if (continueFlowRef.current !== flow) return;
+          if (flow.stage !== "seek" && flow.stage !== "confirm") return;
+          sendContinueSeek(iframe, flow);
+        }, delay),
+      );
+    }
+    flow.timers.push(
+      window.setTimeout(() => {
+        if (continueFlowRef.current !== flow) return;
+        if (flow.stage !== "seek" && flow.stage !== "confirm") return;
+        completeContinueFlow(flow, continueFlowRef, onContinueStateChange);
+      }, CONTINUE_AUTOPLAY_CONFIRM_MS),
+    );
     return;
   }
 
@@ -270,11 +407,34 @@ function requestPlayThenSeek(
   flow.stage = "play";
   sendKodikCommand(iframe, { method: "play" });
 
+  if (flow.autoplay) {
+    // Seek-to-position: wait for video_started (phones reset to 0 on early seek).
+    // Next-episode / start-at-0: also finish on a short fallback — Kodik often emits
+    // only `play` after change_episode and never `video_started`.
+    for (const delay of CONTINUE_PLAY_RETRY_MS) {
+      flow.timers.push(
+        window.setTimeout(() => {
+          if (continueFlowRef.current !== flow || flow.stage !== "play") return;
+          sendKodikCommand(iframe, { method: "play" });
+        }, delay),
+      );
+    }
+    if (flow.resume.positionSeconds < 1) {
+      flow.timers.push(
+        window.setTimeout(() => {
+          if (continueFlowRef.current !== flow || flow.stage !== "play") return;
+          finishContinueSeek(iframe, flow, continueFlowRef, episodeRef, onContinueStateChange);
+        }, 2_000),
+      );
+    }
+    return;
+  }
+
   // Pause resume needs the media to actually start; `play` alone is too early.
   const fallbackId = window.setTimeout(() => {
     if (continueFlowRef.current !== flow || flow.stage !== "play") return;
     finishContinueSeek(iframe, flow, continueFlowRef, episodeRef, onContinueStateChange);
-  }, flow.autoplay ? 5_000 : 2_500);
+  }, 2_500);
   flow.timers.push(fallbackId);
 }
 
@@ -283,33 +443,55 @@ function startContinueFlow(
   resume: KodikPlayerResume,
   autoplay: boolean,
   current: EpisodeState,
+  linkMode: KodikPlayerLinkMode,
   continueFlowRef: MutableRefObject<ContinueFlow | null>,
   episodeRef: MutableRefObject<EpisodeState>,
   onContinueStateChange?: (active: boolean) => void,
+  options?: KodikPlayerSeekOptions,
 ): void {
   clearContinueFlow(continueFlowRef.current);
   onContinueStateChange?.(true);
 
-  const flow: ContinueFlow = { resume, autoplay, stage: "episode", timers: [] };
+  const flow: ContinueFlow = { resume, autoplay, stage: "episode", timers: [], linkMode };
   continueFlowRef.current = flow;
+  armContinueHardTimeout(flow, continueFlowRef, onContinueStateChange);
 
-  sendKodikCommand(iframe, {
-    method: "change_episode",
-    season: commandSeason(resume.seasonNumber),
-    episode: resume.episodeNumber,
-  });
+  const sameEpisode = episodeMatches(resume, current, linkMode);
+  // Boot already moved the strip / soft-seek to this episode; Kodik may already be there
+  // without a fresh current_episode for us to wait on.
+  const uiAlreadyOnTarget = Boolean(options?.uiEpisodeAlreadyTargeted);
 
-  const episodeFallbackId = window.setTimeout(() => {
-    if (continueFlowRef.current !== flow || flow.stage !== "episode") return;
+  // Same episode (or UI already on target after boot): play in the same user-gesture turn.
+  // Do not send change_episode here — it restarts at 0 and can burn Android autoplay;
+  // bootResume already soft-switched when uiAlreadyOnTarget.
+  if (sameEpisode || uiAlreadyOnTarget) {
+    if (uiAlreadyOnTarget && !sameEpisode) {
+      episodeRef.current = {
+        seasonNumber: resume.seasonNumber,
+        episodeNumber: resume.episodeNumber,
+      };
+    }
     requestPlayThenSeek(iframe, flow, continueFlowRef, episodeRef, onContinueStateChange);
-  }, episodeMatches(resume, current) ? 450 : 1_800);
-  flow.timers.push(episodeFallbackId);
-
-  const hardTimeoutId = window.setTimeout(() => {
-    if (continueFlowRef.current !== flow) return;
-    completeContinueFlow(flow, continueFlowRef, onContinueStateChange);
-  }, CONTINUE_HARD_TIMEOUT_MS);
-  flow.timers.push(hardTimeoutId);
+  } else {
+    sendContinueEpisodeChange(iframe, resume, linkMode);
+    // Wait for kodik_player_current_episode that matches resume. Do not blind play/seek
+    // when resuming mid-episode — that applied the timestamp to N−1.
+    scheduleContinueEpisodeChangeRetries(iframe, flow, continueFlowRef);
+    // Next episode (position 0): if confirmation never arrives, still try play so auto-advance
+    // does not hang forever on a silent change_episode.
+    if (resume.positionSeconds < 1) {
+      flow.timers.push(
+        window.setTimeout(() => {
+          if (continueFlowRef.current !== flow || flow.stage !== "episode") return;
+          episodeRef.current = {
+            seasonNumber: resume.seasonNumber,
+            episodeNumber: resume.episodeNumber,
+          };
+          requestPlayThenSeek(iframe, flow, continueFlowRef, episodeRef, onContinueStateChange);
+        }, CONTINUE_EPISODE_FORCE_PLAY_MS),
+      );
+    }
+  }
 }
 
 function handleContinueFlowMessage(
@@ -318,6 +500,7 @@ function handleContinueFlowMessage(
   continueFlowRef: MutableRefObject<ContinueFlow | null>,
   episodeRef: MutableRefObject<EpisodeState>,
   onContinueStateChange?: (active: boolean) => void,
+  onPositionConfirmed?: (positionSeconds: number, playing: boolean) => void,
 ): void {
   const flow = continueFlowRef.current;
   if (!flow || !iframe || !isKodikPlayerMessage(event.data)) return;
@@ -327,8 +510,20 @@ function handleContinueFlowMessage(
     event.data.key === "kodik_player_current_episode" &&
     event.data.value
   ) {
-    const episode = normalizeEpisode(event.data.value as KodikCurrentEpisode);
-    if (episodeMatches(flow.resume, episode)) {
+    const reported = event.data.value as KodikCurrentEpisode;
+    if (flow.linkMode !== "single" && !hasKodikEpisodeNumbers(reported)) return;
+    const episode =
+      flow.linkMode === "single"
+        ? {
+            seasonNumber: flow.resume.seasonNumber,
+            episodeNumber: flow.resume.episodeNumber,
+          }
+        : normalizeEpisode(reported, {
+            seasonNumber: flow.resume.seasonNumber,
+            episodeNumber: flow.resume.episodeNumber,
+          });
+    if (episodeMatches(flow.resume, episode, flow.linkMode)) {
+      episodeRef.current = episode;
       clearFlowTimers(flow);
       requestPlayThenSeek(iframe, flow, continueFlowRef, episodeRef, onContinueStateChange);
     }
@@ -336,17 +531,79 @@ function handleContinueFlowMessage(
   }
 
   if (flow.stage === "play") {
-    const playReady = event.data.key === "kodik_player_play";
     const videoStarted = event.data.key === "kodik_player_video_started";
-    // For pause resume, wait until media actually started — early `play` + pause is ignored.
-    if (videoStarted || (flow.autoplay && playReady)) {
-      finishContinueSeek(iframe, flow, continueFlowRef, episodeRef, onContinueStateChange);
+    const playReady = event.data.key === "kodik_player_play";
+    // Resume-with-seek: only video_started (early play+seek flashes then resets to 0 on phones).
+    // Next episode / position 0: `play` is enough after change_episode.
+    if (flow.autoplay && flow.resume.positionSeconds < 1) {
+      if (!videoStarted && !playReady) return;
+    } else if (!videoStarted) {
+      return;
+    }
+    clearFlowTimers(flow);
+    const seekDelay =
+      flow.resume.positionSeconds < 1
+        ? 0
+        : flow.autoplay
+          ? seekDelayAfterVideoStartedMs()
+          : 120;
+    flow.timers.push(
+      window.setTimeout(() => {
+        if (continueFlowRef.current !== flow || flow.stage !== "play") return;
+        finishContinueSeek(iframe, flow, continueFlowRef, episodeRef, onContinueStateChange);
+      }, seekDelay),
+    );
+    return;
+  }
+
+  if (
+    (flow.stage === "seek" || flow.stage === "confirm") &&
+    flow.autoplay &&
+    (event.data.key === "kodik_player_time_update" || event.data.key === "kodik_player_time") &&
+    typeof event.data.value === "number"
+  ) {
+    const positionSeconds = event.data.value;
+    if (isResumePositionConfirmed(positionSeconds, flow.resume.positionSeconds)) {
+      onPositionConfirmed?.(positionSeconds, true);
+      completeContinueFlow(flow, continueFlowRef, onContinueStateChange);
+      return;
+    }
+    if (isNearEpisodeStart(positionSeconds, flow.resume.positionSeconds)) {
+      flow.stage = "confirm";
+      const now = Date.now();
+      if (!flow.lastReseekAtMs || now - flow.lastReseekAtMs >= 350) {
+        sendContinueSeek(iframe, flow);
+      }
     }
     return;
   }
 
   if (flow.stage === "seek" && event.data.key === "kodik_player_seek") {
+    if (flow.autoplay) {
+      // Seek ack alone is not enough on mobile — stream often restarts at 0 right after.
+      // Wait for time_update near the resume mark before painting / completing.
+      flow.stage = "confirm";
+      return;
+    }
+
     beginPausingAfterSeek(iframe, flow, continueFlowRef, onContinueStateChange);
+    return;
+  }
+
+  // Stream restart after an early seek: push position again.
+  if (
+    flow.autoplay &&
+    (flow.stage === "seek" || flow.stage === "confirm") &&
+    event.data.key === "kodik_player_video_started"
+  ) {
+    flow.stage = "confirm";
+    flow.timers.push(
+      window.setTimeout(() => {
+        if (continueFlowRef.current !== flow) return;
+        if (flow.stage !== "seek" && flow.stage !== "confirm") return;
+        sendContinueSeek(iframe, flow);
+      }, seekDelayAfterVideoStartedMs()),
+    );
     return;
   }
 
@@ -363,6 +620,7 @@ export const KodikPlayer = forwardRef<KodikPlayerHandle, Props>(function KodikPl
     src,
     title,
     initialResume,
+    activeEpisode = null,
     sizeMode = "default",
     chromelessBeta = false,
     onReady,
@@ -376,17 +634,23 @@ export const KodikPlayer = forwardRef<KodikPlayerHandle, Props>(function KodikPl
   ref,
 ) {
   const iframeRef = useRef<HTMLIFrameElement>(null);
-  const episodeRef = useRef<EpisodeState>({ seasonNumber: 1, episodeNumber: 1 });
+  const playerLinkModeRef = useRef<KodikPlayerLinkMode>("serial");
+  const episodeRef = useRef<EpisodeState>(seedEpisodeState(activeEpisode, initialResume));
+  const activeEpisodeRef = useRef(activeEpisode);
+  activeEpisodeRef.current = activeEpisode;
   const positionRef = useRef(0);
   const playbackRef = useRef<KodikPlayerPlaybackState>({ ...DEFAULT_PLAYBACK_STATE });
   const translationIdRef = useRef<number | null>(null);
   const resumeAppliedRef = useRef(false);
+  const bootEpisodeNudgeCountRef = useRef(0);
+  const bootSettledRef = useRef(false);
   const playerReadyRef = useRef(false);
   const videoStreamStartedRef = useRef(false);
   const continueFlowRef = useRef<ContinueFlow | null>(null);
   const bufferedSeekTargetRef = useRef<number | null>(null);
   const bufferedSeekTimerRef = useRef<number | null>(null);
   const stateRequestTimersRef = useRef<number[]>([]);
+  const positionEmitTimerRef = useRef<number | null>(null);
   const onProgressRef = useRef(onProgress);
   const onPauseRef = useRef(onPause);
   const onTranslationChangeRef = useRef(onTranslationChange);
@@ -395,12 +659,38 @@ export const KodikPlayer = forwardRef<KodikPlayerHandle, Props>(function KodikPl
   const onPlaybackStateChangeRef = useRef(onPlaybackStateChange);
   const onEndedRef = useRef(onEnded);
 
+  useEffect(() => {
+    playerLinkModeRef.current = detectKodikPlayerLinkMode(src);
+  }, [src]);
+
+  const clearPositionEmitTimer = () => {
+    if (positionEmitTimerRef.current != null) {
+      window.clearTimeout(positionEmitTimerRef.current);
+      positionEmitTimerRef.current = null;
+    }
+  };
+
   const emitPlaybackState = () => {
+    clearPositionEmitTimer();
     onPlaybackStateChangeRef.current?.({ ...playbackRef.current });
+  };
+
+  const schedulePositionEmit = () => {
+    if (positionEmitTimerRef.current != null) return;
+    positionEmitTimerRef.current = window.setTimeout(() => {
+      positionEmitTimerRef.current = null;
+      onPlaybackStateChangeRef.current?.({ ...playbackRef.current });
+    }, PLAYBACK_POSITION_EMIT_MS);
   };
 
   const patchPlayback = (patch: Partial<KodikPlayerPlaybackState>) => {
     playbackRef.current = { ...playbackRef.current, ...patch };
+    const keys = Object.keys(patch);
+    // Progress saving still uses onProgress every tick; only React UI state is throttled.
+    if (keys.length === 1 && keys[0] === "positionSeconds") {
+      schedulePositionEmit();
+      return;
+    }
     emitPlaybackState();
   };
 
@@ -492,9 +782,11 @@ export const KodikPlayer = forwardRef<KodikPlayerHandle, Props>(function KodikPl
 
   useEffect(() => {
     resumeAppliedRef.current = false;
+    bootEpisodeNudgeCountRef.current = 0;
+    bootSettledRef.current = false;
     playerReadyRef.current = false;
     videoStreamStartedRef.current = false;
-    episodeRef.current = { seasonNumber: 1, episodeNumber: 1 };
+    episodeRef.current = seedEpisodeState(activeEpisodeRef.current, initialResume);
     positionRef.current = 0;
     playbackRef.current = { ...DEFAULT_PLAYBACK_STATE };
     emitPlaybackState();
@@ -504,37 +796,54 @@ export const KodikPlayer = forwardRef<KodikPlayerHandle, Props>(function KodikPl
     continueFlowRef.current = null;
     clearBufferedSeek();
     clearStateRequestTimers();
+    clearPositionEmitTimer();
     onContinueStateChangeRef.current?.(false);
   }, [src]);
 
   useImperativeHandle(ref, () => ({
-    seekTo(resume: KodikPlayerResume, mode: KodikPlayerResumeMode = "play") {
+    seekTo(
+      resume: KodikPlayerResume,
+      mode: KodikPlayerResumeMode = "play",
+      options?: KodikPlayerSeekOptions,
+    ) {
       if (!iframeRef.current) {
         onContinueStateChangeRef.current?.(false);
         return;
       }
       clearBufferedSeek();
+      // Keep episodeRef as Kodik-confirmed only. Optimistic overwrite made finishContinueSeek
+      // believe the target episode was already loaded and seek into the previous one.
       const currentEpisode = episodeRef.current;
-      episodeRef.current = {
-        seasonNumber: resume.seasonNumber,
-        episodeNumber: resume.episodeNumber,
-      };
-      positionRef.current = Math.max(0, resume.positionSeconds);
-      patchPlayback({ positionSeconds: positionRef.current, isPlaying: mode === "play" });
-      onProgressRef.current?.({
-        seasonNumber: resume.seasonNumber,
-        episodeNumber: resume.episodeNumber,
-        positionSeconds: positionRef.current,
-        source: "episode",
-      });
+      const linkMode = playerLinkModeRef.current;
+      const episodeChanging = !episodeMatches(resume, currentEpisode, linkMode);
+      if (mode === "pause") {
+        positionRef.current = Math.max(0, resume.positionSeconds);
+        patchPlayback({ positionSeconds: positionRef.current, isPlaying: false });
+      } else {
+        // Don't paint resume time until Kodik confirms — phones flash target then snap to 0.
+        patchPlayback({ isPlaying: false });
+      }
+      // Do not claim the new episode in liveProgress until Kodik confirms — otherwise
+      // video_ended / end-guard can skip ahead (N→N+1 claimed, then N+1→N+2).
+      // uiEpisodeAlreadyTargeted: boot already aligned UI to this episode.
+      if (!episodeChanging || options?.uiEpisodeAlreadyTargeted) {
+        onProgressRef.current?.({
+          seasonNumber: resume.seasonNumber,
+          episodeNumber: resume.episodeNumber,
+          positionSeconds: positionRef.current,
+          source: "episode",
+        });
+      }
       startContinueFlow(
         iframeRef.current,
         resume,
         mode === "play",
         currentEpisode,
+        linkMode,
         continueFlowRef,
         episodeRef,
         onContinueStateChangeRef.current,
+        options,
       );
     },
     seekBy(deltaSeconds: number) {
@@ -633,38 +942,74 @@ export const KodikPlayer = forwardRef<KodikPlayerHandle, Props>(function KodikPl
 
   useEffect(() => {
     const applyInitialResume = () => {
-      if (!initialResume || resumeAppliedRef.current || !iframeRef.current) return;
-      applyInitialSeek(iframeRef.current, initialResume, episodeRef.current);
+      if (!initialResume || !iframeRef.current || bootSettledRef.current) return;
+      const current = episodeRef.current;
+      const linkMode = playerLinkModeRef.current;
+
+      // Keep nudging toward the boot episode when Kodik opens on last-episode by default.
+      // Previously resumeApplied after the 1.5s fallback blocked a second change_episode once
+      // the real current_episode (often last) arrived — UI showed saved ep, Kodik stayed on last.
+      if (!episodeMatches(initialResume, current, linkMode)) {
+        if (bootEpisodeNudgeCountRef.current >= 3) {
+          bootSettledRef.current = true;
+          return;
+        }
+        bootEpisodeNudgeCountRef.current += 1;
+        sendContinueEpisodeChange(iframeRef.current, initialResume, linkMode);
+        return;
+      }
+
+      // Matched once — never pull the user back after they advance to the next episode.
+      bootSettledRef.current = true;
+      if (resumeAppliedRef.current) return;
       resumeAppliedRef.current = true;
+      if (initialResume.positionSeconds < 1) return;
+      window.setTimeout(() => {
+        if (!iframeRef.current) return;
+        sendKodikCommand(iframeRef.current, {
+          method: "seek",
+          seconds: initialResume.positionSeconds,
+        });
+      }, 150);
     };
 
     const onMessage = (event: MessageEvent) => {
+      logKodikPlayerDebugMessage(event.data);
+
+      // onReady/seekTo must run before continue-flow handles this same current_episode,
+      // otherwise a remount misses the confirming event and falls back to a blind seek.
+      if (
+        isKodikPlayerMessage(event.data) &&
+        event.data.key === "kodik_player_current_episode" &&
+        event.data.value
+      ) {
+        markPlayerReady();
+      }
+
       handleContinueFlowMessage(
         event,
         iframeRef.current,
         continueFlowRef,
         episodeRef,
         onContinueStateChangeRef.current,
+        (positionSeconds, playing) => {
+          positionRef.current = Math.max(0, positionSeconds);
+          patchPlayback({ positionSeconds: positionRef.current, isPlaying: playing });
+          onProgressRef.current?.({
+            seasonNumber: episodeRef.current.seasonNumber,
+            episodeNumber: episodeRef.current.episodeNumber,
+            positionSeconds: positionRef.current,
+            source: "time",
+          });
+        },
       );
 
       if (!isKodikPlayerMessage(event.data)) return;
 
       if (event.data.key === "kodik_player_current_episode" && event.data.value) {
-        markPlayerReady();
         const currentEpisode = event.data.value as KodikCurrentEpisode;
-        const nextEpisode = normalizeEpisode(currentEpisode);
+        const linkMode = playerLinkModeRef.current;
         const continueFlow = continueFlowRef.current;
-        if (continueFlow && !episodeMatches(continueFlow.resume, nextEpisode)) return;
-        episodeRef.current = nextEpisode;
-        applyInitialResume();
-
-        onProgressRef.current?.({
-          seasonNumber: episodeRef.current.seasonNumber,
-          episodeNumber: episodeRef.current.episodeNumber,
-          positionSeconds: positionRef.current,
-          source: "episode",
-        });
-
         const translationId = currentEpisode.translation?.id;
         if (translationId != null && translationIdRef.current !== translationId) {
           translationIdRef.current = translationId;
@@ -672,6 +1017,36 @@ export const KodikPlayer = forwardRef<KodikPlayerHandle, Props>(function KodikPl
             id: translationId,
             title: currentEpisode.translation?.title ?? "",
           });
+        }
+
+        // `/seria/` (and some boot events) send episode/season null. Never coerce that to 1.
+        if (linkMode === "single" || !hasKodikEpisodeNumbers(currentEpisode)) {
+          if (!continueFlow) {
+            applyInitialResume();
+          }
+          onProgressRef.current?.({
+            seasonNumber: episodeRef.current.seasonNumber,
+            episodeNumber: episodeRef.current.episodeNumber,
+            positionSeconds: positionRef.current,
+            source: "episode",
+          });
+        } else {
+          const nextEpisode = normalizeEpisode(currentEpisode, episodeRef.current);
+          if (!continueFlow || episodeMatches(continueFlow.resume, nextEpisode, continueFlow.linkMode)) {
+            episodeRef.current = nextEpisode;
+            // While continue-flow owns the switch (e.g. next episode), do not boot-nudge
+            // back toward initialResume — that undoes auto-advance (boot ep N vs next N+1).
+            if (!continueFlow) {
+              applyInitialResume();
+            }
+
+            onProgressRef.current?.({
+              seasonNumber: episodeRef.current.seasonNumber,
+              episodeNumber: episodeRef.current.episodeNumber,
+              positionSeconds: positionRef.current,
+              source: "episode",
+            });
+          }
         }
       }
 
@@ -767,6 +1142,7 @@ export const KodikPlayer = forwardRef<KodikPlayerHandle, Props>(function KodikPl
       continueFlowRef.current = null;
       clearBufferedSeek();
       clearStateRequestTimers();
+      clearPositionEmitTimer();
       onContinueStateChangeRef.current?.(false);
     };
   }, [initialResume, src]);
@@ -775,7 +1151,15 @@ export const KodikPlayer = forwardRef<KodikPlayerHandle, Props>(function KodikPl
     if (!initialResume || resumeAppliedRef.current) return;
 
     const timer = window.setTimeout(() => {
-      applyResumeFallback(initialResume, iframeRef, resumeAppliedRef, episodeRef);
+      applyResumeFallback(
+        initialResume,
+        iframeRef,
+        resumeAppliedRef,
+        episodeRef,
+        bootEpisodeNudgeCountRef,
+        bootSettledRef,
+        playerLinkModeRef,
+      );
     }, 1_500);
 
     return () => window.clearTimeout(timer);
@@ -812,7 +1196,7 @@ export const KodikPlayer = forwardRef<KodikPlayerHandle, Props>(function KodikPl
             ref={iframeRef}
             src={toKodikPlayerEmbedUrl(src)}
             title={title}
-            className="absolute inset-0 h-full w-full border-0"
+            className="kodik-player-iframe absolute inset-0 h-full w-full border-0"
             allowFullScreen
             allow="autoplay *; fullscreen *"
             onLoad={markPlayerReady}
@@ -828,9 +1212,29 @@ function applyResumeFallback(
   iframeRef: RefObject<HTMLIFrameElement | null>,
   resumeAppliedRef: MutableRefObject<boolean>,
   episodeRef: MutableRefObject<EpisodeState>,
+  bootEpisodeNudgeCountRef: MutableRefObject<number>,
+  bootSettledRef: MutableRefObject<boolean>,
+  playerLinkModeRef: MutableRefObject<KodikPlayerLinkMode>,
 ) {
-  if (resumeAppliedRef.current || !iframeRef.current) return;
+  if (!iframeRef.current || bootSettledRef.current) return;
 
-  applyInitialSeek(iframeRef.current, resume, episodeRef.current);
+  const linkMode = playerLinkModeRef.current;
+  if (!episodeMatches(resume, episodeRef.current, linkMode)) {
+    if (bootEpisodeNudgeCountRef.current >= 3) {
+      bootSettledRef.current = true;
+      return;
+    }
+    bootEpisodeNudgeCountRef.current += 1;
+    sendContinueEpisodeChange(iframeRef.current, resume, linkMode);
+    return;
+  }
+
+  bootSettledRef.current = true;
+  if (resumeAppliedRef.current) return;
   resumeAppliedRef.current = true;
+  if (resume.positionSeconds < 1) return;
+  window.setTimeout(() => {
+    if (!iframeRef.current) return;
+    sendKodikCommand(iframeRef.current, { method: "seek", seconds: resume.positionSeconds });
+  }, 150);
 }

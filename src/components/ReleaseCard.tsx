@@ -116,7 +116,7 @@ export function ReleaseCard({
               loading="lazy"
               decoding="async"
               {...EXTERNAL_IMG_ATTRS}
-              className="absolute inset-0 h-full w-full scale-105 object-cover blur-[4px]"
+              className="tv-decorative-blur absolute inset-0 h-full w-full scale-105 object-cover blur-[4px]"
             />
             <div className="card-screenshot-dim absolute inset-0" />
           </>

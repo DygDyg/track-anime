@@ -54,7 +54,7 @@ flowchart LR
 | 📜 **История** | Сезон, серия, прогресс в секундах |
 | 📅 **Календарь** | Расписание выхода серий ongoing-аниме |
 | 👤 **Профили** | Публичные страницы пользователей по Shikimori ID |
-| 📱 **PWA / Android** | Установка как PWA, а также Android-оболочка для телефона и Android TV |
+| 📱 **PWA / Android / Windows** | Установка как PWA, Android-оболочка (телефон + TV) и Windows-оболочка на WebView2 |
 | 🔔 **Уведомления** | Browser push, in-app лента, Discord/Telegram/VK привязки |
 | 🎮 **Discord RPC** | Статус «смотрю» через локальный tray-приложение |
 | 👥 **Совместный просмотр** | Настраиваемые WebSocket-комнаты TA-плеера с invite-ссылкой, мастером и гостевыми именами |
@@ -148,12 +148,18 @@ http://localhost:3000/api/auth/callback/shikimori
 | `npm run deploy:site` | Только сайт |
 | `npm run deploy:rpc` | Только Discord RPC exe |
 | `npm run deploy:apk` | Только Android APK |
+| `npm run windows:publish` | Сборка Windows exe + манифест в `public/downloads` |
+| `npm run deploy:windows` | Только Windows exe + манифест на сервер |
 
 Полный список скриптов — в [`package.json`](package.json).
 
 ## Android и Android TV
 
 Нативная Android-оболочка находится в [`android/`](android/). Она открывает production-сайт в защищённом WebView и имеет отдельный launcher для Android TV с D-pad-навигацией. Сборка и публикационные требования описаны в [`docs/ANDROID.md`](docs/ANDROID.md).
+
+## Windows
+
+Настольная оболочка на WPF + WebView2 — в [`windows/`](windows/). Зеркала, HTTP-прокси, adblock и проверка обновлений как у Android. Сборка: `npm run windows:publish`, заливка: `npm run deploy:windows`, подробности в [`docs/WINDOWS.md`](docs/WINDOWS.md).
 
 ---
 
@@ -219,6 +225,7 @@ npm run deploy:release      # сайт + пересборка Discord RPC exe
 | [`docs/SERVER.md`](docs/SERVER.md) | Production-сервер |
 | [`docs/DEPLOY.md`](docs/DEPLOY.md) | Деплой с Windows |
 | [`docs/ANDROID.md`](docs/ANDROID.md) | Сборка Android / Android TV оболочки |
+| [`docs/WINDOWS.md`](docs/WINDOWS.md) | Сборка Windows WebView2 оболочки |
 | [`docs/kodik-api/`](docs/kodik-api/) | Справочник Kodik API |
 | [`docs/shikimori-api/`](docs/shikimori-api/) | Справочник Shikimori API |
 

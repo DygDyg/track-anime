@@ -2,7 +2,8 @@ import type { ReleaseItemDto } from "@/lib/releases";
 import type { WatchHistoryItemDto } from "@/lib/watch-history";
 
 /** Единая подпись прогресса для карточек истории (главная и /history). */
-export function formatHistoryWatchHint(episode: number): string {
+export function formatHistoryWatchHint(episode: number, isBookmark = false): string {
+  if (isBookmark || episode <= 0) return "Ещё не смотрели";
   return `Вы остановились на серии ${episode}`;
 }
 

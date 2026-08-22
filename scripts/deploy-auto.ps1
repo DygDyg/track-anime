@@ -1,4 +1,4 @@
-# Авто-деплой: по git diff выбирает site / rpc / apk и заливает только нужное.
+# Авто-деплой: по git diff выбирает site / rpc / apk / windows и заливает только нужное.
 #
 # Использование:
 #   .\scripts\deploy-auto.ps1
@@ -173,6 +173,7 @@ function Test-IgnoredDeployPath {
         $Path -match '^scripts/deploy' -or
         $Path -eq 'deploy.bat' -or
         $Path -eq 'scripts/publish-android-apk.ps1' -or
+        $Path -eq 'scripts/publish-windows-app.ps1' -or
         $Path -eq 'scripts/deploy-config.ps1' -or
         $Path -eq 'scripts/deploy-precheck.ps1' -or
         $Path -eq 'scripts/deploy-fast.ps1' -or
@@ -191,10 +192,12 @@ function Get-DeployPlan {
     $needSite = [bool]$ForceSite
     $needRpc = [bool]$ForceTrayRebuild
     $needApk = $false
+    $needWindows = $false
     $samples = @{
-        site = New-Object System.Collections.Generic.List[string]
-        rpc  = New-Object System.Collections.Generic.List[string]
-        apk  = New-Object System.Collections.Generic.List[string]
+        site    = New-Object System.Collections.Generic.List[string]
+        rpc     = New-Object System.Collections.Generic.List[string]
+        apk     = New-Object System.Collections.Generic.List[string]
+        windows = New-Object System.Collections.Generic.List[string]
     }
 
     foreach ($raw in $Paths) {
@@ -232,6 +235,24 @@ function Get-DeployPlan {
             }
         }
 
+        if (
+            $path -match '^windows/' -or
+            $path -eq 'public/downloads/TrackAnimeWindows.exe' -or
+            $path -eq 'public/downloads/TrackAnimeWindows.json'
+        ) {
+            $needWindows = $true
+            if ($samples.windows.Count -lt 8) { $samples.windows.Add($path) }
+            if ($path -match '^windows/') {
+                continue
+            }
+            if (
+                $path -eq 'public/downloads/TrackAnimeWindows.exe' -or
+                $path -eq 'public/downloads/TrackAnimeWindows.json'
+            ) {
+                continue
+            }
+        }
+
         $needSite = $true
         if ($samples.site.Count -lt 8) { $samples.site.Add($path) }
     }
@@ -240,6 +261,7 @@ function Get-DeployPlan {
         Site    = $needSite
         Rpc     = $needRpc
         Apk     = $needApk
+        Windows = $needWindows
         Samples = $samples
     }
 }
@@ -296,9 +318,9 @@ Write-Step "changed paths: $($changed.Count)"
 
 $plan = Get-DeployPlan -Paths $changed -ForceSite:$ForceSite -ForceTrayRebuild:$ForceTrayRebuild
 
-if (-not $plan.Site -and -not $plan.Rpc -and -not $plan.Apk) {
+if (-not $plan.Site -and -not $plan.Rpc -and -not $plan.Apk -and -not $plan.Windows) {
     Write-Step "nothing relevant to deploy (clean tree / docs-only / ignored paths)" -Color Yellow
-    Write-Step "force: npm run deploy:site | deploy:rpc | deploy:apk" -Color Yellow
+    Write-Step "force: npm run deploy:site | deploy:rpc | deploy:apk | deploy:windows" -Color Yellow
     Write-Step "or: .\scripts\deploy-auto.ps1 -SinceMain   # include commits vs origin/main" -Color Yellow
     Write-Step "or: .\scripts\deploy-auto.ps1 -ForceSite" -Color Yellow
     exit 0
@@ -307,10 +329,11 @@ if (-not $plan.Site -and -not $plan.Rpc -and -not $plan.Apk) {
 $targets = @()
 if ($plan.Rpc) { $targets += "rpc" }
 if ($plan.Apk) { $targets += "apk" }
+if ($plan.Windows) { $targets += "windows" }
 if ($plan.Site) { $targets += "site" }
 Write-Step "plan: $($targets -join ' + ')" -Color Green
 
-foreach ($name in @("rpc", "apk", "site")) {
+foreach ($name in @("rpc", "apk", "windows", "site")) {
     $list = $plan.Samples[$name]
     if ($list -and $list.Count -gt 0) {
         Write-Step ("  {0}: {1}" -f $name, ($list -join ", "))
@@ -342,8 +365,25 @@ if ($plan.Apk) {
     try {
         Invoke-DeployScript -ScriptName "deploy-apk.ps1" -Arguments $apkArgs
     } catch {
+        if ($plan.Site -or $plan.Windows) {
+            Write-Step "APK deploy failed; continuing. $($_.Exception.Message)" -Color Yellow
+        } else {
+            throw
+        }
+    }
+}
+
+if ($plan.Windows) {
+    $winArgs = @{
+        Remote       = $Remote
+        SshKey       = $SshKey
+        ServerAppDir = $ServerAppDir
+    }
+    try {
+        Invoke-DeployScript -ScriptName "deploy-windows-app.ps1" -Arguments $winArgs
+    } catch {
         if ($plan.Site) {
-            Write-Step "APK deploy failed; continuing with site. $($_.Exception.Message)" -Color Yellow
+            Write-Step "Windows app deploy failed; continuing with site. $($_.Exception.Message)" -Color Yellow
         } else {
             throw
         }
@@ -362,7 +402,7 @@ if ($plan.Site) {
         Invoke-DeployScript -ScriptName "deploy-precheck.ps1" -Arguments $precheckArgs
     }
 
-    # Large downloads go through deploy-rpc / deploy-apk; keep existing server copies.
+    # Large downloads go through deploy-rpc / deploy-apk / deploy-windows; keep existing server copies.
     $siteArgs = @{
         Remote            = $Remote
         SshKey            = $SshKey
@@ -372,6 +412,7 @@ if ($plan.Site) {
         SkipTrayPublish   = $true
         ExcludeRpcExe     = $true
         ExcludeApk        = $true
+        ExcludeWindowsApp = $true
     }
     Invoke-DeployScript -ScriptName "deploy.ps1" -Arguments $siteArgs
 }

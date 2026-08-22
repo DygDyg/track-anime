@@ -68,6 +68,20 @@ export type SaveMaterialResult = {
   newReleases: number;
 };
 
+/** Kodik anime films (`type=anime` / movie-*) have no seasons tree — playerLink is enough. */
+export function isKodikAnimeFilm(material: Pick<KodikMaterial, "id" | "type">): boolean {
+  return material.type === "anime" || material.id.startsWith("movie-");
+}
+
+function resolveEpisodesLoaded(
+  material: KodikMaterial,
+  loadEpisodes: boolean,
+): boolean {
+  if (loadEpisodes) return true;
+  // Films need no seasons tree; serials stay pending until episodes phase/sync.
+  return isKodikAnimeFilm(material);
+}
+
 export async function saveKodikMaterial(
   prisma: PrismaClient,
   material: KodikMaterial,
@@ -86,6 +100,7 @@ export async function saveKodikMaterial(
 
   const materialData = await buildStoredMaterialData(material);
   const materialAnimeReleasedAt = animeReleasedAt(material);
+  const episodesLoaded = resolveEpisodesLoaded(material, options.loadEpisodes);
 
   const materialRow = await prisma.kodikMaterial.upsert({
     where: { kodikId: material.id },
@@ -108,7 +123,7 @@ export async function saveKodikMaterial(
       kodikCreatedAt: material.created_at ? new Date(material.created_at) : null,
       kodikUpdatedAt: material.updated_at ? new Date(material.updated_at) : null,
       animeReleasedAt: materialAnimeReleasedAt,
-      episodesLoaded: options.loadEpisodes && Boolean(material.seasons),
+      episodesLoaded,
       materialData,
     },
     update: {
@@ -128,7 +143,7 @@ export async function saveKodikMaterial(
       translationType: translation.type,
       kodikUpdatedAt: material.updated_at ? new Date(material.updated_at) : null,
       ...(materialAnimeReleasedAt ? { animeReleasedAt: materialAnimeReleasedAt } : {}),
-      episodesLoaded: options.loadEpisodes && Boolean(material.seasons) ? true : undefined,
+      ...(episodesLoaded ? { episodesLoaded: true } : {}),
       materialData,
     },
   });

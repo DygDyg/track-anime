@@ -1,5 +1,5 @@
 const RELATION_BADGE_BASE =
-  "rounded-md px-2 py-0.5 text-[10px] font-semibold leading-tight shadow-lg shadow-black/55 ring-1 backdrop-blur-[2px]";
+  "rounded-lg px-2 py-0.5 text-[10px] font-bold leading-tight shadow-lg shadow-black/55 ring-1 backdrop-blur-[2px] sm:text-[11px]";
 
 /** Непрозрачные бейджи типов связи на постере (Shikimori relation). */
 export const RELATION_BADGE_THEMES: Record<string, string> = {

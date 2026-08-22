@@ -19,6 +19,8 @@ type UserListUpdatePayload = {
   removeAll?: boolean;
   rewatch?: boolean;
   rewatches?: number;
+  /** 0 = сбросить; 1–10 = оценка */
+  score?: number;
 };
 
 type UserListStatusContextValue = {
@@ -123,6 +125,8 @@ export function UserListStatusProvider({ children }: { children: ReactNode }) {
           emitCompanionReaction("lying");
         } else if (payload.bookmark === true || payload.listStatus) {
           emitCompanionReaction("favorites");
+        } else if (payload.score != null && payload.score >= 8) {
+          emitCompanionReaction("celebrate");
         } else {
           emitCompanionReaction("jump");
         }

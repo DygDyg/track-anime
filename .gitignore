@@ -52,6 +52,12 @@ public/swe-worker-*.js
 public/downloads/TrackAnimeDiscordRPC.exe
 public/downloads/TrackAnime.apk
 public/downloads/TrackAnime.json
+public/downloads/TrackAnimeWindows.exe
+public/downloads/TrackAnimeWindows.json
+windows/TrackAnime/local.properties
+windows/publish/
+windows/**/bin/
+windows/**/obj/
 
 # Backups
 backups/

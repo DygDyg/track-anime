@@ -579,7 +579,7 @@ export function ReleaseCardHoverPanel({
           {animeHref ? (
             <AnimeLink
               href={watchHref}
-              className="flex w-full items-center justify-center gap-2 rounded-full border border-border bg-surface-dim px-4 py-2.5 text-sm font-medium text-muted transition hover:border-accent hover:bg-accent hover:text-white"
+              className="flex w-full items-center justify-center gap-2 rounded-full bg-accent px-4 py-2.5 text-sm font-semibold text-white shadow-md shadow-accent/25 transition hover:bg-accent/90"
             >
               <svg viewBox="0 0 20 20" className="h-4 w-4" fill="currentColor" aria-hidden>
                 <path d="M7 5.5v9l7-4.5-7-4.5z" />
@@ -591,7 +591,7 @@ export function ReleaseCardHoverPanel({
               href={watchHref}
               target="_blank"
               rel="noopener noreferrer"
-              className="flex w-full items-center justify-center gap-2 rounded-full border border-border bg-surface-dim px-4 py-2.5 text-sm font-medium text-muted transition hover:border-accent hover:bg-accent hover:text-white"
+              className="flex w-full items-center justify-center gap-2 rounded-full bg-accent px-4 py-2.5 text-sm font-semibold text-white shadow-md shadow-accent/25 transition hover:bg-accent/90"
             >
               Смотреть онлайн
             </a>

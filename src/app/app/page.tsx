@@ -2,8 +2,8 @@ import type { Metadata } from "next";
 import { AndroidAppDownloadSection } from "@/components/AndroidAppDownloadSection";
 import { SITE_NAME } from "@/lib/site-brand";
 
-const title = "Приложение для Android";
-const description = "Страница загрузки приложения Track Anime для телефона, планшета и Android TV.";
+const title = "Приложения Track Anime";
+const description = "Страница загрузки приложений Track Anime для Android, Android TV и Windows.";
 const appPageUrl = "https://track-anime.dygdyg.ru/app";
 const socialImageUrl = "https://track-anime.dygdyg.ru/app/og.png";
 
@@ -24,7 +24,7 @@ export const metadata: Metadata = {
         width: 1200,
         height: 630,
         type: "image/png",
-        alt: "Приложение Track Anime для Android",
+        alt: "Приложения Track Anime для Android и Windows",
       },
     ],
   },
@@ -38,7 +38,7 @@ export const metadata: Metadata = {
 
 export default function AppPage() {
   return (
-    <div className="mx-auto max-w-2xl px-4 py-8 sm:py-12">
+    <div className="mx-auto max-w-2xl px-4 py-8 sm:py-12 lg:max-w-5xl">
       <AndroidAppDownloadSection />
     </div>
   );

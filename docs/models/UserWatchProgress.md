@@ -35,7 +35,7 @@ model UserWatchProgress {
 | `shikimoriId` | `Int` | ID аниме в Shikimori (уникальная пара с `userId`) |
 | `kodikId` | `String` | ID материала Kodik (озвучка) |
 | `seasonNumber` | `Int` | Номер сезона, до которого просмотрели |
-| `episodeNumber` | `Int` | Номер серии, до которой просмотрели |
+| `episodeNumber` | `Int` | Номер серии, до которой просмотрели; `0` — закладка «ещё не смотрели» (`positionSeconds` тоже `0`) |
 | `positionSeconds` | `Float` | Позиция в секундах в текущей серии |
 | `updatedAt` | `DateTime` | Время последнего обновления |
 | `createdAt` | `DateTime` | Время создания записи |
@@ -143,6 +143,16 @@ async function getWatchHistory(userId: string, limit = 100): Promise<WatchHistor
   "seasonNumber": 1,
   "episodeNumber": 12,
   "positionSeconds": 3600
+}
+```
+
+Закладка без просмотра (`episodeNumber: 0`, `positionSeconds: 0`, только `seasonNumber: 1`):
+```json
+{
+  "kodikId": "kodik-123",
+  "seasonNumber": 1,
+  "episodeNumber": 0,
+  "positionSeconds": 0
 }
 ```
 

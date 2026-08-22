@@ -1,6 +1,6 @@
 # Полный деплой сайта Track Anime: tar -> scp -> server-deploy.sh
 # Сборка выполняется на сервере (без WSL).
-# RPC/APK отдельно: deploy-rpc.ps1 / deploy-apk.ps1; авто-выбор: deploy-auto.ps1
+# RPC/APK/Windows отдельно: deploy-rpc.ps1 / deploy-apk.ps1 / deploy-windows-app.ps1; авто-выбор: deploy-auto.ps1
 #
 # Использование:
 #   .\scripts\deploy.ps1
@@ -9,7 +9,7 @@
 #   .\scripts\deploy.ps1 -Remote "root@1.2.3.4"
 #   .\scripts\deploy.ps1 -SkipBuild
 #   .\scripts\deploy.ps1 -ApkPath "android\app\build\outputs\apk\release\app-release.apk"
-#   .\scripts\deploy.ps1 -SkipTrayPublish -ExcludeRpcExe -ExcludeApk
+#   .\scripts\deploy.ps1 -SkipTrayPublish -ExcludeRpcExe -ExcludeApk -ExcludeWindowsApp
 #
 # См. docs/DEPLOY.md
 
@@ -24,7 +24,9 @@ param(
     [switch]$SkipBuild,
     [switch]$SkipTrayPublish,
     [switch]$ExcludeRpcExe,
-    [switch]$ExcludeApk
+    [switch]$ExcludeApk,
+    [switch]$ExcludeWindowsApp,
+    [switch]$PublishWindowsApp
 )
 
 $ErrorActionPreference = "Stop"
@@ -260,7 +262,7 @@ function Get-DeploySourceBytes {
     $excludedTop = [System.Collections.Generic.HashSet[string]]::new(
         [string[]]@(
             "node_modules", ".next", ".git", "tmp", "temp",
-            ".cursor", ".kilo", ".roo", ".idea", "android",
+            ".cursor", ".kilo", ".roo", ".idea", "android", "windows",
             ".chats", ".embeddings", ".memory",
             "Aqua_Coder_Chibi_Codex_Handoff_v2",
             "aqua-coder-web",
@@ -545,6 +547,14 @@ if ($ApkPath) {
     Write-Step "Android APK: not specified, skip local publish"
 }
 
+if ($PublishWindowsApp) {
+    Write-Step "Windows app: publish locally..."
+    & (Join-Path $PSScriptRoot "publish-windows-app.ps1") -ProjectRoot $ProjectRoot
+    Assert-LastExit "publish-windows-app"
+} else {
+    Write-Step "Windows app: not requested, skip local publish"
+}
+
 if ($SkipTrayPublish -and -not $ForceTrayRebuild) {
     Write-Step "discord tray: skip publish (-SkipTrayPublish)"
 } else {
@@ -569,6 +579,7 @@ $tarExcludes = @(
     "--exclude=temp",
     "--exclude=scripts/discord-rpc-tray",
     "--exclude=android",
+    "--exclude=windows",
     "--exclude=.cursor",
     "--exclude=.kilo",
     "--exclude=.roo",
@@ -615,6 +626,11 @@ if ($ExcludeApk) {
     $tarExcludes += "--exclude=public/downloads/TrackAnime.apk"
     $tarExcludes += "--exclude=public/downloads/TrackAnime.json"
     Write-Step "tar: exclude TrackAnime.apk/json (keep server copy)"
+}
+if ($ExcludeWindowsApp) {
+    $tarExcludes += "--exclude=public/downloads/TrackAnimeWindows.exe"
+    $tarExcludes += "--exclude=public/downloads/TrackAnimeWindows.json"
+    Write-Step "tar: exclude TrackAnimeWindows.exe/json (keep server copy)"
 }
 
 Write-Step "pack..."

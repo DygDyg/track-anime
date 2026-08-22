@@ -23,6 +23,8 @@ import {
 } from "@/components/anime/KodikPlayer";
 import { KodikPlayerBetaViewport } from "@/components/anime/KodikPlayerBetaViewport";
 import { KodikPlayerBetaEpisodeStrip } from "@/components/anime/KodikPlayerBetaEpisodeStrip";
+import { OPEN_PLAYER_FULLSCREEN_EVENT } from "@/components/anime/AnimeWatchFullscreenButton";
+import { WATCH_HISTORY_UPDATED_EVENT } from "@/components/anime/AnimePosterWatchActions";
 import type {
   KodikPlayerBetaTheaterMode,
   KodikPlayerTimelineSegment,
@@ -30,7 +32,7 @@ import type {
 import type { KodikTranslationDto } from "@/lib/anime-page";
 import { formatEpisodeProgress } from "@/lib/anime-labels";
 import { resolveTranslationStudioId } from "@/lib/translation-colors";
-import { formatWatchPosition, formatEpisodeOfTotal, type WatchProgressDto } from "@/lib/watch-history";
+import { formatWatchPosition, formatEpisodeOfTotal, isWatchHistoryBookmark, type WatchProgressDto } from "@/lib/watch-history";
 import { useDiscordConfig } from "@/hooks/useDiscordConfig";
 import { useDiscordPresence } from "@/hooks/useDiscordPresence";
 import { useForcedTranslationIntroOffsets } from "@/hooks/useForcedTranslationIntroOffsets";
@@ -38,6 +40,8 @@ import { useWatchParty } from "@/hooks/useWatchParty";
 import { coverCacheUrl } from "@/lib/poster";
 import { applyIntroOffset, resolveTranslationIntroOffsetSec } from "@/lib/translation-intro-offset";
 import type { WatchPartyCommand, WatchPartyPlaybackState } from "@/lib/watch-party/types";
+import { setAndroidKeepScreenOn } from "@/lib/android-app";
+import { withKodikPlayerCacheBust, resolveKodikPlayerEpisodeSwitch } from "@/lib/player-url";
 
 type Props = {
   shikimoriId: number;
@@ -73,7 +77,7 @@ const MIN_SAVE_POSITION_SECONDS = 60;
 const PLAYER_SEEK_SKIP_LABEL_SECONDS = 90;
 const PLAYER_SEEK_SKIP_SECONDS = PLAYER_SEEK_SKIP_LABEL_SECONDS;
 const MOBILE_TRANSLATIONS_SWIPE_THRESHOLD_PX = 56;
-const CONTINUE_LOADING_TIMEOUT_MS = 12_000;
+const CONTINUE_LOADING_TIMEOUT_MS = 22_000;
 const AUTO_SKIP_CANCEL_SECONDS = 5;
 const WATCH_PARTY_SYNC_TIMEOUT_MS = 4_000;
 const WATCH_PARTY_SYNC_DRIFT_SECONDS = 1;
@@ -121,6 +125,23 @@ function compensatePlayerReloadResume(resume: KodikPlayerResume): KodikPlayerRes
     ...resume,
     positionSeconds: Math.max(0, resume.positionSeconds - PLAYER_RELOAD_COMPENSATION_SECONDS),
   };
+}
+
+/** Нет смысла переключаться на серию дальше последней доступной в Kodik / анонсированного тотала. */
+function isEpisodeBeyondAvailability(
+  seasonNumber: number,
+  episodeNumber: number,
+  translation: Pick<KodikTranslationDto, "lastSeason" | "lastEpisode"> | undefined,
+  episodesTotal: number | null | undefined,
+): boolean {
+  if (episodeNumber < 1) return true;
+  if (episodesTotal != null && episodeNumber > episodesTotal) return true;
+  if (translation?.lastSeason == null || translation.lastEpisode == null) return false;
+  if (seasonNumber > translation.lastSeason) return true;
+  if (seasonNumber === translation.lastSeason && episodeNumber > translation.lastEpisode) {
+    return true;
+  }
+  return false;
 }
 
 function PlayerLoadingOverlay({
@@ -368,6 +389,8 @@ export function AnimeWatchPanel({
   const lastSavedFingerprintRef = useRef("");
   const savingRef = useRef(false);
   const pendingContinueRef = useRef<KodikPlayerResume | null>(null);
+  const pendingContinueOptionsRef = useRef<{ uiEpisodeAlreadyTargeted?: boolean } | undefined>(undefined);
+  const lastContinueResumeRef = useRef<KodikPlayerResume | null>(null);
   const silentContinueFlowRef = useRef(false);
   const suppressContinueOverlayRef = useRef(false);
   const autoSkippedIntervalsRef = useRef(new Set<string>());
@@ -425,7 +448,13 @@ export function AnimeWatchPanel({
 
   useEffect(() => {
     selectedIdRef.current = selectedId;
-  }, [selectedId]);
+    if (!ready || !selectedId) return;
+    window.dispatchEvent(
+      new CustomEvent("ta:player-translation-changed", {
+        detail: { shikimoriId, kodikId: selectedId },
+      }),
+    );
+  }, [ready, selectedId, shikimoriId]);
 
   useEffect(() => {
     window.localStorage.setItem(
@@ -449,6 +478,10 @@ export function AnimeWatchPanel({
       if (!user) {
         setContinueProgress(null);
         setBootResume(null);
+        pendingContinueRef.current = null;
+        pendingContinueOptionsRef.current = undefined;
+        setContinueLoading(false);
+        setContinueTarget(null);
         setSelectedId(playable[0]?.kodikId ?? "");
         setReady(true);
         return;
@@ -481,20 +514,35 @@ export function AnimeWatchPanel({
           savedKodikId &&
           playable.some((tr) => tr.kodikId === savedKodikId)
         ) {
-          setBootResume(
-            compensatePlayerReloadResume(
-              applyPositionOffset(
-                {
-                  seasonNumber: progress.seasonNumber,
-                  episodeNumber: progress.episodeNumber,
-                  positionSeconds: progress.positionSeconds,
-                },
-                savedKodikId,
-              ),
+          const resume = compensatePlayerReloadResume(
+            applyPositionOffset(
+              {
+                seasonNumber: progress.seasonNumber,
+                episodeNumber: progress.episodeNumber,
+                positionSeconds: progress.positionSeconds,
+              },
+              savedKodikId,
             ),
           );
+
+          // UI сразу на сохранённой серии; мягкий seek без continue-flow —
+          // полный pause-continue на холодном iframe зависает с оверлеем «Переход…».
+          setPlayerEpisode({
+            seasonNumber: resume.seasonNumber,
+            episodeNumber: resume.episodeNumber,
+          });
+          liveProgressRef.current = {
+            seasonNumber: resume.seasonNumber,
+            episodeNumber: resume.episodeNumber,
+            positionSeconds: resume.positionSeconds,
+          };
+          pendingContinueRef.current = null;
+          pendingContinueOptionsRef.current = undefined;
+          setBootResume(resume);
         } else {
           setBootResume(null);
+          pendingContinueRef.current = null;
+          pendingContinueOptionsRef.current = undefined;
         }
       } catch {
         if (!cancelled) setSelectedId(playable[0]?.kodikId ?? "");
@@ -505,6 +553,11 @@ export function AnimeWatchPanel({
 
     setReady(false);
     setBootResume(null);
+    pendingContinueRef.current = null;
+    pendingContinueOptionsRef.current = undefined;
+    silentContinueFlowRef.current = false;
+    setContinueLoading(false);
+    setContinueTarget(null);
     lastSavedFingerprintRef.current = "";
     latestProgressRef.current = null;
     void loadProgress();
@@ -513,6 +566,40 @@ export function AnimeWatchPanel({
       cancelled = true;
     };
   }, [user, shikimoriId, playable, applyPositionOffset]);
+
+  useEffect(() => {
+    const onHistoryUpdated = (event: Event) => {
+      const detail = (event as CustomEvent<{ shikimoriId: number; progress: WatchProgressDto }>).detail;
+      if (detail?.shikimoriId !== shikimoriId || !detail.progress) return;
+
+      setContinueProgress(detail.progress);
+      lastSavedFingerprintRef.current = [
+        detail.progress.kodikId,
+        detail.progress.seasonNumber,
+        detail.progress.episodeNumber,
+        Math.floor(detail.progress.positionSeconds),
+      ].join(":");
+
+      if (isWatchHistoryBookmark(detail.progress)) {
+        setPlayerEpisode({ seasonNumber: 1, episodeNumber: 1 });
+        liveProgressRef.current = { seasonNumber: 1, episodeNumber: 1, positionSeconds: 0 };
+        return;
+      }
+
+      setPlayerEpisode({
+        seasonNumber: detail.progress.seasonNumber,
+        episodeNumber: detail.progress.episodeNumber,
+      });
+      liveProgressRef.current = {
+        seasonNumber: detail.progress.seasonNumber,
+        episodeNumber: detail.progress.episodeNumber,
+        positionSeconds: detail.progress.positionSeconds,
+      };
+    };
+
+    window.addEventListener(WATCH_HISTORY_UPDATED_EVENT, onHistoryUpdated);
+    return () => window.removeEventListener(WATCH_HISTORY_UPDATED_EVENT, onHistoryUpdated);
+  }, [shikimoriId]);
 
   useEffect(() => {
     if (!playable.some((tr) => tr.kodikId === selectedId)) {
@@ -588,12 +675,16 @@ export function AnimeWatchPanel({
 
   const saveTranslation = useCallback(
     (kodikId: string) => {
-      void saveProgressNow(liveProgressRef.current, kodikId, {
+      const payload =
+        continueProgress && isWatchHistoryBookmark(continueProgress)
+          ? { seasonNumber: 1, episodeNumber: 0, positionSeconds: 0 }
+          : liveProgressRef.current;
+      void saveProgressNow(payload, kodikId, {
         skipMinPosition: true,
         force: true,
       });
     },
-    [saveProgressNow],
+    [continueProgress, saveProgressNow],
   );
 
   const trackProgress = useCallback(
@@ -668,6 +759,7 @@ export function AnimeWatchPanel({
 
       if (resume.positionSeconds < 1) {
         pendingContinueRef.current = null;
+        pendingContinueOptionsRef.current = undefined;
         setContinueLoading(false);
         setContinueTarget(null);
         setSelectedId(kodikId);
@@ -693,6 +785,7 @@ export function AnimeWatchPanel({
       }
 
       pendingContinueRef.current = adjusted;
+      pendingContinueOptionsRef.current = undefined;
       pendingContinueModeRef.current = mode;
       setSelectedId(kodikId);
     },
@@ -771,7 +864,13 @@ export function AnimeWatchPanel({
 
     const timer = window.setTimeout(() => {
       if (pendingContinueRef.current) {
-        playerRef.current?.seekTo(pendingContinueRef.current, pendingContinueModeRef.current);
+        const options = pendingContinueOptionsRef.current;
+        pendingContinueOptionsRef.current = undefined;
+        playerRef.current?.seekTo(
+          pendingContinueRef.current,
+          pendingContinueModeRef.current,
+          options,
+        );
         pendingContinueRef.current = null;
       }
     }, 600);
@@ -783,8 +882,10 @@ export function AnimeWatchPanel({
     if (!pendingContinueRef.current) return;
     const resume = pendingContinueRef.current;
     const mode = pendingContinueModeRef.current;
+    const options = pendingContinueOptionsRef.current;
     pendingContinueRef.current = null;
-    playerRef.current?.seekTo(resume, mode);
+    pendingContinueOptionsRef.current = undefined;
+    playerRef.current?.seekTo(resume, mode, options);
   }, []);
 
   const handleContinueStateChange = useCallback((active: boolean) => {
@@ -818,15 +919,26 @@ export function AnimeWatchPanel({
     if (!continueLoading) return;
 
     const timeoutId = window.setTimeout(() => {
+      const resume = lastContinueResumeRef.current;
       playerRef.current?.abortContinue();
-      pendingContinueRef.current = null;
       setContinueLoading(false);
       setContinueTarget(null);
+      // Soft remount only — re-queuing pendingContinue re-armed the overlay forever
+      // when Kodik never confirmed the episode (retail hang on «загрузка плеера»).
+      pendingContinueRef.current = null;
+      pendingContinueOptionsRef.current = undefined;
+      if (resume && resume.positionSeconds >= 1) {
+        setBootResume(compensatePlayerReloadResume(resume));
+      }
+      const baseLink = playable.find((tr) => tr.kodikId === selectedId)?.playerLink;
+      if (baseLink) {
+        setPlayerSrc(withKodikPlayerCacheBust(baseLink, Date.now()));
+      }
       setPlayerResetNonce((nonce) => nonce + 1);
     }, CONTINUE_LOADING_TIMEOUT_MS);
 
     return () => window.clearTimeout(timeoutId);
-  }, [continueLoading, selectedId]);
+  }, [continueLoading, playable, selectedId]);
 
   const handleContinue = () => {
     if (!continueProgress || continueLoading) return;
@@ -840,17 +952,26 @@ export function AnimeWatchPanel({
       continueProgress.kodikId,
     );
 
+    lastContinueResumeRef.current = resume;
     setContinueLoading(true);
     setContinueTarget({ episodeNumber: resume.episodeNumber });
     pendingContinueModeRef.current = "play";
     isPausedRef.current = false;
 
+    // Boot already set strip/liveProgress to the saved episode. Continue must not wait for a
+    // second current_episode — Kodik often won't re-emit after boot's soft change_episode.
+    const uiEpisodeAlreadyTargeted =
+      liveProgressRef.current.seasonNumber === resume.seasonNumber &&
+      liveProgressRef.current.episodeNumber === resume.episodeNumber;
+
     if (continueProgress.kodikId !== selectedIdRef.current) {
+      // Cold iframe after translation switch — must wait for current_episode, not trust UI.
       pendingContinueRef.current = resume;
+      pendingContinueOptionsRef.current = undefined;
       setBootResume(null);
       setSelectedId(continueProgress.kodikId);
     } else {
-      playerRef.current?.seekTo(resume, "play");
+      playerRef.current?.seekTo(resume, "play", { uiEpisodeAlreadyTargeted });
     }
 
     const el = document.getElementById("player");
@@ -891,10 +1012,14 @@ export function AnimeWatchPanel({
   const betaTheaterExpanded = betaTheaterMode !== "normal";
   const betaTranslationsHoverEnabled = isNativeFullscreen;
   const roundedEpisodeLength = Math.round(playback.durationSeconds);
-  const previousEpisodeDisabled = playerEpisode.episodeNumber <= 1;
-  const nextEpisodeDisabled =
-    episodesTotal != null && playerEpisode.episodeNumber >= episodesTotal;
   const selected = playable.find((tr) => tr.kodikId === selectedId) ?? playable[0];
+  const previousEpisodeDisabled = playerEpisode.episodeNumber <= 1;
+  const nextEpisodeDisabled = isEpisodeBeyondAvailability(
+    playerEpisode.seasonNumber,
+    playerEpisode.episodeNumber + 1,
+    selected,
+    episodesTotal,
+  );
   const selectedPlayerLink = selected?.playerLink ?? null;
   const getWatchPartyState = useCallback((): WatchPartyPlaybackState | null => {
     const kodikId = selectedIdRef.current || selected?.kodikId;
@@ -1511,6 +1636,25 @@ export function AnimeWatchPanel({
     }
   }, []);
 
+  useEffect(() => {
+    const onOpenFullscreen = () => {
+      const root = betaFullscreenRef.current;
+      if (!root) return;
+      root.scrollIntoView({ behavior: "auto", block: "center" });
+      if (document.fullscreenElement === root) return;
+      // Keep requestFullscreen in the same user-gesture turn (TV OK / click).
+      void root
+        .requestFullscreen()
+        .then(() => lockLandscapeOrientation())
+        .catch(() => {
+          /* ignore */
+        });
+    };
+
+    window.addEventListener(OPEN_PLAYER_FULLSCREEN_EVENT, onOpenFullscreen);
+    return () => window.removeEventListener(OPEN_PLAYER_FULLSCREEN_EVENT, onOpenFullscreen);
+  }, []);
+
   const handleBetaTranslationsTouchStart = useCallback(
     (event: ReactTouchEvent<HTMLDivElement>) => {
       const touch = event.touches[0];
@@ -1624,16 +1768,20 @@ export function AnimeWatchPanel({
     const resume = { ...liveProgressRef.current };
     const mode: KodikPlayerResumeMode = isPausedRef.current ? "pause" : "play";
     pendingContinueModeRef.current = mode;
-    pendingContinueRef.current =
+    const resolvedResume: KodikPlayerResume =
       resume.positionSeconds >= 1
         ? resume
         : { ...resume, positionSeconds: Math.max(playback.positionSeconds, 0) };
+    pendingContinueRef.current = resolvedResume;
+    // Keep for CONTINUE_LOADING_TIMEOUT remount — previously only «Продолжить» set this.
+    lastContinueResumeRef.current = resolvedResume;
     if (mode === "pause") {
       silentContinueFlowRef.current = true;
       window.setTimeout(() => {
         silentContinueFlowRef.current = false;
       }, 5_000);
       pendingContinueRef.current = compensatePlayerReloadResume(pendingContinueRef.current);
+      lastContinueResumeRef.current = pendingContinueRef.current;
       setBootResume(pendingContinueRef.current);
       setContinueLoading(false);
       setContinueTarget(null);
@@ -1641,68 +1789,113 @@ export function AnimeWatchPanel({
       setContinueLoading(true);
       setContinueTarget({ episodeNumber: pendingContinueRef.current.episodeNumber });
     }
+    // Remount iframe + bust HTTP cache of the embed document (not DB playerLink).
+    const baseLink = selectedPlayerLink;
+    if (baseLink) {
+      setPlayerSrc(withKodikPlayerCacheBust(baseLink, Date.now()));
+    }
     setPlayerResetNonce((nonce) => nonce + 1);
-  }, [playback.positionSeconds]);
+  }, [playback.positionSeconds, selectedPlayerLink]);
 
   const handlePlayerRefresh = useCallback(() => {
     if (!ready || continueLoading) return;
     restartPlayerAtCurrentPosition();
   }, [continueLoading, ready, restartPlayerAtCurrentPosition]);
 
-  const handleEpisodeSelect = useCallback((seasonNumber: number, episodeNumber: number) => {
-    if (
-      seasonNumber === liveProgressRef.current.seasonNumber &&
-      episodeNumber === liveProgressRef.current.episodeNumber
-    ) {
-      return;
-    }
-    episodeEndCandidateRef.current = null;
-    const resume: KodikPlayerResume = {
-      seasonNumber,
-      episodeNumber,
-      positionSeconds: 0,
-    };
-    isPausedRef.current = false;
-    playerRef.current?.seekTo(resume, "play");
-  }, []);
+  const handleEpisodeSelect = useCallback(
+    (seasonNumber: number, episodeNumber: number, scopedPlayerLink?: string | null) => {
+      if (
+        seasonNumber === liveProgressRef.current.seasonNumber &&
+        episodeNumber === liveProgressRef.current.episodeNumber
+      ) {
+        return;
+      }
+      episodeEndCandidateRef.current = null;
+      const resume: KodikPlayerResume = {
+        seasonNumber,
+        episodeNumber,
+        positionSeconds: 0,
+      };
+      isPausedRef.current = false;
+      lastContinueResumeRef.current = resume;
+      setContinueTarget({ episodeNumber });
+
+      const materialLink = playableByKodikId.get(selectedIdRef.current)?.playerLink;
+      if (!materialLink) return;
+
+      const currentLink = playerSrc || materialLink;
+      const { src: targetLink, remount: needsPlayerRemount } = resolveKodikPlayerEpisodeSwitch({
+        currentSrc: currentLink,
+        materialLink,
+        scopedPlayerLink,
+        currentSeasonNumber: liveProgressRef.current.seasonNumber,
+        targetSeasonNumber: seasonNumber,
+      });
+
+      if (needsPlayerRemount) {
+        setPlayerEpisode({ seasonNumber, episodeNumber });
+        liveProgressRef.current = {
+          seasonNumber,
+          episodeNumber,
+          positionSeconds: 0,
+        };
+        setBootResume(null);
+        pendingContinueRef.current = resume;
+        pendingContinueOptionsRef.current = undefined;
+        pendingContinueModeRef.current = "play";
+        setContinueLoading(true);
+        setPlayerSrc(withKodikPlayerCacheBust(targetLink, Date.now()));
+        setPlayerResetNonce((nonce) => nonce + 1);
+        return;
+      }
+
+      playerRef.current?.seekTo(resume, "play");
+    },
+    [playableByKodikId, playerSrc],
+  );
 
   const handleAdjacentEpisode = useCallback(
     (delta: -1 | 1) => {
       const current = liveProgressRef.current;
       const nextEpisode = current.episodeNumber + delta;
-      if (nextEpisode < 1) return;
-      if (episodesTotal != null && nextEpisode > episodesTotal) return;
+      const translation = playableByKodikId.get(selectedIdRef.current);
+      if (
+        isEpisodeBeyondAvailability(
+          current.seasonNumber,
+          nextEpisode,
+          translation,
+          episodesTotal,
+        )
+      ) {
+        return;
+      }
 
       episodeEndCandidateRef.current = null;
       isPausedRef.current = false;
-      playerRef.current?.seekTo(
-        {
-          seasonNumber: current.seasonNumber,
-          episodeNumber: nextEpisode,
-          positionSeconds: 0,
-        },
-        "play",
-      );
+      handleEpisodeSelect(current.seasonNumber, nextEpisode);
     },
-    [episodesTotal],
+    [episodesTotal, handleEpisodeSelect, playableByKodikId],
   );
 
   const handlePlayerEnded = useCallback((endedProgress?: ProgressPayload | null) => {
     const current = endedProgress ?? episodeEndCandidateRef.current ?? liveProgressRef.current;
     const nextEpisode = current.episodeNumber + 1;
+    const translation = playableByKodikId.get(selectedIdRef.current);
 
-    if (episodesTotal != null && nextEpisode > episodesTotal) return;
+    if (
+      isEpisodeBeyondAvailability(
+        current.seasonNumber,
+        nextEpisode,
+        translation,
+        episodesTotal,
+      )
+    ) {
+      return;
+    }
 
     episodeEndCandidateRef.current = null;
-    playerRef.current?.seekTo(
-      {
-        seasonNumber: current.seasonNumber,
-        episodeNumber: nextEpisode,
-        positionSeconds: 0,
-      },
-      "play",
-    );
-  }, [episodesTotal]);
+    handleEpisodeSelect(current.seasonNumber, nextEpisode);
+  }, [episodesTotal, handleEpisodeSelect, playableByKodikId]);
 
   const makeWatchPartyState = useCallback(
     (patch: Partial<WatchPartyPlaybackState> = {}): WatchPartyPlaybackState | null => {
@@ -1772,11 +1965,11 @@ export function AnimeWatchPanel({
   );
 
   const handleRoomEpisodeSelect = useCallback(
-    (seasonNumber: number, episodeNumber: number) => {
+    (seasonNumber: number, episodeNumber: number, scopedPlayerLink?: string | null) => {
       if (watchParty.isConnected && !watchParty.canSelectEpisodes) return;
       setWatchPartyPlaybackUnlocked(true);
       waitingForHostEpisodeRef.current = null;
-      handleEpisodeSelect(seasonNumber, episodeNumber);
+      handleEpisodeSelect(seasonNumber, episodeNumber, scopedPlayerLink);
       if (!applyingWatchPartyCommandRef.current) {
         watchParty.sendCommand(
           "episode",
@@ -1798,8 +1991,17 @@ export function AnimeWatchPanel({
       setWatchPartyPlaybackUnlocked(true);
       const current = liveProgressRef.current;
       const nextEpisode = current.episodeNumber + delta;
-      if (nextEpisode < 1) return;
-      if (episodesTotal != null && nextEpisode > episodesTotal) return;
+      const translation = playableByKodikId.get(selectedIdRef.current);
+      if (
+        isEpisodeBeyondAvailability(
+          current.seasonNumber,
+          nextEpisode,
+          translation,
+          episodesTotal,
+        )
+      ) {
+        return;
+      }
       waitingForHostEpisodeRef.current = null;
       handleAdjacentEpisode(delta);
       if (!applyingWatchPartyCommandRef.current) {
@@ -1814,7 +2016,7 @@ export function AnimeWatchPanel({
         );
       }
     },
-    [episodesTotal, handleAdjacentEpisode, makeWatchPartyState, watchParty],
+    [episodesTotal, handleAdjacentEpisode, makeWatchPartyState, playableByKodikId, watchParty],
   );
 
   const handleRoomTranslationSelect = useCallback(
@@ -1861,8 +2063,18 @@ export function AnimeWatchPanel({
       return;
     }
     const nextEpisode = endProgress.episodeNumber + 1;
+    const translation = playableByKodikId.get(selectedIdRef.current);
     handlePlayerEnded(endProgress);
-    if (episodesTotal != null && nextEpisode > episodesTotal) return;
+    if (
+      isEpisodeBeyondAvailability(
+        endProgress.seasonNumber,
+        nextEpisode,
+        translation,
+        episodesTotal,
+      )
+    ) {
+      return;
+    }
     if (!applyingWatchPartyCommandRef.current) {
       watchParty.sendCommand(
         "episode",
@@ -1874,7 +2086,14 @@ export function AnimeWatchPanel({
         }),
       );
     }
-  }, [episodesTotal, handlePlayerEnded, makeWatchPartyState, playback.durationSeconds, watchParty]);
+  }, [
+    episodesTotal,
+    handlePlayerEnded,
+    makeWatchPartyState,
+    playback.durationSeconds,
+    playableByKodikId,
+    watchParty,
+  ]);
 
   useEffect(() => {
     handleWatchPartyEndGuardRef.current = (progress) => {
@@ -1964,6 +2183,23 @@ export function AnimeWatchPanel({
     selected,
     shikimoriId,
   ]);
+
+  useEffect(() => {
+    setAndroidKeepScreenOn(playback.isPlaying);
+    return () => setAndroidKeepScreenOn(false);
+  }, [playback.isPlaying]);
+
+  // Hint for site chrome: drop CSS blur / parallax / companion RAF while video decodes.
+  // Chrome often freezes Kodik iframe video (audio continues) under GPU pressure.
+  useEffect(() => {
+    const root = document.documentElement;
+    if (playback.isPlaying) {
+      root.setAttribute("data-player-playing", "true");
+    } else {
+      root.removeAttribute("data-player-playing");
+    }
+    return () => root.removeAttribute("data-player-playing");
+  }, [playback.isPlaying]);
 
   const renderPlayerRefreshButton = () => (
     <button
@@ -2359,6 +2595,8 @@ export function AnimeWatchPanel({
     showContinue && continueProgress ? (
       <button
         type="button"
+        data-tv-focus
+        data-tv-player-primary
         onClick={handleContinue}
         disabled={continueLoading}
         aria-busy={continueLoading}
@@ -2683,7 +2921,7 @@ export function AnimeWatchPanel({
                     continueLoading ? (
                       <PlayerLoadingOverlay
                         episodeNumber={continueTarget?.episodeNumber}
-                        fallbackEpisodeNumber={continueProgress?.episodeNumber}
+                        fallbackEpisodeNumber={playerEpisode.episodeNumber}
                       />
                     ) : null
                   }
@@ -2764,7 +3002,7 @@ export function AnimeWatchPanel({
             {continueLoading ? (
               <PlayerLoadingOverlay
                 episodeNumber={continueTarget?.episodeNumber}
-                fallbackEpisodeNumber={continueProgress?.episodeNumber}
+                fallbackEpisodeNumber={playerEpisode.episodeNumber}
               />
             ) : null}
             <KodikPlayer
@@ -2774,6 +3012,7 @@ export function AnimeWatchPanel({
               title={`${animeTitle} — ${selected.translationTitle}`}
               sizeMode={playerExpanded ? "viewport" : "default"}
               initialResume={initialResume}
+              activeEpisode={playerEpisode}
               onReady={handlePlayerReady}
               onContinueStateChange={handleContinueStateChange}
               onProgress={trackProgress}

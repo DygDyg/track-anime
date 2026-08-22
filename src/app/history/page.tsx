@@ -2,6 +2,7 @@ import type { Metadata } from "next";
 import { redirect } from "next/navigation";
 import { HistoryView } from "@/components/history/HistoryView";
 import { getSession } from "@/lib/auth/session";
+import { getHistoryUpcomingSoon } from "@/lib/history-upcoming-soon";
 import { buildSitePageMetadata } from "@/lib/site-metadata";
 import { getWatchHistory } from "@/lib/watch-history";
 
@@ -19,7 +20,10 @@ export default async function HistoryPage() {
     redirect("/login");
   }
 
-  const items = await getWatchHistory(session.user.id);
+  const [items, upcomingSoon] = await Promise.all([
+    getWatchHistory(session.user.id),
+    getHistoryUpcomingSoon(session.user.id),
+  ]);
 
-  return <HistoryView initialItems={items} />;
+  return <HistoryView initialItems={items} upcomingSoon={upcomingSoon} />;
 }

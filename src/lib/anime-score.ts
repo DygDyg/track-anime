@@ -106,3 +106,40 @@ export function animeScoreBadgeStyle(score: number): {
     color: textColorForRgb(base),
   };
 }
+
+/** Подписи 1–10 в духе шкалы MyAnimeList / Shikimori. */
+export const ANIME_USER_SCORE_LABELS: Record<number, string> = {
+  1: "Худшее",
+  2: "Ужасно",
+  3: "Очень плохо",
+  4: "Плохо",
+  5: "Средне",
+  6: "Неплохо",
+  7: "Хорошо",
+  8: "Отлично",
+  9: "Великолепно",
+  10: "Шедевр",
+};
+
+export function labelUserAnimeScore(score: number | null | undefined): string | null {
+  if (score == null || !Number.isInteger(score) || score < 1 || score > 10) return null;
+  return ANIME_USER_SCORE_LABELS[score] ?? null;
+}
+
+export function animeScoreAccentColor(score: number): string {
+  return rgbToCss(scoreToRgb(score));
+}
+
+export function compareUserToCommunityScore(
+  userScore: number,
+  communityScore: number,
+): { delta: number; label: string } {
+  const delta = Math.round((userScore - communityScore) * 10) / 10;
+  if (Math.abs(delta) < 0.15) {
+    return { delta, label: "Совпадает со средней" };
+  }
+  if (delta > 0) {
+    return { delta, label: `Выше средней на ${delta.toFixed(1)}` };
+  }
+  return { delta, label: `Ниже средней на ${Math.abs(delta).toFixed(1)}` };
+}

@@ -1,7 +1,14 @@
 "use client";
 
 import { useRouter } from "next/navigation";
-import { useCallback, useEffect, useMemo, useState, useTransition, type ReactNode } from "react";
+import {
+  useCallback,
+  useEffect,
+  useMemo,
+  useState,
+  useTransition,
+  type ReactNode,
+} from "react";
 import { ReleaseCard } from "@/components/ReleaseCard";
 import { CalendarScrollToToday } from "@/components/calendar/CalendarScrollToToday";
 import { headerControl } from "@/components/header/header-styles";
@@ -59,6 +66,14 @@ function formatCountLabel(count: number): string {
   return `${count} тайтлов`;
 }
 
+function daySectionKey(dayOfWeek: number): string {
+  return `day-${dayOfWeek}`;
+}
+
+function monthSectionKey(year: number, month: number): string {
+  return `month-${year}-${month}`;
+}
+
 function CalendarIcon() {
   return (
     <svg viewBox="0 0 24 24" className="h-5 w-5" fill="none" stroke="currentColor" strokeWidth="2" aria-hidden>
@@ -71,11 +86,14 @@ function CalendarIcon() {
   );
 }
 
-function SpoilerChevron() {
+function CollapseChevron({ collapsed }: { collapsed: boolean }) {
   return (
     <svg
       viewBox="0 0 24 24"
-      className="h-5 w-5 shrink-0 -rotate-90 text-muted transition-transform duration-200 group-open:rotate-0"
+      className={[
+        "h-5 w-5 shrink-0 text-muted transition-transform duration-200",
+        collapsed ? "-rotate-90" : "rotate-0",
+      ].join(" ")}
       fill="none"
       stroke="currentColor"
       strokeWidth="2"
@@ -98,71 +116,67 @@ function SectionBackdrop({ className = "" }: { className?: string }) {
   );
 }
 
+type CollapseControls = {
+  isCollapsed: (key: string) => boolean;
+  toggle: (key: string) => void;
+};
+
 function CalendarFeedSection({
   id,
+  sectionKey,
   title,
   countLabel,
   badge,
+  collapse,
   children,
 }: {
   id?: string;
+  sectionKey: string;
   title: string;
   countLabel: string;
   badge?: ReactNode;
+  collapse: CollapseControls;
   children: ReactNode;
 }) {
+  const collapsed = collapse.isCollapsed(sectionKey);
+  const bodyId = `${sectionKey}-body`;
+
   return (
     <div className={`${homeHistoryOuterGutterX} mb-6 sm:mb-8`}>
       <section
         id={id}
         className={`home-history-section relative rounded-xl border border-border ${id ? DAY_SECTION_CLASS : ""}`}
       >
-        <SectionBackdrop />
+        <SectionBackdrop className={collapsed ? "hidden" : ""} />
         <div
-          className={`site-header-text relative flex h-14 items-center gap-2 border-b border-border sm:h-16 ${homeHistoryInnerPadX}`}
+          className={`site-header-text relative flex h-14 items-center justify-between gap-2 sm:h-16 ${homeHistoryInnerPadX} ${
+            collapsed ? "bg-card" : "border-b border-border"
+          }`}
         >
-          <h2 className="truncate text-sm font-semibold capitalize tracking-tight text-foreground sm:text-base">
-            {title}
-          </h2>
-          {badge}
-          <span className="shrink-0 text-xs font-medium text-muted sm:text-sm">({countLabel})</span>
+          <button
+            type="button"
+            className={`${headerControl.text} min-w-0 flex-1 justify-start gap-2 px-0`}
+            aria-expanded={!collapsed}
+            aria-controls={bodyId}
+            onClick={() => collapse.toggle(sectionKey)}
+          >
+            <CollapseChevron collapsed={collapsed} />
+            <span className="truncate text-sm font-semibold capitalize tracking-tight text-foreground sm:text-base">
+              {title}
+            </span>
+            {badge}
+            <span className="shrink-0 text-xs font-medium text-muted sm:text-sm">({countLabel})</span>
+          </button>
         </div>
-        <div
-          className={`site-header-text relative bg-card/95 py-3 backdrop-blur-lg backdrop-saturate-150 sm:py-4 ${homeHistoryInnerPadX}`}
-        >
-          {children}
-        </div>
+        {!collapsed ? (
+          <div
+            id={bodyId}
+            className={`site-header-text relative bg-card/95 py-3 backdrop-blur-lg backdrop-saturate-150 sm:py-4 ${homeHistoryInnerPadX}`}
+          >
+            {children}
+          </div>
+        ) : null}
       </section>
-    </div>
-  );
-}
-
-function CalendarSpoiler({
-  title,
-  count,
-  children,
-}: {
-  title: string;
-  count: number;
-  children: ReactNode;
-}) {
-  return (
-    <div className={`${homeHistoryOuterGutterX} mb-6 sm:mb-8`}>
-      <details className="home-history-section group relative rounded-xl border border-border">
-        <SectionBackdrop className="hidden group-open:block" />
-        <summary
-          className={`site-header-text relative flex h-14 cursor-pointer list-none items-center gap-2 bg-card marker:content-none sm:h-16 ${homeHistoryInnerPadX} group-open:border-b group-open:border-border group-open:bg-transparent [&::-webkit-details-marker]:hidden`}
-        >
-          <SpoilerChevron />
-          <span className="truncate text-sm font-semibold tracking-tight text-foreground sm:text-base">{title}</span>
-          <span className="shrink-0 text-xs font-medium text-muted sm:text-sm">({formatCountLabel(count)})</span>
-        </summary>
-        <div
-          className={`site-header-text relative bg-card/95 py-3 backdrop-blur-lg backdrop-saturate-150 sm:py-4 ${homeHistoryInnerPadX}`}
-        >
-          {children}
-        </div>
-      </details>
     </div>
   );
 }
@@ -174,9 +188,11 @@ function TodayBadge() {
 function CalendarDaySection({
   day,
   isToday,
+  collapse,
 }: {
   day: CalendarDay;
   isToday: boolean;
+  collapse: CollapseControls;
 }) {
   const sectionId = `calendar-day-${day.dayOfWeek}`;
 
@@ -185,9 +201,11 @@ function CalendarDaySection({
   return (
     <CalendarFeedSection
       id={sectionId}
+      sectionKey={daySectionKey(day.dayOfWeek)}
       title={day.label}
       countLabel={day.items.length === 0 ? "нет выходов" : formatCountLabel(day.items.length)}
       badge={isToday ? <TodayBadge /> : undefined}
+      collapse={collapse}
     >
       {day.items.length > 0 ? (
         <div className={RELEASE_GRID_CLASS}>
@@ -204,7 +222,15 @@ function CalendarDaySection({
   );
 }
 
-function CalendarMonthSection({ month, nested = false }: { month: CalendarMonth; nested?: boolean }) {
+function CalendarMonthSection({
+  month,
+  nested = false,
+  collapse,
+}: {
+  month: CalendarMonth;
+  nested?: boolean;
+  collapse?: CollapseControls;
+}) {
   const sectionId = `calendar-month-${month.year}-${month.month}`;
 
   if (month.items.length === 0) return null;
@@ -221,7 +247,7 @@ function CalendarMonthSection({ month, nested = false }: { month: CalendarMonth;
     </div>
   );
 
-  if (nested) {
+  if (nested || !collapse) {
     return (
       <section id={sectionId} className="border-b border-border/80 pb-5 last:border-0 last:pb-0">
         <header className="mb-3 flex flex-wrap items-baseline gap-x-2 gap-y-1">
@@ -236,8 +262,10 @@ function CalendarMonthSection({ month, nested = false }: { month: CalendarMonth;
   return (
     <CalendarFeedSection
       id={sectionId}
+      sectionKey={monthSectionKey(month.year, month.month)}
       title={month.label}
       countLabel={formatCountLabel(month.items.length)}
+      collapse={collapse}
     >
       {grid}
     </CalendarFeedSection>
@@ -261,9 +289,11 @@ function CalendarItemsGrid({ items }: { items: CalendarItemDto[] }) {
 function CalendarDaysList({
   days,
   todayDayOfWeek,
+  collapse,
 }: {
   days: CalendarDay[];
   todayDayOfWeek: number;
+  collapse: CollapseControls;
 }) {
   return (
     <>
@@ -272,6 +302,7 @@ function CalendarDaysList({
           key={day.dayOfWeek}
           day={day}
           isToday={day.dayOfWeek === todayDayOfWeek}
+          collapse={collapse}
         />
       ))}
     </>
@@ -281,9 +312,11 @@ function CalendarDaysList({
 function CalendarMonthsList({
   months,
   nested = false,
+  collapse,
 }: {
   months: CalendarMonth[];
   nested?: boolean;
+  collapse?: CollapseControls;
 }) {
   const visibleMonths = months.filter((month) => month.items.length > 0);
 
@@ -294,42 +327,90 @@ function CalendarMonthsList({
           key={`${month.year}-${month.month}`}
           month={month}
           nested={nested}
+          collapse={collapse}
         />
       ))}
     </>
   );
 }
 
-function CalendarAnonsMonthsList({ months }: { months: CalendarMonth[] }) {
+function CalendarAnonsMonthsList({
+  months,
+  collapse,
+}: {
+  months: CalendarMonth[];
+  collapse: CollapseControls;
+}) {
   const split = useMemo(() => splitAnonsMonthsBySchedule(months), [months]);
 
   return (
     <>
       {split.pastCount > 0 ? (
-        <CalendarSpoiler title="Прошедшие даты анонса" count={split.pastCount}>
+        <CalendarFeedSection
+          sectionKey="anons-past"
+          title="Прошедшие даты анонса"
+          countLabel={formatCountLabel(split.pastCount)}
+          collapse={collapse}
+        >
           <CalendarMonthsList months={split.pastMonths} nested />
-        </CalendarSpoiler>
+        </CalendarFeedSection>
       ) : null}
 
       {split.unknownCount > 0 ? (
-        <CalendarSpoiler title="Дата уточняется" count={split.unknownCount}>
+        <CalendarFeedSection
+          sectionKey="anons-unknown"
+          title="Дата уточняется"
+          countLabel={formatCountLabel(split.unknownCount)}
+          collapse={collapse}
+        >
           <CalendarItemsGrid items={split.unknownItems} />
-        </CalendarSpoiler>
+        </CalendarFeedSection>
       ) : null}
 
       {split.upcomingCount > 0 ? (
-        <CalendarMonthsList months={split.upcomingMonths} />
+        <CalendarMonthsList months={split.upcomingMonths} collapse={collapse} />
       ) : split.pastCount === 0 && split.unknownCount === 0 ? (
-        <CalendarFeedSection title="Анонсы" countLabel="нет с датой">
+        <CalendarFeedSection
+          sectionKey="anons-empty"
+          title="Анонсы"
+          countLabel="нет с датой"
+          collapse={collapse}
+        >
           <p className="text-sm text-muted">Нет анонсов с известной датой выхода.</p>
         </CalendarFeedSection>
       ) : (
-        <CalendarFeedSection title="Предстоящие" countLabel="нет с датой">
+        <CalendarFeedSection
+          sectionKey="anons-upcoming-empty"
+          title="Предстоящие"
+          countLabel="нет с датой"
+          collapse={collapse}
+        >
           <p className="text-sm text-muted">Нет предстоящих анонсов с датой.</p>
         </CalendarFeedSection>
       )}
     </>
   );
+}
+
+function collectOngoingSectionKeys(days: CalendarDay[], todayDayOfWeek: number): string[] {
+  return days
+    .filter((day) => day.items.length > 0 || day.dayOfWeek === todayDayOfWeek)
+    .map((day) => daySectionKey(day.dayOfWeek));
+}
+
+function collectAnonsSectionKeys(months: CalendarMonth[]): string[] {
+  const split = splitAnonsMonthsBySchedule(months);
+  const keys: string[] = [];
+  if (split.pastCount > 0) keys.push("anons-past");
+  if (split.unknownCount > 0) keys.push("anons-unknown");
+  for (const month of split.upcomingMonths) {
+    if (month.items.length > 0) keys.push(monthSectionKey(month.year, month.month));
+  }
+  if (split.upcomingCount === 0) {
+    if (split.pastCount === 0 && split.unknownCount === 0) keys.push("anons-empty");
+    else keys.push("anons-upcoming-empty");
+  }
+  return keys;
 }
 
 export function CalendarView({
@@ -348,6 +429,9 @@ export function CalendarView({
   const router = useRouter();
   const [tab, setTab] = useState<CalendarTab>(initialTab);
   const [ongoingSource, setOngoingSource] = useState<CalendarOngoingSource>(initialOngoingSource);
+  const [collapsedKeys, setCollapsedKeys] = useState<Set<string>>(
+    () => new Set(["anons-past", "anons-unknown"]),
+  );
   const [isPending, startTransition] = useTransition();
 
   useEffect(() => {
@@ -362,6 +446,41 @@ export function CalendarView({
     }),
     [anonsMonths, ongoingDays],
   );
+
+  const activeSectionKeys = useMemo(
+    () =>
+      tab === "ongoing"
+        ? collectOngoingSectionKeys(ongoingDays, todayDayOfWeek)
+        : collectAnonsSectionKeys(anonsMonths),
+    [anonsMonths, ongoingDays, tab, todayDayOfWeek],
+  );
+
+  const allCollapsed =
+    activeSectionKeys.length > 0 && activeSectionKeys.every((key) => collapsedKeys.has(key));
+
+  const collapse = useMemo<CollapseControls>(
+    () => ({
+      isCollapsed: (key) => collapsedKeys.has(key),
+      toggle: (key) => {
+        setCollapsedKeys((current) => {
+          const next = new Set(current);
+          if (next.has(key)) next.delete(key);
+          else next.add(key);
+          return next;
+        });
+      },
+    }),
+    [collapsedKeys],
+  );
+
+  const toggleAllCategories = useCallback(() => {
+    setCollapsedKeys((current) => {
+      const everyCollapsed =
+        activeSectionKeys.length > 0 && activeSectionKeys.every((key) => current.has(key));
+      if (everyCollapsed) return new Set();
+      return new Set(activeSectionKeys);
+    });
+  }, [activeSectionKeys]);
 
   const activeCount = tab === "ongoing" ? counts.ongoing : counts.anons;
   const activeMeta = TAB_META.find((item) => item.id === tab) ?? TAB_META[0];
@@ -428,23 +547,34 @@ export function CalendarView({
               })}
             </div>
 
-            {tab === "ongoing" ? (
-              <div className="flex flex-wrap items-center gap-1" role="group" aria-label="Источник календаря онгоингов">
-                {ONGOING_SOURCE_META.map((item) => {
-                  const active = ongoingSource === item.id;
-                  return (
-                    <button
-                      key={item.id}
-                      type="button"
-                      onClick={() => handleOngoingSourceChange(item.id)}
-                      className={headerControl.nav(active)}
-                    >
-                      {item.label}
-                    </button>
-                  );
-                })}
-              </div>
-            ) : null}
+            <div className="flex flex-wrap items-center gap-1">
+              {tab === "ongoing"
+                ? ONGOING_SOURCE_META.map((item) => {
+                    const active = ongoingSource === item.id;
+                    return (
+                      <button
+                        key={item.id}
+                        type="button"
+                        onClick={() => handleOngoingSourceChange(item.id)}
+                        className={headerControl.nav(active)}
+                      >
+                        {item.label}
+                      </button>
+                    );
+                  })
+                : null}
+
+              {activeCount > 0 && activeSectionKeys.length > 0 ? (
+                <button
+                  type="button"
+                  className={headerControl.textMuted}
+                  onClick={toggleAllCategories}
+                  aria-pressed={allCollapsed}
+                >
+                  {allCollapsed ? "Развернуть все" : "Свернуть все"}
+                </button>
+              ) : null}
+            </div>
           </div>
         </section>
       </div>
@@ -466,9 +596,13 @@ export function CalendarView({
         >
           {isPending ? <BrandLoadingOverlay /> : null}
           {tab === "ongoing" ? (
-            <CalendarDaysList days={ongoingDays} todayDayOfWeek={todayDayOfWeek} />
+            <CalendarDaysList
+              days={ongoingDays}
+              todayDayOfWeek={todayDayOfWeek}
+              collapse={collapse}
+            />
           ) : (
-            <CalendarAnonsMonthsList months={anonsMonths} />
+            <CalendarAnonsMonthsList months={anonsMonths} collapse={collapse} />
           )}
         </div>
       )}

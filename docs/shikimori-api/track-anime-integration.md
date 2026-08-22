@@ -18,6 +18,7 @@
 |---------|-----------|-------|--------------|
 | **Авторизация** | OAuth2 | — | User + tokens |
 | **Списки (смотрю/...)** | v2 `/api/v2/user_rates` | — | UserAnimeRate + sync |
+| **Оценка аниме (1–10)** | v2 `/api/v2/user_rates` `score` | — | `UserAnimeListEntry.userScore` |
 | **Профиль** | `/api/users/:id`, `whoami` | — | Кэш профиля |
 | **Друзья** | `/api/friends`, `/api/users/:id/friends` | — | Friendship + sync |
 | **Избранное** | `/api/favorites/...` | — | Опционально локально |
@@ -69,9 +70,10 @@ GET /list?types=anime-serial&anime_status=ongoing&with_material_data=true
 ### Страница аниме
 
 ```bash
-# Метаданные + ваш статус
+# Метаданные + ваш статус / оценка
 GET /api/animes/:id                    # + user_rate если auth
-GET /api/v2/user_rates?target_id=:id # статус в списке
+GET /api/v2/user_rates?target_id=:id # статус и score в списке
+PUT  /api/user/anime-lists/:id         # { score: 0..10 } — оценка Track Anime → Shikimori
 
 # Плеер
 GET /search?shikimori_id=:id&with_episodes=true&with_material_data=true

@@ -16,10 +16,13 @@ export type PlayerBrightnessMode = "native" | "overlay";
 
 function bridge(): TrackAnimeAndroidBrightnessBridge | null {
   if (typeof window === "undefined") return null;
-  const api = (window as Window & { TrackAnimeAndroid?: TrackAnimeAndroidBrightnessBridge })
-    .TrackAnimeAndroid;
+  const win = window as Window & {
+    TrackAnimeAndroid?: TrackAnimeAndroidBrightnessBridge;
+    TrackAnimeWindows?: TrackAnimeAndroidBrightnessBridge;
+  };
+  const api = win.TrackAnimeAndroid ?? win.TrackAnimeWindows;
   if (!api) return null;
-  // Android WebView may expose Java methods without a reliable typeof === "function".
+  // Native WebView may expose methods without a reliable typeof === "function".
   if (api.setScreenBrightness == null) return null;
   return api;
 }
@@ -65,7 +68,7 @@ export function hasNativePlayerBrightness(): boolean {
 }
 
 /**
- * On Android WebView: real window backlight (`LayoutParams.screenBrightness`).
+ * On Android/Windows native shells: real window/monitor backlight.
  * In browser/PWA: CSS overlay fallback only (no device API).
  */
 export function applyPlayerBrightness(value: number): {
@@ -93,7 +96,7 @@ export function clearNativePlayerBrightness(): void {
   }
 }
 
-/** Black overlay opacity — only for browsers without the Android brightness bridge. */
+/** Black overlay opacity — only for browsers without a native brightness bridge. */
 export function playerBrightnessOverlayOpacity(value: number): number {
   const next = clampPlayerBrightness(value);
   return Math.min(0.92, Math.max(0, 1 - next));

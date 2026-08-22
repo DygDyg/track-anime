@@ -163,7 +163,10 @@ export function Header({ logoSrc: initialLogoSrc = SITE_LOGO_PATH }: { logoSrc?:
   }, [mobileSearchOpen]);
 
   return (
-    <header className="site-header fixed top-0 left-0 right-0 z-50 w-full max-w-[100vw] overflow-x-clip supports-[padding:max(0px)]:pt-[env(safe-area-inset-top)]">
+    <header
+      data-tv-chrome
+      className="site-header fixed top-0 left-0 right-0 z-50 w-full max-w-[100vw] overflow-x-clip supports-[padding:max(0px)]:pt-[env(safe-area-inset-top)]"
+    >
       <div
         aria-hidden
         className="site-header-bg site-header-bg-fullbleed backdrop-blur-lg backdrop-saturate-150"
