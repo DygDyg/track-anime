@@ -34,10 +34,10 @@ export type KodikPlayerResumeMode = "play" | "pause";
 
 export type KodikPlayerSeekOptions = {
   /**
-   * UI / bootResume already points at this episode (strip + liveProgress) on the same iframe.
-   * Don't block on a second kodik_player_current_episode — change_episode is often a
-   * no-op when Kodik is already there and won't re-emit the event.
-   * Not for cold iframe after translation switch.
+   * UI / bootResume / Continue `/seria/` remount already points at this episode.
+   * Still sends change_episode when needed, then blind play→seek shortly after —
+   * waiting for a second current_episode often hangs on «подождите…».
+   * Prefer remounting Continue onto a per-episode `/seria/` embed when available.
    */
   uiEpisodeAlreadyTargeted?: boolean;
 };
@@ -446,6 +446,7 @@ function startContinueFlow(
   linkMode: KodikPlayerLinkMode,
   continueFlowRef: MutableRefObject<ContinueFlow | null>,
   episodeRef: MutableRefObject<EpisodeState>,
+  episodeConfirmed: boolean,
   onContinueStateChange?: (active: boolean) => void,
   options?: KodikPlayerSeekOptions,
 ): void {
@@ -456,41 +457,50 @@ function startContinueFlow(
   continueFlowRef.current = flow;
   armContinueHardTimeout(flow, continueFlowRef, onContinueStateChange);
 
-  const sameEpisode = episodeMatches(resume, current, linkMode);
-  // Boot already moved the strip / soft-seek to this episode; Kodik may already be there
-  // without a fresh current_episode for us to wait on.
+  // Seeded episodeRef from bootResume is not proof Kodik loaded that episode.
+  const sameEpisode =
+    (linkMode === "single" || episodeConfirmed) && episodeMatches(resume, current, linkMode);
   const uiAlreadyOnTarget = Boolean(options?.uiEpisodeAlreadyTargeted);
 
-  // Same episode (or UI already on target after boot): play in the same user-gesture turn.
-  // Do not send change_episode here — it restarts at 0 and can burn Android autoplay;
-  // bootResume already soft-switched when uiAlreadyOnTarget.
-  if (sameEpisode || uiAlreadyOnTarget) {
-    if (uiAlreadyOnTarget && !sameEpisode) {
-      episodeRef.current = {
-        seasonNumber: resume.seasonNumber,
-        episodeNumber: resume.episodeNumber,
-      };
-    }
+  // Confirmed match (or /seria/ single embed): play→seek in the same gesture.
+  if (sameEpisode) {
     requestPlayThenSeek(iframe, flow, continueFlowRef, episodeRef, onContinueStateChange);
-  } else {
-    sendContinueEpisodeChange(iframe, resume, linkMode);
-    // Wait for kodik_player_current_episode that matches resume. Do not blind play/seek
-    // when resuming mid-episode — that applied the timestamp to N−1.
-    scheduleContinueEpisodeChangeRetries(iframe, flow, continueFlowRef);
-    // Next episode (position 0): if confirmation never arrives, still try play so auto-advance
-    // does not hang forever on a silent change_episode.
-    if (resume.positionSeconds < 1) {
-      flow.timers.push(
-        window.setTimeout(() => {
-          if (continueFlowRef.current !== flow || flow.stage !== "episode") return;
-          episodeRef.current = {
-            seasonNumber: resume.seasonNumber,
-            episodeNumber: resume.episodeNumber,
-          };
-          requestPlayThenSeek(iframe, flow, continueFlowRef, episodeRef, onContinueStateChange);
-        }, CONTINUE_EPISODE_FORCE_PLAY_MS),
-      );
-    }
+    return;
+  }
+
+  sendContinueEpisodeChange(iframe, resume, linkMode);
+  scheduleContinueEpisodeChangeRetries(iframe, flow, continueFlowRef);
+
+  // Blind start when UI already points at the target (Continue after boot / /seria/ remount
+  // fallback). Waiting for current_episode often hangs on «подождите…»; change_episode was
+  // still sent above so Kodik can switch before seek lands.
+  if (uiAlreadyOnTarget) {
+    episodeRef.current = {
+      seasonNumber: resume.seasonNumber,
+      episodeNumber: resume.episodeNumber,
+    };
+    flow.timers.push(
+      window.setTimeout(() => {
+        if (continueFlowRef.current !== flow || flow.stage !== "episode") return;
+        requestPlayThenSeek(iframe, flow, continueFlowRef, episodeRef, onContinueStateChange);
+      }, 280),
+    );
+    return;
+  }
+
+  // Next episode / start-at-0: if confirmation never arrives, still try play so auto-advance
+  // does not hang forever on a silent change_episode.
+  if (resume.positionSeconds < 1) {
+    flow.timers.push(
+      window.setTimeout(() => {
+        if (continueFlowRef.current !== flow || flow.stage !== "episode") return;
+        episodeRef.current = {
+          seasonNumber: resume.seasonNumber,
+          episodeNumber: resume.episodeNumber,
+        };
+        requestPlayThenSeek(iframe, flow, continueFlowRef, episodeRef, onContinueStateChange);
+      }, CONTINUE_EPISODE_FORCE_PLAY_MS),
+    );
   }
 }
 
@@ -636,6 +646,8 @@ export const KodikPlayer = forwardRef<KodikPlayerHandle, Props>(function KodikPl
   const iframeRef = useRef<HTMLIFrameElement>(null);
   const playerLinkModeRef = useRef<KodikPlayerLinkMode>("serial");
   const episodeRef = useRef<EpisodeState>(seedEpisodeState(activeEpisode, initialResume));
+  /** True only after Kodik sent current_episode with numbers — seeded bootResume is not enough. */
+  const kodikEpisodeConfirmedRef = useRef(false);
   const activeEpisodeRef = useRef(activeEpisode);
   activeEpisodeRef.current = activeEpisode;
   const positionRef = useRef(0);
@@ -786,6 +798,7 @@ export const KodikPlayer = forwardRef<KodikPlayerHandle, Props>(function KodikPl
     bootSettledRef.current = false;
     playerReadyRef.current = false;
     videoStreamStartedRef.current = false;
+    kodikEpisodeConfirmedRef.current = false;
     episodeRef.current = seedEpisodeState(activeEpisodeRef.current, initialResume);
     positionRef.current = 0;
     playbackRef.current = { ...DEFAULT_PLAYBACK_STATE };
@@ -815,7 +828,10 @@ export const KodikPlayer = forwardRef<KodikPlayerHandle, Props>(function KodikPl
       // believe the target episode was already loaded and seek into the previous one.
       const currentEpisode = episodeRef.current;
       const linkMode = playerLinkModeRef.current;
-      const episodeChanging = !episodeMatches(resume, currentEpisode, linkMode);
+      const episodeConfirmed = linkMode === "single" || kodikEpisodeConfirmedRef.current;
+      const episodeChanging = !(
+        episodeConfirmed && episodeMatches(resume, currentEpisode, linkMode)
+      );
       if (mode === "pause") {
         positionRef.current = Math.max(0, resume.positionSeconds);
         patchPlayback({ positionSeconds: positionRef.current, isPlaying: false });
@@ -842,6 +858,7 @@ export const KodikPlayer = forwardRef<KodikPlayerHandle, Props>(function KodikPl
         linkMode,
         continueFlowRef,
         episodeRef,
+        episodeConfirmed,
         onContinueStateChangeRef.current,
         options,
       );
@@ -945,11 +962,13 @@ export const KodikPlayer = forwardRef<KodikPlayerHandle, Props>(function KodikPl
       if (!initialResume || !iframeRef.current || bootSettledRef.current) return;
       const current = episodeRef.current;
       const linkMode = playerLinkModeRef.current;
+      const episodeConfirmed = linkMode === "single" || kodikEpisodeConfirmedRef.current;
 
       // Keep nudging toward the boot episode when Kodik opens on last-episode by default.
       // Previously resumeApplied after the 1.5s fallback blocked a second change_episode once
       // the real current_episode (often last) arrived — UI showed saved ep, Kodik stayed on last.
-      if (!episodeMatches(initialResume, current, linkMode)) {
+      // Seeded episodeRef alone must not count as a match — that soft-sought into N−1.
+      if (!episodeConfirmed || !episodeMatches(initialResume, current, linkMode)) {
         if (bootEpisodeNudgeCountRef.current >= 3) {
           bootSettledRef.current = true;
           return;
@@ -1021,6 +1040,9 @@ export const KodikPlayer = forwardRef<KodikPlayerHandle, Props>(function KodikPl
 
         // `/seria/` (and some boot events) send episode/season null. Never coerce that to 1.
         if (linkMode === "single" || !hasKodikEpisodeNumbers(currentEpisode)) {
+          if (linkMode === "single") {
+            kodikEpisodeConfirmedRef.current = true;
+          }
           if (!continueFlow) {
             applyInitialResume();
           }
@@ -1034,6 +1056,7 @@ export const KodikPlayer = forwardRef<KodikPlayerHandle, Props>(function KodikPl
           const nextEpisode = normalizeEpisode(currentEpisode, episodeRef.current);
           if (!continueFlow || episodeMatches(continueFlow.resume, nextEpisode, continueFlow.linkMode)) {
             episodeRef.current = nextEpisode;
+            kodikEpisodeConfirmedRef.current = true;
             // While continue-flow owns the switch (e.g. next episode), do not boot-nudge
             // back toward initialResume — that undoes auto-advance (boot ep N vs next N+1).
             if (!continueFlow) {
@@ -1054,6 +1077,13 @@ export const KodikPlayer = forwardRef<KodikPlayerHandle, Props>(function KodikPl
         if (continueFlowRef.current) return;
         positionRef.current = event.data.value;
         patchPlayback({ positionSeconds: event.data.value });
+        // Don't attribute playback time to a boot-seeded episode before Kodik confirms.
+        if (
+          playerLinkModeRef.current !== "single" &&
+          !kodikEpisodeConfirmedRef.current
+        ) {
+          return;
+        }
         onProgressRef.current?.({
           seasonNumber: episodeRef.current.seasonNumber,
           episodeNumber: episodeRef.current.episodeNumber,
@@ -1156,6 +1186,7 @@ export const KodikPlayer = forwardRef<KodikPlayerHandle, Props>(function KodikPl
         iframeRef,
         resumeAppliedRef,
         episodeRef,
+        kodikEpisodeConfirmedRef,
         bootEpisodeNudgeCountRef,
         bootSettledRef,
         playerLinkModeRef,
@@ -1212,6 +1243,7 @@ function applyResumeFallback(
   iframeRef: RefObject<HTMLIFrameElement | null>,
   resumeAppliedRef: MutableRefObject<boolean>,
   episodeRef: MutableRefObject<EpisodeState>,
+  kodikEpisodeConfirmedRef: MutableRefObject<boolean>,
   bootEpisodeNudgeCountRef: MutableRefObject<number>,
   bootSettledRef: MutableRefObject<boolean>,
   playerLinkModeRef: MutableRefObject<KodikPlayerLinkMode>,
@@ -1219,7 +1251,8 @@ function applyResumeFallback(
   if (!iframeRef.current || bootSettledRef.current) return;
 
   const linkMode = playerLinkModeRef.current;
-  if (!episodeMatches(resume, episodeRef.current, linkMode)) {
+  const episodeConfirmed = linkMode === "single" || kodikEpisodeConfirmedRef.current;
+  if (!episodeConfirmed || !episodeMatches(resume, episodeRef.current, linkMode)) {
     if (bootEpisodeNudgeCountRef.current >= 3) {
       bootSettledRef.current = true;
       return;

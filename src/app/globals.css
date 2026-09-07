@@ -171,6 +171,14 @@ html.has-bottom-nav .aqua-coder-companion {
   bottom: calc(var(--pwa-nav-height) + 0.5rem + env(safe-area-inset-bottom, 0px));
 }
 
+.client-update-banner {
+  bottom: calc(0.75rem + env(safe-area-inset-bottom, 0px));
+}
+
+html.has-bottom-nav .client-update-banner {
+  bottom: calc(var(--pwa-nav-height) + 0.75rem + env(safe-area-inset-bottom, 0px));
+}
+
 @media (min-width: 640px) {
   .scroll-to-top-button {
     right: calc(1.5rem + env(safe-area-inset-right, 0px));

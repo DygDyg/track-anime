@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { getSession } from "@/lib/auth/session";
-import { hashPassword, normalizeLocalLogin, validateLocalCredential } from "@/lib/auth/local-credentials";
+import { formatLocalLogin, hashPassword, normalizeLocalLogin, validateLocalCredential } from "@/lib/auth/local-credentials";
 import { prisma } from "@/lib/prisma";
 
 export const runtime = "nodejs";
@@ -19,17 +19,31 @@ export async function PUT(request: NextRequest) {
   const session = await getSession();
   if (!session) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   const body = (await request.json().catch(() => null)) as { login?: unknown; password?: unknown } | null;
-  const login = typeof body?.login === "string" ? normalizeLocalLogin(body.login) : "";
+  const login = typeof body?.login === "string" ? formatLocalLogin(body.login) : "";
+  const loginNormalized = normalizeLocalLogin(login);
   const password = typeof body?.password === "string" ? body.password : "";
   const error = validateLocalCredential(login, password);
   if (error) return NextResponse.json({ error }, { status: 400 });
+
+  const taken = await prisma.localCredential.findFirst({
+    where: {
+      userId: { not: session.user.id },
+      OR: [
+        { loginNormalized },
+        { loginNormalized: null, login: { equals: loginNormalized, mode: "insensitive" } },
+      ],
+    },
+    select: { userId: true },
+  });
+  if (taken) return NextResponse.json({ error: "Этот логин уже занят." }, { status: 409 });
+
   const passwordHash = await hashPassword(password);
 
   try {
     await prisma.localCredential.upsert({
       where: { userId: session.user.id },
-      create: { userId: session.user.id, login, passwordHash },
-      update: { login, passwordHash },
+      create: { userId: session.user.id, login, loginNormalized, passwordHash },
+      update: { login, loginNormalized, passwordHash },
     });
     return NextResponse.json({ login });
   } catch (cause) {

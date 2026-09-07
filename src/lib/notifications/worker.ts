@@ -87,15 +87,17 @@ export async function processPendingNotificationDeliveries(
     });
 
     if (!payload) {
+      // Материал/прогресс пропали или пользователь уже догнал серию на другом устройстве.
       await prisma.notificationDelivery.update({
         where: { id: row.id },
         data: {
-          status: "failed",
+          status: "sent",
+          sentAt: new Date(),
           attempts: { increment: 1 },
-          lastError: "payload_not_found",
+          lastError: "skipped_stale_or_caught_up",
         },
       });
-      result.failed += 1;
+      result.skipped += 1;
       continue;
     }
 

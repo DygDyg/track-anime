@@ -77,10 +77,10 @@ function kodikPlayerLinksEqual(left: string, right: string): boolean {
 }
 
 /**
- * Same-season numbered episodes stay on the serial/season iframe (`change_episode`).
- * Per-episode `/seria/` embeds report `episode: null`, which must not remount the
- * serial player or TA will snap the strip / «Продолжить» to series 1.
- * Remount only for another season/specials tree, or when leaving a locked seria.
+ * Prefer per-episode `/seria/` remount when a scoped link is available.
+ * Same-season switches without `/seria/` stay on serial/season (`change_episode`).
+ * Leaving a locked `/seria/` without a new one remounts back to the material serial.
+ * Season/specials trees still remount onto season embeds when needed.
  */
 export function resolveKodikPlayerEpisodeSwitch(input: {
   currentSrc: string;
@@ -99,6 +99,11 @@ export function resolveKodikPlayerEpisodeSwitch(input: {
     remount: !kodikPlayerLinksEqual(src, currentSrc),
   });
 
+  // Locked episode URL — always remount when the embed actually changes.
+  if (scoped && isSingleEpisodeKodikPlayerLink(scoped)) {
+    return withRemount(scoped);
+  }
+
   if (seasonChanged) {
     if (input.targetSeasonNumber === 0 && scoped) {
       return withRemount(scoped);
@@ -110,8 +115,17 @@ export function resolveKodikPlayerEpisodeSwitch(input: {
     return withRemount(input.materialLink);
   }
 
+  // Same season, no /seria/: change_episode on serial/season iframe.
   if (currentMode === "serial" || currentMode === "season") {
+    if (scoped && detectKodikPlayerLinkMode(scoped) === "season") {
+      return withRemount(scoped);
+    }
     return { src: currentSrc, remount: false };
+  }
+
+  // Currently on /seria/ but next episode has no seria link — unlock via material serial.
+  if (currentMode === "single") {
+    return withRemount(input.materialLink);
   }
 
   if (scoped && !kodikPlayerLinksEqual(scoped, currentSrc)) {

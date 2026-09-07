@@ -1,8 +1,10 @@
 import { NextRequest, NextResponse } from "next/server";
 import { getSession } from "@/lib/auth/session";
 import {
+  advanceInAppNotifySince,
   isInAppNotificationsEnabled,
   listInAppNotifications,
+  resolveInAppNotifySince,
 } from "@/lib/notifications/in-app-feed";
 
 export const dynamic = "force-dynamic";
@@ -25,11 +27,13 @@ export async function GET(request: NextRequest) {
   }
 
   const sinceParam = request.nextUrl.searchParams.get("since");
-  const since = parseSinceParam(sinceParam) ?? new Date(Date.now() - 60_000);
+  const clientSince = parseSinceParam(sinceParam) ?? new Date(Date.now() - 60_000);
+  const since = await resolveInAppNotifySince(session.user.id, clientSince);
 
-  const items = await listInAppNotifications(session.user.id, since);
-  const latestAt =
-    items.length > 0 ? items[items.length - 1]?.notifiedAt ?? null : since.toISOString();
+  const { items, latestAt: batchLatest } = await listInAppNotifications(session.user.id, since);
+  const latestAt = batchLatest ?? since.toISOString();
+
+  await advanceInAppNotifySince(session.user.id, latestAt);
 
   return NextResponse.json({
     enabled: true,

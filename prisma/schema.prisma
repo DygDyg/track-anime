@@ -319,6 +319,8 @@ model UserNotificationPreferences {
   telegramEnabled   Boolean  @default(false)
   vkEnabled         Boolean  @default(false)
   discordEnabled    Boolean  @default(false)
+  /// Общий курсор in-app catch-up по аккаунту (не per-device localStorage)
+  inAppNotifySince  DateTime?
   /// Личный шаблон Discord (если включён — вместо шаблона сайта)
   customDiscordTemplateEnabled   Boolean @default(false)
   discordTitleTemplate           String? @db.Text
@@ -461,12 +463,15 @@ model ShikimoriAccount {
 
 /// Локальный способ входа, дополнительно к привязке Shikimori.
 model LocalCredential {
-  userId       String   @id
-  user         User     @relation(fields: [userId], references: [id], onDelete: Cascade)
-  login        String   @unique
-  passwordHash String   @db.Text
-  createdAt    DateTime @default(now())
-  updatedAt    DateTime @updatedAt
+  userId          String   @id
+  user            User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  /// Отображаемый логин с сохранённым регистром.
+  login           String
+  /// Нижний регистр для уникальности и входа без учёта регистра.
+  loginNormalized String?  @unique
+  passwordHash    String   @db.Text
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
 }
 
 /// Одноразовый запрос входа: QR содержит только code, секрет получателя остаётся в браузере.

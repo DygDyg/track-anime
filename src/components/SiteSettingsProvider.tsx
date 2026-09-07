@@ -16,8 +16,10 @@ import {
   applySiteSettings,
   buildPopularHomeTranslationFilter,
   hasStoredSiteSettings,
+  mergeRemoteWithLocalSiteSettings,
   normalizeSiteSettings,
   readStoredSiteSettings,
+  stripLocalOnlySiteSettings,
   type SiteSettings,
 } from "@/lib/site-settings";
 
@@ -82,11 +84,10 @@ async function fetchRemoteSiteSettings(): Promise<SiteSettings | null> {
 }
 
 async function saveRemoteSiteSettings(settings: SiteSettings): Promise<void> {
-  const { tvNavigationEnabled: _tvNavigationEnabled, ...remoteSettings } = settings;
   const res = await fetch("/api/user/site-settings", {
     method: "PUT",
     headers: { "Content-Type": "application/json" },
-    body: JSON.stringify(remoteSettings),
+    body: JSON.stringify(stripLocalOnlySiteSettings(settings)),
   });
   if (!res.ok && res.status !== 401) {
     throw new Error("Failed to save site settings");
@@ -189,7 +190,7 @@ export function SiteSettingsProvider({
 
         if (remote) {
           commitSettings(
-            { ...remote, tvNavigationEnabled: settingsRef.current.tvNavigationEnabled },
+            mergeRemoteWithLocalSiteSettings(remote, settingsRef.current),
             false,
           );
           return;

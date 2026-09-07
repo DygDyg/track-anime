@@ -538,15 +538,18 @@ function AvatarDecorationSection({
 export function SiteSettingsAppearanceTab({
   settings,
   updateSettings,
+  updateLocalSettings,
   hideTheme = false,
 }: {
   settings: SiteSettings;
   updateSettings: (patch: Partial<SiteSettings>) => void;
+  updateLocalSettings?: (patch: Partial<SiteSettings>) => void;
   hideTheme?: boolean;
 }) {
   const { user } = useAuth();
   const { remoteSaving } = useSiteSettings();
   const settingsBusy = remoteSaving;
+  const patchLocalSettings = updateLocalSettings ?? updateSettings;
 
   return (
     <div className="space-y-6">
@@ -642,17 +645,21 @@ export function SiteSettingsAppearanceTab({
       </section>
 
       <section className="space-y-2">
+        <SectionTitle>Анимации и персонаж</SectionTitle>
+        <SectionHint>
+          Сохраняются только в этом браузере и не синхронизируются с аккаунтом.
+        </SectionHint>
         <ToggleRow
           label="Уменьшить анимации"
           hint="Отключает плавные переходы и анимации интерфейса"
           checked={settings.reduceMotion}
-          onChange={(checked) => updateSettings({ reduceMotion: checked })}
+          onChange={(checked) => patchLocalSettings({ reduceMotion: checked })}
         />
         <ToggleRow
           label="Отключить анимации украшений аватарок"
           hint="Показывает статичные версии рамок, не затрагивая остальные анимации сайта"
           checked={settings.reduceAvatarDecorationMotion}
-          onChange={(checked) => updateSettings({ reduceAvatarDecorationMotion: checked })}
+          onChange={(checked) => patchLocalSettings({ reduceAvatarDecorationMotion: checked })}
         />
         <ToggleRow
           label="Показывать часы"
@@ -664,7 +671,7 @@ export function SiteSettingsAppearanceTab({
           label="Персонаж Aqua Coder"
           hint="Показывает персонажа в правом нижнем углу экрана"
           checked={settings.companionEnabled}
-          onChange={(checked) => updateSettings({ companionEnabled: checked })}
+          onChange={(checked) => patchLocalSettings({ companionEnabled: checked })}
         />
         <RangeRow
           label="Размер персонажа"
@@ -676,7 +683,7 @@ export function SiteSettingsAppearanceTab({
           unit="×"
           disabled={!settings.companionEnabled}
           onChange={(value) =>
-            updateSettings({ companionScale: normalizeCompanionScale(value) })
+            patchLocalSettings({ companionScale: normalizeCompanionScale(value) })
           }
         />
         <ToggleRow
@@ -684,7 +691,7 @@ export function SiteSettingsAppearanceTab({
           hint="Показывает только первый кадр каждой позы без движения"
           checked={settings.companionStaticAnimations}
           disabled={!settings.companionEnabled}
-          onChange={(checked) => updateSettings({ companionStaticAnimations: checked })}
+          onChange={(checked) => patchLocalSettings({ companionStaticAnimations: checked })}
         />
       </section>
     </div>
@@ -1051,7 +1058,11 @@ export function SiteSettingsModal() {
 
           <div className="min-h-0 min-w-0 flex-1 overflow-y-auto overflow-x-hidden px-4 py-4 sm:px-5 sm:py-5">
             {tab === "appearance" ? (
-              <SiteSettingsAppearanceTab settings={settings} updateSettings={updateSettings} />
+              <SiteSettingsAppearanceTab
+                settings={settings}
+                updateSettings={updateSettings}
+                updateLocalSettings={updateLocalSettings}
+              />
             ) : null}
             {tab === "home" ? (
               <SiteSettingsHomeTab

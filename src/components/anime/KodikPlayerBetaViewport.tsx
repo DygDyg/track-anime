@@ -43,8 +43,7 @@ import {
 
 const SINGLE_CLICK_DELAY_MS = 220;
 const CLICK_LAYER_APPEAR_DELAY_MS = 2_000;
-/** Kodik iframe steals focus; reclaim so Space/arrows reach TA keyboard handlers. */
-const PLAYER_FOCUS_RECLAIM_MS = 2_500;
+/** Kodik iframe steals focus; reclaim on interaction/keydown so Space/arrows reach TA (no polling). */
 const SEEK_FEEDBACK_MS = 900;
 const MOBILE_DOUBLE_TAP_SEEK_SECONDS = 10;
 const MOBILE_DOCK_CONTROLS_MQ = "(max-width: 639px) and (orientation: portrait)";
@@ -214,8 +213,10 @@ export function KodikPlayerBetaViewport({
     shellHeight: number;
   } | null>(null);
   const wakeLockRef = useRef<WakeLockSentinel | null>(null);
-  const playbackRef = useRef(playback);
-  const volumeReady = playback.durationSeconds > 0;
+  /** Local copy for timeline UI — parent skips position-only React updates to avoid panel thrash. */
+  const [viewPlayback, setViewPlayback] = useState(playback);
+  const playbackRef = useRef(viewPlayback);
+  const volumeReady = viewPlayback.durationSeconds > 0;
   const controlsDocked = dockControlsBelow && !fullscreenActive;
   // Overlay only when native device/window brightness is unavailable (browser/PWA).
   const brightnessOverlay = nativeBrightness
@@ -223,8 +224,48 @@ export function KodikPlayerBetaViewport({
     : playerBrightnessOverlayOpacity(overlayBrightness);
 
   useEffect(() => {
-    playbackRef.current = playback;
-  }, [playback]);
+    playbackRef.current = viewPlayback;
+  }, [viewPlayback]);
+
+  // Sync rare fields from parent (watch party play/pause, remount); keep fresher local position.
+  useEffect(() => {
+    setViewPlayback((previous) => {
+      if (
+        previous.isPlaying === playback.isPlaying &&
+        previous.durationSeconds === playback.durationSeconds &&
+        previous.volume === playback.volume &&
+        previous.muted === playback.muted &&
+        previous.mediaUnlocked === playback.mediaUnlocked &&
+        previous.videoReady === playback.videoReady
+      ) {
+        return previous;
+      }
+      return {
+        ...previous,
+        isPlaying: playback.isPlaying,
+        durationSeconds: playback.durationSeconds,
+        volume: playback.volume,
+        muted: playback.muted,
+        mediaUnlocked: playback.mediaUnlocked,
+        videoReady: playback.videoReady,
+      };
+    });
+  }, [
+    playback.isPlaying,
+    playback.durationSeconds,
+    playback.volume,
+    playback.muted,
+    playback.mediaUnlocked,
+    playback.videoReady,
+  ]);
+
+  const handlePlaybackStateChange = useCallback(
+    (state: KodikPlayerPlaybackState) => {
+      setViewPlayback(state);
+      onPlaybackStateChange?.(state);
+    },
+    [onPlaybackStateChange],
+  );
 
   useEffect(() => {
     setNativeBrightness(hasNativePlayerBrightness());
@@ -269,39 +310,38 @@ export function KodikPlayerBetaViewport({
     }
     // Episode switch often keeps isPlaying=true, so a separate "on play" effect never re-runs.
     // Restore hit-testing when loading ends while already playing, or when play starts later.
-    if (playback.isPlaying) {
+    if (viewPlayback.isPlaying) {
       setPassThroughUntilPlay(false);
     }
-  }, [androidShell, controlsDisabled, playback.isPlaying]);
+  }, [androidShell, controlsDisabled, viewPlayback.isPlaying]);
 
   // Effective only inside the Android WebView shell — desktop/browser keep previous hit-testing.
   const passThroughHits = androidShell && passThroughUntilPlay;
 
   useEffect(() => {
-    if (!playback.mediaUnlocked || passThroughHits) {
+    if (!viewPlayback.mediaUnlocked || passThroughHits) {
       setClickLayerArmed(false);
       return;
     }
     const timer = window.setTimeout(() => setClickLayerArmed(true), CLICK_LAYER_APPEAR_DELAY_MS);
     return () => window.clearTimeout(timer);
-  }, [playback.mediaUnlocked, passThroughHits]);
+  }, [viewPlayback.mediaUnlocked, passThroughHits]);
 
-  useEffect(() => {
-    if (!playback.mediaUnlocked || kodikUiAccess || qualityPanelActive || passThroughHits) return;
-
-    const reclaimFromKodikIframe = () => {
-      if (!document.hasFocus()) return;
-      const root = viewportRef.current;
-      if (!root) return;
-      const active = document.activeElement;
-      if (!(active instanceof HTMLIFrameElement) || !root.contains(active)) return;
-      root.focus({ preventScroll: true });
-    };
-
-    reclaimFromKodikIframe();
-    const timer = window.setInterval(reclaimFromKodikIframe, PLAYER_FOCUS_RECLAIM_MS);
-    return () => window.clearInterval(timer);
-  }, [playback.mediaUnlocked, kodikUiAccess, qualityPanelActive, passThroughHits]);
+  const reclaimFocusFromKodikIframe = useCallback(() => {
+    if (kodikUiAccess || qualityPanelActive || passThroughHits) return;
+    if (!viewPlayback.mediaUnlocked) return;
+    if (!document.hasFocus()) return;
+    const root = viewportRef.current;
+    if (!root) return;
+    const active = document.activeElement;
+    if (!(active instanceof HTMLIFrameElement) || !root.contains(active)) return;
+    root.focus({ preventScroll: true });
+  }, [
+    kodikUiAccess,
+    passThroughHits,
+    qualityPanelActive,
+    viewPlayback.mediaUnlocked,
+  ]);
 
   useEffect(() => {
     const sync = () => setTvNavActive(isTvNavigationSessionActive());
@@ -329,7 +369,7 @@ export function KodikPlayerBetaViewport({
     };
 
     const requestWakeLock = async () => {
-      if (!playback.isPlaying || document.visibilityState !== "visible") {
+      if (!viewPlayback.isPlaying || document.visibilityState !== "visible") {
         await releaseWakeLock();
         return;
       }
@@ -364,7 +404,7 @@ export function KodikPlayerBetaViewport({
       document.removeEventListener("visibilitychange", onVisibilityChange);
       void releaseWakeLock();
     };
-  }, [playback.isPlaying]);
+  }, [viewPlayback.isPlaying]);
 
   const clearHideTimer = useCallback(() => {
     if (hideTimerRef.current != null) {
@@ -376,7 +416,7 @@ export function KodikPlayerBetaViewport({
   const scheduleHide = useCallback(() => {
     clearHideTimer();
     if (
-      !playback.isPlaying ||
+      !viewPlayback.isPlaying ||
       controlsDisabled ||
       kodikUiAccess ||
       keepUiVisible ||
@@ -398,7 +438,7 @@ export function KodikPlayerBetaViewport({
     keepUiVisible,
     kodikUiAccess,
     onFullscreenTranslationsIntent,
-    playback.isPlaying,
+    viewPlayback.isPlaying,
     settings.playerControlsIdleMs,
     tvChromePinned,
   ]);
@@ -450,7 +490,7 @@ export function KodikPlayerBetaViewport({
 
   useEffect(() => {
     // One-shot: only when entering fullscreen while paused (Continue / bottom Play).
-    if (!tvNavActive || !fullscreenActive || playback.isPlaying || controlsDisabled) return;
+    if (!tvNavActive || !fullscreenActive || viewPlayback.isPlaying || controlsDisabled) return;
     if (primaryFocusDoneRef.current) return;
 
     const focusPrimary = () => {
@@ -488,7 +528,7 @@ export function KodikPlayerBetaViewport({
   }, [
     tvNavActive,
     fullscreenActive,
-    playback.isPlaying,
+    viewPlayback.isPlaying,
     controlsDisabled,
     clearHideTimer,
   ]);
@@ -631,8 +671,9 @@ export function KodikPlayerBetaViewport({
   );
 
   const markPlayerInteraction = useCallback(() => {
+    reclaimFocusFromKodikIframe();
     viewportRef.current?.focus({ preventScroll: true });
-  }, []);
+  }, [reclaimFocusFromKodikIframe]);
 
   const handleTouchStart = useCallback(
     (event: ReactTouchEvent<HTMLDivElement>) => {
@@ -827,7 +868,7 @@ export function KodikPlayerBetaViewport({
       return;
     }
 
-    if (!playback.isPlaying || controlsDisabled || keepUiVisible || tvChromePinned) {
+    if (!viewPlayback.isPlaying || controlsDisabled || keepUiVisible || tvChromePinned) {
       clearHideTimer();
       setUiVisible(true);
       return;
@@ -839,7 +880,7 @@ export function KodikPlayerBetaViewport({
     controlsDisabled,
     keepUiVisible,
     kodikUiAccess,
-    playback.isPlaying,
+    viewPlayback.isPlaying,
     scheduleHide,
     tvChromePinned,
   ]);
@@ -891,6 +932,8 @@ export function KodikPlayerBetaViewport({
     };
 
     const onKeyDown = (event: KeyboardEvent) => {
+      reclaimFocusFromKodikIframe();
+
       const target = event.target;
       const targetInput = target instanceof HTMLInputElement ? target : null;
       const isEditable =
@@ -1116,6 +1159,7 @@ export function KodikPlayerBetaViewport({
     toggleKodikUiAccess,
     volumeReady,
     tvChromePinned,
+    reclaimFocusFromKodikIframe,
   ]);
 
   const handleViewportClick = useCallback(() => {
@@ -1175,8 +1219,11 @@ export function KodikPlayerBetaViewport({
 
   const uiInteractive = uiVisible && !kodikUiAccess;
   const chromeHitTest = uiInteractive && !passThroughHits;
-  const duration = Math.max(playback.durationSeconds, 0);
-  const position = Math.min(Math.max(playback.positionSeconds, 0), duration || playback.positionSeconds);
+  const duration = Math.max(viewPlayback.durationSeconds, 0);
+  const position = Math.min(
+    Math.max(viewPlayback.positionSeconds, 0),
+    duration || viewPlayback.positionSeconds,
+  );
   const progressMax = duration > 0 ? duration : Math.max(position, 1);
   const progressFill = `${(position / progressMax) * 100}%`;
   // Until first media unlock (+ short delay), no click-layer — taps go to iframe (Android WebView first play).
@@ -1188,7 +1235,7 @@ export function KodikPlayerBetaViewport({
     clickLayerArmed &&
     !qualityPanelActive &&
     !passThroughHits;
-  const hideCursor = playback.isPlaying && !uiInteractive && !kodikUiAccess;
+  const hideCursor = viewPlayback.isPlaying && !uiInteractive && !kodikUiAccess;
   const clickLayerClass = [
     "absolute z-10 bg-transparent",
     "touch-manipulation select-none [-webkit-tap-highlight-color:transparent]",
@@ -1206,7 +1253,7 @@ export function KodikPlayerBetaViewport({
   const controlsNode = (
     <KodikPlayerBetaControls
       disabled={controlsDisabled}
-      playback={playback}
+      playback={viewPlayback}
       timelineSegments={timelineSegments}
       fullscreenActive={fullscreenActive}
       seekSkipLabelSeconds={seekSkipLabelSeconds}
@@ -1303,7 +1350,7 @@ export function KodikPlayerBetaViewport({
           onProgress={onProgress}
           onPause={onPause}
           onTranslationChange={onTranslationChange}
-          onPlaybackStateChange={onPlaybackStateChange}
+          onPlaybackStateChange={handlePlaybackStateChange}
           onEnded={onEnded}
         />
         {brightnessOverlay > 0.01 ? (

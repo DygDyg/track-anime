@@ -86,6 +86,9 @@ export async function saveUserNotificationPreferences(
 ): Promise<UserNotificationPreferencesDto> {
   const templateUpdate = buildUserNotificationTemplateUpdate(input);
 
+  const enablingHistoryNew = input.historyNewEnabled === true;
+  const notifySinceReset = enablingHistoryNew ? new Date() : undefined;
+
   await prisma.userNotificationPreferences.upsert({
     where: { userId },
     create: {
@@ -94,6 +97,7 @@ export async function saveUserNotificationPreferences(
       telegramEnabled: input.telegramEnabled ?? false,
       vkEnabled: input.vkEnabled ?? false,
       discordEnabled: input.discordEnabled ?? false,
+      ...(notifySinceReset ? { inAppNotifySince: notifySinceReset } : {}),
       ...templateUpdate,
     },
     update: {
@@ -103,6 +107,7 @@ export async function saveUserNotificationPreferences(
       ...(input.telegramEnabled !== undefined ? { telegramEnabled: input.telegramEnabled } : {}),
       ...(input.vkEnabled !== undefined ? { vkEnabled: input.vkEnabled } : {}),
       ...(input.discordEnabled !== undefined ? { discordEnabled: input.discordEnabled } : {}),
+      ...(notifySinceReset ? { inAppNotifySince: notifySinceReset } : {}),
       ...templateUpdate,
     },
   });

@@ -4,14 +4,14 @@ import { prisma } from "@/lib/prisma";
 import { normalizeLocalLogin } from "@/lib/auth/local-login-name";
 
 const scrypt = promisify(scryptCallback);
-const LOGIN_PATTERN = /^[a-z0-9_-]{3,32}$/;
-const PASSWORD_MIN_LENGTH = 10;
+const LOGIN_PATTERN = /^[a-zA-Z0-9_-]{3,32}$/;
+const PASSWORD_MIN_LENGTH = 6;
 
-export { normalizeLocalLogin } from "@/lib/auth/local-login-name";
+export { formatLocalLogin, normalizeLocalLogin } from "@/lib/auth/local-login-name";
 
 export function validateLocalCredential(login: string, password: string): string | null {
   if (!LOGIN_PATTERN.test(login)) {
-    return "Логин: от 3 до 32 символов, только латиница, цифры, _ и -.";
+    return "Логин: от 3 до 32 символов, латиница, цифры, _ и - (при входе регистр не важен).";
   }
   if (password.length < PASSWORD_MIN_LENGTH) {
     return `Пароль должен содержать не менее ${PASSWORD_MIN_LENGTH} символов.`;
@@ -37,11 +37,39 @@ export async function verifyPassword(password: string, stored: string): Promise<
   }
 }
 
-export async function findUserByLocalCredential(login: string, password: string) {
-  const credential = await prisma.localCredential.findUnique({
-    where: { login },
+async function findLocalCredentialByLogin(login: string) {
+  const loginNormalized = normalizeLocalLogin(login);
+  if (!loginNormalized) return null;
+
+  const byNormalized = await prisma.localCredential.findUnique({
+    where: { loginNormalized },
     include: { user: true },
   });
+  if (byNormalized) return byNormalized;
+
+  // Старые записи без loginNormalized: ищем без учёта регистра и дописываем ключ.
+  const legacy = await prisma.localCredential.findFirst({
+    where: {
+      loginNormalized: null,
+      login: { equals: loginNormalized, mode: "insensitive" },
+    },
+    include: { user: true },
+  });
+  if (!legacy) return null;
+
+  try {
+    return await prisma.localCredential.update({
+      where: { userId: legacy.userId },
+      data: { loginNormalized },
+      include: { user: true },
+    });
+  } catch {
+    return legacy;
+  }
+}
+
+export async function findUserByLocalCredential(login: string, password: string) {
+  const credential = await findLocalCredentialByLogin(login);
   if (!credential || !(await verifyPassword(password, credential.passwordHash))) return null;
   return credential.user;
 }

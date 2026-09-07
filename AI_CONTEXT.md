@@ -117,12 +117,14 @@ Calendar: `/calendar` → calendar.ts → local Kodik DB or Shikimori `/api/cale
 | Poster missing | Fallback chain exhausted — check materialData, Shikimori cache |
 | Import stuck | Check `KodikImportJob` status in DB or admin panel |
 | Session lost | Cookie domain/path, or expired Session row |
+| In-app flood on phone/PC reopen | Per-device `localStorage` since without account cursor, or catch-up without progress filter — check `inAppNotifySince` + `rebuild-payload.ts` |
 | Phone dev: no JS, TitleCover only | Open via LAN IP without `allowedDevOrigins` — restart `npm run dev`, use `http://192.168.x.x:3000` |
 | `dygdyg:3000` unreachable | Add `192.168.x.x dygdyg` to hosts; dev must bind `0.0.0.0` (`npm run dev`) |
 | Brand logo does not rotate | No `.webp` files in `public/brand-logos`, `BrandRotationSettings.enabled=false`, or interval slot has not changed yet |
 | Android TV lag / blur | Full desktop UI in WebView; TV sets `data-tv-nav` which disables blur/companion — check inject in `BaseWebActivity.enableTvSiteNavigation` |
-| Kodik video freezes, audio continues | GPU pressure from page chrome (screenshot `blur-md`, pattern parallax, companion RAF). Playback sets `data-player-playing` to ease load; refresh / «Перезапустить плеер» remounts iframe |
+| Kodik video freezes, audio continues | GPU pressure from page chrome (screenshot `blur-md`, pattern parallax, companion RAF) or React thrash on `time_update`. Playback sets `data-player-playing`; panel skips position-only state updates (timeline in beta viewport; skip clock from `liveProgressRef`); focus reclaim is event-driven not polling; refresh / «Перезапустить плеер» remounts iframe |
 | TV search opens IME on focus | HeaderSearch idle uses wrapper `data-tv-focus`; OK/Enter required to edit |
+| Title search miss on synonym/описка | Strict fuzzy needs all tokens; empty query then tries layout + partial-token fuzzy in `search.ts` |
 | App settings dialog ignores D-pad | Native dialog needs focus drawables + `requestFocus` — see `showAppSettings` |
 | TV player arrows move focus instead of seek | Center Play has `data-tv-player-seek-keys`; arrows seek / jump chrome — see `KodikPlayerBetaViewport` |
 
@@ -170,7 +172,7 @@ npm run watch-party:server
 - `KodikMaterial.kodikId` — PK, Kodik's id
 - `KodikMaterial.shikimoriId` — link to Shikimori
 - `User.shikimoriId` — unique, from OAuth
-- `LocalCredential` — optional local login/password hash for the same `User`
+- `LocalCredential` — optional local login (case-preserved) + `loginNormalized` + password hash for the same `User`
 - `QrLoginRequest` — one-time QR approval state; the QR itself never contains a session token
 - `UserWatchProgress` — unique (userId, shikimoriId)
 - `WatchPartySettings` — global TA-плеер совместный просмотр toggles

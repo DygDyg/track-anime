@@ -100,7 +100,9 @@ export type SiteSettings = {
   accentPreset: SiteAccentPreset;
   backgroundDim: SiteBackgroundDim;
   backgroundImageUrl: SiteBackgroundImageUrl;
+  /** Локально для браузера: отключение анимаций интерфейса */
   reduceMotion: boolean;
+  /** Локально для браузера: статичные рамки аватарок */
   reduceAvatarDecorationMotion: boolean;
   preferPosterOverScreenshot: boolean;
   showRelativeTime: boolean;
@@ -136,15 +138,65 @@ export type SiteSettings = {
   betaHiddenProgressThickness: number;
   /** Задержка автоскрытия UI TA-плеера при воспроизведении (мс) */
   playerControlsIdleMs: number;
-  /** Локально для устройства: навигация стрелками по карточкам сайта */
+  /** Локально для браузера: навигация стрелками по карточкам сайта */
   tvNavigationEnabled: boolean;
-  /** Показывать companion Aqua Coder в правом нижнем углу */
+  /** Локально для браузера: показывать companion Aqua Coder в правом нижнем углу */
   companionEnabled: boolean;
-  /** Масштаб companion (1 = кадр 192×208) */
+  /** Локально для браузера: масштаб companion (1 = кадр 192×208) */
   companionScale: number;
-  /** Без покадровой анимации: только первый кадр каждой позы */
+  /** Локально для браузера: без покадровой анимации — только первый кадр каждой позы */
   companionStaticAnimations: boolean;
 };
+
+/** Настройки, которые не синхронизируются с аккаунтом — только localStorage браузера. */
+export const LOCAL_ONLY_SITE_SETTING_KEYS = [
+  "tvNavigationEnabled",
+  "reduceMotion",
+  "reduceAvatarDecorationMotion",
+  "companionEnabled",
+  "companionScale",
+  "companionStaticAnimations",
+] as const;
+
+export type LocalOnlySiteSettingKey = (typeof LOCAL_ONLY_SITE_SETTING_KEYS)[number];
+
+export function pickLocalOnlySiteSettings(
+  settings: SiteSettings,
+): Pick<SiteSettings, LocalOnlySiteSettingKey> {
+  return {
+    tvNavigationEnabled: settings.tvNavigationEnabled,
+    reduceMotion: settings.reduceMotion,
+    reduceAvatarDecorationMotion: settings.reduceAvatarDecorationMotion,
+    companionEnabled: settings.companionEnabled,
+    companionScale: settings.companionScale,
+    companionStaticAnimations: settings.companionStaticAnimations,
+  };
+}
+
+export function stripLocalOnlySiteSettings(
+  settings: SiteSettings,
+): Omit<SiteSettings, LocalOnlySiteSettingKey> {
+  const {
+    tvNavigationEnabled: _tvNavigationEnabled,
+    reduceMotion: _reduceMotion,
+    reduceAvatarDecorationMotion: _reduceAvatarDecorationMotion,
+    companionEnabled: _companionEnabled,
+    companionScale: _companionScale,
+    companionStaticAnimations: _companionStaticAnimations,
+    ...remote
+  } = settings;
+  return remote;
+}
+
+export function mergeRemoteWithLocalSiteSettings(
+  remote: SiteSettings,
+  local: SiteSettings,
+): SiteSettings {
+  return {
+    ...remote,
+    ...pickLocalOnlySiteSettings(local),
+  };
+}
 
 export const SITE_SETTINGS_STORAGE_KEY = "track-anime-site-settings";
 export const HOME_HISTORY_COLLAPSED_STORAGE_KEY = "track-anime-home-history-collapsed";
