@@ -11,9 +11,21 @@ type UserRow = {
   nickname: string;
   isAdmin: boolean;
   createdAt: string;
+  lastLoginAt: string | null;
   sessions: number;
   listEntries: number;
 };
+
+function formatAdminDateTime(value: string | null): string {
+  if (!value) return "—";
+  return new Date(value).toLocaleString("ru-RU", {
+    day: "2-digit",
+    month: "2-digit",
+    year: "numeric",
+    hour: "2-digit",
+    minute: "2-digit",
+  });
+}
 
 export function AdminUsersTable({ initialUsers }: { initialUsers: UserRow[] }) {
   const [users, setUsers] = useState(initialUsers);
@@ -59,6 +71,7 @@ export function AdminUsersTable({ initialUsers }: { initialUsers: UserRow[] }) {
               <th className="px-4 py-3">Сессии</th>
               <th className="px-4 py-3">Список</th>
               <th className="px-4 py-3">Регистрация</th>
+              <th className="px-4 py-3">Последний вход</th>
               <th className="px-4 py-3">Профиль</th>
               <th className="px-4 py-3">Админ</th>
             </tr>
@@ -72,6 +85,9 @@ export function AdminUsersTable({ initialUsers }: { initialUsers: UserRow[] }) {
                 <td className="px-4 py-3 tabular-nums text-muted">{user.listEntries}</td>
                 <td className="px-4 py-3 text-muted">
                   {new Date(user.createdAt).toLocaleDateString("ru-RU")}
+                </td>
+                <td className="px-4 py-3 whitespace-nowrap text-muted">
+                  {formatAdminDateTime(user.lastLoginAt)}
                 </td>
                 <td className="px-4 py-3">
                   <Link

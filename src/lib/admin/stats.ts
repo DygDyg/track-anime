@@ -192,6 +192,8 @@ export type AdminUserRow = {
   avatar: string | null;
   isAdmin: boolean;
   createdAt: string;
+  /** Последнее создание серверной сессии (вход), ISO или null если сессий нет. */
+  lastLoginAt: string | null;
   sessions: number;
   listEntries: number;
 };
@@ -207,6 +209,11 @@ export async function getAdminUsers(limit = 50): Promise<AdminUserRow[]> {
           animeListEntries: true,
         },
       },
+      sessions: {
+        orderBy: { createdAt: "desc" },
+        take: 1,
+        select: { createdAt: true },
+      },
     },
   });
 
@@ -217,6 +224,7 @@ export async function getAdminUsers(limit = 50): Promise<AdminUserRow[]> {
     avatar: user.avatar,
     isAdmin: user.isAdmin,
     createdAt: user.createdAt.toISOString(),
+    lastLoginAt: user.sessions[0]?.createdAt.toISOString() ?? null,
     sessions: user._count.sessions,
     listEntries: user._count.animeListEntries,
   }));
