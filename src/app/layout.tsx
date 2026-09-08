@@ -32,6 +32,7 @@ import { siteFontBodyClassName } from "@/lib/site-fonts";
 import { getActiveBrandAsset } from "@/lib/brand-rotation";
 import { getSiteBuildFingerprint } from "@/lib/admin/build-info";
 import { ClientUpdateGuard } from "@/components/ClientUpdateGuard";
+import { SiteAnalyticsBeacon } from "@/components/SiteAnalyticsBeacon";
 import "./globals.css";
 import "./translation-badges.css";
 
@@ -119,6 +120,7 @@ export default async function RootLayout({ children }: { children: React.ReactNo
           <PwaProvider>
             <ClientUpdateGuard initialFingerprint={buildFingerprint} />
             <AuthProvider>
+              <SiteAnalyticsBeacon />
               <RecentAnimeOpensSync />
               <InAppNotificationsListener />
               <TodayFromHistoryToastListener />

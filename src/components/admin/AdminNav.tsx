@@ -44,6 +44,7 @@ const sections = [
     items: [
       { href: "/admin/db", label: "База" },
       { href: "/admin/users", label: "Пользователи" },
+      { href: "/admin/audience", label: "Аудитория" },
     ],
   },
 ];

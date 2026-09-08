@@ -4,12 +4,13 @@ import { AdminStoragePanel } from "@/components/admin/AdminStoragePanel";
 import { StatCard } from "@/components/admin/StatCard";
 import { ImportProgressPanel } from "@/components/admin/ImportProgressPanel";
 import { adminClass } from "@/components/admin/admin-styles";
+import { getAudienceStats } from "@/lib/admin/audience-stats";
 import { getAdminDashboardStats } from "@/lib/admin/stats";
 
 export const dynamic = "force-dynamic";
 
 export default async function AdminDashboardPage() {
-  const stats = await getAdminDashboardStats();
+  const [stats, audience] = await Promise.all([getAdminDashboardStats(), getAudienceStats({ chartDays: 1 })]);
 
   return (
     <div className="space-y-6">
@@ -29,10 +30,18 @@ export default async function AdminDashboardPage() {
 
       <section>
         <h2 className="mb-4 text-lg font-semibold text-foreground">Пользователи</h2>
-        <div className="grid gap-3 sm:grid-cols-2">
+        <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-3">
           <StatCard label="Зарегистрировано" value={stats.users} />
           <StatCard label="Активных сессий" value={stats.activeSessions} />
+          <StatCard label="DAU (гости+аккаунты)" value={audience.dau} />
+          <StatCard label="Онлайн (~15 мин)" value={audience.activeNow} />
+          <StatCard label="MAU (30 дней)" value={audience.mau} />
         </div>
+        <p className="mt-3 text-sm">
+          <Link href="/admin/audience" className={adminClass.textLink}>
+            Аудитория и платформы →
+          </Link>
+        </p>
       </section>
 
       <AdminStoragePanel storage={stats.storage} />
