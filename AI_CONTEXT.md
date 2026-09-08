@@ -20,7 +20,7 @@ Next.js anime streaming site with Shikimori OAuth + Kodik player. Data lives in 
 |------|------------|
 | Fix auth/login | `src/lib/auth/shikimori-oauth.ts`, `src/lib/auth/local-credentials.ts`, `src/lib/auth/qr-login.ts`, `src/app/api/auth/callback/shikimori/route.ts` |
 | Fix player | `src/components/anime/KodikPlayer.tsx`, `src/lib/kodik-player-api.ts` |
-| Fix watch party | `src/hooks/useWatchParty.ts`, `scripts/watch-party-server.mjs`, `src/components/anime/AnimeWatchPanel.tsx` |
+| Fix watch party | `src/hooks/useWatchParty.ts`, `scripts/watch-party-server.mjs`, `scripts/watch-party-history.mjs`, `src/components/anime/AnimeWatchPanel.tsx`, `src/lib/admin/watch-party-history.ts` |
 | Fix home feed | `src/lib/releases.ts`, `src/components/ReleaseFeed.tsx` |
 | Fix calendar | `src/lib/calendar.ts`, `src/components/calendar/CalendarView.tsx`, `src/lib/shikimori/calendar-api.ts` |
 | Fix history cards | `src/components/history/HistoryWatchCard.tsx`, `src/lib/history-watch-card.ts` — единый UI для /history и «Новое в вашей истории» |
@@ -34,6 +34,7 @@ Next.js anime streaming site with Shikimori OAuth + Kodik player. Data lives in 
 | Fix notifications | `src/lib/notifications/`, `src/app/api/notifications/`, `scripts/notification-worker.ts` |
 | Fix companion | `src/components/companion/AquaCoderCompanion.tsx`, `src/lib/companion/AquaCoderCanvas.ts`, `src/lib/companion/companion-bus.ts`, `public/companion/aqua-coder-chibi/`, `aqua-coder-web/` |
 | Fix admin | `src/lib/auth/admin.ts`, `src/app/admin/` |
+| Fix audience analytics | `src/lib/analytics/track.ts`, `src/lib/admin/audience-stats.ts`, `src/app/admin/audience/`, `src/components/SiteAnalyticsBeacon.tsx` |
 
 ## Request routing (multi-task / dispatcher)
 
@@ -89,7 +90,7 @@ Anime: shikimoriId → anime-page.ts → Shikimori API + KodikMaterial DB
 Player: playerLink → KodikPlayer iframe → postMessage → watch-history API; TA player watch party → `useWatchParty` → WebSocket server
 Skip times: AnimeWatchPanel → /api/anime/[shikimoriId]/skip-times → aniskip.ts → AniSkip + DB cache → manual/auto OP/ED skip
 Lists: favorites-sync.ts → Shikimori user_rates → UserAnimeListEntry
-Notifications: preferences + links → notification-worker.ts → browser/Discord/Telegram/VK + in-app feed
+Notifications: preferences + links → notification-worker.ts → browser/FCM/Discord/Telegram/VK + in-app feed
 Calendar: `/calendar` → calendar.ts → local Kodik DB or Shikimori `/api/calendar` → CalendarView
 ```
 
@@ -102,6 +103,7 @@ Calendar: `/calendar` → calendar.ts → local Kodik DB or Shikimori `/api/cale
 | `SHIKIMORI_CLIENT_ID/SECRET` | OAuth |
 | `AUTH_URL` | Public site URL for OAuth redirects |
 | `ADMIN_SHIKIMORI_IDS` | Bootstrap admin users |
+| `FCM_PROJECT_ID` / `FCM_CLIENT_EMAIL` / `FCM_PRIVATE_KEY` or `FCM_SERVICE_ACCOUNT_FILE` | Firebase Cloud Messaging for Android APK background push |
 | `WATCH_PARTY_PORT` / `NEXT_PUBLIC_WATCH_PARTY_WS_URL` | Optional WebSocket room server port / public client URL for beta совместный просмотр |
 
 ## Frequent Pitfalls
@@ -118,6 +120,7 @@ Calendar: `/calendar` → calendar.ts → local Kodik DB or Shikimori `/api/cale
 | Import stuck | Check `KodikImportJob` status in DB or admin panel |
 | Session lost | Cookie domain/path, or expired Session row |
 | In-app flood on phone/PC reopen | Per-device `localStorage` since without account cursor, or catch-up without progress filter — check `inAppNotifySince` + `rebuild-payload.ts` |
+| Android closed-app push missing | Need FCM env on server + readable SA JSON (`www-data`) + user toggle «Уведомления Android» (or first-run banner in shell); Web Push does not work in WebView shell |
 | Phone dev: no JS, TitleCover only | Open via LAN IP without `allowedDevOrigins` — restart `npm run dev`, use `http://192.168.x.x:3000` |
 | `dygdyg:3000` unreachable | Add `192.168.x.x dygdyg` to hosts; dev must bind `0.0.0.0` (`npm run dev`) |
 | Brand logo does not rotate | No `.webp` files in `public/brand-logos`, `BrandRotationSettings.enabled=false`, or interval slot has not changed yet |

@@ -2,6 +2,16 @@ import "dotenv/config";
 import { randomUUID } from "node:crypto";
 import { createServer } from "node:http";
 import wsPackage from "ws";
+import {
+  closeOrphanWatchPartySessions,
+  disconnectWatchPartyHistory,
+  recordWatchPartyParticipantJoined,
+  recordWatchPartyParticipantLeft,
+  recordWatchPartyPermissions,
+  recordWatchPartyPlayback,
+  recordWatchPartySessionCreated,
+  recordWatchPartySessionEnded,
+} from "./watch-party-history.mjs";
 
 const port = Number(process.env.WATCH_PARTY_PORT ?? 3001);
 const path = process.env.WATCH_PARTY_WS_PATH ?? "/watch-party-ws";
@@ -149,7 +159,17 @@ function canSendCommand(room, client, commandType) {
   return false;
 }
 
-function handleJoin(ws, message) {
+function roomPermissions(room) {
+  return {
+    allowParticipantControls: room.allowParticipantControls,
+    allowParticipantSeeking: room.allowParticipantSeeking,
+    allowParticipantEpisodeSelection: room.allowParticipantEpisodeSelection,
+    allowParticipantTranslationSelection: room.allowParticipantTranslationSelection,
+    syncTranslations: room.syncTranslations,
+  };
+}
+
+async function handleJoin(ws, message) {
   if (Number(message.protocolVersion) !== watchPartyProtocolVersion) {
     send(ws, {
       type: "error",
@@ -170,6 +190,7 @@ function handleJoin(ws, message) {
   const requestedRoomId = typeof message.roomId === "string" && message.roomId ? message.roomId : null;
   const roomId = requestedRoomId ?? createRoomId();
   let room = rooms.get(roomId);
+  const isNewRoom = !room;
 
   if (!room) {
     room = {
@@ -208,6 +229,33 @@ function handleJoin(ws, message) {
   ws.watchPartyClient = client;
   room.clients.set(client.id, client);
   if (!room.masterParticipantId) room.masterParticipantId = client.id;
+
+  if (isNewRoom) {
+    await recordWatchPartySessionCreated({
+      roomKey: room.id,
+      creator: {
+        clientId: client.id,
+        userId: client.userId,
+        nickname: client.nickname,
+        avatar: client.avatar,
+      },
+      state: room.state,
+      permissions: roomPermissions(room),
+    });
+  } else {
+    await recordWatchPartyParticipantJoined({
+      roomKey: room.id,
+      participant: {
+        clientId: client.id,
+        userId: client.userId,
+        nickname: client.nickname,
+        avatar: client.avatar,
+      },
+      isMaster: client.id === room.masterParticipantId,
+      participantCount: room.clients.size,
+    });
+  }
+
   broadcastRoomState(room);
 }
 
@@ -221,13 +269,22 @@ function handleLeave(ws) {
 
   room.clients.delete(client.id);
   if (room.clients.size === 0) {
+    void recordWatchPartyParticipantLeft({ roomKey: room.id, clientId: client.id });
+    void recordWatchPartySessionEnded({ roomKey: room.id });
     rooms.delete(room.id);
     return;
   }
 
+  let nextMasterClientId = null;
   if (room.masterParticipantId === client.id) {
     room.masterParticipantId = room.clients.keys().next().value;
+    nextMasterClientId = room.masterParticipantId;
   }
+  void recordWatchPartyParticipantLeft({
+    roomKey: room.id,
+    clientId: client.id,
+    nextMasterClientId,
+  });
   broadcastRoomState(room);
 }
 
@@ -242,7 +299,7 @@ function handleMessage(ws, raw) {
 
   if (!isRecord(message) || typeof message.type !== "string") return;
   if (message.type === "join") {
-    handleJoin(ws, message);
+    void handleJoin(ws, message);
     return;
   }
   if (message.type === "leave") {
@@ -271,6 +328,10 @@ function handleMessage(ws, raw) {
     if (typeof message.syncTranslations === "boolean") {
       room.syncTranslations = message.syncTranslations;
     }
+    void recordWatchPartyPermissions({
+      roomKey: room.id,
+      permissions: roomPermissions(room),
+    });
     broadcastRoomState(room);
     return;
   }
@@ -335,7 +396,24 @@ function handleMessage(ws, raw) {
                 : advancedState.isPlaying,
           updatedAt: Date.now(),
         };
+  const prev = room.state;
   room.state = state;
+
+  if (
+    prev.kodikId !== state.kodikId ||
+    prev.seasonNumber !== state.seasonNumber ||
+    prev.episodeNumber !== state.episodeNumber
+  ) {
+    void recordWatchPartyPlayback({
+      roomKey: room.id,
+      state: {
+        shikimoriId: state.shikimoriId,
+        kodikId: state.kodikId,
+        seasonNumber: state.seasonNumber,
+        episodeNumber: state.episodeNumber,
+      },
+    });
+  }
 
   const command = { type: message.type, state };
   for (const other of room.clients.values()) {
@@ -397,4 +475,23 @@ wss.on("close", () => {
 
 server.listen(port, () => {
   console.log(`Watch party WebSocket server listening on ws://0.0.0.0:${port}${path}`);
+  void closeOrphanWatchPartySessions();
+});
+
+async function shutdown() {
+  clearInterval(heartbeat);
+  clearInterval(stateSync);
+  for (const room of rooms.values()) {
+    await recordWatchPartySessionEnded({ roomKey: room.id });
+  }
+  rooms.clear();
+  await disconnectWatchPartyHistory();
+  process.exit(0);
+}
+
+process.on("SIGINT", () => {
+  void shutdown();
+});
+process.on("SIGTERM", () => {
+  void shutdown();
 });

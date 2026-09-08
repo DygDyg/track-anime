@@ -100,7 +100,7 @@ ta_new/
 
 | Process | Purpose |
 |---------|---------|
-| `scripts/watch-party-server.mjs` | WebSocket server for ephemeral TA-плеер совместный просмотр rooms (`/watch-party-ws` by default), plus read-only `/watch-party-rooms` for admin room overview |
+| `scripts/watch-party-server.mjs` | WebSocket server for ephemeral TA-плеер совместный просмотр rooms (`/watch-party-ws` by default), plus read-only `/watch-party-rooms` for admin room overview; persists session history via `scripts/watch-party-history.mjs` |
 
 ### Notifications (`api/notifications/`)
 
@@ -118,7 +118,9 @@ ta_new/
 
 ### Admin (`api/admin/`)
 
-`stats`, `anime/[shikimoriId]/skip-times-prefetch`, `anime-debug`, `import/status`, `import/episodes`, `import/pending-materials`, `sync`, `sync/settings`, `sync/history`, `backfill-dates`, `brand-rotation/settings`, `cover-cache/settings`, `discord/settings`, `notifications/settings`, `notifications/test`, `notifications/generate-vapid`, `search/settings`, `shikimori/settings`, `shikimori/anons-sync`, `shikimori/mal-id-sync`, `site-settings-defaults`, `translation-intro-offsets`, `watch-history/settings`, `watch-party/settings`, `watch-party/rooms`, `users`, `db/search`, `todos`, `todos/[id]`
+`stats`, `audience`, `anime/[shikimoriId]/skip-times-prefetch`, `anime-debug`, `import/status`, `import/episodes`, `import/pending-materials`, `sync`, `sync/settings`, `sync/history`, `backfill-dates`, `brand-rotation/settings`, `cover-cache/settings`, `discord/settings`, `notifications/settings`, `notifications/test`, `notifications/generate-vapid`, `search/settings`, `shikimori/settings`, `shikimori/anons-sync`, `shikimori/mal-id-sync`, `site-settings-defaults`, `translation-intro-offsets`, `watch-history/settings`, `watch-party/settings`, `watch-party/rooms`, `watch-party/history`, `users`, `db/search`, `todos`, `todos/[id]`
+
+Public analytics: `api/analytics/beacon` (POST) — visitor cookie + page aggregates
 
 ## `src/lib/` — Core Modules
 
@@ -166,9 +168,19 @@ ta_new/
 | `watch-history-settings.ts` | Watch history admin settings |
 | `watch-party-settings.ts` | TA-плеер совместный просмотр global admin settings |
 | `watch-party-rooms.ts` | Read-only active room overview for admin page, enriched with Kodik title/translation metadata |
+| `watch-party-history.ts` | Persisted watch-party session history for admin |
 | `db-explorer.ts` | Admin DB search |
 | `stats.ts`, `storage-stats.ts` | Dashboard metrics |
+| `audience-stats.ts` | DAU/WAU/MAU, platforms, section/title popularity |
 | `todos.ts` | Dev todo list |
+
+### Analytics (`lib/analytics/`)
+
+| File | Responsibility |
+|------|----------------|
+| `config.ts` | `ta.vid` cookie options, throttle/retention |
+| `ua.ts` | UA/path parse, identity key, clientKind |
+| `track.ts` | Upsert visitor + day/content aggregates |
 
 ### Domain (root `lib/`)
 
@@ -256,6 +268,7 @@ Error page asset: `public/404.webm` is used by the custom App Router 404 page.
 | `deploy-auto.ps1`, `deploy.ps1`, `deploy-rpc.ps1`, `deploy-apk.ps1`, `deploy-config.ps1`, `server-deploy.sh` | — | Deployment (auto / site / rpc / apk + local proxy) |
 | `notification-worker.ts` | `notifications:worker` | Background notification delivery |
 | `watch-party-server.mjs` | `watch-party:server` | WebSocket rooms for TA-плеер совместный просмотр |
+| `watch-party-history.mjs` | (used by watch-party server) | Persist session history to Postgres |
 | `telegram-notification-bot.ts` | `notifications:telegram-bot` | Telegram notification link bot |
 | `vk-notification-bot.ts` | `notifications:vk-bot` | VK notification link bot |
 | `generate-vapid-keys.ts` | `notifications:generate-vapid` | VAPID key generation |

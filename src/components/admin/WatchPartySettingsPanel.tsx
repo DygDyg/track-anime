@@ -1,7 +1,9 @@
 "use client";
 
 import { useCallback, useEffect, useState } from "react";
+import { WatchPartyHistoryPanel } from "@/components/admin/WatchPartyHistoryPanel";
 import { adminClass } from "@/components/admin/admin-styles";
+import type { WatchPartyHistoryDto } from "@/lib/admin/watch-party-history";
 import type { WatchPartyRoomsDto } from "@/lib/admin/watch-party-rooms";
 import type { WatchPartySettingsDto } from "@/lib/admin/watch-party-settings";
 
@@ -27,8 +29,10 @@ function formatRoomEpisode(state: { seasonNumber: number; episodeNumber: number 
 
 export function WatchPartySettingsPanel({
   initialSettings,
+  initialHistory,
 }: {
   initialSettings: WatchPartySettingsDto;
+  initialHistory: WatchPartyHistoryDto;
 }) {
   const [settings, setSettings] = useState(initialSettings);
   const [saving, setSaving] = useState(false);
@@ -39,6 +43,8 @@ export function WatchPartySettingsPanel({
     error: null,
   });
   const [roomsLoading, setRoomsLoading] = useState(false);
+  const [history, setHistory] = useState(initialHistory);
+  const [historyLoading, setHistoryLoading] = useState(false);
 
   const refresh = useCallback(async () => {
     try {
@@ -73,6 +79,20 @@ export function WatchPartySettingsPanel({
       });
     } finally {
       setRoomsLoading(false);
+    }
+  }, []);
+
+  const refreshHistory = useCallback(async () => {
+    setHistoryLoading(true);
+    try {
+      const res = await fetch("/api/admin/watch-party/history?limit=50", { cache: "no-store" });
+      if (!res.ok) return;
+      const data = (await res.json()) as WatchPartyHistoryDto;
+      setHistory(data);
+    } catch {
+      /* ignore */
+    } finally {
+      setHistoryLoading(false);
     }
   }, []);
 
@@ -121,8 +141,8 @@ export function WatchPartySettingsPanel({
       <section className={adminClass.panel}>
         <h2 className="text-lg font-semibold text-foreground">Совместный просмотр</h2>
         <p className="mt-2 text-sm text-muted">
-          Глобальные настройки WebSocket-комнат TA-плеера. Комнаты хранятся в памяти
-          отдельного процесса и исчезают при его перезапуске.
+          Глобальные настройки WebSocket-комнат TA-плеера. Активные комнаты живут в памяти
+          процесса; история запусков сохраняется в БД.
         </p>
       </section>
 
@@ -272,6 +292,19 @@ export function WatchPartySettingsPanel({
           ))}
         </div>
       </section>
+
+      <div className="flex justify-end">
+        <button
+          type="button"
+          onClick={() => void refreshHistory()}
+          disabled={historyLoading}
+          className={adminClass.btnSecondary}
+        >
+          {historyLoading ? "Обновление истории…" : "Обновить историю"}
+        </button>
+      </div>
+
+      <WatchPartyHistoryPanel sessions={history.sessions} />
     </div>
   );
 }
