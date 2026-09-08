@@ -7,6 +7,7 @@ import {
   type HistoryNewProgressRow,
 } from "@/lib/history-new-match";
 import { sendBrowserPushNotification } from "@/lib/notifications/channels/browser";
+import { sendFcmPushNotification } from "@/lib/notifications/channels/fcm";
 import { buildHistoryNewNotificationPayload, resolveNotificationAnimeMeta } from "@/lib/notifications/payload";
 import { prisma } from "@/lib/prisma";
 import { isWatchHistoryBookmark } from "@/lib/watch-history";
@@ -134,13 +135,14 @@ async function isUserEligibleForNotification(userId: string, translationName: st
   eligible: boolean;
   channels: NotificationChannelId[];
 }> {
-  const [prefs, user, pushCount] = await Promise.all([
+  const [prefs, user, pushCount, fcmCount] = await Promise.all([
     prisma.userNotificationPreferences.findUnique({ where: { userId } }),
     prisma.user.findUnique({
       where: { id: userId },
       select: { siteSettings: true },
     }),
     prisma.pushSubscription.count({ where: { userId } }),
+    prisma.fcmDeviceToken.count({ where: { userId } }),
   ]);
 
   if (!prefs?.historyNewEnabled) {
@@ -154,6 +156,7 @@ async function isUserEligibleForNotification(userId: string, translationName: st
 
   const channels: NotificationChannelId[] = [];
   if (pushCount > 0) channels.push("browser");
+  if (fcmCount > 0) channels.push("fcm");
   if (prefs.telegramEnabled) channels.push("telegram");
   if (prefs.vkEnabled) channels.push("vk");
   if (prefs.discordEnabled) channels.push("discord");
@@ -197,7 +200,7 @@ async function enqueueExternalDelivery(input: {
   seasonNumber: number;
   episodeNumber: number;
 }): Promise<void> {
-  if (input.channel === "browser") return;
+  if (input.channel === "browser" || input.channel === "fcm") return;
 
   await prisma.notificationDelivery.create({
     data: {
@@ -219,6 +222,10 @@ async function deliverToChannel(
   switch (channel) {
     case "browser": {
       const result = await sendBrowserPushNotification(userId, payload);
+      return result.sent > 0;
+    }
+    case "fcm": {
+      const result = await sendFcmPushNotification(userId, payload);
       return result.sent > 0;
     }
     case "telegram":

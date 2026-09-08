@@ -78,6 +78,7 @@ abstract class BaseWebActivity extends Activity {
     private static final String SYSTEM_BARS_MODE_ALWAYS = "always";
     private static final String SYSTEM_BARS_MODE_VIDEO = "video";
     private static final int CAMERA_PERMISSION_REQUEST_CODE = 11;
+    private static final int NOTIFICATION_PERMISSION_REQUEST_CODE = 12;
     private final Handler handler = new Handler(Looper.getMainLooper());
     private final Runnable mirrorFallback = this::loadNextMirrorIfNeeded;
     private WebView webView;
@@ -126,7 +127,14 @@ abstract class BaseWebActivity extends Activity {
         webView.setBackgroundColor(Color.rgb(12, 14, 20));
         webView.setLayoutParams(new ViewGroup.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT));
         webView.getSettings().setJavaScriptEnabled(true);
-        webView.getSettings().setUserAgentString(webView.getSettings().getUserAgentString() + " TrackAnimeAndroid/1");
+        // Model/OS for admin audience analytics (parsed server-side from UA).
+        String model = android.os.Build.MODEL != null ? android.os.Build.MODEL.trim() : "";
+        String release = android.os.Build.VERSION.RELEASE != null ? android.os.Build.VERSION.RELEASE.trim() : "";
+        if (model.isEmpty()) model = "Android";
+        if (release.isEmpty()) release = String.valueOf(android.os.Build.VERSION.SDK_INT);
+        webView.getSettings().setUserAgentString(
+                webView.getSettings().getUserAgentString()
+                        + " TrackAnimeAndroid/1 (" + model + "; Android " + release + ")");
         webView.getSettings().setDomStorageEnabled(true);
         webView.getSettings().setMediaPlaybackRequiresUserGesture(false);
         webView.getSettings().setAllowFileAccess(false);
@@ -147,6 +155,7 @@ abstract class BaseWebActivity extends Activity {
         applyDarkSystemBars();
         applySystemBarsPolicy();
         showBootstrapStatus("Поиск рабочего зеркала…");
+        ensureHistoryNewNotificationChannel();
         handleLaunchUri(getIntent().getData());
     }
 
@@ -211,8 +220,36 @@ abstract class BaseWebActivity extends Activity {
         );
     }
 
+    private void ensureHistoryNewNotificationChannel() {
+        if (Build.VERSION.SDK_INT < Build.VERSION_CODES.O) return;
+        android.app.NotificationManager manager = getSystemService(android.app.NotificationManager.class);
+        if (manager == null) return;
+        if (manager.getNotificationChannel(TrackAnimeFirebaseMessagingService.CHANNEL_ID) != null) return;
+        android.app.NotificationChannel channel = new android.app.NotificationChannel(
+                TrackAnimeFirebaseMessagingService.CHANNEL_ID,
+                "Новые серии",
+                android.app.NotificationManager.IMPORTANCE_HIGH
+        );
+        channel.setDescription("Уведомления о новых сериях из вашей истории");
+        manager.createNotificationChannel(channel);
+    }
+
+    private void dispatchJsCallback(String script) {
+        if (webView == null) return;
+        handler.post(() -> webView.evaluateJavascript(script, null));
+    }
+
     @Override public void onRequestPermissionsResult(int requestCode, String[] permissions, int[] grantResults) {
         super.onRequestPermissionsResult(requestCode, permissions, grantResults);
+        if (requestCode == NOTIFICATION_PERMISSION_REQUEST_CODE) {
+            boolean granted = grantResults.length > 0 && grantResults[0] == PackageManager.PERMISSION_GRANTED;
+            dispatchJsCallback(
+                    "window.__taOnNotificationPermission && window.__taOnNotificationPermission("
+                            + (granted ? "true" : "false")
+                            + ")"
+            );
+            return;
+        }
         if (requestCode != CAMERA_PERMISSION_REQUEST_CODE || pendingCameraRequest == null) return;
         PermissionRequest request = pendingCameraRequest;
         pendingCameraRequest = null;
@@ -1305,6 +1342,73 @@ abstract class BaseWebActivity extends Activity {
         @JavascriptInterface
         public boolean hasScreenBrightnessControl() {
             return true;
+        }
+
+        @JavascriptInterface
+        public boolean hasFcmSupport() {
+            return true;
+        }
+
+        @JavascriptInterface
+        public boolean areNotificationsEnabled() {
+            if (Build.VERSION.SDK_INT >= 33) {
+                return checkSelfPermission(Manifest.permission.POST_NOTIFICATIONS)
+                        == PackageManager.PERMISSION_GRANTED;
+            }
+            return androidx.core.app.NotificationManagerCompat.from(BaseWebActivity.this)
+                    .areNotificationsEnabled();
+        }
+
+        @JavascriptInterface
+        public void requestNotificationPermission() {
+            if (Build.VERSION.SDK_INT < 33) {
+                dispatchJsCallback(
+                        "window.__taOnNotificationPermission && window.__taOnNotificationPermission("
+                                + (areNotificationsEnabled() ? "true" : "false")
+                                + ")"
+                );
+                return;
+            }
+            if (checkSelfPermission(Manifest.permission.POST_NOTIFICATIONS)
+                    == PackageManager.PERMISSION_GRANTED) {
+                dispatchJsCallback(
+                        "window.__taOnNotificationPermission && window.__taOnNotificationPermission(true)"
+                );
+                return;
+            }
+            handler.post(() -> requestPermissions(
+                    new String[] { Manifest.permission.POST_NOTIFICATIONS },
+                    NOTIFICATION_PERMISSION_REQUEST_CODE
+            ));
+        }
+
+        @JavascriptInterface
+        public void requestFcmToken() {
+            try {
+                com.google.firebase.messaging.FirebaseMessaging.getInstance()
+                        .getToken()
+                        .addOnCompleteListener(task -> {
+                            if (!task.isSuccessful() || task.getResult() == null) {
+                                Log.w(LOG_TAG, "FCM token fetch failed", task.getException());
+                                dispatchJsCallback(
+                                        "window.__taOnFcmToken && window.__taOnFcmToken(null)"
+                                );
+                                return;
+                            }
+                            String token = task.getResult();
+                            String escaped = token
+                                    .replace("\\", "\\\\")
+                                    .replace("\"", "\\\"")
+                                    .replace("\n", "\\n")
+                                    .replace("\r", "");
+                            dispatchJsCallback(
+                                    "window.__taOnFcmToken && window.__taOnFcmToken(\"" + escaped + "\")"
+                            );
+                        });
+            } catch (Exception error) {
+                Log.w(LOG_TAG, "FCM token request error", error);
+                dispatchJsCallback("window.__taOnFcmToken && window.__taOnFcmToken(null)");
+            }
         }
 
         @JavascriptInterface

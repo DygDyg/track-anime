@@ -5,7 +5,7 @@ import type { NotificationChannelId } from "@/lib/notifications/types";
 
 export const dynamic = "force-dynamic";
 
-const CHANNELS: NotificationChannelId[] = ["browser", "telegram", "vk", "discord"];
+const CHANNELS: NotificationChannelId[] = ["browser", "fcm", "telegram", "vk", "discord"];
 
 export async function POST(request: Request) {
   const auth = await requireAdminApi();

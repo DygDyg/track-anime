@@ -6,7 +6,7 @@ import { prisma } from "@/lib/prisma";
 
 export const dynamic = "force-dynamic";
 
-const TEST_CHANNELS: NotificationChannelId[] = ["browser", "telegram", "vk", "discord"];
+const TEST_CHANNELS: NotificationChannelId[] = ["browser", "fcm", "telegram", "vk", "discord"];
 
 export async function POST(request: Request) {
   const session = await getSession();
@@ -33,7 +33,7 @@ export async function POST(request: Request) {
   });
 
   const enabledChannels = TEST_CHANNELS.filter((channel) => {
-    if (channel === "browser") return true;
+    if (channel === "browser" || channel === "fcm") return true;
     if (channel === "telegram") return prefs?.telegramEnabled;
     if (channel === "vk") return prefs?.vkEnabled;
     if (channel === "discord") return prefs?.discordEnabled;

@@ -9,6 +9,10 @@ export type TrackAnimeAndroidBridge = {
   getScreenBrightness?: () => number;
   clearScreenBrightness?: () => void;
   setKeepScreenOn?: (enabled: boolean) => void;
+  hasFcmSupport?: () => boolean;
+  areNotificationsEnabled?: () => boolean;
+  requestNotificationPermission?: () => void;
+  requestFcmToken?: () => void;
 };
 
 export function isTrackAnimeAndroidApp(userAgent = typeof navigator !== "undefined" ? navigator.userAgent : ""): boolean {

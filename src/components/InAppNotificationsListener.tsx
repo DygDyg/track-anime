@@ -13,6 +13,10 @@ import {
   writeInAppNotifySince,
 } from "@/lib/notifications/in-app-client";
 import { ensureBackgroundPushSubscription, hasActivePushSubscription } from "@/lib/notifications/browser-client";
+import {
+  ensureAndroidFcmSubscription,
+  hasActiveAndroidFcmSubscription,
+} from "@/lib/notifications/fcm-client";
 
 type InAppResponse = {
   enabled: boolean;
@@ -80,6 +84,7 @@ export function InAppNotificationsListener() {
 
     initInAppNotifySince();
     void ensureBackgroundPushSubscription();
+    void ensureAndroidFcmSubscription();
 
     const onVisibility = () => {
       visibleRef.current = document.visibilityState === "visible";
@@ -93,7 +98,11 @@ export function InAppNotificationsListener() {
       pollingRef.current = true;
       try {
         if (pushActiveRef.current === null) {
-          pushActiveRef.current = await hasActivePushSubscription();
+          const [browserPush, androidFcm] = await Promise.all([
+            hasActivePushSubscription(),
+            hasActiveAndroidFcmSubscription(),
+          ]);
+          pushActiveRef.current = browserPush || androidFcm;
         }
         await pollInAppNotifications(pushActiveRef.current);
       } finally {
@@ -105,6 +114,7 @@ export function InAppNotificationsListener() {
       initInAppNotifySince();
       pushActiveRef.current = null;
       void ensureBackgroundPushSubscription();
+      void ensureAndroidFcmSubscription();
       void runPoll();
     };
 

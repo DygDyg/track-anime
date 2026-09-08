@@ -9,6 +9,14 @@ import {
   readBrowserPushEnabled,
 } from "@/lib/notifications/browser-client";
 import {
+  hasActiveAndroidFcmSubscription,
+  isAndroidFcmBridgeAvailable,
+  readAndroidFcmEnabled,
+  readAndroidFcmPromptDismissed,
+  subscribeAndroidFcm,
+  writeAndroidFcmPromptDismissed,
+} from "@/lib/notifications/fcm-client";
+import {
   emitNotificationsPrefsChanged,
   resetInAppNotifySince,
 } from "@/lib/notifications/in-app-client";
@@ -47,6 +55,8 @@ export function NotificationUiLayer() {
   const [toasts, setToasts] = useState<NotificationToastItem[]>([]);
   const [bannerVisible, setBannerVisible] = useState(false);
   const [bannerDenied, setBannerDenied] = useState(false);
+  const [androidBannerVisible, setAndroidBannerVisible] = useState(false);
+  const [androidError, setAndroidError] = useState<string | null>(null);
   const [requesting, setRequesting] = useState(false);
   const [desktop, setDesktop] = useState(false);
 
@@ -63,8 +73,53 @@ export function NotificationUiLayer() {
     return () => mq.removeEventListener("change", sync);
   }, []);
 
+  const checkAndroidBanner = useCallback(async () => {
+    if (typeof window === "undefined") return;
+    if (!isAndroidFcmBridgeAvailable()) {
+      setAndroidBannerVisible(false);
+      return;
+    }
+    if (readAndroidFcmPromptDismissed()) {
+      setAndroidBannerVisible(false);
+      return;
+    }
+    if (readAndroidFcmEnabled() && (await hasActiveAndroidFcmSubscription())) {
+      setAndroidBannerVisible(false);
+      return;
+    }
+
+    try {
+      const res = await fetch("/api/user/notification-preferences", { cache: "no-store" });
+      if (res.status === 401) {
+        setAndroidBannerVisible(false);
+        return;
+      }
+      if (!res.ok) return;
+      const data = (await res.json()) as {
+        preferences?: { fcmConfigured?: boolean };
+      };
+      if (!data.preferences?.fcmConfigured) {
+        setAndroidBannerVisible(false);
+        return;
+      }
+      setAndroidBannerVisible(true);
+    } catch {
+      /* ignore */
+    }
+  }, []);
+
   const checkBanner = useCallback(async () => {
-    if (typeof window === "undefined" || !("Notification" in window)) return;
+    if (typeof window === "undefined") return;
+
+    // Android shell uses FCM, not browser Notification / Web Push.
+    if (isAndroidFcmBridgeAvailable()) {
+      setBannerVisible(false);
+      await checkAndroidBanner();
+      return;
+    }
+
+    setAndroidBannerVisible(false);
+    if (!("Notification" in window)) return;
 
     if (Notification.permission === "granted") {
       setBannerVisible(false);
@@ -110,7 +165,7 @@ export function NotificationUiLayer() {
     } catch {
       /* ignore */
     }
-  }, []);
+  }, [checkAndroidBanner]);
 
   useEffect(() => {
     void checkBanner();
@@ -161,6 +216,35 @@ export function NotificationUiLayer() {
     }
   }, []);
 
+  const enableAndroidNotifications = useCallback(async () => {
+    setRequesting(true);
+    setAndroidError(null);
+    try {
+      const prefsRes = await fetch("/api/user/notification-preferences", {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ historyNewEnabled: true }),
+      });
+      if (!prefsRes.ok) {
+        setAndroidError("Не удалось включить уведомления о новых сериях");
+        return;
+      }
+
+      const result = await subscribeAndroidFcm();
+      if (!result.ok) {
+        setAndroidError(result.error);
+        return;
+      }
+
+      writeAndroidFcmPromptDismissed();
+      setAndroidBannerVisible(false);
+      resetInAppNotifySince();
+      emitNotificationsPrefsChanged();
+    } finally {
+      setRequesting(false);
+    }
+  }, []);
+
   // Sync permission banner state into companion bubble (desktop+).
   useEffect(() => {
     if (typeof window === "undefined") return;
@@ -206,6 +290,39 @@ export function NotificationUiLayer() {
 
   return (
     <>
+      {androidBannerVisible && !companionBubbleMode ? (
+        <div className="fixed bottom-20 left-3 right-3 z-[90] mx-auto max-w-lg sm:bottom-6 sm:left-auto sm:right-6">
+          <div className="rounded-xl border border-accent/30 bg-card px-4 py-3 shadow-lg shadow-black/30">
+            <p className="text-sm font-medium text-foreground">Уведомления Android</p>
+            <p className="mt-1 text-xs text-muted">
+              Включите системные уведомления — сообщим о новой серии из истории, даже когда приложение закрыто.
+            </p>
+            {androidError ? <p className="mt-2 text-xs text-rose-400">{androidError}</p> : null}
+            <div className="mt-3 flex flex-wrap gap-2">
+              <button
+                type="button"
+                disabled={requesting}
+                onClick={() => void enableAndroidNotifications()}
+                className="rounded-lg bg-accent px-3 py-1.5 text-xs font-medium text-white hover:bg-accent/90 disabled:opacity-50"
+              >
+                {requesting ? "Включение…" : "Включить"}
+              </button>
+              <button
+                type="button"
+                disabled={requesting}
+                onClick={() => {
+                  writeAndroidFcmPromptDismissed();
+                  setAndroidBannerVisible(false);
+                }}
+                className="rounded-lg px-3 py-1.5 text-xs text-muted hover:text-foreground disabled:opacity-50"
+              >
+                Позже
+              </button>
+            </div>
+          </div>
+        </div>
+      ) : null}
+
       {bannerVisible && !companionBubbleMode ? (
         <div className="fixed bottom-20 left-3 right-3 z-[90] mx-auto max-w-lg sm:bottom-6 sm:left-auto sm:right-6">
           <div className="rounded-xl border border-accent/30 bg-card px-4 py-3 shadow-lg shadow-black/30">

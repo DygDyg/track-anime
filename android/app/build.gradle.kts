@@ -1,6 +1,9 @@
 import java.util.Properties
 
-plugins { id("com.android.application") }
+plugins {
+    id("com.android.application")
+    id("com.google.gms.google-services")
+}
 
 val localProperties = Properties().apply {
     val file = rootProject.file("local.properties")
@@ -10,6 +13,13 @@ val localProperties = Properties().apply {
 fun localBuildConfigString(name: String): String =
     "\"${localProperties.getProperty(name, "").replace("\\", "\\\\").replace("\"", "\\\"")}\""
 
+val googleServicesFile = file("google-services.json")
+val googleServicesExample = file("google-services.json.example")
+if (!googleServicesFile.exists() && googleServicesExample.exists()) {
+    googleServicesExample.copyTo(googleServicesFile)
+    logger.warn("Copied google-services.json.example → google-services.json (replace with Firebase Console download)")
+}
+
 android {
     namespace = "ru.dygdyg.trackanime"
     compileSdk = 35
@@ -18,8 +28,8 @@ android {
         applicationId = "ru.dygdyg.trackanime"
         minSdk = 26
         targetSdk = 35
-        versionCode = 29
-        versionName = "1.3.20"
+        versionCode = 31
+        versionName = "1.3.22"
         buildConfigField("String", "FALLBACK_PROXY_HOST", localBuildConfigString("trackAnimeProxyHost"))
         buildConfigField("int", "FALLBACK_PROXY_PORT", localProperties.getProperty("trackAnimeProxyPort", "0"))
         buildConfigField("String", "FALLBACK_PROXY_USERNAME", localBuildConfigString("trackAnimeProxyUsername"))
@@ -40,4 +50,6 @@ android {
 dependencies {
     implementation("androidx.core:core:1.15.0")
     implementation("androidx.webkit:webkit:1.12.1")
+    implementation(platform("com.google.firebase:firebase-bom:33.7.0"))
+    implementation("com.google.firebase:firebase-messaging")
 }

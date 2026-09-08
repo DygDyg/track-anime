@@ -98,6 +98,58 @@ model WatchPartySettings {
   updatedAt   DateTime @updatedAt
 }
 
+/// История запусков совместного просмотра (пишет watch-party WS-сервер)
+model WatchPartySession {
+  id                                   String   @id @default(cuid())
+  roomKey                              String
+  createdAt                            DateTime @default(now())
+  endedAt                              DateTime?
+  creatorUserId                        String?
+  creatorNickname                      String
+  creatorAvatar                        String?
+  shikimoriId                          Int
+  kodikId                              String
+  animeTitle                           String?
+  translationTitle                     String?
+  seasonNumber                         Int      @default(1)
+  episodeNumber                        Int      @default(1)
+  allowParticipantControls             Boolean  @default(false)
+  allowParticipantSeeking              Boolean  @default(false)
+  allowParticipantEpisodeSelection     Boolean  @default(false)
+  allowParticipantTranslationSelection Boolean  @default(false)
+  syncTranslations                     Boolean  @default(true)
+  /// Снимок глобальной настройки allowGuests на момент создания
+  siteAllowGuests                      Boolean  @default(true)
+  /// Снимок глобальной настройки enabled на момент создания
+  siteEnabled                          Boolean  @default(true)
+  maxParticipants                      Int      @default(1)
+  participants                         WatchPartySessionParticipant[]
+
+  @@index([createdAt(sort: Desc)])
+  @@index([roomKey])
+  @@index([shikimoriId])
+  @@index([endedAt])
+}
+
+model WatchPartySessionParticipant {
+  id         String    @id @default(cuid())
+  sessionId  String
+  session    WatchPartySession @relation(fields: [sessionId], references: [id], onDelete: Cascade)
+  /// Стабильный id участника в WS-комнате (UUID клиента)
+  clientId   String
+  userId     String
+  nickname   String
+  avatar     String?
+  isCreator  Boolean   @default(false)
+  wasMaster  Boolean   @default(false)
+  joinedAt   DateTime  @default(now())
+  leftAt     DateTime?
+
+  @@unique([sessionId, clientId])
+  @@index([sessionId, joinedAt])
+  @@index([userId])
+}
+
 /// Настройки поиска на сайте
 model SearchSettings {
   id                     String   @id @default("default")
@@ -297,7 +349,9 @@ model User {
   notificationPreferences UserNotificationPreferences?
   notificationLink        UserNotificationLink?
   pushSubscriptions       PushSubscription[]
+  fcmDeviceTokens         FcmDeviceToken[]
   approvedQrLogins        QrLoginRequest[] @relation("QrLoginApprover")
+  siteVisitors            SiteVisitor[]
 }
 
 /// Нормализованные жанры материала для индексируемого публичного поиска.
@@ -358,6 +412,18 @@ model PushSubscription {
   createdAt DateTime @default(now())
 
   @@unique([userId, endpoint])
+  @@index([userId])
+}
+
+/// FCM-токен Android WebView APK (фоновые уведомления через Google)
+model FcmDeviceToken {
+  id        String   @id @default(cuid())
+  userId    String
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  token     String   @unique
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
   @@index([userId])
 }
 
@@ -587,4 +653,72 @@ model OAuthState {
   createdAt   DateTime @default(now())
 
   @@index([expiresAt])
+}
+
+/// Анонимный/привязанный посетитель сайта (cookie ta.vid). IP не хранится.
+model SiteVisitor {
+  id          String   @id @default(cuid())
+  visitorKey  String   @unique
+  userId      String?
+  user        User?    @relation(fields: [userId], references: [id], onDelete: SetNull)
+  firstSeenAt DateTime @default(now())
+  lastSeenAt  DateTime @default(now())
+  /// web | pwa | android_apk | windows_app | android_tv
+  clientKind  String   @default("web")
+  os          String   @default("unknown")
+  browser     String   @default("unknown")
+  deviceLabel String?
+  uaHash      String?
+  lastPath    String?
+  lastPathAt  DateTime?
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  @@index([userId])
+  @@index([lastSeenAt])
+  @@index([clientKind])
+}
+
+/// Дневная активность уникальной личности (u:userId или v:visitorKey)
+model SiteVisitDay {
+  id          String   @id @default(cuid())
+  day         DateTime @db.Date
+  identityKey String
+  userId      String?
+  visitorId   String?
+  hitCount    Int      @default(0)
+  clientKind  String   @default("web")
+  os          String   @default("unknown")
+  browser     String   @default("unknown")
+
+  @@unique([day, identityKey])
+  @@index([day])
+  @@index([clientKind, day])
+  @@index([os, day])
+  @@index([browser, day])
+}
+
+/// Популярность разделов/тайтлов за день (shikimoriId=0 если не тайтл)
+model SiteContentDay {
+  id          String   @id @default(cuid())
+  day         DateTime @db.Date
+  section     String
+  shikimoriId Int      @default(0)
+  hitCount    Int      @default(0)
+  uniqueCount Int      @default(0)
+
+  @@unique([day, section, shikimoriId])
+  @@index([day, hitCount(sort: Desc)])
+  @@index([section, day])
+  @@index([shikimoriId, day])
+}
+
+/// Уникальность identity×контент за день (для uniqueCount)
+model SiteContentIdentityDay {
+  day         DateTime @db.Date
+  section     String
+  shikimoriId Int      @default(0)
+  identityKey String
+
+  @@id([day, section, shikimoriId, identityKey])
 }

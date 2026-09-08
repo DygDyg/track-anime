@@ -19,6 +19,9 @@ temp/
 .cursor/
 .workspace.json
 android/.idea/
+android/app/google-services.json
+android/local.properties
+*-firebase-adminsdk-*.json
 .embeddings/
 .memory/
 Desktop.ini

@@ -99,6 +99,7 @@ export function NotificationSettingsPanel({
   const [testEpisode, setTestEpisode] = useState("");
   const [testChannels, setTestChannels] = useState({
     browser: true,
+    fcm: true,
     telegram: true,
     vk: true,
     discord: true,
@@ -233,7 +234,7 @@ export function NotificationSettingsPanel({
     setTesting(true);
     setTestMessage(null);
 
-    const channels = (["browser", "telegram", "vk", "discord"] as const).filter((id) => testChannels[id]);
+    const channels = (["browser", "fcm", "telegram", "vk", "discord"] as const).filter((id) => testChannels[id]);
 
     try {
       const res = await fetch("/api/admin/notifications/test", {
@@ -660,7 +661,7 @@ export function NotificationSettingsPanel({
         </div>
 
         <div className="flex flex-wrap gap-4">
-          {(["browser", "telegram", "vk", "discord"] as const).map((channel) => (
+          {(["browser", "fcm", "telegram", "vk", "discord"] as const).map((channel) => (
             <label key={channel} className="flex items-center gap-2 text-sm text-foreground">
               <input
                 type="checkbox"
@@ -670,7 +671,7 @@ export function NotificationSettingsPanel({
                 }
                 className="site-checkbox"
               />
-              {channel}
+              {channel === "fcm" ? "Android FCM" : channel}
             </label>
           ))}
         </div>

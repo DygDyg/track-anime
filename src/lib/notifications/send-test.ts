@@ -2,6 +2,7 @@ import "server-only";
 
 import { buildHistoryNewNotificationPayload } from "@/lib/notifications/payload";
 import { sendBrowserPushNotification } from "@/lib/notifications/channels/browser";
+import { sendFcmPushNotification } from "@/lib/notifications/channels/fcm";
 import { sendDiscordNotification } from "@/lib/notifications/channels/discord";
 import { sendTelegramNotification } from "@/lib/notifications/channels/telegram";
 import { sendVkNotification } from "@/lib/notifications/channels/vk";
@@ -108,6 +109,15 @@ export async function sendTestNotification(input: {
       results.browser = {
         ok: push.sent > 0,
         detail: push.sent > 0 ? `push: ${push.sent}` : `нет подписок или push не настроен (failed ${push.failed})`,
+      };
+      continue;
+    }
+
+    if (channel === "fcm") {
+      const push = await sendFcmPushNotification(input.userId, payload);
+      results.fcm = {
+        ok: push.sent > 0,
+        detail: push.sent > 0 ? `fcm: ${push.sent}` : `нет FCM-токенов или FCM не настроен (failed ${push.failed})`,
       };
       continue;
     }

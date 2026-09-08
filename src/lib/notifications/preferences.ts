@@ -1,5 +1,6 @@
 import { prisma } from "@/lib/prisma";
 import { getNotificationSettingsDto } from "@/lib/admin/notification-settings";
+import { isFcmRuntimeConfigured } from "@/lib/notifications/channels/fcm";
 import { isWebPushRuntimeConfigured } from "@/lib/notifications/channels/browser";
 import {
   fetchTelegramBotUsername,
@@ -44,6 +45,7 @@ export async function getUserNotificationPreferences(
   ]);
 
   const webPushConfigured = adminSettings.webPushConfigured;
+  const fcmConfigured = isFcmRuntimeConfigured();
   const discordLinked = Boolean(link?.discordUserId);
   const discordDmVerified = Boolean(link?.discordDmVerified);
   const discordInviteUrl =
@@ -72,6 +74,7 @@ export async function getUserNotificationPreferences(
     discordInviteUrl,
     discordBotInviteUrl,
     browserPushConfigured: webPushConfigured,
+    fcmConfigured,
     telegramConfigured: adminSettings.telegramConfigured,
     vkConfigured: adminSettings.vkConfigured,
     discordConfigured: adminSettings.discordConfigured,

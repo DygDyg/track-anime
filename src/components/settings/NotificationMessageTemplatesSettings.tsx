@@ -53,21 +53,24 @@ type TestSendResponse = {
 
 const TEST_CHANNEL_LABELS: Partial<Record<NotificationChannelId, string>> = {
   browser: "Браузер",
+  fcm: "Android FCM",
   telegram: "Telegram",
   vk: "VK",
   discord: "Discord",
 };
 
-type TestChannelId = "browser" | "telegram" | "vk" | "discord";
+type TestChannelId = "browser" | "fcm" | "telegram" | "vk" | "discord";
 
 function buildDefaultTestChannels(input: {
   showBrowser: boolean;
+  showFcm: boolean;
   showTelegram: boolean;
   showVk: boolean;
   showDiscord: boolean;
 }): Record<TestChannelId, boolean> {
   return {
     browser: input.showBrowser,
+    fcm: input.showFcm,
     telegram: input.showTelegram,
     vk: input.showVk,
     discord: input.showDiscord,
@@ -77,6 +80,7 @@ function buildDefaultTestChannels(input: {
 export function NotificationMessageTemplatesSettings({
   templates,
   showBrowser,
+  showFcm = false,
   showDiscord,
   showTelegram,
   showVk,
@@ -85,6 +89,7 @@ export function NotificationMessageTemplatesSettings({
 }: {
   templates: UserNotificationTemplatePreferencesDto;
   showBrowser: boolean;
+  showFcm?: boolean;
   showDiscord: boolean;
   showTelegram: boolean;
   showVk: boolean;
@@ -95,7 +100,7 @@ export function NotificationMessageTemplatesSettings({
   const [saving, setSaving] = useState(false);
   const [testing, setTesting] = useState(false);
   const [testChannels, setTestChannels] = useState(() =>
-    buildDefaultTestChannels({ showBrowser, showTelegram, showVk, showDiscord }),
+    buildDefaultTestChannels({ showBrowser, showFcm, showTelegram, showVk, showDiscord }),
   );
   const [message, setMessage] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -105,8 +110,8 @@ export function NotificationMessageTemplatesSettings({
   }, [templates]);
 
   useEffect(() => {
-    setTestChannels(buildDefaultTestChannels({ showBrowser, showTelegram, showVk, showDiscord }));
-  }, [showBrowser, showDiscord, showTelegram, showVk]);
+    setTestChannels(buildDefaultTestChannels({ showBrowser, showFcm, showTelegram, showVk, showDiscord }));
+  }, [showBrowser, showFcm, showDiscord, showTelegram, showVk]);
 
   const saveTemplates = useCallback(async (): Promise<boolean> => {
     setSaving(true);
@@ -148,7 +153,7 @@ export function NotificationMessageTemplatesSettings({
     setMessage(null);
     setError(null);
 
-    const channels = (["browser", "telegram", "vk", "discord"] as const).filter(
+    const channels = (["browser", "fcm", "telegram", "vk", "discord"] as const).filter(
       (channel) => testChannels[channel],
     );
     if (channels.length === 0) {
@@ -202,7 +207,7 @@ export function NotificationMessageTemplatesSettings({
     }));
   }, []);
 
-  if (!showBrowser && !showDiscord && !showTelegram && !showVk) {
+  if (!showBrowser && !showFcm && !showDiscord && !showTelegram && !showVk) {
     return null;
   }
 
@@ -344,6 +349,20 @@ export function NotificationMessageTemplatesSettings({
                 className="site-checkbox"
               />
               Браузер
+            </label>
+          ) : null}
+          {showFcm ? (
+            <label className="flex items-center gap-2 text-xs text-foreground">
+              <input
+                type="checkbox"
+                checked={testChannels.fcm}
+                disabled={disabled || saving || testing}
+                onChange={(event) =>
+                  setTestChannels((prev) => ({ ...prev, fcm: event.target.checked }))
+                }
+                className="site-checkbox"
+              />
+              Android FCM
             </label>
           ) : null}
           {showTelegram ? (

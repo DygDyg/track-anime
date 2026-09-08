@@ -7,6 +7,13 @@ import { useCallback, useEffect, useState } from "react";
 import { useSearchParams } from "next/navigation";
 import { subscribeBrowserPush, unsubscribeBrowserPush, hasActivePushSubscription, readBrowserPushEnabled } from "@/lib/notifications/browser-client";
 import {
+  hasActiveAndroidFcmSubscription,
+  isAndroidFcmBridgeAvailable,
+  readAndroidFcmEnabled,
+  subscribeAndroidFcm,
+  unsubscribeAndroidFcm,
+} from "@/lib/notifications/fcm-client";
+import {
   emitNotificationsPrefsChanged,
   resetInAppNotifySince,
 } from "@/lib/notifications/in-app-client";
@@ -87,6 +94,9 @@ export function NotificationsSettingsTab({ variant = "full" }: { variant?: "full
   const [vkDeepLink, setVkDeepLink] = useState<string | null>(null);
   const [browserPushEnabled, setBrowserPushEnabled] = useState(false);
   const [browserPushActive, setBrowserPushActive] = useState(false);
+  const [androidShell, setAndroidShell] = useState(false);
+  const [androidFcmEnabled, setAndroidFcmEnabled] = useState(false);
+  const [androidFcmActive, setAndroidFcmActive] = useState(false);
 
   const loadPreferences = useCallback(async () => {
     setLoading(true);
@@ -108,6 +118,12 @@ export function NotificationsSettingsTab({ variant = "full" }: { variant?: "full
   useEffect(() => {
     setBrowserPushEnabled(readBrowserPushEnabled());
     void hasActivePushSubscription().then(setBrowserPushActive);
+    const android = isAndroidFcmBridgeAvailable();
+    setAndroidShell(android);
+    setAndroidFcmEnabled(readAndroidFcmEnabled());
+    if (android) {
+      void hasActiveAndroidFcmSubscription().then(setAndroidFcmActive);
+    }
   }, []);
 
   useEffect(() => {
@@ -223,6 +239,41 @@ export function NotificationsSettingsTab({ variant = "full" }: { variant?: "full
     setBrowserPushActive(false);
     emitNotificationsPrefsChanged();
     setMessage("Браузерные уведомления отключены в этом браузере");
+    setSaving(false);
+  }, []);
+
+  const enableAndroidFcm = useCallback(async () => {
+    setSaving(true);
+    setMessage(null);
+    setError(null);
+
+    const result = await subscribeAndroidFcm();
+    if (!result.ok) {
+      setError(result.error);
+      setSaving(false);
+      return;
+    }
+
+    setAndroidFcmEnabled(true);
+    setAndroidFcmActive(true);
+    if (!prefs?.historyNewEnabled) {
+      await savePreferences({ historyNewEnabled: true });
+    }
+    resetInAppNotifySince();
+    emitNotificationsPrefsChanged();
+    setMessage("Уведомления Android включены на этом устройстве");
+    setSaving(false);
+  }, [savePreferences, prefs?.historyNewEnabled]);
+
+  const disableAndroidFcm = useCallback(async () => {
+    setSaving(true);
+    setMessage(null);
+    setError(null);
+    await unsubscribeAndroidFcm();
+    setAndroidFcmEnabled(false);
+    setAndroidFcmActive(false);
+    emitNotificationsPrefsChanged();
+    setMessage("Уведомления Android отключены на этом устройстве");
     setSaving(false);
   }, []);
 
@@ -346,6 +397,7 @@ export function NotificationsSettingsTab({ variant = "full" }: { variant?: "full
 
   const hasNotificationChannels =
     prefs.browserPushConfigured ||
+    prefs.fcmConfigured ||
     prefs.telegramConfigured ||
     prefs.vkConfigured ||
     prefs.discordConfigured;
@@ -354,7 +406,32 @@ export function NotificationsSettingsTab({ variant = "full" }: { variant?: "full
     <div className={isCompact ? "contents" : "space-y-2"}>
       {!isCompact ? <p className="text-xs font-medium uppercase tracking-wide text-muted">Каналы</p> : null}
 
-      {prefs.browserPushConfigured ? (
+      {prefs.fcmConfigured && androidShell ? (
+        <ToggleRow
+          compact={isCompact}
+          label="Уведомления Android"
+          hint={
+            isCompact
+              ? androidFcmActive
+                ? "FCM на этом устройстве"
+                : "Фон даже при закрытом приложении"
+              : androidFcmActive
+                ? "FCM подключён — баннеры приходят при закрытом приложении"
+                : "Системные уведомления через Google (нужно разрешение)"
+          }
+          checked={androidFcmEnabled}
+          disabled={saving || !prefs.historyNewEnabled}
+          onChange={(checked) => {
+            if (checked) {
+              void enableAndroidFcm();
+              return;
+            }
+            void disableAndroidFcm();
+          }}
+        />
+      ) : null}
+
+      {prefs.browserPushConfigured && !androidShell ? (
         <ToggleRow
           compact={isCompact}
           label="Уведомления в браузере"
@@ -646,7 +723,7 @@ export function NotificationsSettingsTab({ variant = "full" }: { variant?: "full
           <p className="mt-1 text-xs leading-relaxed text-muted">
             {isCompact
               ? "Сообщим о продолжении в той же озвучке."
-              : "Уведомление при выходе новой серии в тайтле из вашей истории просмотра — в той же озвучке, что вы смотрели. При открытой вкладке сайт опрашивает сервер каждые 30\u00a0с; для фона включите push в браузере."}
+              : "Уведомление при выходе новой серии в тайтле из вашей истории просмотра — в той же озвучке, что вы смотрели. При открытой вкладке сайт опрашивает сервер каждые 30\u00a0с; для фона включите push в браузере или уведомления Android в приложении."}
           </p>
         </div>
         {isCompact ? (
@@ -686,7 +763,8 @@ export function NotificationsSettingsTab({ variant = "full" }: { variant?: "full
       {!isCompact && hasNotificationChannels && prefs.messageTemplates ? (
         <NotificationMessageTemplatesSettings
           templates={prefs.messageTemplates}
-          showBrowser={prefs.browserPushConfigured}
+          showBrowser={prefs.browserPushConfigured && !androidShell}
+          showFcm={prefs.fcmConfigured && androidShell}
           showDiscord={prefs.discordConfigured}
           showTelegram={prefs.telegramConfigured}
           showVk={prefs.vkConfigured}

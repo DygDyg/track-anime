@@ -61,6 +61,17 @@ npm run deploy:apk -- -ApkPath "android\app\build\outputs\apk\release\app-releas
 - При `ERR_TIMED_OUT` / сетевой ошибке главного кадра показывается экран «Нет соединения» с кнопками «Повторить» и «Настройки приложения». Тот же нативный экран настроек доступен во вкладке «Приложение» настроек сайта только внутри Android WebView; там же можно очистить кэш страниц и изображений без удаления сессии.
 - После первой загруженной страницы и при каждом возвращении свёрнутого приложения на передний план оно проверяет `/downloads/TrackAnime.json` на том же зеркале. Если `versionCode` выше установленного, пользователь может скачать APK; перед открытием системного установщика проверяется SHA-256. Тихая установка невозможна на обычном Android: пользователь подтверждает установку и при первом обновлении разрешает установку из Track Anime.
 
+### Фоновые уведомления (FCM)
+
+Play Store не нужен. Для баннеров при закрытом приложении:
+
+1. Создайте Firebase-проект, добавьте Android-приложение с package `ru.dygdyg.trackanime`, скачайте `google-services.json` в `android/app/` (файл в `.gitignore`; шаблон — `google-services.json.example`).
+2. Service account JSON → на сервере `FCM_SERVICE_ACCOUNT_FILE` или `FCM_PROJECT_ID` + `FCM_CLIENT_EMAIL` + `FCM_PRIVATE_KEY`. Файл по `FCM_SERVICE_ACCOUNT_FILE` должен читаться пользователем процесса сайта (`www-data`): каталог и JSON не оставляйте `root:root`/`600`, иначе API отдаёт `fcmConfigured: false` и тумблер «Уведомления Android» скрыт.
+3. Соберите APK, установите, в настройках сайта включите «Новые серии» и «Уведомления Android», выдайте разрешение системе. В оболочке при первом входе (если FCM ещё не включён) сайт сам показывает баннер «Уведомления Android».
+4. Токен уходит на `/api/notifications/fcm-subscribe`; dispatcher шлёт data-сообщения через FCM HTTP v1.
+
+На устройствах без Google Play Services FCM не работает — используйте Telegram/Discord/VK.
+
 OAuth redirect URI основного домена: `https://track-anime.dygdyg.ru/api/auth/callback/shikimori`.
 
 ## AdBlocker
