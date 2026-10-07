@@ -6,13 +6,8 @@ import type { SiteBuildInfo } from "@/lib/admin/build-info";
 export function AdminSiteVersionPanel({ build }: { build: SiteBuildInfo }) {
   return (
     <section className="space-y-4">
-      <h2 className="text-lg font-semibold text-foreground">Версия сайта</h2>
-      <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
-        <StatCard
-          label="Версия"
-          value={`v${build.version}`}
-          hint={build.buildNumber != null ? `package.json · сборка #${build.buildNumber}` : "package.json"}
-        />
+      <h2 className="text-lg font-semibold text-foreground">Сборка</h2>
+      <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-3">
         <StatCard
           label="Сборка"
           value={build.buildNumber != null ? `#${build.buildNumber}` : "—"}

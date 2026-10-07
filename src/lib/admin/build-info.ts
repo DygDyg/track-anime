@@ -2,7 +2,9 @@ import fs from "node:fs";
 import path from "node:path";
 
 export type SiteBuildInfo = {
+  /** package.json — почти не меняется; для UI предпочитайте buildNumber */
   version: string;
+  /** Номер деплоя (.build-number / BUILD_NUMBER) — основной идентификатор релиза */
   buildNumber: number | null;
   builtAt: string | null;
   builtAtLabel: string | null;
@@ -87,7 +89,7 @@ function readBuildIdFallback(): SiteBuildInfo | null {
 
   return {
     version: readPackageVersion(),
-    buildNumber: null,
+    buildNumber: readConfiguredBuildNumber(),
     builtAt,
     builtAtLabel: formatBuiltAtLabel(stat.mtime),
   };
@@ -95,10 +97,16 @@ function readBuildIdFallback(): SiteBuildInfo | null {
 
 export async function getSiteBuildInfo(): Promise<SiteBuildInfo> {
   const version = readPackageVersion();
+  const buildNumber = readConfiguredBuildNumber();
 
   try {
     const fromFile = readBuildInfoFile();
-    if (fromFile) return fromFile;
+    if (fromFile) {
+      return {
+        ...fromFile,
+        buildNumber: fromFile.buildNumber ?? buildNumber,
+      };
+    }
   } catch {
     /* fall through */
   }
@@ -112,7 +120,7 @@ export async function getSiteBuildInfo(): Promise<SiteBuildInfo> {
 
   return {
     version,
-    buildNumber: null,
+    buildNumber,
     builtAt: null,
     builtAtLabel: null,
   };
