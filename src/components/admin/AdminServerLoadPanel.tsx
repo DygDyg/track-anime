@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { adminClass } from "@/components/admin/admin-styles";
 import type { HostRebootStatus } from "@/lib/admin/host-reboot-types";
 import {
@@ -11,6 +11,22 @@ import {
 } from "@/lib/admin/server-load-types";
 
 const POLL_MS = 4_000;
+const POLL_REBOOT_MS = 2_000;
+const FETCH_TIMEOUT_MS = 8_000;
+const REBOOT_WATCH_KEY = "ta-admin-reboot-watch";
+const RECOVERED_HOLD_MS = 10 * 60 * 1000;
+
+type RebootWatchPhase = "scheduled" | "unreachable" | "recovered";
+
+type RebootWatchState = {
+  phase: RebootWatchPhase;
+  scheduledAt: number;
+  delayMinutes: number;
+  uptimeBeforeSec: number | null;
+  unreachableAt: number | null;
+  recoveredAt: number | null;
+  recoveredUptimeSec: number | null;
+};
 
 function Sparkline({
   values,
@@ -114,36 +130,167 @@ function cpuDetail(sample: ServerLoadSample): string {
   return ghz ? `${cores} · ${ghz}` : cores;
 }
 
+function readRebootWatch(): RebootWatchState | null {
+  try {
+    const raw = sessionStorage.getItem(REBOOT_WATCH_KEY);
+    if (!raw) return null;
+    const parsed = JSON.parse(raw) as RebootWatchState;
+    if (!parsed || typeof parsed.scheduledAt !== "number" || !parsed.phase) return null;
+    if (parsed.phase === "recovered" && parsed.recoveredAt) {
+      if (Date.now() - parsed.recoveredAt > RECOVERED_HOLD_MS) {
+        sessionStorage.removeItem(REBOOT_WATCH_KEY);
+        return null;
+      }
+    }
+    return parsed;
+  } catch {
+    return null;
+  }
+}
+
+function writeRebootWatch(state: RebootWatchState | null) {
+  try {
+    if (!state) {
+      sessionStorage.removeItem(REBOOT_WATCH_KEY);
+      return;
+    }
+    sessionStorage.setItem(REBOOT_WATCH_KEY, JSON.stringify(state));
+  } catch {
+    /* ignore quota / private mode */
+  }
+}
+
+function formatCountdown(ms: number): string {
+  const totalSec = Math.max(0, Math.ceil(ms / 1000));
+  const m = Math.floor(totalSec / 60);
+  const s = totalSec % 60;
+  return `${m}:${String(s).padStart(2, "0")}`;
+}
+
+async function fetchWithTimeout(url: string, init?: RequestInit, timeoutMs = FETCH_TIMEOUT_MS): Promise<Response> {
+  const controller = new AbortController();
+  const timer = window.setTimeout(() => controller.abort(), timeoutMs);
+  try {
+    return await fetch(url, { ...init, cache: "no-store", signal: controller.signal });
+  } finally {
+    window.clearTimeout(timer);
+  }
+}
+
+function looksLikeFreshBoot(uptimeSec: number, watch: RebootWatchState): boolean {
+  if (watch.uptimeBeforeSec != null && uptimeSec + 30 < watch.uptimeBeforeSec) return true;
+  // После ребута uptime обычно меньше окна ожидания + запас
+  const windowSec = watch.delayMinutes * 60 + 30 * 60;
+  return uptimeSec < windowSec;
+}
+
 export function AdminServerLoadPanel() {
   const [snapshot, setSnapshot] = useState<ServerLoadSnapshot | null>(null);
   const [reboot, setReboot] = useState<HostRebootStatus | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [rebootBusy, setRebootBusy] = useState(false);
-  const [rebootMessage, setRebootMessage] = useState<string | null>(null);
   const [rebootError, setRebootError] = useState<string | null>(null);
+  const [watch, setWatch] = useState<RebootWatchState | null>(null);
+  const [nowTick, setNowTick] = useState(() => Date.now());
+  const watchRef = useRef<RebootWatchState | null>(null);
+
+  useEffect(() => {
+    const initial = readRebootWatch();
+    watchRef.current = initial;
+    setWatch(initial);
+  }, []);
+
+  useEffect(() => {
+    watchRef.current = watch;
+    writeRebootWatch(watch);
+  }, [watch]);
+
+  useEffect(() => {
+    if (!watch || watch.phase === "recovered") return;
+    const id = window.setInterval(() => setNowTick(Date.now()), 1000);
+    return () => window.clearInterval(id);
+  }, [watch?.phase]);
 
   useEffect(() => {
     let cancelled = false;
     let timer: ReturnType<typeof setTimeout> | undefined;
 
+    function scheduleNext(delayMs: number) {
+      if (cancelled) return;
+      timer = setTimeout(() => void tick(), delayMs);
+    }
+
     async function tick() {
+      const activeWatch = watchRef.current;
+      const watchingReboot = Boolean(activeWatch && activeWatch.phase !== "recovered");
+      const pollMs = watchingReboot ? POLL_REBOOT_MS : POLL_MS;
+
       try {
         const [loadRes, rebootRes] = await Promise.all([
-          fetch("/api/admin/server-load", { cache: "no-store" }),
-          fetch("/api/admin/host-reboot", { cache: "no-store" }),
+          fetchWithTimeout("/api/admin/server-load"),
+          fetchWithTimeout("/api/admin/host-reboot"),
         ]);
         if (!loadRes.ok) throw new Error(`HTTP ${loadRes.status}`);
         const data = (await loadRes.json()) as ServerLoadSnapshot;
         const rebootData = rebootRes.ok ? ((await rebootRes.json()) as HostRebootStatus) : null;
-        if (!cancelled) {
-          setSnapshot(data);
-          if (rebootData) setReboot(rebootData);
-          setError(null);
+
+        if (cancelled) return;
+
+        setSnapshot(data);
+        if (rebootData) setReboot(rebootData);
+        setError(null);
+
+        const currentWatch = watchRef.current;
+        if (currentWatch?.phase === "unreachable") {
+          const uptime = data.current.uptimeSeconds;
+          if (looksLikeFreshBoot(uptime, currentWatch)) {
+            setWatch({
+              ...currentWatch,
+              phase: "recovered",
+              recoveredAt: Date.now(),
+              recoveredUptimeSec: uptime,
+            });
+          } else {
+            // API снова отвечает — считаем вернувшимся даже без явного сброса uptime
+            setWatch({
+              ...currentWatch,
+              phase: "recovered",
+              recoveredAt: Date.now(),
+              recoveredUptimeSec: uptime,
+            });
+          }
+        } else if (currentWatch?.phase === "scheduled") {
+          const dueAt = currentWatch.scheduledAt + currentWatch.delayMinutes * 60_000;
+          if (Date.now() >= dueAt + 15_000 && looksLikeFreshBoot(data.current.uptimeSeconds, currentWatch)) {
+            // Успели пропустить фазу unreachable (быстрый ребут / короткий простой)
+            setWatch({
+              ...currentWatch,
+              phase: "recovered",
+              unreachableAt: currentWatch.unreachableAt,
+              recoveredAt: Date.now(),
+              recoveredUptimeSec: data.current.uptimeSeconds,
+            });
+          }
         }
+
+        scheduleNext(pollMs);
       } catch {
-        if (!cancelled) setError("Не удалось получить нагрузку");
-      } finally {
-        if (!cancelled) timer = setTimeout(tick, POLL_MS);
+        if (cancelled) return;
+
+        const currentWatch = watchRef.current;
+        if (currentWatch && currentWatch.phase !== "recovered") {
+          if (currentWatch.phase !== "unreachable") {
+            setWatch({
+              ...currentWatch,
+              phase: "unreachable",
+              unreachableAt: Date.now(),
+            });
+          }
+          setError(null);
+        } else {
+          setError("Не удалось получить нагрузку");
+        }
+        scheduleNext(POLL_REBOOT_MS);
       }
     }
 
@@ -166,15 +313,15 @@ export function AdminServerLoadPanel() {
     }
 
     setRebootBusy(true);
-    setRebootMessage(null);
     setRebootError(null);
     try {
-      const res = await fetch("/api/admin/host-reboot", { method: "POST" });
+      const res = await fetchWithTimeout("/api/admin/host-reboot", { method: "POST" }, 20_000);
       const data = (await res.json()) as {
         message?: string;
         error?: string;
         blockers?: Array<{ label: string }>;
         status?: HostRebootStatus;
+        delayMinutes?: number;
       };
       if (data.status) setReboot(data.status);
       if (!res.ok) {
@@ -185,7 +332,17 @@ export function AdminServerLoadPanel() {
         setRebootError(`${data.error ?? "Ошибка ребута"}${extra}`);
         return;
       }
-      setRebootMessage(data.message ?? "Ребут запланирован");
+
+      const delayMinutes = data.delayMinutes ?? delay;
+      setWatch({
+        phase: "scheduled",
+        scheduledAt: Date.now(),
+        delayMinutes,
+        uptimeBeforeSec: snapshot?.current.uptimeSeconds ?? null,
+        unreachableAt: null,
+        recoveredAt: null,
+        recoveredUptimeSec: null,
+      });
     } catch {
       setRebootError("Не удалось отправить запрос на ребут");
     } finally {
@@ -193,15 +350,47 @@ export function AdminServerLoadPanel() {
     }
   }
 
+  function dismissWatch() {
+    setWatch(null);
+  }
+
   const history = snapshot?.history ?? [];
   const current = snapshot?.current;
   const rebootBlocked = Boolean(reboot && (!reboot.enabled || reboot.blockers.length > 0 || reboot.scheduled));
+  const dueAt = watch ? watch.scheduledAt + watch.delayMinutes * 60_000 : 0;
+  const remainingMs = watch?.phase === "scheduled" ? dueAt - nowTick : 0;
+  const offlineForMs =
+    watch?.phase === "unreachable" && watch.unreachableAt ? nowTick - watch.unreachableAt : 0;
+
+  let rebootBanner: { className: string; text: string } | null = null;
+  if (watch?.phase === "scheduled") {
+    rebootBanner = {
+      className: adminClass.alertSuccess,
+      text:
+        remainingMs > 0
+          ? `Ребут запланирован. До отключения ≈ ${formatCountdown(remainingMs)}. Слежу за доступностью…`
+          : "Время ребута наступило. Жду, пока сервер станет недоступен…",
+    };
+  } else if (watch?.phase === "unreachable") {
+    rebootBanner = {
+      className: adminClass.alertError,
+      text: `Сервер недоступен (перезагрузка). Жду возврата… ${
+        offlineForMs > 0 ? `уже ${formatCountdown(offlineForMs)}` : ""
+      }`.trim(),
+    };
+  } else if (watch?.phase === "recovered") {
+    const up = watch.recoveredUptimeSec != null ? formatUptime(watch.recoveredUptimeSec) : null;
+    rebootBanner = {
+      className: adminClass.alertSuccess,
+      text: `Сервер снова в сети${up ? ` · uptime ОС ${up}` : ""}. Метрики обновляются.`,
+    };
+  }
 
   return (
     <section className="space-y-3">
       <div className="flex flex-wrap items-end justify-between gap-2">
         <h2 className="text-lg font-semibold text-foreground">Нагрузка сервера</h2>
-        {current ? (
+        {current && watch?.phase !== "unreachable" ? (
           <p className="text-xs text-muted">
             Load {current.loadAvg.join(" / ")} · ОС {formatUptime(current.uptimeSeconds)} · RSS{" "}
             {formatLoadBytes(current.processRssBytes)}
@@ -209,9 +398,24 @@ export function AdminServerLoadPanel() {
         ) : null}
       </div>
 
-      {error ? <p className={adminClass.alertError}>{error}</p> : null}
+      {rebootBanner ? (
+        <div className={`flex flex-wrap items-start justify-between gap-2 ${rebootBanner.className}`}>
+          <p className="text-sm">{rebootBanner.text}</p>
+          {watch?.phase === "recovered" ? (
+            <button type="button" className={adminClass.textLink} onClick={dismissWatch}>
+              Скрыть
+            </button>
+          ) : null}
+        </div>
+      ) : null}
 
-      <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
+      {error && !watch ? <p className={adminClass.alertError}>{error}</p> : null}
+
+      <div
+        className={`grid gap-3 sm:grid-cols-2 xl:grid-cols-4 ${
+          watch?.phase === "unreachable" ? "opacity-60" : ""
+        }`}
+      >
         <MetricCard
           label="ЦП"
           percent={current?.cpuPercent ?? null}
@@ -266,10 +470,18 @@ export function AdminServerLoadPanel() {
           <button
             type="button"
             onClick={() => void requestReboot()}
-            disabled={!reboot?.canReboot || rebootBusy}
+            disabled={
+              !reboot?.canReboot ||
+              rebootBusy ||
+              Boolean(watch && watch.phase !== "recovered")
+            }
             className={adminClass.btnSecondary}
           >
-            {rebootBusy ? "Планирую…" : reboot?.scheduled ? "Ребут запланирован" : "Перезагрузить"}
+            {rebootBusy
+              ? "Планирую…"
+              : watch?.phase === "scheduled" || watch?.phase === "unreachable" || reboot?.scheduled
+                ? "Ребут идёт…"
+                : "Перезагрузить"}
           </button>
         </div>
 
@@ -288,7 +500,6 @@ export function AdminServerLoadPanel() {
           </ul>
         ) : null}
 
-        {rebootMessage ? <p className={`mt-2 ${adminClass.alertSuccess}`}>{rebootMessage}</p> : null}
         {rebootError ? <p className={`mt-2 ${adminClass.alertError}`}>{rebootError}</p> : null}
       </div>
     </section>
