@@ -65,7 +65,13 @@ function StatTile({
   return <div className={className}>{inner}</div>;
 }
 
-function OwnSyncStatus({ stats }: { stats: UserProfileStatsDto["listSync"] }) {
+function OwnSyncStatus({
+  stats,
+  favoritesHref,
+}: {
+  stats: UserProfileStatsDto["listSync"];
+  favoritesHref: string;
+}) {
   if (stats.error) {
     return (
       <p className="rounded-lg border border-red-500/40 bg-red-950/40 px-3 py-2 text-sm text-red-200">
@@ -78,7 +84,7 @@ function OwnSyncStatus({ stats }: { stats: UserProfileStatsDto["listSync"] }) {
     return (
       <p className="text-sm text-muted">
         Список ещё не синхронизировался с Shikimori. Откройте{" "}
-        <Link href="/favorites" className="font-semibold text-accent hover:underline">
+        <Link href={favoritesHref} className="font-semibold text-accent hover:underline">
           избранное
         </Link>
         , чтобы подтянуть данные.
@@ -92,7 +98,7 @@ function OwnSyncStatus({ stats }: { stats: UserProfileStatsDto["listSync"] }) {
       {stats.stale ? (
         <>
           устарел — обновится при следующем открытии{" "}
-          <Link href="/favorites" className="font-semibold text-accent hover:underline">
+          <Link href={favoritesHref} className="font-semibold text-accent hover:underline">
             избранного
           </Link>
         </>
@@ -195,9 +201,8 @@ export function ProfileCard({
   friendStatus?: ProfileFriendStatus | null;
 }) {
   const isOwn = variant === "own";
-  const favoritesHref = isOwn ? "/favorites" : userFavoritesPath(user.shikimoriId);
-  const favoritesTabHref = (tab: string) =>
-    isOwn ? `/favorites?tab=${tab}` : userFavoritesPath(user.shikimoriId, tab);
+  const favoritesHref = userFavoritesPath(user.shikimoriId);
+  const favoritesTabHref = (tab: string) => userFavoritesPath(user.shikimoriId, tab);
   const publicProfileHref = userProfilePath(user.shikimoriId);
 
   const topStatuses = LIST_STATUS_TABS.filter((tab) => stats.listCounts[tab] > 0).slice(0, 3);
@@ -294,7 +299,7 @@ export function ProfileCard({
 
         <section className="rounded-xl border border-dashed border-border bg-background/40 px-4 py-3">
           {isOwn ? (
-            <OwnSyncStatus stats={stats.listSync} />
+            <OwnSyncStatus stats={stats.listSync} favoritesHref={favoritesHref} />
           ) : (
             <PublicSyncStatus
               stats={stats.listSync}

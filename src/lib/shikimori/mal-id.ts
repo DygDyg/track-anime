@@ -169,3 +169,20 @@ export async function resolveMalIdForShikimoriId(
   const result = await resolveMalIdsForShikimoriIds([shikimoriId], options);
   return result.resolved.get(shikimoriId) ?? null;
 }
+
+/**
+ * Только свежая запись из AnimeExternalIdMap — без GraphQL.
+ * Для cover-fill / CVH, чтобы не бить Shikimori ради постера.
+ */
+export async function lookupCachedMalIdForShikimoriId(
+  shikimoriId: number,
+  maxAgeMs: number = MAL_ID_CACHE_TTL_MS,
+): Promise<number | null> {
+  if (!Number.isInteger(shikimoriId) || shikimoriId <= 0) return null;
+  const row = await prisma.animeExternalIdMap.findUnique({
+    where: { shikimoriId },
+    select: { malId: true, syncedAt: true },
+  });
+  if (!row || !isFresh(row, maxAgeMs)) return null;
+  return row.malId;
+}

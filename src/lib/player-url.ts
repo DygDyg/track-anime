@@ -77,10 +77,13 @@ function kodikPlayerLinksEqual(left: string, right: string): boolean {
 }
 
 /**
- * Prefer per-episode `/seria/` remount when a scoped link is available.
+ * Prefer per-episode `/seria/` remount when allowed and a scoped link is available.
  * Same-season switches without `/seria/` stay on serial/season (`change_episode`).
  * Leaving a locked `/seria/` without a new one remounts back to the material serial.
  * Season/specials trees still remount onto season embeds when needed.
+ *
+ * Legacy Kodik UI (`allowSeriaRemount: false`): never lock the iframe on `/seria/` —
+ * that embed has no native episode list. Stay on `/serial/` / `/season/` instead.
  */
 export function resolveKodikPlayerEpisodeSwitch(input: {
   currentSrc: string;
@@ -88,9 +91,17 @@ export function resolveKodikPlayerEpisodeSwitch(input: {
   scopedPlayerLink?: string | null;
   currentSeasonNumber: number;
   targetSeasonNumber: number;
+  /** Default true (TA player). False for legacy Kodik chrome. */
+  allowSeriaRemount?: boolean;
 }): { src: string; remount: boolean } {
+  const allowSeriaRemount = input.allowSeriaRemount !== false;
   const currentSrc = input.currentSrc.trim() || input.materialLink;
-  const scoped = input.scopedPlayerLink?.trim() || null;
+  const scopedRaw = input.scopedPlayerLink?.trim() || null;
+  // Ignore per-episode embeds when the host needs Kodik's own episode selector.
+  const scoped =
+    scopedRaw && (!isSingleEpisodeKodikPlayerLink(scopedRaw) || allowSeriaRemount)
+      ? scopedRaw
+      : null;
   const currentMode = detectKodikPlayerLinkMode(currentSrc);
   const seasonChanged = input.targetSeasonNumber !== input.currentSeasonNumber;
 
@@ -99,8 +110,13 @@ export function resolveKodikPlayerEpisodeSwitch(input: {
     remount: !kodikPlayerLinksEqual(src, currentSrc),
   });
 
+  // Locked on /seria/ while seria remounts are disabled — unlock to material serial.
+  if (!allowSeriaRemount && currentMode === "single") {
+    return withRemount(input.materialLink);
+  }
+
   // Locked episode URL — always remount when the embed actually changes.
-  if (scoped && isSingleEpisodeKodikPlayerLink(scoped)) {
+  if (allowSeriaRemount && scoped && isSingleEpisodeKodikPlayerLink(scoped)) {
     return withRemount(scoped);
   }
 

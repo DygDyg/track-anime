@@ -20,6 +20,8 @@ import {
   normalizeSiteSettings,
   readStoredSiteSettings,
   stripLocalOnlySiteSettings,
+  consumeUseLegacyKodikPlayerDefaultReset,
+  wasLegacyKodikPlayerDefaultResetApplied,
   type SiteSettings,
 } from "@/lib/site-settings";
 
@@ -156,9 +158,10 @@ export function SiteSettingsProvider({
   );
 
   useEffect(() => {
-    const initial = hasStoredSiteSettings()
+    const stored = hasStoredSiteSettings()
       ? readStoredSiteSettings(defaultsRef.current)
       : { ...defaultsRef.current };
+    const { settings: initial } = consumeUseLegacyKodikPlayerDefaultReset(stored);
     settingsRef.current = initial;
     setSettings(initial);
     applySiteSettings(initial);
@@ -189,17 +192,23 @@ export function SiteSettingsProvider({
         syncedUserIdRef.current = user.id;
 
         if (remote) {
-          commitSettings(
-            mergeRemoteWithLocalSiteSettings(remote, settingsRef.current),
-            false,
-          );
+          const merged = mergeRemoteWithLocalSiteSettings(remote, settingsRef.current);
+          if (wasLegacyKodikPlayerDefaultResetApplied()) {
+            const next = { ...merged, useLegacyKodikPlayer: false };
+            commitSettings(next, remote.useLegacyKodikPlayer);
+            return;
+          }
+          const { settings: next, didReset } = consumeUseLegacyKodikPlayerDefaultReset(merged);
+          commitSettings(next, didReset);
           return;
         }
 
         const local = hasStoredSiteSettings()
           ? readStoredSiteSettings(defaultsRef.current)
           : { ...defaultsRef.current };
-        await saveRemoteSiteSettings(local);
+        const { settings: next } = consumeUseLegacyKodikPlayerDefaultReset(local);
+        commitSettings(next, false);
+        await saveRemoteSiteSettings(next);
       } catch {
         if (!cancelled) syncedUserIdRef.current = null;
       }

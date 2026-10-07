@@ -9,7 +9,7 @@
             android:action="android.intent.action.VIEW"
             android:targetPackage="ru.dygdyg.trackanime"
             android:targetClass="ru.dygdyg.trackanime.MainActivity"
-            android:data="https://track-anime.dygdyg.ru/calendar" />
+            android:data="https://track-anime.win/calendar" />
     </shortcut>
     <shortcut
         android:shortcutId="history"
@@ -20,7 +20,7 @@
             android:action="android.intent.action.VIEW"
             android:targetPackage="ru.dygdyg.trackanime"
             android:targetClass="ru.dygdyg.trackanime.MainActivity"
-            android:data="https://track-anime.dygdyg.ru/history" />
+            android:data="https://track-anime.win/history" />
     </shortcut>
     <shortcut
         android:shortcutId="favorites"
@@ -31,7 +31,7 @@
             android:action="android.intent.action.VIEW"
             android:targetPackage="ru.dygdyg.trackanime"
             android:targetClass="ru.dygdyg.trackanime.MainActivity"
-            android:data="https://track-anime.dygdyg.ru/favorites" />
+            android:data="https://track-anime.win/favorites" />
     </shortcut>
     <shortcut
         android:shortcutId="settings"

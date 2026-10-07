@@ -184,7 +184,7 @@ export async function loadFavoritesPayloadFromDb(
 
 function syncErrorMessage(err: unknown): string {
   if (err instanceof ShikimoriAuthError) {
-    return "Не удалось авторизоваться в Shikimori";
+    return err.message || "Связь с Shikimori истекла — переподключите";
   }
   if (err instanceof Error) {
     return err.message;

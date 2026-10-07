@@ -139,6 +139,7 @@ http://localhost:3000/api/auth/callback/shikimori
 | `npm run start` | Запуск production |
 | `npm run db:studio` | Prisma Studio |
 | `npm run db:backup` | Dump локальной PostgreSQL БД из Docker в `backups/db` |
+| `npm run db:backup:webdav` | Бекап выбранных таблиц на WebDAV (настройки в `/admin/db`) |
 | `npm run db:pull-prod` | Скачать dump production БД в `backups/db` |
 | `npm run db:restore-prod` | Скачать production dump и перезаписать локальную dev БД |
 | `npm run kodik:sync` | Sync новых материалов Kodik |

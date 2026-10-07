@@ -94,6 +94,9 @@ NODE_ENV="production"
 | `WATCH_PARTY_PORT` | нет | Порт отдельного WebSocket-сервера совместного просмотра (по умолчанию 3001). На текущем prod: Next.js `PORT=3001`, watch-party `WATCH_PARTY_PORT=3002` |
 | `WATCH_PARTY_ROOMS_URL` | нет | Внутренний HTTP URL списка активных комнат для админки. Если не задан, админка пробует `WATCH_PARTY_PORT`, затем локальные `3001`/`3002`. |
 | `NEXT_PUBLIC_WATCH_PARTY_WS_URL` | нет | Публичный WebSocket URL, если `/watch-party-ws` не проксируется на том же origin |
+| `HOST_REBOOT_ENABLED` | нет | Ребут хоста из `/admin`. По умолчанию: `on` на Linux, `off` на Windows. `0`/`false` — выключить |
+| `HOST_REBOOT_DELAY_MINUTES` | нет | Задержка до ребута (1–60, по умолчанию 1) |
+| `HOST_REBOOT_COMMAND` | нет | Своя shell-команда вместо `sudo -n /sbin/shutdown -r +N` |
 | `NODE_ENV` | для prod | `production` при `npm run start` |
 
 **Токен Kodik:** получите в [bd.kodikres.com](https://bd.kodikres.com) → API. Без токена скрипты `kodik:*` завершатся с ошибкой `KODIK_API_TOKEN не задан в .env`.
@@ -185,6 +188,29 @@ sudo systemctl status track-anime
 journalctl -u track-anime -f
 ```
 
+### Ребут хоста из админки (`/admin`)
+
+Кнопка «Перезагрузить» на вкладке Обзор вызывает `sudo -n /sbin/shutdown -r +N` (N = `HOST_REBOOT_DELAY_MINUTES`, по умолчанию 1). Перед запуском API блокирует ребут, если:
+
+- идёт WebDAV-бекап БД;
+- бекап стоит в очереди (`runRequestedAt`);
+- выполняется импорт/синхронизация Kodik (`KodikImportJob` / `KodikSyncRun` в `running`).
+
+Для пользователя сервиса (в примере выше `www-data`) нужен passwordless sudo только на shutdown:
+
+```bash
+echo 'www-data ALL=(root) NOPASSWD: /sbin/shutdown' | sudo tee /etc/sudoers.d/track-anime-reboot
+sudo chmod 440 /etc/sudoers.d/track-anime-reboot
+sudo visudo -cf /etc/sudoers.d/track-anime-reboot
+```
+
+Проверка от имени сервиса:
+
+```bash
+sudo -u www-data sudo -n /sbin/shutdown -r +60
+sudo -u www-data sudo -n /sbin/shutdown -c
+```
+
 ### systemd-сервис WebSocket-комнат
 
 Совместный просмотр TA-плеера работает через отдельный in-memory WebSocket-процесс.
@@ -223,7 +249,21 @@ sudo systemctl start track-anime-watch-party
 
 ## 6. Nginx + HTTPS
 
-Пример для домена `track-anime.example.com`:
+Прод: зеркала `track-anime.win` (+ `www`), `track-anime.duckdns.org` → Next.js `:3001`. Конфиг в `scripts/server-tuning/nginx.conf` + `track-anime-proxy.conf`, применение: `bash scripts/server-tuning/apply-track-anime-nginx.sh`. В `track-anime-proxy.conf` обязателен `location /watch-party-ws` → `:3002` (иначе `wss` уходит в Next.js и совместный просмотр «висит»).
+
+`track-anime.dygdyg.ru` и `ta.dygdyg.ru` (80/443): для обычных браузеров (`Mozilla*`) — HTML 200 bounce (`error_page 418` / `@ta_legacy_bounce`, `Cache-Control: no-store`) с `location.replace` на `https://track-anime.win$uri?…&legacy_redirect=1` (не 301: браузеры навсегда кэшируют Location и иначе игнорируют новый query). Клиент (`LegacyDomainRedirectNotice` + early script в `layout.tsx`) показывает модалку про отключение legacy-доменов и ссылки на `https://track-anime.github.io` / `https://track-anime.win/`. Без bounce для Android WebView (`; wv)`), `TrackAnimeAndroid` / `TrackAnimeWindows` — иначе старая оболочка открывает `.win` во внешнем браузере и не видит in-app update.
+
+Сертификаты Let's Encrypt (certbot timer):
+- `track-anime.win` (+ `www.track-anime.win`) — **отдельный** сертификат `/etc/letsencrypt/live/track-anime.win/`
+- остальные домены сервера — общий `/etc/letsencrypt/live/server.dygdyg.ru/` (не расширять его под `.win`)
+
+Выпуск только для нового домена без затрагивания старого:
+
+```bash
+certbot certonly --nginx -d track-anime.win -d www.track-anime.win --cert-name track-anime.win
+```
+
+Пример для произвольного домена `track-anime.example.com`:
 
 ```bash
 sudo nano /etc/nginx/sites-available/track-anime
@@ -348,6 +388,11 @@ npm run kodik:sync:scheduled
 `npm run kodik:sync` остаётся ручным инкрементальным запуском без проверки расписания.
 Для проверки именно cron-пути используйте `npm run kodik:sync:scheduled`.
 
+Тот же cron (`kodik:sync:scheduled`) также вызывает WebDAV-бекап БД, если он включён
+в админке `/admin/db` (`DbBackupSettings`: интервал в часах, папка, лимит размера файла,
+выбор таблиц). Учётные данные WebDAV хранятся в БД, не в `.env`. Ручной CLI:
+`npm run db:backup:webdav`. Локальный `pg_dump` по-прежнему: `npm run db:backup`.
+
 ---
 
 ## 8. Деплой на production (Windows → сервер)
@@ -447,7 +492,8 @@ sudo systemctl restart track-anime
 | `npm run kodik:import:resume` | Продолжить импорт после прерывания |
 | `npm run kodik:import:episodes` | Только фаза серий |
 | `npm run kodik:sync` | Ручное инкрементальное обновление |
-| `npm run kodik:sync:scheduled` | Cron-планировщик: проверяет настройки, запускает auto sync, Shikimori anons sync и worker уведомлений |
+| `npm run kodik:sync:scheduled` | Cron-планировщик: auto sync, Shikimori anons sync, worker уведомлений, WebDAV DB backup |
+| `npm run db:backup:webdav` | Ручной бекап выбранных таблиц на WebDAV (настройки из `/admin/db`) |
 
 ---
 
@@ -461,7 +507,7 @@ sudo systemctl restart track-anime
 | Сайт не открывается снаружи | `systemctl status track-anime`, nginx, firewall (`ufw allow 80,443`) |
 | Sync не идёт по cron | `crontab -l`, абсолютный путь к `npm`, лог `logs/kodik-sync.log`, `which npm`, ручной запуск `npm run kodik:sync:scheduled` |
 | `Cannot find package 'server-only'` в cron | Выполнить `npm ci`; пакет должен быть в `package.json`. Не добавляйте `import "server-only"` в модули, которые импортируются из CLI/cron (`tsx`) |
-| `server-only` бросает ошибку при `npm run kodik:sync:scheduled` | В CLI-достижимом графе импортов остался sentinel `import "server-only"`. Для Kodik sync критичный путь: `scripts/kodik-sync-scheduled.ts` → `save-material` → notification dispatcher/channel |
+| `server-only` бросает ошибку при `npm run kodik:sync:scheduled` | В CLI-достижимом графе импортов остался sentinel `import "server-only"`. Критичный путь: `scripts/kodik-sync-scheduled.ts` → `save-material` → `notifications/dispatcher` → `channels/fcm` (и любые другие channel-модули в этом графе). Не ставить `server-only` в эти файлы |
 
 Проверка API ленты:
 
@@ -485,6 +531,6 @@ SELECT COUNT(*) FROM "KodikEpisodeRelease";
 - PostgreSQL слушает только localhost.
 - Не коммитьте `.env` в git.
 - Токен Kodik храните только на сервере.
-- Для публичных `/search`, `/api/search` и `/anime/*` настройте nginx `limit_req`: эти маршруты могут выполнять тяжёлые server-side запросы. На домене за Cloudflare сначала настройте `real_ip_header CF-Connecting-IP` и актуальные trusted-сети Cloudflare; прямые зеркала продолжают использовать IP исходного подключения.
+- Для публичных `/search`, `/api/search` и `/anime/*` настройте nginx `limit_req`: эти маршруты могут выполнять тяжёлые server-side запросы. На домене за Cloudflare сначала настройте `real_ip_header CF-Connecting-IP` и актуальные trusted-сети Cloudflare; прямые зеркала продолжают использовать IP исходного подключения. Scrapers (`GPTBot`, `SemrushBot`, …) на `/anime/*` режутся `403` (`$ta_block_scraper`), чтобы не забивать глобальный Shikimori rate limiter и не держать SSR-стрим 15–60 с.
 - В nginx можно вернуть быстрый `404` для неиспользуемых scanner-путей (`/.env`, `/.git`, `/wp-config*`, `/phpinfo*`, `/vendor`, `/config`, `/aws`), чтобы они не попадали в Next.js.
 - Для неиспользуемых доменных алиасов и произвольного `Host` настройте `default_server` на портах 80 и 443 с `return 444`. Не добавляйте такие алиасы в `server_name`: это исключает конфликты виртуальных хостов и не перенаправляет ботов на рабочие сайты.

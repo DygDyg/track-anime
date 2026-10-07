@@ -15,6 +15,7 @@ import {
 import type { ListStatusTab } from "@/lib/shikimori/user-rates";
 import { LIST_STATUS_LABELS } from "@/lib/shikimori/user-rates";
 import type { ShikimoriListStatus } from "@/lib/shikimori/user-rates.types";
+import { userFavoritesPath } from "@/lib/public-user";
 
 const SELECT_BOOKMARK = "bookmark";
 const SELECT_REMOVE = "__remove__";
@@ -213,7 +214,7 @@ export function AnimeListActions({ shikimoriId }: { shikimoriId: number }) {
       </div>
 
       <div className="mt-2 flex flex-wrap items-center gap-x-3 gap-y-1">
-        <Link href="/favorites" className="text-xs font-medium text-accent transition hover:underline">
+        <Link href={userFavoritesPath(user.shikimoriId)} className="text-xs font-medium text-accent transition hover:underline">
           Мои списки
         </Link>
         {error ? <p className="text-xs text-rose-400">{error}</p> : null}

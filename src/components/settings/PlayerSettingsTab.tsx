@@ -17,6 +17,7 @@ import {
   PLAYER_CONTROLS_IDLE_MS_STEP,
   type SiteSettings,
 } from "@/lib/site-settings";
+import { matchesFuzzyText } from "@/lib/fuzzy-text-match";
 import {
   TRANSLATION_INTRO_OFFSET_MAX_SEC,
   TRANSLATION_INTRO_OFFSET_MIN_SEC,
@@ -65,9 +66,8 @@ export function PlayerSettingsTab({ settings, updateSettings, updateLocalSetting
   }, []);
 
   const filteredNames = useMemo(() => {
-    const q = query.trim().toLowerCase();
-    if (!q) return names;
-    return names.filter((name) => name.toLowerCase().includes(q));
+    if (!query.trim()) return names;
+    return names.filter((name) => matchesFuzzyText(query, name));
   }, [names, query]);
 
   const configuredCount = useMemo(

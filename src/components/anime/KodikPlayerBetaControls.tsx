@@ -230,7 +230,7 @@ function timelineSegmentColor(type: KodikPlayerTimelineSegment["type"]): string 
   }
 }
 
-function buildTimelineSegmentBackground(
+export function buildTimelineSegmentBackground(
   segments: KodikPlayerTimelineSegment[],
   duration: number,
 ): string | undefined {

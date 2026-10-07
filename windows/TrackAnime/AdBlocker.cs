@@ -13,7 +13,10 @@ internal static class AdBlocker
 
     private static readonly string[] AllowedHostSuffixes =
     [
+        "track-anime.win",
         "track-anime.dygdyg.ru",
+        "track-anime.duckdns.org",
+        "ta.dygdyg.ru",
         "shikimori.one",
         "shikimori.io",
         "shiki.one",
@@ -173,7 +176,9 @@ internal static class AdBlocker
         var query = QueryOf(uri);
         var full = uri.ToString().ToLowerInvariant();
 
-        if (host is "track-anime.dygdyg.ru" || host.EndsWith(".track-anime.dygdyg.ru", StringComparison.Ordinal))
+        if (host is "track-anime.win" or "track-anime.dygdyg.ru" or "track-anime.duckdns.org" or "ta.dygdyg.ru"
+            || host.EndsWith(".track-anime.win", StringComparison.Ordinal)
+            || host.EndsWith(".track-anime.dygdyg.ru", StringComparison.Ordinal))
         {
             return false;
         }

@@ -2,10 +2,11 @@
 
 Руководство по выкладке на production-сервер с Windows.
 
-**Сервер:** `root@195.26.230.35`  
+**Сервер:** `root@194.180.189.34`  
 **Каталог на сервере:** `/var/www/ta_new`  
-**Сайт:** https://track-anime.dygdyg.ru/
-**Зеркала:** https://ta.dygdyg.ru/, https://track-anime.dygdyg.ru/ и https://track-anime.duckdns.org/
+**Сайт:** https://track-anime.win/
+**Зеркала:** https://track-anime.win/ и https://track-anime.duckdns.org/
+**Редирект:** `track-anime.dygdyg.ru` и `ta.dygdyg.ru` → HTML-bounce (200, без кэшируемого 301) → `https://track-anime.win/*?legacy_redirect=1` только для обычных браузеров; сайт показывает модалку с актуальными ссылками (`track-anime.github.io`, `track-anime.win`). Android WebView (`; wv)`) и UA `TrackAnimeAndroid` / `TrackAnimeWindows` остаются на legacy-хосте (in-app update). Если модалка не появляется — скорее всего в браузере закэширован старый 301: инкогнито или очистка кэша для этих доменов.
 
 ---
 
@@ -17,6 +18,8 @@
 npm run deploy
 .\deploy.bat
 ```
+
+На Windows `npm run deploy*` и `deploy.bat` запускают скрипты через `scripts/run-ps.cmd`: сначала **pwsh** (PowerShell 7), иначе Windows PowerShell 5.1. Если 5.1 получает `PSModulePath` от pwsh (часто через `npm`/`cmd`), ломается `Get-FileHash` — `deploy-config.ps1` чинит путь модулей; хеш файла дополнительно есть через .NET fallback.
 
 Принудительно отдельные части:
 
@@ -97,22 +100,22 @@ npm run deploy:windows -- -SkipPublish
 2. Упаковывает исходники в `tar.gz` (без `node_modules`, `.next`, `.env`, `android/`, `windows/`, `scripts/discord-rpc-tray`, `data/cover-cache`, локальных handoff/`aqua-coder-web`/embeddings и т.п.)
 3. Режет архив на чанки и загружает их на сервер через `scp` с retry и проверкой размера каждой части
 4. На сервере в **screen** (`ta_deploy`): `npm ci` → Prisma → `npm run build` → restart `track-anime`
-5. Проверяет HTTP 200 на https://track-anime.dygdyg.ru/
+5. Проверяет HTTP 200 на https://track-anime.win/
 
 Локальный архив и временные чанки создаются в `temp/deploy/`; папка исключена из git и чистится через `clean-turbopack-cache.bat`.
 
 Деплой идёт в screen-сессии — если SSH оборвётся, сборка **не остановится**. Можно подключиться:
 
 ```bash
-ssh -t root@195.26.230.35 screen -r ta_deploy
+ssh -t root@194.180.189.34 screen -r ta_deploy
 # или
-ssh root@195.26.230.35 tail -f /tmp/ta_deploy.log
+ssh root@194.180.189.34 tail -f /tmp/ta_deploy.log
 ```
 
 Если screen уже завершился, результат деплоя хранится в `/tmp/ta_deploy.exit`:
 
 ```bash
-ssh root@195.26.230.35 "cat /tmp/ta_deploy.exit; tail -80 /tmp/ta_deploy.log; screen -list"
+ssh root@194.180.189.34 "cat /tmp/ta_deploy.exit; tail -80 /tmp/ta_deploy.log; screen -list"
 ```
 
 **Время:** ~50–60 секунд.
@@ -126,14 +129,14 @@ ssh root@195.26.230.35 "cat /tmp/ta_deploy.exit; tail -80 /tmp/ta_deploy.log; sc
 | SSH-ключ | `%USERPROFILE%\.ssh\id_rsa` |
 | `tar` | Windows 10+ (встроен) |
 | `scp`, `ssh` | OpenSSH Client (Windows) |
-| Доступ к серверу | `root@195.26.230.35` |
+| Доступ к серверу | `root@194.180.189.34` |
 | (опц.) HTTP-прокси | `deploy.local.json` + `ncat` / Git `connect.exe` |
 
 Проверка:
 
 ```powershell
 Test-Path "$env:USERPROFILE\.ssh\id_rsa"
-ssh -i "$env:USERPROFILE\.ssh\id_rsa" root@195.26.230.35 "echo ok"
+ssh -i "$env:USERPROFILE\.ssh\id_rsa" root@194.180.189.34 "echo ok"
 ```
 
 ---
@@ -215,7 +218,7 @@ ssh -i "$env:USERPROFILE\.ssh\id_rsa" root@195.26.230.35 "echo ok"
 
 | Параметр | По умолчанию | Описание |
 |----------|--------------|----------|
-| `-Remote` | `root@195.26.230.35` | SSH-хост |
+| `-Remote` | `root@194.180.189.34` | SSH-хост |
 | `-SshKey` | `~\.ssh\id_rsa` | Путь к приватному ключу |
 | `-ServerAppDir` | `/var/www/ta_new` | Каталог приложения на сервере |
 | `-UploadChunkSizeMB` | `48` | Размер частей архива для `scp`; меньше = устойчивее на плохом интернете |
@@ -257,7 +260,7 @@ extract tar
   → systemctl restart track-anime
   → systemctl restart track-anime-watch-party (если service установлен)
   → install-kodik-sync-cron.sh
-  → curl https://track-anime.dygdyg.ru/ (ожидается 200)
+  → curl https://track-anime.win/ (ожидается 200)
 ```
 
 `.env` на сервере **не перезаписывается** — он исключён из архива.
@@ -285,22 +288,22 @@ tar -czf temp\deploy\ta_deploy.tar.gz `
   --exclude="*.tar.gz" --exclude="*.mp4" .
 
 scp -i $env:USERPROFILE\.ssh\id_rsa `
-  temp\deploy\ta_deploy.tar.gz root@195.26.230.35:/tmp/ta_deploy.tar.gz
+  temp\deploy\ta_deploy.tar.gz root@194.180.189.34:/tmp/ta_deploy.tar.gz
 
-ssh -i $env:USERPROFILE\.ssh\id_rsa root@195.26.230.35 `
+ssh -i $env:USERPROFILE\.ssh\id_rsa root@194.180.189.34 `
   "cd /var/www/ta_new && sed -i 's/\r$//' scripts/*.sh && bash scripts/server-deploy.sh"
 ```
 
 ### Только перезапуск (без нового кода)
 
 ```bash
-ssh root@195.26.230.35 "systemctl restart track-anime && systemctl status track-anime"
+ssh root@194.180.189.34 "systemctl restart track-anime && systemctl status track-anime"
 ```
 
 ### Только пересборка на сервере
 
 ```bash
-ssh root@195.26.230.35 "cd /var/www/ta_new && npm run build && chown -R www-data:www-data .next && systemctl restart track-anime"
+ssh root@194.180.189.34 "cd /var/www/ta_new && npm run build && chown -R www-data:www-data .next && systemctl restart track-anime"
 ```
 
 ---
@@ -330,10 +333,10 @@ ssh root@195.26.230.35 "cd /var/www/ta_new && npm run build && chown -R www-data
 
 ```powershell
 # Логи сервиса
-ssh -i $env:USERPROFILE\.ssh\id_rsa root@195.26.230.35 "journalctl -u track-anime -n 50 --no-pager"
+ssh -i $env:USERPROFILE\.ssh\id_rsa root@194.180.189.34 "journalctl -u track-anime -n 50 --no-pager"
 
 # Статус
-ssh -i $env:USERPROFILE\.ssh\id_rsa root@195.26.230.35 "systemctl status track-anime"
+ssh -i $env:USERPROFILE\.ssh\id_rsa root@194.180.189.34 "systemctl status track-anime"
 ```
 
 ### Сайт 502 после деплоя
@@ -341,7 +344,7 @@ ssh -i $env:USERPROFILE\.ssh\id_rsa root@195.26.230.35 "systemctl status track-a
 Сборка не завершилась — смотрите вывод `npm run build` в логе деплоя или:
 
 ```bash
-ssh root@195.26.230.35 "cd /var/www/ta_new && npm run build"
+ssh root@194.180.189.34 "cd /var/www/ta_new && npm run build"
 ```
 
 ### `set: pipefail: invalid option name`
@@ -355,10 +358,10 @@ CLI-скрипты исключены из `tsconfig.json` (`exclude: ["scripts"
 ### Проверка после деплоя
 
 ```bash
-curl -s -o /dev/null -w '%{http_code}\n' https://track-anime.dygdyg.ru/
+curl -s -o /dev/null -w '%{http_code}\n' https://track-anime.win/
 # ожидается: 200
 
-ssh root@195.26.230.35 "cat /var/www/ta_new/.build-number"
+ssh root@194.180.189.34 "cat /var/www/ta_new/.build-number"
 # номер текущего билда
 ```
 
@@ -383,7 +386,7 @@ Server /tmp/ta_deploy.tar.gz
   ├── npm ci + prisma
   ├── npm run build → .next/
   └── systemctl restart track-anime + track-anime-watch-party
-        └── nginx → https://track-anime.dygdyg.ru/
+        └── nginx → https://track-anime.win/
 ```
 
 **Почему сборка на сервере, а не в WSL:** быстрее (~55 с vs ~70 с), проще, нет проблем с symlinks и Google Fonts. Подробнее — раздел 8 в [SERVER.md](./SERVER.md).

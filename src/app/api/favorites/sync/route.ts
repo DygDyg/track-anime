@@ -20,7 +20,10 @@ export async function POST() {
     return NextResponse.json({ ok: true });
   } catch (err) {
     if (err instanceof ShikimoriAuthError) {
-      return NextResponse.json({ error: "shikimori_auth" }, { status: 401 });
+      return NextResponse.json(
+        { error: "shikimori_auth", message: err.message },
+        { status: 401 },
+      );
     }
     console.error("[favorites/sync]", err);
     return NextResponse.json({ error: "sync_failed" }, { status: 502 });

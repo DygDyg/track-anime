@@ -4,11 +4,10 @@ import type { ShikimoriAnimeBrief } from "@/lib/shikimori/types";
 
 const SIMILAR_LIMIT = 24;
 
-export async function getShikimoriSimilarAnimes(
+export function mapShikimoriSimilarAnimes(
+  items: ShikimoriAnimeBrief[] | null | undefined,
   shikimoriId: number,
-  init?: RequestInit,
-): Promise<ShikimoriRelatedAnimeBrief[]> {
-  const items = await shikimoriFetch<ShikimoriAnimeBrief[]>(`/animes/${shikimoriId}/similar`, init);
+): ShikimoriRelatedAnimeBrief[] {
   if (!items?.length) return [];
 
   return items
@@ -32,4 +31,19 @@ export async function getShikimoriSimilarAnimes(
       releasedOn: item.released_on,
       episodes: item.episodes && item.episodes > 0 ? item.episodes : null,
     }));
+}
+
+export async function fetchShikimoriSimilarAnimes(
+  shikimoriId: number,
+  init?: RequestInit,
+): Promise<ShikimoriAnimeBrief[] | null> {
+  return shikimoriFetch<ShikimoriAnimeBrief[]>(`/animes/${shikimoriId}/similar`, init);
+}
+
+export async function getShikimoriSimilarAnimes(
+  shikimoriId: number,
+  init?: RequestInit,
+): Promise<ShikimoriRelatedAnimeBrief[]> {
+  const items = await fetchShikimoriSimilarAnimes(shikimoriId, init);
+  return mapShikimoriSimilarAnimes(items, shikimoriId);
 }

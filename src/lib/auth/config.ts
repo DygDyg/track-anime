@@ -1,7 +1,8 @@
 const SESSION_COOKIE = "ta.session";
 const OAUTH_STATE_COOKIE = "ta.oauth_state";
 const OAUTH_REDIRECT_COOKIE = "ta.oauth_redirect";
-const SESSION_MAX_AGE_SEC = 60 * 60 * 24 * 30; // 30 days
+/** Как у крупных соцсетей: длинный TTL + sliding renewal при визитах. */
+const SESSION_MAX_AGE_SEC = 60 * 60 * 24 * 365; // 1 year
 const OAUTH_STATE_MAX_AGE_SEC = 600; // 10 minutes
 
 export const authConfig = {
@@ -32,6 +33,7 @@ function parseOriginHost(origin: string): string | null {
 
 /** Публичные домены Track Anime (OAuth и редиректы остаются на текущем host). */
 const DEFAULT_ALLOWED_ORIGIN_HOSTS = [
+  "track-anime.win",
   "ta.dygdyg.ru",
   "track-anime.dygdyg.ru",
   "track-anime.duckdns.org",

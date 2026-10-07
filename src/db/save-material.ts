@@ -9,6 +9,11 @@ import {
 import { fetchWorldArtPoster } from "@/lib/world-art-poster";
 import { dispatchHistoryNewEpisodeRelease } from "@/lib/notifications/dispatcher";
 import { normalizeKodikGenreKey, parseKodikGenres } from "@/lib/kodik-material-meta";
+import {
+  didAnimeStatusChange,
+  invalidateRelationSnapshots,
+  normalizeAnimeStatus,
+} from "@/lib/shikimori/relation-snapshot";
 
 function parseShikimoriId(value?: string | number | null): number | null {
   if (value === undefined || value === null || value === "") return null;
@@ -62,6 +67,26 @@ function animeReleasedAt(material: KodikMaterial): Date | null {
   return Number.isNaN(parsed.getTime()) ? null : parsed;
 }
 
+function animeStatusFromMaterialData(data: unknown): string | null {
+  if (!data || typeof data !== "object") return null;
+  const record = data as Record<string, unknown>;
+  const direct = normalizeAnimeStatus(
+    typeof record.anime_status === "string"
+      ? record.anime_status
+      : typeof record.all_status === "string"
+        ? record.all_status
+        : null,
+  );
+  if (direct) return direct;
+
+  const animeFull = record.anime_full;
+  if (animeFull && typeof animeFull === "object") {
+    const status = (animeFull as Record<string, unknown>).status;
+    return normalizeAnimeStatus(typeof status === "string" ? status : null);
+  }
+  return null;
+}
+
 export type SaveMaterialResult = {
   materialId: string;
   newEpisodes: number;
@@ -95,8 +120,14 @@ export async function saveKodikMaterial(
   const shikimoriId = parseShikimoriId(material.shikimori_id);
   const previous = await prisma.kodikMaterial.findUnique({
     where: { kodikId: material.id },
-    select: { lastSeason: true, lastEpisode: true },
+    select: { lastSeason: true, lastEpisode: true, materialData: true },
   });
+  const statusChanged =
+    shikimoriId != null &&
+    didAnimeStatusChange(
+      animeStatusFromMaterialData(previous?.materialData),
+      animeStatusFromMaterialData(material.material_data),
+    );
 
   const materialData = await buildStoredMaterialData(material);
   const materialAnimeReleasedAt = animeReleasedAt(material);
@@ -147,6 +178,12 @@ export async function saveKodikMaterial(
       materialData,
     },
   });
+
+  if (statusChanged && shikimoriId != null) {
+    await invalidateRelationSnapshots(shikimoriId).catch((error) => {
+      console.warn("[save-material] relation snapshot invalidate failed:", shikimoriId, error);
+    });
+  }
 
   const materialMetadata = material.material_data as
     | { anime_genres?: unknown; all_genres?: unknown; genres?: unknown }

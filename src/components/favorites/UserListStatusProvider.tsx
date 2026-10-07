@@ -12,6 +12,7 @@ import {
 import { useAuth } from "@/components/auth/AuthProvider";
 import type { UserAnimeListInfo } from "@/lib/user-anime-list-status";
 import { emitCompanionReaction } from "@/lib/companion/companion-bus";
+import { isShikimoriAuthErrorPayload } from "@/lib/shikimori/auth-messages";
 
 type UserListUpdatePayload = {
   listStatus?: string | null;
@@ -33,7 +34,7 @@ type UserListStatusContextValue = {
 const UserListStatusContext = createContext<UserListStatusContextValue | null>(null);
 
 export function UserListStatusProvider({ children }: { children: ReactNode }) {
-  const { user, loading: authLoading, login } = useAuth();
+  const { user, loading: authLoading, login, notifyShikimoriAuthExpired } = useAuth();
   const [lists, setLists] = useState<Record<string, UserAnimeListInfo>>({});
   const [loading, setLoading] = useState(false);
   const [updatingIds, setUpdatingIds] = useState<Set<number>>(() => new Set());
@@ -45,10 +46,12 @@ export function UserListStatusProvider({ children }: { children: ReactNode }) {
     return data.lists ?? {};
   }, []);
 
+  const userId = user?.id ?? null;
+
   useEffect(() => {
     if (authLoading) return;
 
-    if (!user) {
+    if (!userId) {
       setLists({});
       setLoading(false);
       return;
@@ -71,7 +74,7 @@ export function UserListStatusProvider({ children }: { children: ReactNode }) {
     return () => {
       cancelled = true;
     };
-  }, [authLoading, user, fetchLists]);
+  }, [authLoading, userId, fetchLists]);
 
   const getStatus = useCallback(
     (shikimoriId: number): UserAnimeListInfo | null => lists[String(shikimoriId)] ?? null,
@@ -94,16 +97,21 @@ export function UserListStatusProvider({ children }: { children: ReactNode }) {
         const data = (await res.json().catch(() => ({}))) as {
           listInfo?: UserAnimeListInfo | null;
           error?: string;
+          message?: string;
         };
 
         if (!res.ok) {
           if (res.status === 401) {
-            login();
+            if (isShikimoriAuthErrorPayload(data.error) || isShikimoriAuthErrorPayload(data.message)) {
+              notifyShikimoriAuthExpired();
+            } else {
+              login();
+            }
             return null;
           }
           signaledError = true;
           emitCompanionReaction("error");
-          throw new Error(data.error ?? "Не удалось обновить список");
+          throw new Error(data.message ?? data.error ?? "Не удалось обновить список");
         }
 
         const listInfo = data.listInfo ?? null;
@@ -143,7 +151,7 @@ export function UserListStatusProvider({ children }: { children: ReactNode }) {
         });
       }
     },
-    [login],
+    [login, notifyShikimoriAuthExpired],
   );
 
   const isUpdating = useCallback(

@@ -10,7 +10,8 @@ export default async function AdminUsersPage() {
   return (
     <div className="space-y-4">
       <p className="text-sm text-muted">
-        Первые 100 пользователей. Админов можно назначать вручную или через{" "}
+        Первые 100 пользователей. Рядом с ником — иконки активных каналов уведомлений (Telegram, VK,
+        Discord, браузерный push, Android FCM). Админов можно назначать вручную или через{" "}
         <code className={adminClass.code}>ADMIN_SHIKIMORI_IDS</code> в .env.
       </p>
       <AdminUsersTable initialUsers={users} />

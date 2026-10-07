@@ -1,11 +1,22 @@
 import { getShikimoriUserAgent } from "@/lib/auth/shikimori-user-agent";
 import { getShikimoriEndpoints, shikimoriAssetUrl } from "@/lib/shikimori/endpoints";
-import { shikimoriRateLimit, shikimoriRetryAfterMs } from "@/lib/shikimori/rate-limiter";
+import {
+  isShikimoriQueueTimeoutError,
+  shikimoriRateLimit,
+  shikimoriRetryAfterMs,
+} from "@/lib/shikimori/rate-limiter";
 
 const USER_AGENT = "TrackAnime";
 const MAX_RETRIES = 5;
 const DEFAULT_REQUEST_TIMEOUT_MS = 8_000;
 const DEFAULT_TOTAL_TIMEOUT_MS = 15_000;
+/**
+ * Non-critical callers (related/similar Suspense) may wait in the global queue,
+ * but must not block streams for long. Must be ≥ MIN_INTERVAL_MS (350) so two
+ * sequential non-critical requests in one render can both get a slot; 200ms
+ * made the second request (and often similar) always fail with queue timeout.
+ */
+const NON_CRITICAL_QUEUE_MAX_WAIT_MS = 2_000;
 
 const inflightRequests = new Map<string, Promise<unknown>>();
 
@@ -39,7 +50,7 @@ function isRetryableFetchError(error: unknown): boolean {
 }
 
 export function isShikimoriTransientFetchError(error: unknown): boolean {
-  return isRetryableFetchError(error);
+  return isShikimoriQueueTimeoutError(error) || isRetryableFetchError(error);
 }
 
 function retryDelayMs(attempt: number): number {
@@ -62,14 +73,25 @@ async function shikimoriFetchOnce<T>(path: string, init?: RequestInit): Promise<
   const requestTimeoutMs = envTimeoutMs("SHIKIMORI_REQUEST_TIMEOUT_MS", DEFAULT_REQUEST_TIMEOUT_MS);
   const totalTimeoutMs = envTimeoutMs("SHIKIMORI_TOTAL_TIMEOUT_MS", DEFAULT_TOTAL_TIMEOUT_MS);
   const deadlineAt = Date.now() + totalTimeoutMs;
+  const callerSignal = init?.signal ?? null;
+  // Callers that pass AbortSignal (related/similar) fail fast instead of blocking HTML streams.
+  const queueMaxWaitMs = callerSignal ? NON_CRITICAL_QUEUE_MAX_WAIT_MS : totalTimeoutMs;
 
   for (let attempt = 0; attempt <= MAX_RETRIES; attempt += 1) {
     const remainingMs = deadlineAt - Date.now();
     if (remainingMs <= 0) {
       throw new Error(`Shikimori API timeout: ${path}`);
     }
+    if (callerSignal?.aborted) {
+      throw callerSignal.reason instanceof Error
+        ? callerSignal.reason
+        : new DOMException("Aborted", "AbortError");
+    }
 
-    await shikimoriRateLimit();
+    await shikimoriRateLimit({
+      signal: callerSignal,
+      maxWaitMs: Math.min(queueMaxWaitMs, remainingMs),
+    });
 
     let res: Response;
     try {
@@ -81,9 +103,10 @@ async function shikimoriFetchOnce<T>(path: string, init?: RequestInit): Promise<
           ...init?.headers,
         },
         next: { revalidate: 3600 },
-        signal: timeoutSignal(Math.min(requestTimeoutMs, remainingMs), init?.signal),
+        signal: timeoutSignal(Math.min(requestTimeoutMs, remainingMs), callerSignal),
       });
     } catch (error) {
+      if (callerSignal?.aborted) throw error;
       const retryMs = retryDelayMs(attempt);
       if (attempt < MAX_RETRIES && isRetryableFetchError(error) && Date.now() + retryMs < deadlineAt) {
         await new Promise((resolve) => setTimeout(resolve, retryMs));
@@ -95,6 +118,10 @@ async function shikimoriFetchOnce<T>(path: string, init?: RequestInit): Promise<
     if (res.status === 404) return null;
 
     if (res.status === 429) {
+      if (callerSignal) {
+        // Non-critical: never sleep on upstream 429 — drop related/similar for this render.
+        throw new ShikimoriRateLimitError(path);
+      }
       if (attempt < MAX_RETRIES) {
         const waitMs = shikimoriRetryAfterMs(res, attempt);
         if (Date.now() + waitMs >= deadlineAt) {

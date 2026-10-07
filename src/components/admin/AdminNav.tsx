@@ -32,6 +32,7 @@ const sections = [
     title: "Настройки",
     items: [
       { href: "/admin/brand", label: "Бренд" },
+      { href: "/admin/app-promo", label: "Промо приложений" },
       { href: "/admin/search", label: "Поиск" },
       { href: "/admin/site-settings", label: "Настройки сайта" },
       { href: "/admin/watch-party", label: "Совместный просмотр" },
@@ -44,7 +45,7 @@ const sections = [
     items: [
       { href: "/admin/db", label: "База" },
       { href: "/admin/users", label: "Пользователи" },
-      { href: "/admin/audience", label: "Аудитория" },
+      { href: "/admin/audience", label: "Аналитика" },
     ],
   },
 ];

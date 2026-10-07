@@ -2,7 +2,7 @@ import "server-only";
 
 import { prisma } from "@/lib/prisma";
 import { analyticsConfig } from "@/lib/analytics/config";
-import { utcDayStart, type ContentSection } from "@/lib/analytics/ua";
+import { isPhoneLikeDevice, utcDayStart, type ContentSection } from "@/lib/analytics/ua";
 
 export type AudienceCountRow = {
   key: string;
@@ -13,6 +13,8 @@ export type AudienceCountRow = {
 export type AudienceDayPoint = {
   day: string;
   identities: number;
+  registered: number;
+  guests: number;
   hits: number;
 };
 
@@ -30,6 +32,11 @@ export type AudienceSectionRow = {
   uniques: number;
 };
 
+export type AudiencePlayerStats = {
+  people: number;
+  hits: number;
+};
+
 export type AudienceStats = {
   totalIdentities: number;
   registeredIdentities: number;
@@ -42,13 +49,21 @@ export type AudienceStats = {
   byClientKind: AudienceCountRow[];
   byOs: AudienceCountRow[];
   byBrowser: AudienceCountRow[];
+  byDeviceModel: AudienceCountRow[];
+  /** Уникальные зрители и запуски по балансеру плеера (30 дней). */
+  playerKodik: AudiencePlayerStats;
+  playerCvh: AudiencePlayerStats;
   topSections: AudienceSectionRow[];
   topTitles: AudienceTitleRow[];
+  topPlayTitles: AudienceTitleRow[];
 };
 
 const SECTION_LABELS: Record<ContentSection | string, string> = {
   home: "Главная",
   anime: "Страницы аниме",
+  anime_play: "Воспроизведение",
+  anime_play_kodik: "Плеер Kodik / TA",
+  anime_play_cvh: "Плеер VideoHUB",
   favorites: "Избранное",
   history: "История",
   search: "Поиск",
@@ -57,6 +72,8 @@ const SECTION_LABELS: Record<ContentSection | string, string> = {
   app: "Приложения",
   other: "Прочее",
 };
+
+const PLAYER_SECTIONS = ["anime_play_kodik", "anime_play_cvh"] as const;
 
 const CLIENT_KIND_LABELS: Record<string, string> = {
   web: "Браузер",
@@ -108,6 +125,10 @@ export async function getAudienceStats(options?: { chartDays?: number }): Promis
     visitDays,
     contentRows,
     titleRows,
+    playTitleRows,
+    deviceVisitors,
+    playerIdentityRows,
+    playerHitRows,
   ] = await Promise.all([
     prisma.siteVisitor.count(),
     prisma.siteVisitor.count({ where: { userId: { not: null } } }),
@@ -138,6 +159,47 @@ export async function getAudienceStats(options?: { chartDays?: number }): Promis
       orderBy: { hitCount: "desc" },
       take: 200,
     }),
+    prisma.siteContentDay.findMany({
+      where: {
+        day: { gte: day30 },
+        section: "anime_play",
+        shikimoriId: { gt: 0 },
+      },
+      select: { shikimoriId: true, hitCount: true, uniqueCount: true },
+      orderBy: { hitCount: "desc" },
+      take: 200,
+    }),
+    prisma.siteVisitor.findMany({
+      where: {
+        lastSeenAt: { gte: day30 },
+        OR: [
+          { deviceLabel: { not: null } },
+          { clientKind: { in: ["android_apk", "android_tv"] } },
+          { os: { startsWith: "Android" } },
+          { os: { startsWith: "iOS" } },
+        ],
+      },
+      select: {
+        deviceLabel: true,
+        clientKind: true,
+        os: true,
+      },
+    }),
+    prisma.siteContentIdentityDay.findMany({
+      where: {
+        day: { gte: day30 },
+        section: { in: [...PLAYER_SECTIONS] },
+      },
+      select: { section: true, identityKey: true },
+      distinct: ["section", "identityKey"],
+    }),
+    prisma.siteContentDay.findMany({
+      where: {
+        day: { gte: day30 },
+        section: { in: [...PLAYER_SECTIONS] },
+      },
+      select: { section: true, hitCount: true },
+    }),
   ]);
 
   const identitiesToday = new Set<string>();
@@ -146,10 +208,13 @@ export async function getAudienceStats(options?: { chartDays?: number }): Promis
   const registeredKeys = new Set<string>();
   const guestKeys = new Set<string>();
 
-  const perDay = new Map<string, { identities: Set<string>; hits: number }>();
+  const perDay = new Map<
+    string,
+    { registered: Set<string>; guests: Set<string>; hits: number }
+  >();
   for (let i = 0; i < chartDays; i++) {
     const d = daysAgoUtc(chartDays - 1 - i, now);
-    perDay.set(toDayIso(d), { identities: new Set(), hits: 0 });
+    perDay.set(toDayIso(d), { registered: new Set(), guests: new Set(), hits: 0 });
   }
 
   const kindRows: { key: string; count: number }[] = [];
@@ -159,8 +224,10 @@ export async function getAudienceStats(options?: { chartDays?: number }): Promis
   for (const row of visitDays) {
     const dayIso = toDayIso(row.day);
     const bucket = perDay.get(dayIso);
+    const isRegistered = row.identityKey.startsWith("u:") || Boolean(row.userId);
     if (bucket) {
-      bucket.identities.add(row.identityKey);
+      if (isRegistered) bucket.registered.add(row.identityKey);
+      else bucket.guests.add(row.identityKey);
       bucket.hits += row.hitCount;
     }
 
@@ -168,7 +235,7 @@ export async function getAudienceStats(options?: { chartDays?: number }): Promis
     if (row.day >= day7) identitiesWeek.add(row.identityKey);
     if (row.day >= day30) identitiesMonth.add(row.identityKey);
 
-    if (row.identityKey.startsWith("u:") || row.userId) registeredKeys.add(row.identityKey);
+    if (isRegistered) registeredKeys.add(row.identityKey);
     else guestKeys.add(row.identityKey);
 
     if (row.day >= day30) {
@@ -198,14 +265,27 @@ export async function getAudienceStats(options?: { chartDays?: number }): Promis
     titleAgg.set(row.shikimoriId, prev);
   }
 
+  const playAgg = new Map<number, { hits: number; uniques: number }>();
+  for (const row of playTitleRows) {
+    const prev = playAgg.get(row.shikimoriId) ?? { hits: 0, uniques: 0 };
+    prev.hits += row.hitCount;
+    prev.uniques += row.uniqueCount;
+    playAgg.set(row.shikimoriId, prev);
+  }
+
   const topTitleIds = [...titleAgg.entries()]
     .sort((a, b) => b[1].hits - a[1].hits)
     .slice(0, 15)
     .map(([id]) => id);
+  const topPlayIds = [...playAgg.entries()]
+    .sort((a, b) => b[1].hits - a[1].hits)
+    .slice(0, 15)
+    .map(([id]) => id);
 
-  const titleNames = topTitleIds.length
+  const nameIds = [...new Set([...topTitleIds, ...topPlayIds])];
+  const titleNames = nameIds.length
     ? await prisma.kodikMaterial.findMany({
-        where: { shikimoriId: { in: topTitleIds } },
+        where: { shikimoriId: { in: nameIds } },
         select: { shikimoriId: true, title: true },
         distinct: ["shikimoriId"],
       })
@@ -218,6 +298,49 @@ export async function getAudienceStats(options?: { chartDays?: number }): Promis
     }
   }
 
+  function toTitleRows(
+    ids: number[],
+    agg: Map<number, { hits: number; uniques: number }>,
+  ): AudienceTitleRow[] {
+    return ids.map((id) => {
+      const row = agg.get(id)!;
+      return {
+        shikimoriId: id,
+        title: titleById.get(id) ?? `Аниме #${id}`,
+        hits: row.hits,
+        uniques: row.uniques,
+      };
+    });
+  }
+
+  const deviceRows: { key: string; count: number }[] = [];
+  for (const visitor of deviceVisitors) {
+    if (
+      !isPhoneLikeDevice({
+        deviceLabel: visitor.deviceLabel,
+        clientKind: visitor.clientKind,
+        os: visitor.os,
+      })
+    ) {
+      continue;
+    }
+    const label = visitor.deviceLabel?.trim() || "Android (модель неизвестна)";
+    deviceRows.push({ key: label, count: 1 });
+  }
+
+  const playerPeople = { anime_play_kodik: new Set<string>(), anime_play_cvh: new Set<string>() };
+  for (const row of playerIdentityRows) {
+    if (row.section === "anime_play_kodik" || row.section === "anime_play_cvh") {
+      playerPeople[row.section].add(row.identityKey);
+    }
+  }
+  const playerHits = { anime_play_kodik: 0, anime_play_cvh: 0 };
+  for (const row of playerHitRows) {
+    if (row.section === "anime_play_kodik" || row.section === "anime_play_cvh") {
+      playerHits[row.section] += row.hitCount;
+    }
+  }
+
   return {
     totalIdentities: Math.max(totalVisitors, identitiesMonth.size),
     registeredIdentities,
@@ -226,15 +349,31 @@ export async function getAudienceStats(options?: { chartDays?: number }): Promis
     dau: identitiesToday.size,
     wau: identitiesWeek.size,
     mau: identitiesMonth.size,
-    days: [...perDay.entries()].map(([day, v]) => ({
-      day,
-      identities: v.identities.size,
-      hits: v.hits,
-    })),
+    days: [...perDay.entries()].map(([day, v]) => {
+      const registered = v.registered.size;
+      const guests = v.guests.size;
+      return {
+        day,
+        identities: registered + guests,
+        registered,
+        guests,
+        hits: v.hits,
+      };
+    }),
     byClientKind: aggregateCounts(kindRows, (k) => CLIENT_KIND_LABELS[k] ?? k),
     byOs: aggregateCounts(osRows, (k) => k),
     byBrowser: aggregateCounts(browserRows, (k) => k),
+    byDeviceModel: aggregateCounts(deviceRows, (k) => k, 25),
+    playerKodik: {
+      people: playerPeople.anime_play_kodik.size,
+      hits: playerHits.anime_play_kodik,
+    },
+    playerCvh: {
+      people: playerPeople.anime_play_cvh.size,
+      hits: playerHits.anime_play_cvh,
+    },
     topSections: [...sectionMap.entries()]
+      .filter(([section]) => section !== "anime_play_kodik" && section !== "anime_play_cvh")
       .map(([section, v]) => ({
         section,
         label: SECTION_LABELS[section] ?? section,
@@ -242,15 +381,8 @@ export async function getAudienceStats(options?: { chartDays?: number }): Promis
         uniques: v.uniques,
       }))
       .sort((a, b) => b.hits - a.hits),
-    topTitles: topTitleIds.map((id) => {
-      const agg = titleAgg.get(id)!;
-      return {
-        shikimoriId: id,
-        title: titleById.get(id) ?? `Аниме #${id}`,
-        hits: agg.hits,
-        uniques: agg.uniques,
-      };
-    }),
+    topTitles: toTitleRows(topTitleIds, titleAgg),
+    topPlayTitles: toTitleRows(topPlayIds, playAgg),
   };
 }
 

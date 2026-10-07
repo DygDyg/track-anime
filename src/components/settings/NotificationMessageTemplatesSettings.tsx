@@ -1,6 +1,7 @@
 "use client";
 
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useState, type ReactNode } from "react";
+import { NotificationChannelLabel } from "@/components/admin/NotificationChannelIcons";
 import { NOTIFICATION_TEMPLATE_PLACEHOLDERS } from "@/lib/notifications/templates";
 import type { NotificationChannelId } from "@/lib/notifications/types";
 import type { UserNotificationTemplatePreferencesDto } from "@/lib/notifications/user-templates";
@@ -12,7 +13,7 @@ function ToggleRow({
   onChange,
   disabled = false,
 }: {
-  label: string;
+  label: ReactNode;
   hint?: string;
   checked: boolean;
   onChange: (checked: boolean) => void;
@@ -238,7 +239,12 @@ export function NotificationMessageTemplatesSettings({
       {showDiscord ? (
         <div className="space-y-2">
           <ToggleRow
-            label="Discord — свой шаблон"
+            label={
+              <>
+                <NotificationChannelLabel channel="discord" />
+                {" — свой шаблон"}
+              </>
+            }
             hint="Если выключено, используется шаблон сайта"
             checked={draft.customDiscordTemplateEnabled}
             disabled={disabled || saving || testing}
@@ -280,7 +286,12 @@ export function NotificationMessageTemplatesSettings({
       {showTelegram ? (
         <div className="space-y-2">
           <ToggleRow
-            label="Telegram — свой шаблон"
+            label={
+              <>
+                <NotificationChannelLabel channel="telegram" />
+                {" — свой шаблон"}
+              </>
+            }
             hint="Ссылка {pageUrl} — кнопка под сообщением"
             checked={draft.customTelegramTemplateEnabled}
             disabled={disabled || saving || testing}
@@ -308,7 +319,12 @@ export function NotificationMessageTemplatesSettings({
       {showVk ? (
         <div className="space-y-2">
           <ToggleRow
-            label="VK — свой шаблон"
+            label={
+              <>
+                <NotificationChannelLabel channel="vk" />
+                {" — свой шаблон"}
+              </>
+            }
             hint="Ссылка {pageUrl} — кнопка под сообщением"
             checked={draft.customVkTemplateEnabled}
             disabled={disabled || saving || testing}
@@ -348,7 +364,11 @@ export function NotificationMessageTemplatesSettings({
                 }
                 className="site-checkbox"
               />
-              Браузер
+              <NotificationChannelLabel
+                channel="browser"
+                label="Браузер"
+                iconClassName="h-3.5 w-3.5"
+              />
             </label>
           ) : null}
           {showFcm ? (
@@ -362,7 +382,7 @@ export function NotificationMessageTemplatesSettings({
                 }
                 className="site-checkbox"
               />
-              Android FCM
+              <NotificationChannelLabel channel="fcm" iconClassName="h-3.5 w-3.5" />
             </label>
           ) : null}
           {showTelegram ? (
@@ -376,7 +396,7 @@ export function NotificationMessageTemplatesSettings({
                 }
                 className="site-checkbox"
               />
-              Telegram
+              <NotificationChannelLabel channel="telegram" iconClassName="h-3.5 w-3.5" />
             </label>
           ) : null}
           {showVk ? (
@@ -390,7 +410,7 @@ export function NotificationMessageTemplatesSettings({
                 }
                 className="site-checkbox"
               />
-              VK
+              <NotificationChannelLabel channel="vk" iconClassName="h-3.5 w-3.5" />
             </label>
           ) : null}
           {showDiscord ? (
@@ -404,7 +424,7 @@ export function NotificationMessageTemplatesSettings({
                 }
                 className="site-checkbox"
               />
-              Discord
+              <NotificationChannelLabel channel="discord" iconClassName="h-3.5 w-3.5" />
             </label>
           ) : null}
         </div>

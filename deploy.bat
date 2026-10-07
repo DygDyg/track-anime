@@ -11,7 +11,7 @@ echo [deploy] Targets chosen from git changes. Force site: deploy.bat -ForceSite
 echo [deploy] Explicit: npm run deploy:site ^| deploy:rpc ^| deploy:apk
 echo.
 
-powershell -NoProfile -ExecutionPolicy Bypass -File "%~dp0scripts\deploy-auto.ps1" %*
+call "%~dp0scripts\run-ps.cmd" -File "%~dp0scripts\deploy-auto.ps1" %*
 set "EXIT_CODE=%ERRORLEVEL%"
 
 if not "%EXIT_CODE%"=="0" (

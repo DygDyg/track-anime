@@ -19,6 +19,7 @@ import {
   type KodikPlayerResume,
 } from "@/components/anime/KodikPlayer";
 import {
+  buildTimelineSegmentBackground,
   KodikPlayerBetaControls,
   type KodikPlayerBetaTheaterMode,
   type KodikPlayerTimelineSegment,
@@ -40,6 +41,12 @@ import {
   playerBrightnessOverlayOpacity,
   readStoredPlayerBrightness,
 } from "@/lib/player-screen-brightness";
+import {
+  applyPlayerStreamVolume,
+  clampPlayerStreamVolume,
+  hasNativePlayerStreamVolume,
+  readNativePlayerStreamVolume,
+} from "@/lib/player-stream-volume";
 
 const SINGLE_CLICK_DELAY_MS = 220;
 const CLICK_LAYER_APPEAR_DELAY_MS = 2_000;
@@ -51,7 +58,9 @@ const TOUCH_LIKE_MQ = "(hover: none), (pointer: coarse)";
 const MOBILE_TRANSLATIONS_SWIPE_ZONE_PX = 96;
 const MOBILE_TRANSLATIONS_SWIPE_THRESHOLD_PX = 56;
 const BRIGHTNESS_GESTURE_ACTIVATE_PX = 8;
+const VOLUME_GESTURE_ACTIVATE_PX = 8;
 const BRIGHTNESS_HUD_MS = 900;
+const VOLUME_HUD_MS = 900;
 const KODIK_NATIVE_SKIP_PASSTHROUGH_WIDTH = "min(18rem, 44vw)";
 const KODIK_NATIVE_SKIP_PASSTHROUGH_HEIGHT = "3.75rem";
 const KODIK_NATIVE_SKIP_PASSTHROUGH_RIGHT = "0.5rem";
@@ -185,6 +194,7 @@ export function KodikPlayerBetaViewport({
   const primaryFocusDoneRef = useRef(false);
   const [seekFeedback, setSeekFeedback] = useState({ backward: 0, forward: 0 });
   const [brightnessHud, setBrightnessHud] = useState<number | null>(null);
+  const [volumeHud, setVolumeHud] = useState<number | null>(null);
   const [overlayBrightness, setOverlayBrightness] = useState(1);
   const [nativeBrightness, setNativeBrightness] = useState(false);
   const viewportRef = useRef<HTMLDivElement>(null);
@@ -201,15 +211,19 @@ export function KodikPlayerBetaViewport({
     forward: null,
   });
   const brightnessHudTimerRef = useRef<number | null>(null);
+  const volumeHudTimerRef = useRef<number | null>(null);
   const brightnessValueRef = useRef(readStoredPlayerBrightness());
+  const volumeValueRef = useRef(1);
   const suppressClickAfterGestureRef = useRef(false);
   const touchGestureRef = useRef<{
     startX: number;
     startY: number;
     startedNearBottom: boolean;
     startedOnRight: boolean;
-    mode: "none" | "brightness" | "translations";
+    startedOnLeft: boolean;
+    mode: "none" | "brightness" | "volume" | "translations";
     startBrightness: number;
+    startVolume: number;
     shellHeight: number;
   } | null>(null);
   const wakeLockRef = useRef<WakeLockSentinel | null>(null);
@@ -270,7 +284,31 @@ export function KodikPlayerBetaViewport({
   useEffect(() => {
     setNativeBrightness(hasNativePlayerBrightness());
     brightnessValueRef.current = readStoredPlayerBrightness();
+    if (hasNativePlayerStreamVolume()) {
+      const native = readNativePlayerStreamVolume();
+      if (native != null) volumeValueRef.current = native;
+    }
   }, []);
+
+  useEffect(() => {
+    if (hasNativePlayerStreamVolume()) return;
+    volumeValueRef.current = clampPlayerStreamVolume(playback.volume);
+  }, [playback.volume]);
+
+  useEffect(() => {
+    if (fullscreenActive) {
+      const applied = applyPlayerBrightness(readStoredPlayerBrightness());
+      brightnessValueRef.current = applied.value;
+      setNativeBrightness(applied.native);
+      if (applied.native) {
+        setOverlayBrightness(1);
+      } else {
+        setOverlayBrightness(applied.value);
+      }
+      return;
+    }
+    clearNativePlayerBrightness();
+  }, [fullscreenActive]);
 
   useEffect(() => {
     if (typeof window === "undefined") return;
@@ -539,6 +577,31 @@ export function KodikPlayerBetaViewport({
     scheduleHide();
   }, [kodikUiAccess, scheduleHide]);
 
+  useEffect(() => {
+    if (theaterMode !== "height") {
+      document.documentElement.removeAttribute("data-player-theater-chrome");
+      return;
+    }
+    document.documentElement.setAttribute(
+      "data-player-theater-chrome",
+      uiVisible ? "visible" : "hidden",
+    );
+    return () => {
+      document.documentElement.removeAttribute("data-player-theater-chrome");
+    };
+  }, [theaterMode, uiVisible]);
+
+  useEffect(() => {
+    if (theaterMode !== "height") return;
+    const onPointerMove = () => {
+      revealUi();
+    };
+    document.addEventListener("pointermove", onPointerMove, { passive: true });
+    return () => {
+      document.removeEventListener("pointermove", onPointerMove);
+    };
+  }, [theaterMode, revealUi]);
+
   const handleQualityPanelActiveChange = useCallback(
     (active: boolean) => {
       setQualityPanelActive(active);
@@ -591,6 +654,13 @@ export function KodikPlayerBetaViewport({
     }
   }, []);
 
+  const clearVolumeHudTimer = useCallback(() => {
+    if (volumeHudTimerRef.current != null) {
+      window.clearTimeout(volumeHudTimerRef.current);
+      volumeHudTimerRef.current = null;
+    }
+  }, []);
+
   const showBrightnessHud = useCallback(
     (value: number) => {
       clearBrightnessHudTimer();
@@ -601,6 +671,18 @@ export function KodikPlayerBetaViewport({
       }, BRIGHTNESS_HUD_MS);
     },
     [clearBrightnessHudTimer],
+  );
+
+  const showVolumeHud = useCallback(
+    (value: number) => {
+      clearVolumeHudTimer();
+      setVolumeHud(value);
+      volumeHudTimerRef.current = window.setTimeout(() => {
+        setVolumeHud(null);
+        volumeHudTimerRef.current = null;
+      }, VOLUME_HUD_MS);
+    },
+    [clearVolumeHudTimer],
   );
 
   const setBrightnessFromGesture = useCallback(
@@ -618,12 +700,30 @@ export function KodikPlayerBetaViewport({
     [showBrightnessHud],
   );
 
+  const setVolumeFromGesture = useCallback(
+    (value: number) => {
+      const next = clampPlayerStreamVolume(value);
+      const nativeApplied = applyPlayerStreamVolume(next);
+      if (nativeApplied != null) {
+        volumeValueRef.current = nativeApplied;
+        showVolumeHud(nativeApplied);
+        return;
+      }
+      volumeValueRef.current = next;
+      playbackRef.current = { ...playbackRef.current, volume: next };
+      onVolumeChange(next);
+      showVolumeHud(next);
+    },
+    [onVolumeChange, showVolumeHud],
+  );
+
   useEffect(() => {
     return () => {
       clearNativePlayerBrightness();
       clearBrightnessHudTimer();
+      clearVolumeHudTimer();
     };
-  }, [clearBrightnessHudTimer]);
+  }, [clearBrightnessHudTimer, clearVolumeHudTimer]);
 
   const clearSeekFeedbackTimer = useCallback((direction: "backward" | "forward") => {
     const timer = seekFeedbackTimersRef.current[direction];
@@ -712,14 +812,27 @@ export function KodikPlayerBetaViewport({
       }
 
       const ratioX = (touch.clientX - rect.left) / rect.width;
+      const startedOnRight = ratioX >= 0.5;
+      let startVolume = volumeValueRef.current;
+      if (fullscreenActive && !startedOnRight) {
+        if (hasNativePlayerStreamVolume()) {
+          const native = readNativePlayerStreamVolume();
+          if (native != null) startVolume = native;
+        } else {
+          startVolume = clampPlayerStreamVolume(playbackRef.current.volume);
+        }
+        volumeValueRef.current = startVolume;
+      }
       touchGestureRef.current = {
         startX: touch.clientX,
         startY: touch.clientY,
         startedNearBottom:
           fullscreenActive && rect.bottom - touch.clientY <= MOBILE_TRANSLATIONS_SWIPE_ZONE_PX,
-        startedOnRight: ratioX >= 0.5,
+        startedOnRight,
+        startedOnLeft: !startedOnRight,
         mode: "none",
         startBrightness: brightnessValueRef.current,
+        startVolume,
         shellHeight: rect.height,
       };
       suppressClickAfterGestureRef.current = false;
@@ -742,7 +855,7 @@ export function KodikPlayerBetaViewport({
       const touch = event.changedTouches[0];
       if (!gesture || !touch) return;
 
-      if (gesture.mode === "brightness") {
+      if (gesture.mode === "brightness" || gesture.mode === "volume") {
         suppressClickAfterGestureRef.current = true;
         return;
       }
@@ -784,12 +897,24 @@ export function KodikPlayerBetaViewport({
         ) {
           gesture.mode = "translations";
         } else if (
+          fullscreenActive &&
           gesture.startedOnRight &&
           !gesture.startedNearBottom &&
           Math.abs(deltaY) >= BRIGHTNESS_GESTURE_ACTIVATE_PX &&
           Math.abs(deltaY) > Math.abs(deltaX) * 1.2
         ) {
           gesture.mode = "brightness";
+          clearClickTimer();
+          suppressClickAfterGestureRef.current = true;
+          setUiVisible(false);
+        } else if (
+          fullscreenActive &&
+          gesture.startedOnLeft &&
+          !gesture.startedNearBottom &&
+          Math.abs(deltaY) >= VOLUME_GESTURE_ACTIVATE_PX &&
+          Math.abs(deltaY) > Math.abs(deltaX) * 1.2
+        ) {
+          gesture.mode = "volume";
           clearClickTimer();
           suppressClickAfterGestureRef.current = true;
           setUiVisible(false);
@@ -800,6 +925,10 @@ export function KodikPlayerBetaViewport({
         event.preventDefault();
         const span = Math.max(gesture.shellHeight * 0.55, 140);
         setBrightnessFromGesture(gesture.startBrightness - deltaY / span);
+      } else if (gesture.mode === "volume") {
+        event.preventDefault();
+        const span = Math.max(gesture.shellHeight * 0.55, 140);
+        setVolumeFromGesture(gesture.startVolume - deltaY / span);
       } else if (gesture.mode === "translations") {
         if (
           deltaY < -MOBILE_TRANSLATIONS_SWIPE_THRESHOLD_PX &&
@@ -814,10 +943,12 @@ export function KodikPlayerBetaViewport({
     return () => shell.removeEventListener("touchmove", onTouchMove, true);
   }, [
     clearClickTimer,
+    fullscreenActive,
     fullscreenTranslationsOpen,
     kodikUiAccess,
     passThroughHits,
     setBrightnessFromGesture,
+    setVolumeFromGesture,
     touchLikeUi,
   ]);
 
@@ -1226,6 +1357,10 @@ export function KodikPlayerBetaViewport({
   );
   const progressMax = duration > 0 ? duration : Math.max(position, 1);
   const progressFill = `${(position / progressMax) * 100}%`;
+  const timelineSegmentBackground = buildTimelineSegmentBackground(
+    timelineSegments,
+    duration,
+  );
   // Until first media unlock (+ short delay), no click-layer — taps go to iframe (Android WebView first play).
   // After arming, the stub appears so mouse/taps can show/hide TA UI during watching.
   // Quality «Авто» press temporarily pass clicks through to Kodik.
@@ -1372,6 +1507,20 @@ export function KodikPlayerBetaViewport({
               />
             </div>
             <span className="text-sm font-semibold tabular-nums">{Math.round(brightnessHud * 100)}%</span>
+          </div>
+        ) : null}
+        {volumeHud != null ? (
+          <div className="pointer-events-none absolute left-[10%] top-1/2 z-30 flex -translate-y-1/2 flex-col items-center gap-2 rounded-2xl border border-white/15 bg-black/65 px-4 py-3 text-white shadow-2xl shadow-black/40 backdrop-blur-sm sm:left-[14%]">
+            <svg viewBox="0 0 24 24" className="h-7 w-7 fill-current opacity-90" aria-hidden>
+              <path d="M3 10v4h3.2L11 19V5L6.2 10H3Zm10.5 1.1v1.8a2.8 2.8 0 0 0 0-1.8Zm2.3-3.1v8a5.4 5.4 0 0 0 0-8Z" />
+            </svg>
+            <div className="flex h-24 w-1.5 flex-col justify-end overflow-hidden rounded-full bg-white/20">
+              <div
+                className="w-full rounded-full bg-white transition-[height] duration-75"
+                style={{ height: `${Math.round(volumeHud * 100)}%` }}
+              />
+            </div>
+            <span className="text-sm font-semibold tabular-nums">{Math.round(volumeHud * 100)}%</span>
           </div>
         ) : null}
         {showClickLayer && !kodikUiAccess ? (
@@ -1578,6 +1727,12 @@ export function KodikPlayerBetaViewport({
             aria-hidden
           >
             <div className="h-full bg-accent" style={{ width: progressFill }} />
+            {timelineSegmentBackground ? (
+              <div
+                className="pointer-events-none absolute inset-0"
+                style={{ backgroundImage: timelineSegmentBackground }}
+              />
+            ) : null}
           </div>
         ) : null}
       </div>

@@ -3,7 +3,7 @@ export function resolveDiscordSitePageLabel(pathname: string): string {
   if (pathname === "/") return "Главная";
   if (pathname.startsWith("/calendar")) return "Календарь";
   if (pathname.startsWith("/history")) return "История";
-  if (pathname.startsWith("/favorites")) return "Избранное";
+  if (pathname.startsWith("/favorites") || /^\/user\/\d+\/favorites/.test(pathname)) return "Избранное";
   if (pathname.startsWith("/search")) return "Поиск";
   if (pathname.startsWith("/profile")) return "Профиль";
   if (pathname === "/user") return "Пользователи";

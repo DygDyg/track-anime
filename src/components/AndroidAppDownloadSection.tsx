@@ -2,6 +2,9 @@
 
 import { useEffect, useState, type ReactNode } from "react";
 import QRCode from "qrcode";
+import { PwaInstallIcon } from "@/components/PwaInstallIcon";
+import { LoadingSpinner } from "@/components/ui/LoadingSpinner";
+import { isIosSafari, isStandaloneMode, usePwaInstall } from "@/hooks/usePwaInstall";
 import { isTrackAnimeAndroidApp, TRACK_ANIME_ANDROID_SETTINGS_URL } from "@/lib/android-app";
 import { isTrackAnimeWindowsApp, TRACK_ANIME_WINDOWS_SETTINGS_URL } from "@/lib/windows-app";
 
@@ -11,11 +14,15 @@ const APP_CARD_MIN_WIDTH = "22rem";
 type AppDownloadCardProps = {
   title: string;
   description: string;
-  qrSrc: string | null;
-  qrAlt: string;
+  qrSrc?: string | null;
+  qrAlt?: string;
+  media?: ReactNode;
   hint: string;
-  actionHref: string;
+  actionHref?: string;
   actionLabel: string;
+  onAction?: () => void;
+  actionDisabled?: boolean;
+  actionBusy?: boolean;
 };
 
 function AppDownloadCard({
@@ -23,10 +30,35 @@ function AppDownloadCard({
   description,
   qrSrc,
   qrAlt,
+  media,
   hint,
   actionHref,
   actionLabel,
+  onAction,
+  actionDisabled,
+  actionBusy,
 }: AppDownloadCardProps) {
+  const mediaNode =
+    media ??
+    (qrSrc ? (
+      <img
+        src={qrSrc}
+        alt={qrAlt ?? ""}
+        className="h-32 w-32 shrink-0 rounded-lg bg-white p-2 @[20rem]/card:h-40 @[20rem]/card:w-40"
+      />
+    ) : (
+      <div
+        className="h-32 w-32 shrink-0 animate-pulse rounded-lg bg-foreground/10 @[20rem]/card:h-40 @[20rem]/card:w-40"
+        aria-label="Создаём QR-код"
+      />
+    ));
+
+  const actionClassName = [
+    "inline-flex self-center items-center justify-center gap-2 rounded-lg bg-accent px-4 py-2 text-sm font-medium text-white",
+    "transition hover:bg-accent/90 @[20rem]/card:self-start",
+    actionDisabled || actionBusy ? "cursor-wait opacity-70" : "",
+  ].join(" ");
+
   return (
     <section className="@container/card flex min-w-0 flex-col gap-3">
       <div className="min-w-0">
@@ -40,33 +72,69 @@ function AppDownloadCard({
           "@[20rem]/card:flex-row @[20rem]/card:items-start @[20rem]/card:p-5 @[20rem]/card:text-left",
         ].join(" ")}
       >
-        {qrSrc ? (
-          <img
-            src={qrSrc}
-            alt={qrAlt}
-            className="h-32 w-32 shrink-0 rounded-lg bg-white p-2 @[20rem]/card:h-40 @[20rem]/card:w-40"
-          />
-        ) : (
-          <div
-            className="h-32 w-32 shrink-0 animate-pulse rounded-lg bg-foreground/10 @[20rem]/card:h-40 @[20rem]/card:w-40"
-            aria-label="Создаём QR-код"
-          />
-        )}
+        {mediaNode}
         <div className="flex min-w-0 flex-1 flex-col gap-3">
           <p className="text-sm leading-relaxed text-muted">{hint}</p>
-          <a
-            href={actionHref}
-            download
-            className={[
-              "inline-flex self-center rounded-lg bg-accent px-4 py-2 text-sm font-medium text-white",
-              "transition hover:bg-accent/90 @[20rem]/card:self-start",
-            ].join(" ")}
-          >
-            {actionLabel}
-          </a>
+          {onAction ? (
+            <button
+              type="button"
+              onClick={onAction}
+              disabled={actionDisabled || actionBusy}
+              aria-busy={actionBusy || undefined}
+              className={actionClassName}
+            >
+              {actionBusy ? <LoadingSpinner size="sm" /> : null}
+              {actionLabel}
+            </button>
+          ) : actionHref ? (
+            <a href={actionHref} download className={actionClassName}>
+              {actionLabel}
+            </a>
+          ) : null}
         </div>
       </div>
     </section>
+  );
+}
+
+function PwaInstallCard() {
+  const { canInstall, install, installing } = usePwaInstall();
+  const [iosHint, setIosHint] = useState(false);
+  const [hidden, setHidden] = useState(true);
+
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+    if (isStandaloneMode()) return;
+    if (isTrackAnimeAndroidApp() || isTrackAnimeWindowsApp()) return;
+    if (isIosSafari()) {
+      setIosHint(true);
+      setHidden(false);
+      return;
+    }
+    if (canInstall) setHidden(false);
+  }, [canInstall]);
+
+  if (hidden || (!canInstall && !iosHint)) return null;
+
+  return (
+    <AppDownloadCard
+      title="Ярлык в браузере"
+      description="Добавьте Track Anime на главный экран как PWA — быстрый доступ к сайту без установки APK."
+      media={
+        <div className="flex h-32 w-32 shrink-0 items-center justify-center rounded-lg border border-border bg-foreground/[0.04] text-muted @[20rem]/card:h-40 @[20rem]/card:w-40">
+          <PwaInstallIcon className="h-14 w-14" />
+        </div>
+      }
+      hint={
+        iosHint && !canInstall
+          ? "В Safari нажмите «Поделиться», затем «На экран Домой»."
+          : "Установка через браузер: ярлык на рабочий стол или главный экран."
+      }
+      actionLabel={installing ? "Установка…" : "Установить"}
+      onAction={canInstall ? () => void install() : undefined}
+      actionBusy={installing}
+      actionDisabled={!canInstall}
+    />
   );
 }
 
@@ -157,7 +225,7 @@ export function AndroidAppDownloadSection() {
       >
         <AppDownloadCard
           title="Приложение для Android"
-          description={`Установите Track Anime на телефон, планшет или Android TV. QR-код ведёт на эту страницу.${
+          description={`Установите Track Anime на телефон, планшет или Android TV: без рекламы и с системными уведомлениями о новых сериях. QR-код ведёт на эту страницу.${
             appVersion ? ` Текущая версия: ${appVersion}.` : ""
           }`}
           qrSrc={androidQrCode}
@@ -177,6 +245,7 @@ export function AndroidAppDownloadSection() {
           actionHref="/downloads/TrackAnimeWindows.exe"
           actionLabel="Скачать для Windows"
         />
+        <PwaInstallCard />
       </div>
     </section>
   );

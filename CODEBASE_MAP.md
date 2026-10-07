@@ -31,11 +31,11 @@ ta_new/
 | `not-found.tsx` | Custom 404 page with animated Track Anime error scene |
 | `anime/[shikimoriId]/` | Anime page with player |
 | `search/` | Search results |
-| `favorites/` | User anime lists and bookmarks |
+| `favorites/` | Legacy redirect → `/user/{ownId}/favorites` |
 | `history/` | Watch history |
 | `calendar/` | Ongoing anime schedule with Kodik/Shikimori source switch |
 | `profile/` | Current user profile |
-| `user/[shikimoriId]/` | Public user profile |
+| `user/[shikimoriId]/` | Public user profile + `favorites/` lists UI |
 | `login/` | Shikimori OAuth, локальный пароль и QR login |
 | `players/` | Player-related pages |
 | `admin/` | Admin dashboard (import, sync, users, db, todos, notifications, settings) |
@@ -93,6 +93,7 @@ ta_new/
 | `settings/intro-offsets` | Public translation intro offsets |
 | `settings/translations` | Translation catalog |
 | `settings/watch-party` | Public global settings for TA-плеер совместный просмотр |
+| `settings/app-promo` | Public kill-switch for soft-promo приложений |
 | `site-build` | Current build timestamp for notifying an open client about an update |
 | `app/og.png` | PNG Open Graph card for the Android app download page |
 
@@ -118,9 +119,9 @@ ta_new/
 
 ### Admin (`api/admin/`)
 
-`stats`, `audience`, `anime/[shikimoriId]/skip-times-prefetch`, `anime-debug`, `import/status`, `import/episodes`, `import/pending-materials`, `sync`, `sync/settings`, `sync/history`, `backfill-dates`, `brand-rotation/settings`, `cover-cache/settings`, `discord/settings`, `notifications/settings`, `notifications/test`, `notifications/generate-vapid`, `search/settings`, `shikimori/settings`, `shikimori/anons-sync`, `shikimori/mal-id-sync`, `site-settings-defaults`, `translation-intro-offsets`, `watch-history/settings`, `watch-party/settings`, `watch-party/rooms`, `watch-party/history`, `users`, `db/search`, `todos`, `todos/[id]`
+`stats`, `audience`, `audience/markdown`, `anime/[shikimoriId]/skip-times-prefetch`, `anime-debug`, `import/status`, `import/episodes`, `import/pending-materials`, `sync`, `sync/settings`, `sync/history`, `backfill-dates`, `brand-rotation/settings`, `cover-cache/settings`, `cover-cache/refresh-recent`, `discord/settings`, `notifications/settings`, `notifications/test`, `notifications/generate-vapid`, `search/settings`, `shikimori/settings`, `shikimori/anons-sync`, `shikimori/mal-id-sync`, `site-settings-defaults`, `translation-intro-offsets`, `watch-history/settings`, `watch-party/settings`, `watch-party/rooms`, `watch-party/history`, `users`, `db/search`, `db-backup/settings`, `db-backup/run`, `db-backup/test`, `todos`, `todos/[id]`
 
-Public analytics: `api/analytics/beacon` (POST) — visitor cookie + page aggregates
+Public analytics: `api/analytics/beacon` (POST) — visitor cookie + page aggregates; `api/analytics/play` (POST) — anime playback starts; `api/analytics/watch-share` (POST) — deep-link copy log
 
 ## `src/lib/` — Core Modules
 
@@ -142,13 +143,15 @@ Public analytics: `api/analytics/beacon` (POST) — visitor cookie + page aggreg
 | `client.ts` | Public API fetch + rate limit |
 | `auth-client.ts` | Authenticated fetch + token refresh |
 | `animes.ts` / `anime-cache.ts` | Anime metadata with cache |
+| `relation-snapshot.ts` | Durable related/franchise/similar snapshots (`AnimeRelationSnapshot`) |
+| `related.ts` / `franchise.ts` / `similar.ts` | Shikimori relation APIs + mappers |
 | `mal-id.ts` | Server-side Shikimori ID → MAL ID mapping for AniSkip-style integrations |
 | `user-rates.ts` | User list entries |
 | `favorites.ts` | User bookmarks |
 | `user-list-mutations.ts` | Add/remove from lists, set score (1–10) |
 | `endpoints.ts` | Configurable Shikimori host |
 | `rate-limiter.ts` | Global throttle |
-| `users.ts`, `friends.ts`, `related.ts`, `trailer.ts` | Profile/social features |
+| `users.ts`, `friends.ts`, `trailer.ts` | Profile/social features |
 
 ### Admin (`lib/admin/`)
 
@@ -160,18 +163,30 @@ Public analytics: `api/analytics/beacon` (POST) — visitor cookie + page aggreg
 | `kodik-sync.ts` | Incremental sync |
 | `kodik-sync-scheduler.ts` | Cron auto-sync |
 | `kodik-sync-settings.ts` | Sync config + history |
+| `kodik-db-freshness.ts` | Last successful sync age for admin home banner |
 | `import-job.ts` | Import job state tracking |
-| `cover-cache-settings.ts` | Cover cache admin |
-| `notification-settings.ts` | Notification defaults and admin test helpers |
+| `cover-cache-settings.ts` | Cover cache admin (TTL, quality, sourceOrder) |
+| `cover-cache-refresh-recent.ts` | Recent-release shikimoriId list for admin cover refresh |
+| `cover-cache-refresh-client.ts` | Browser sequential cover refresh (cache URL then force URL) |
+| `notification-settings.ts` | Notification defaults, linkBaseUrl for social/FCM links, admin test helpers |
+| `link-base-url.ts` | Notification link origin helpers (`AUTH_URL` fallback + github.io flag) |
 | `site-settings-defaults.ts` | Global site setting defaults |
 | `translation-intro-offsets.ts` | Translation intro offset admin |
+| `fuzzy-text-match.ts` | Client-safe fuzzy + QWERTY↔ЙЦУКЕН match for translation search |
+| `keyboard-layout.ts` | QWERTY↔ЙЦУКЕН layout switch for search queries |
 | `watch-history-settings.ts` | Watch history admin settings |
 | `watch-party-settings.ts` | TA-плеер совместный просмотр global admin settings |
+| `app-promo-settings.ts` | Soft-promo apps: mobile + desktop kill-switches |
 | `watch-party-rooms.ts` | Read-only active room overview for admin page, enriched with Kodik title/translation metadata |
 | `watch-party-history.ts` | Persisted watch-party session history for admin |
 | `db-explorer.ts` | Admin DB search |
-| `stats.ts`, `storage-stats.ts` | Dashboard metrics |
-| `audience-stats.ts` | DAU/WAU/MAU, platforms, section/title popularity |
+| `db-backup.ts`, `db-backup-settings.ts`, `db-backup-webdav.ts`, `db-backup-scheduler.ts` | WebDAV DB backup (tables, chunks, cron) |
+| `db-backup-format.ts`, `db-backup-settings-types.ts` | Client-safe backup types / formatBytes |
+| `stats.ts`, `storage-stats.ts`, `server-load.ts`, `server-load-types.ts`, `host-reboot.ts`, `host-reboot-types.ts` | Dashboard metrics, host load, guarded host reboot for `/admin` |
+| `audience-stats.ts` | DAU/WAU/MAU, platforms, player Kodik/TA vs VideoHUB, section/title popularity |
+| `audience-stats-markdown.ts` | Markdown snapshot for `/admin/audience` export |
+| `watch-share-log.ts` | Admin DTO for anime watch deep-link copy log |
+| `notification-subscription-stats.ts` | Counts of notification subscribers by type/channel |
 | `todos.ts` | Dev todo list |
 
 ### Analytics (`lib/analytics/`)
@@ -187,6 +202,7 @@ Public analytics: `api/analytics/beacon` (POST) — visitor cookie + page aggreg
 | File | Responsibility |
 |------|----------------|
 | `anime-page.ts` | Anime page data loader |
+| `cvh-player.ts` | CDN VideoHub pub/aggr (в т.ч. `shikimori`→MAL fallback), playlist helpers, URL для запасного `/cdn-iframe` |
 | `kodik-ensure-materials.ts` | On-demand Kodik materials by shikimoriId when page has none |
 | `releases.ts` | Home feed queries |
 | `search.ts` | DB search (server-only) |
@@ -194,12 +210,14 @@ Public analytics: `api/analytics/beacon` (POST) — visitor cookie + page aggreg
 | `favorites-page.ts` | Favorites page data |
 | `favorites-sync.ts` | Shikimori list sync |
 | `watch-history.ts` | Watch progress CRUD |
+| `anime-watch-share.ts` | Deep-link GET params + share URL (player/season/episode/translation/t/nosave) |
+| `anime-related.ts` | Related/similar sections: snapshot SWR + enrich briefs |
 | `history-new-episodes.ts` | Home history block |
 | `history-upcoming-soon.ts` | History page «Скоро выйдут» block (last ep in dub + 7d, 12h window) |
 | `calendar.ts` | Release calendar, Shikimori/Kodik ongoing sources and anons grouping |
-| `cover-cache.ts` | Poster caching |
+| `cover-cache.ts` | Poster caching + freshness jitter |
 | `image-cache.ts`, `image-cache-url.ts` | Studio logo/screenshot server cache + URL helper |
-| `poster.ts`, `poster-fallback.ts` | Poster resolution chain |
+| `poster.ts`, `poster-fallback.ts` | Poster resolution by configurable source order |
 | `kodik-player-api.ts` | Kodik iframe postMessage |
 | `watch-party/types.ts` | Shared WebSocket room message and state types |
 | `aniskip.ts` | AniSkip client + `AnimeEpisodeSkipTime` cache |
@@ -230,8 +248,8 @@ Public analytics: `api/analytics/beacon` (POST) — visitor cookie + page aggreg
 
 | Folder | Key components |
 |--------|----------------|
-| `anime/` | `AnimePageView`, `AnimeWatchPanel`, `KodikPlayer`, `AnimeListActions`, `AnimeShikimoriRating` + `AnimeUserScoreVote` |
-| `admin/` | `AdminAnimeDebugButton` — защищённое окно данных тайтла/серии |
+| `anime/` | `AnimePageView`, `AnimeWatchPanel`, `KodikPlayer`, `CvhWatchSection` / `CvhPlayerFrame`, `AnimeListActions`, `AnimeShikimoriRating` + `AnimeUserScoreVote` |
+| `admin/` | `AdminAnimeDebugButton` — защищённое окно данных тайтла/серии; `AdminForceCoverButton` — force-перекачка обложки на странице тайтла |
 | `auth/` | `AuthProvider` |
 | `header/` | `Header`, `HeaderSearch` |
 | `favorites/` | `FavoritesView`, `UserListStatusProvider` |
@@ -257,7 +275,8 @@ Error page asset: `public/404.webm` is used by the custom App Router 404 page.
 |--------|-------------|---------|
 | `kodik-import-full.ts` | `kodik:import` | Full catalog + episodes import |
 | `kodik-sync-recent.ts` | `kodik:sync` | Manual incremental sync |
-| `kodik-sync-scheduled.ts` | `kodik:sync:scheduled` | Cron scheduler |
+| `kodik-sync-scheduled.ts` | `kodik:sync:scheduled` | Cron scheduler (sync + anons + notifications + WebDAV DB backup) |
+| `db-backup-webdav.ts` | `db:backup:webdav` | Manual WebDAV DB backup (admin settings) |
 | `kodik-backfill-release-dates.ts` | `kodik:backfill-dates` | Backfill dates |
 | `shikimori-malid-stats.ts` | `shikimori:malid-stats` | MAL ID mapping coverage and optional refresh |
 | `sync-brand-assets.mjs` | `brand:sync` | Logo hash generation |
@@ -280,6 +299,7 @@ Error page asset: `public/404.webm` is used by the custom App Router 404 page.
 | `KodikMaterial` | One anime + one translation (Kodik unit) |
 | `SearchSettings` | Header search debounce settings |
 | `AnimeExternalIdMap` | External anime ID cache (`shikimoriId -> malId`) |
+| `AnimeRelationSnapshot` | Cached Shikimori related/franchise/similar payloads (SWR) |
 | `AnimeEpisodeSkipTime` | Cached AniSkip OP/ED/recap intervals |
 | `KodikEpisode` | Episode with player link |
 | `KodikEpisodeRelease` | Home feed entries |
@@ -287,5 +307,6 @@ Error page asset: `public/404.webm` is used by the custom App Router 404 page.
 | `UserAnimeListEntry`, `UserAnimeBookmark` | Shikimori list cache |
 | `UserWatchProgress` | Watch position |
 | `UserNotificationPreferences`, `UserNotificationLink`, `NotificationDelivery` | Notification settings, links, delivery log |
-| `DiscordSettings`, `NotificationSettings`, `SiteSettingsDefaults`, `TranslationIntroSettings`, `WatchHistorySettings`, `WatchPartySettings` | Admin-configurable settings |
+| `DiscordSettings`, `NotificationSettings`, `SiteSettingsDefaults`, `TranslationIntroSettings`, `WatchHistorySettings`, `WatchPartySettings`, `AppPromoSettings` | Admin-configurable settings |
 | `KodikImportJob`, `KodikSyncRun`, `KodikSyncSettings` | Import/sync state |
+| `DbBackupSettings`, `DbBackupRun` | WebDAV cloud backup settings + run history |

@@ -1,9 +1,16 @@
+import {
+  DEFAULT_COVER_SOURCE_ORDER,
+  listEnabledCoverSources,
+  type CoverSourceId,
+  type CoverSourceOrderConfig,
+} from "@/lib/admin/cover-cache-sources";
+import { fetchCvhPosterUrlByMalId } from "@/lib/cvh-content-api";
 import { resolveMaterialPosterUrl, type MaterialPosterSource } from "@/lib/material-poster";
 import { shouldUpgradeImageToHttps } from "@/lib/poster";
 import { prisma } from "@/lib/prisma";
 import { kodikSearch } from "@/kodik/client";
 import { isShikimoriMissingImage, shikimoriAssetUrl, shikimoriFetch } from "@/lib/shikimori/client";
-import { getShikimoriRelatedAnimes } from "@/lib/shikimori/related";
+import { lookupCachedMalIdForShikimoriId } from "@/lib/shikimori/mal-id";
 import type { ShikimoriAnime, ShikimoriImage, ShikimoriVideo } from "@/lib/shikimori/types";
 
 export type PosterFallbackSource =
@@ -13,7 +20,8 @@ export type PosterFallbackSource =
   | "release_db"
   | "shikimori"
   | "shikimori_video"
-  | "shikimori_related";
+  | "cvh"
+  | "worldart";
 
 export type PosterCandidate = {
   url: string;
@@ -59,14 +67,23 @@ function posterFromVideos(videos: ShikimoriVideo[] | null | undefined): string |
   return null;
 }
 
-function pushCandidate(list: PosterCandidate[], seen: Set<string>, url: string | null | undefined, source: PosterFallbackSource) {
+function pushCandidate(
+  list: PosterCandidate[],
+  seen: Set<string>,
+  url: string | null | undefined,
+  source: PosterFallbackSource,
+) {
   const normalized = normalizePosterUrl(url);
   if (!normalized || seen.has(normalized)) return;
   seen.add(normalized);
   list.push({ url: normalized, source });
 }
 
-async function candidatesFromKodik(shikimoriId: number, seen: Set<string>, list: PosterCandidate[]) {
+async function candidatesFromKodik(
+  shikimoriId: number,
+  seen: Set<string>,
+  list: PosterCandidate[],
+) {
   try {
     const data = await kodikSearch({
       shikimori_id: shikimoriId,
@@ -84,7 +101,11 @@ async function candidatesFromKodik(shikimoriId: number, seen: Set<string>, list:
   }
 }
 
-async function candidatesFromDb(shikimoriId: number, seen: Set<string>, list: PosterCandidate[]) {
+async function candidatesFromDb(
+  shikimoriId: number,
+  seen: Set<string>,
+  list: PosterCandidate[],
+) {
   const [materials, release] = await Promise.all([
     prisma.kodikMaterial.findMany({
       where: { shikimoriId },
@@ -108,20 +129,76 @@ async function candidatesFromDb(shikimoriId: number, seen: Set<string>, list: Po
   pushCandidate(list, seen, release?.posterUrl ?? null, "release_db");
 }
 
-async function candidatesFromShikimori(shikimoriId: number, seen: Set<string>, list: PosterCandidate[]) {
-  const anime = await shikimoriFetch<ShikimoriAnime>(`/animes/${shikimoriId}`);
-  if (!anime) return;
+async function candidatesFromShikimori(
+  shikimoriId: number,
+  seen: Set<string>,
+  list: PosterCandidate[],
+) {
+  try {
+    const anime = await shikimoriFetch<ShikimoriAnime>(`/animes/${shikimoriId}`);
+    if (!anime) return;
 
-  pushCandidate(list, seen, posterFromShikimoriImage(anime.image), "shikimori");
-  pushCandidate(list, seen, posterFromVideos(anime.videos), "shikimori_video");
-
-  const related = await getShikimoriRelatedAnimes(shikimoriId);
-  for (const item of related) {
-    pushCandidate(list, seen, item.posterUrl, "shikimori_related");
+    pushCandidate(list, seen, posterFromShikimoriImage(anime.image), "shikimori");
+    pushCandidate(list, seen, posterFromVideos(anime.videos), "shikimori_video");
+  } catch {
+    /* Shikimori недоступен / rate limit */
   }
 }
 
-/** Быстрый поиск только по локальной БД — без Kodik/Shikimori API. */
+async function candidatesFromCvh(
+  shikimoriId: number,
+  seen: Set<string>,
+  list: PosterCandidate[],
+) {
+  try {
+    const malId = await lookupCachedMalIdForShikimoriId(shikimoriId);
+    if (!malId) return;
+    const posterUrl = await fetchCvhPosterUrlByMalId(malId);
+    pushCandidate(list, seen, posterUrl, "cvh");
+  } catch {
+    /* CVH недоступен */
+  }
+}
+
+/**
+ * Кандидаты одного источника (без worldart — он качает HTML отдельно в cover-cache).
+ */
+export async function collectPosterCandidatesFromSource(options: {
+  sourceId: CoverSourceId;
+  shikimoriId: number;
+  directUrl?: string | null;
+  seen?: Set<string>;
+}): Promise<PosterCandidate[]> {
+  const { sourceId, shikimoriId, directUrl } = options;
+  const list: PosterCandidate[] = [];
+  const seen = options.seen ?? new Set<string>();
+
+  switch (sourceId) {
+    case "url":
+      pushCandidate(list, seen, directUrl, "url");
+      break;
+    case "kodik":
+      await candidatesFromKodik(shikimoriId, seen, list);
+      break;
+    case "material_db":
+      await candidatesFromDb(shikimoriId, seen, list);
+      break;
+    case "shikimori":
+      await candidatesFromShikimori(shikimoriId, seen, list);
+      break;
+    case "cvh":
+      await candidatesFromCvh(shikimoriId, seen, list);
+      break;
+    case "worldart":
+      break;
+    default:
+      break;
+  }
+
+  return list;
+}
+
+/** Быстрый поиск только по локальной БД — без Kodik/Shikimori/CVH API. */
 export async function discoverPosterCandidatesQuick(
   shikimoriId: number,
   directUrl?: string | null,
@@ -142,27 +219,40 @@ export async function discoverPosterUrlQuick(
   return candidates[0] ?? null;
 }
 
-/** Источники постера по приоритету — для анонсов без картинки на Shikimori/Kodik. */
+/**
+ * Источники по админскому порядку с early-exit:
+ * как только источник дал ≥1 URL — дальше не ходим.
+ * worldart в URL-resolve пропускается (нужен HTML-download в cover-cache).
+ */
 export async function discoverPosterCandidates(
   shikimoriId: number,
   directUrl?: string | null,
+  sourceOrder: CoverSourceOrderConfig = DEFAULT_COVER_SOURCE_ORDER,
 ): Promise<PosterCandidate[]> {
-  const list: PosterCandidate[] = [];
-  const seen = new Set<string>();
+  const out: PosterCandidate[] = [];
+  const seenUrls = new Set<string>();
 
-  pushCandidate(list, seen, directUrl, "url");
-  await candidatesFromKodik(shikimoriId, seen, list);
-  await candidatesFromDb(shikimoriId, seen, list);
-  await candidatesFromShikimori(shikimoriId, seen, list);
+  for (const sourceId of listEnabledCoverSources(sourceOrder)) {
+    if (sourceId === "worldart") continue;
+    const batch = await collectPosterCandidatesFromSource({
+      sourceId,
+      shikimoriId,
+      directUrl,
+      seen: seenUrls,
+    });
+    out.push(...batch);
+    if (out.length > 0) break;
+  }
 
-  return list;
+  return out;
 }
 
 export async function discoverPosterUrl(
   shikimoriId: number,
   directUrl?: string | null,
+  sourceOrder?: CoverSourceOrderConfig,
 ): Promise<PosterCandidate | null> {
-  const candidates = await discoverPosterCandidates(shikimoriId, directUrl);
+  const candidates = await discoverPosterCandidates(shikimoriId, directUrl, sourceOrder);
   return candidates[0] ?? null;
 }
 

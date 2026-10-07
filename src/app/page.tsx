@@ -1,7 +1,9 @@
 import type { Metadata } from "next";
+import { AdminStaleDbBanner } from "@/components/AdminStaleDbBanner";
 import { HistoryNewEpisodesSection, type HistoryNewEpisodeDto } from "@/components/HistoryNewEpisodesSection";
 import { HistoryUpcomingSoonPanel } from "@/components/history/HistoryUpcomingSoonPanel";
 import { ReleaseFeed } from "@/components/ReleaseFeed";
+import { getKodikDbFreshness } from "@/lib/admin/kodik-db-freshness";
 import { getSession } from "@/lib/auth/session";
 import { getHistoryNewEpisodes } from "@/lib/history-new-episodes";
 import { getHistoryUpcomingSoon } from "@/lib/history-upcoming-soon";
@@ -18,13 +20,23 @@ export const metadata: Metadata = buildSitePageMetadata({
 
 const PAGE_SIZE = 24;
 
-export default async function HomePage() {
+type HomePageProps = {
+  searchParams: Promise<{ adminSyncBannerPreview?: string }>;
+};
+
+export default async function HomePage({ searchParams }: HomePageProps) {
+  const params = await searchParams;
+  const forcePreview = params.adminSyncBannerPreview === "1";
   const session = await getSession();
-  const [{ items, hasMore, nextCursor }, historyNewEpisodes, upcomingSoon] = await Promise.all([
-    getRecentReleasesPage(PAGE_SIZE),
-    session ? getHistoryNewEpisodes(session.user.id) : Promise.resolve([]),
-    session ? getHistoryUpcomingSoon(session.user.id) : Promise.resolve([]),
-  ]);
+  const isAdmin = Boolean(session?.user.isAdmin);
+
+  const [{ items, hasMore, nextCursor }, historyNewEpisodes, upcomingSoon, freshness] =
+    await Promise.all([
+      getRecentReleasesPage(PAGE_SIZE),
+      session ? getHistoryNewEpisodes(session.user.id) : Promise.resolve([]),
+      session ? getHistoryUpcomingSoon(session.user.id) : Promise.resolve([]),
+      isAdmin ? getKodikDbFreshness() : Promise.resolve(null),
+    ]);
 
   const initialItems = items.map(serializeRelease);
   const historyItems: HistoryNewEpisodeDto[] = historyNewEpisodes.map((item) => ({
@@ -40,6 +52,10 @@ export default async function HomePage() {
 
   return (
     <div className="py-5 sm:py-8">
+      {isAdmin ? (
+        <AdminStaleDbBanner freshness={freshness} forcePreview={forcePreview} />
+      ) : null}
+
       {upcomingSoon.length > 0 ? (
         <div className="mb-6 sm:mb-8">
           <HistoryUpcomingSoonPanel items={upcomingSoon} />

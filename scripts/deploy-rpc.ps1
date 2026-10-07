@@ -7,7 +7,7 @@
 # См. docs/DEPLOY.md
 
 param(
-    [string]$Remote = "root@195.26.230.35",
+    [string]$Remote = "root@194.180.189.34",
     [string]$SshKey = "$env:USERPROFILE\.ssh\id_rsa",
     [string]$ServerAppDir = "/var/www/ta_new",
     [switch]$SkipBuild
@@ -17,7 +17,7 @@ $ErrorActionPreference = "Stop"
 
 . (Join-Path $PSScriptRoot "deploy-config.ps1")
 
-$DefaultRemote = "root@195.26.230.35"
+$DefaultRemote = "root@194.180.189.34"
 $DefaultSshKey = "$env:USERPROFILE\.ssh\id_rsa"
 $DefaultServerAppDir = "/var/www/ta_new"
 

@@ -141,7 +141,7 @@ export async function GET(request: NextRequest) {
 
     if (!result) {
       if (shikimoriId) {
-        const directUrl = await resolveCoverSourceUrl({ shikimoriId, url });
+        const directUrl = await resolveCoverSourceUrl({ shikimoriId, url, settings });
         if (directUrl) {
           return NextResponse.redirect(directUrl, 302);
         }

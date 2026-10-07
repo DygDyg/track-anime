@@ -9,7 +9,10 @@ import { useNavigationClick } from "@/components/NavigationProgress";
 import { HeaderSearch } from "@/components/search/HeaderSearch";
 import { HeaderAuth } from "@/components/auth/HeaderAuth";
 import { HeaderDiscordRpcButton } from "@/components/HeaderDiscordRpcButton";
-import { HeaderPwaInstallButton } from "@/components/HeaderPwaInstallButton";
+import { HeaderAndroidAppButton } from "@/components/HeaderAndroidAppButton";
+import { AndroidAppPromoPrompt } from "@/components/AndroidAppPromoPrompt";
+import { DesktopAppPromoPrompt } from "@/components/DesktopAppPromoPrompt";
+import { LegacyDomainRedirectNotice } from "@/components/LegacyDomainRedirectNotice";
 import { RecentAnimeOpensButton } from "@/components/RecentAnimeOpensButton";
 import { SiteSettingsButton } from "@/components/SiteSettingsMenu";
 import { SiteClock } from "@/components/SiteClock";
@@ -172,35 +175,37 @@ export function Header({ logoSrc: initialLogoSrc = SITE_LOGO_PATH }: { logoSrc?:
         className="site-header-bg site-header-bg-fullbleed backdrop-blur-lg backdrop-saturate-150"
       />
       <div className="site-header-text relative flex h-14 items-center gap-2 px-3 sm:h-16 sm:gap-2.5 sm:px-6 lg:px-8">
-        <Link
-          href="/"
-          onClick={handleHomeClick}
-          className={`${headerControl.text} inline-flex shrink-0 items-center gap-2 font-semibold tracking-tight`}
-        >
-          <Image
-            src={logoSrc}
-            alt={SITE_LOGO_ALT}
-            width={1536}
-            height={1024}
-            className="h-12 w-auto sm:h-14"
-            priority
-            unoptimized
-          />
-          <span className="hidden truncate sm:inline">{SITE_NAME}</span>
-        </Link>
+        <div className="flex min-w-0 shrink-0 items-center gap-2 md:gap-2.5">
+          <Link
+            href="/"
+            onClick={handleHomeClick}
+            className={`${headerControl.text} inline-flex shrink-0 items-center gap-2 font-semibold tracking-tight`}
+          >
+            <Image
+              src={logoSrc}
+              alt={SITE_LOGO_ALT}
+              width={1536}
+              height={1024}
+              className="h-12 w-auto sm:h-14"
+              priority
+              unoptimized
+            />
+            <span className="hidden truncate sm:inline">{SITE_NAME}</span>
+          </Link>
 
-        <NavLinks
-          className="hidden shrink-0 items-center gap-1.5 md:ml-2 md:flex"
-          items={PWA_NAV_ITEMS}
-        />
+          <NavLinks
+            className="hidden shrink-0 items-center gap-1.5 md:ml-2 md:flex"
+            items={PWA_NAV_ITEMS}
+          />
+        </div>
 
         <div className="ml-auto flex min-w-0 items-center gap-1 sm:gap-1.5 md:gap-2">
           {settings.showClock ? <SiteClock className="hidden sm:inline-flex" /> : null}
+          <HeaderAndroidAppButton />
           <HeaderSearch className="hidden w-44 sm:block sm:w-52 md:w-60 lg:w-72" />
           <RecentAnimeOpensButton />
 
           <HeaderDiscordRpcButton />
-          <HeaderPwaInstallButton />
 
           <ThemeToggle />
 
@@ -225,6 +230,10 @@ export function Header({ logoSrc: initialLogoSrc = SITE_LOGO_PATH }: { logoSrc?:
           </button>
         </div>
       </div>
+
+      <AndroidAppPromoPrompt />
+      <DesktopAppPromoPrompt />
+      <LegacyDomainRedirectNotice />
 
       <div className="md:hidden">
         <HeaderSearch

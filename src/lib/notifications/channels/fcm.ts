@@ -1,7 +1,11 @@
-import "server-only";
-
+/**
+ * No `import "server-only"` here: this module is reachable from CLI cron
+ * (`kodik:sync:scheduled` → save-material → dispatcher → fcm). The sentinel
+ * throws under plain Node/tsx and stops anime update checks on retail.
+ */
 import { readFileSync } from "node:fs";
 import { GoogleAuth } from "google-auth-library";
+import { getNotificationLinkBaseUrl } from "@/lib/admin/notification-settings";
 import {
   formatHistoryNewNotificationBody,
   formatHistoryNewNotificationTitle,
@@ -116,7 +120,7 @@ export async function sendFcmPushNotification(
   const tag = `history-new:${payload.materialId}:${payload.seasonNumber}:${payload.episodeNumber}`;
   const pageUrl = payload.pageUrl.startsWith("http")
     ? payload.pageUrl
-    : `https://track-anime.dygdyg.ru${payload.pageUrl.startsWith("/") ? "" : "/"}${payload.pageUrl}`;
+    : `${await getNotificationLinkBaseUrl()}${payload.pageUrl.startsWith("/") ? "" : "/"}${payload.pageUrl}`;
 
   let sent = 0;
   let failed = 0;

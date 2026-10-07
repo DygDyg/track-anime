@@ -23,6 +23,10 @@ import { consumeNavReturn, restoreScrollY } from "@/lib/navigation-return";
 import { LoadingSpinner } from "@/components/ui/LoadingSpinner";
 import { BrandLoadingOverlay } from "@/components/ui/BrandLoading";
 import { homeFeedGridClassName, homeFeedGutterX } from "@/lib/home-feed-layout";
+import {
+  isShikimoriAuthErrorPayload,
+  SHIKIMORI_RELOGIN_MESSAGE,
+} from "@/lib/shikimori/auth-messages";
 
 const TAB_ORDER: ListStatusTab[] = [
   "watching",
@@ -266,7 +270,7 @@ export function FavoritesView({
 }: Props) {
   const router = useRouter();
   const searchParams = useSearchParams();
-  const { user } = useAuth();
+  const { user, reconnectShikimori, authNavigating, notifyShikimoriAuthExpired } = useAuth();
   const { getStatus, loading: viewerListsLoading } = useUserListStatusMap();
   const [tab, setTab] = useState<ListStatusTab>(initialTab);
   const [sortMode, setSortMode] = useState<FavoritesSortMode>(initialSort);
@@ -475,7 +479,27 @@ export function FavoritesView({
           className="mb-4 rounded-xl border border-amber-500/45 bg-amber-500/10 px-3 py-2.5 text-sm leading-relaxed text-foreground sm:mb-5 sm:px-4 sm:py-3"
           role="status"
         >
-          {sync.error ? (
+          {sync.error && isShikimoriAuthErrorPayload(sync.error) ? (
+            <>
+              <p className="font-semibold text-amber-200 dark:text-amber-100">{SHIKIMORI_RELOGIN_MESSAGE}</p>
+              <p className="mt-1 text-foreground/85">
+                Показана локальная копия списков
+                {sync.syncedAt ? ` от ${formatSyncDate(sync.syncedAt)}` : ""}. После переподключения данные
+                обновятся с Shikimori.
+              </p>
+              <button
+                type="button"
+                className="mt-3 rounded-lg bg-amber-400 px-3.5 py-2 text-sm font-bold text-amber-950 hover:bg-amber-300 disabled:opacity-60"
+                onClick={() => {
+                  notifyShikimoriAuthExpired();
+                  reconnectShikimori();
+                }}
+                disabled={authNavigating}
+              >
+                {authNavigating ? "…" : "Переподключить Shikimori"}
+              </button>
+            </>
+          ) : sync.error ? (
             <>
               <p className="font-semibold text-amber-200 dark:text-amber-100">Показана локальная копия</p>
               <p className="mt-1 text-foreground/85">

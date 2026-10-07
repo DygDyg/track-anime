@@ -383,9 +383,78 @@ export function installAndroidBackBridge(): () => void {
   };
 }
 
+const TV_SCROLL_STEP_RATIO = 0.4;
+const TV_SCROLL_STEP_MAX_Y = 360;
+const TV_SCROLL_STEP_MAX_X = 320;
+/** After last air-mouse move, D-pad stays in page-scroll mode this long. */
+const POINTER_SCROLL_IDLE_MS = 2800;
+const POINTER_SCROLL_MOVE_THRESHOLD_PX = 2;
+
+let pointerScrollUntilMs = 0;
+
+function getTvScrollStepY(): number {
+  return Math.min(Math.round(window.innerHeight * TV_SCROLL_STEP_RATIO), TV_SCROLL_STEP_MAX_Y);
+}
+
+function getTvScrollStepX(): number {
+  return Math.min(Math.round(window.innerWidth * 0.35), TV_SCROLL_STEP_MAX_X);
+}
+
+/** Scroll the page in a D-pad direction (air-mouse / edge cases). */
+export function scrollTvPage(direction: TvNavDirection): void {
+  const y = getTvScrollStepY();
+  const x = getTvScrollStepX();
+  switch (direction) {
+    case "up":
+      window.scrollBy({ top: -y, behavior: "auto" });
+      break;
+    case "down":
+      window.scrollBy({ top: y, behavior: "auto" });
+      break;
+    case "left":
+      window.scrollBy({ left: -x, behavior: "auto" });
+      break;
+    case "right":
+      window.scrollBy({ left: x, behavior: "auto" });
+      break;
+  }
+  invalidateTvFocusableCache();
+}
+
 /** Scroll page up when Up is pressed mid-page (instead of jumping to header). */
 export function scrollTvPageUp(): void {
-  const step = Math.min(Math.round(window.innerHeight * 0.4), 360);
-  window.scrollBy({ top: -step, behavior: "auto" });
-  invalidateTvFocusableCache();
+  scrollTvPage("up");
+}
+
+/** True while a mouse/air-mouse recently moved — D-pad should scroll, not move focus. */
+export function isTvPointerScrollModeActive(): boolean {
+  if (typeof performance === "undefined") return false;
+  return performance.now() < pointerScrollUntilMs;
+}
+
+export function markTvPointerScrollModeActive(): void {
+  if (typeof performance === "undefined") return;
+  pointerScrollUntilMs = performance.now() + POINTER_SCROLL_IDLE_MS;
+}
+
+/**
+ * Watch mouse/air-mouse motion. While active (and shortly after), callers
+ * should treat D-pad arrows as page scroll instead of focus navigation.
+ */
+export function startTvPointerScrollWatch(): () => void {
+  if (typeof window === "undefined") return () => undefined;
+
+  const onPointerMove = (event: PointerEvent) => {
+    if (event.pointerType !== "mouse") return;
+    const moved =
+      Math.abs(event.movementX) + Math.abs(event.movementY) >= POINTER_SCROLL_MOVE_THRESHOLD_PX;
+    if (!moved) return;
+    markTvPointerScrollModeActive();
+  };
+
+  window.addEventListener("pointermove", onPointerMove, { passive: true });
+  return () => {
+    window.removeEventListener("pointermove", onPointerMove);
+    pointerScrollUntilMs = 0;
+  };
 }

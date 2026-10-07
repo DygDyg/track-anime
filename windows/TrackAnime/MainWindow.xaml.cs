@@ -98,6 +98,9 @@ public partial class MainWindow : Window
         {
             ShowBootstrapStatus("Поиск рабочего зеркала…");
             await EnsureWebViewAsync(proxyEnabled: false);
+            ShowBootstrapStatus("Поиск рабочего зеркала…");
+            await SiteHosts.EnsureLoadedAsync();
+            ShowBootstrapStatus("Подключение к " + SiteHosts.PrimaryHost + "…");
             var launch = _pendingLaunchUrl;
             _pendingLaunchUrl = null;
             if (!string.IsNullOrEmpty(launch) && Uri.TryCreate(launch, UriKind.Absolute, out var launchUri))
@@ -414,24 +417,59 @@ public partial class MainWindow : Window
         var cookies = await _webView.CoreWebView2.CookieManager.GetCookiesAsync("https://" + sourceHost + "/");
         var session = cookies.FirstOrDefault(c =>
             string.Equals(c.Name, SiteHosts.SessionCookieName, StringComparison.Ordinal));
+        // Не затираем сессию на других зеркалах пустым источником (failover / гонка).
+        if (session is null || string.IsNullOrEmpty(session.Value)) return;
+
         var cookie = _webView.CoreWebView2.CookieManager.CreateCookie(
             SiteHosts.SessionCookieName,
-            session?.Value ?? "",
+            session.Value,
             targetHost!,
             "/");
         cookie.IsSecure = true;
         cookie.IsHttpOnly = true;
         cookie.SameSite = CoreWebView2CookieSameSiteKind.Lax;
-        cookie.Expires = session is null || string.IsNullOrEmpty(session.Value)
-            ? DateTimeOffset.UtcNow.AddDays(-1).DateTime
-            : DateTimeOffset.UtcNow.AddDays(30).DateTime;
+        cookie.Expires = DateTimeOffset.UtcNow.AddDays(365).DateTime;
         _webView.CoreWebView2.CookieManager.AddOrUpdateCookie(cookie);
+    }
+
+    private async Task ClearSessionCookieOnAllHostsAsync()
+    {
+        if (_webView.CoreWebView2 is null) return;
+        foreach (var host in SiteHosts.All)
+        {
+            var cookie = _webView.CoreWebView2.CookieManager.CreateCookie(
+                SiteHosts.SessionCookieName,
+                "",
+                host,
+                "/");
+            cookie.IsSecure = true;
+            cookie.IsHttpOnly = true;
+            cookie.SameSite = CoreWebView2CookieSameSiteKind.Lax;
+            cookie.Expires = DateTimeOffset.UtcNow.AddDays(-1).DateTime;
+            _webView.CoreWebView2.CookieManager.AddOrUpdateCookie(cookie);
+        }
+        await Task.CompletedTask;
     }
 
     private async Task SynchronizeSessionFromCurrentHostAsync(string currentHost)
     {
         if (!SiteHosts.IsSiteHost(currentHost) || _webView.CoreWebView2 is null) return;
         _preferences.LastSessionHost = currentHost;
+
+        var cookies = await _webView.CoreWebView2.CookieManager.GetCookiesAsync("https://" + currentHost + "/");
+        var session = cookies.FirstOrDefault(c =>
+            string.Equals(c.Name, SiteHosts.SessionCookieName, StringComparison.Ordinal));
+        if (session is null || string.IsNullOrEmpty(session.Value))
+        {
+            if (_preferences.HadTaSession)
+            {
+                _preferences.HadTaSession = false;
+                await ClearSessionCookieOnAllHostsAsync();
+            }
+            return;
+        }
+
+        _preferences.HadTaSession = true;
         foreach (var other in SiteHosts.All)
         {
             if (!string.Equals(other, currentHost, StringComparison.OrdinalIgnoreCase))

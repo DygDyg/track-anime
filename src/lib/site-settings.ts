@@ -199,6 +199,9 @@ export function mergeRemoteWithLocalSiteSettings(
 }
 
 export const SITE_SETTINGS_STORAGE_KEY = "track-anime-site-settings";
+/** One-time client reset: force TA player after removing anime-page Kodik toggle. */
+export const USE_LEGACY_KODIK_PLAYER_RESET_STORAGE_KEY =
+  "ta.siteSettings.reset.useLegacyKodikPlayer.v1";
 export const HOME_HISTORY_COLLAPSED_STORAGE_KEY = "track-anime-home-history-collapsed";
 export const HOME_UPCOMING_SOON_COLLAPSED_STORAGE_KEY = "track-anime-home-upcoming-soon-collapsed";
 export const HOME_STATUS_FILTER_STORAGE_KEY = "track-anime-home-status-filter";
@@ -468,6 +471,47 @@ export function readStoredSiteSettings(fallback: SiteSettings = DEFAULT_SITE_SET
     return { ...fallback };
   }
 }
+
+/**
+ * One-time: clear legacy Kodik flag in this browser (anime-page toggle removed).
+ * Returns whether the value was changed so callers can sync remote settings.
+ */
+let legacyKodikPlayerDefaultResetAppliedThisDocument = false;
+
+export function wasLegacyKodikPlayerDefaultResetApplied(): boolean {
+  return legacyKodikPlayerDefaultResetAppliedThisDocument;
+}
+
+export function consumeUseLegacyKodikPlayerDefaultReset(settings: SiteSettings): {
+  settings: SiteSettings;
+  didReset: boolean;
+} {
+  if (typeof window === "undefined") {
+    return { settings, didReset: false };
+  }
+
+  try {
+    if (localStorage.getItem(USE_LEGACY_KODIK_PLAYER_RESET_STORAGE_KEY) === "1") {
+      return { settings, didReset: false };
+    }
+    localStorage.setItem(USE_LEGACY_KODIK_PLAYER_RESET_STORAGE_KEY, "1");
+    legacyKodikPlayerDefaultResetAppliedThisDocument = true;
+    if (!settings.useLegacyKodikPlayer) {
+      return { settings, didReset: false };
+    }
+    return {
+      settings: { ...settings, useLegacyKodikPlayer: false },
+      didReset: true,
+    };
+  } catch {
+    legacyKodikPlayerDefaultResetAppliedThisDocument = true;
+    return {
+      settings: { ...settings, useLegacyKodikPlayer: false },
+      didReset: Boolean(settings.useLegacyKodikPlayer),
+    };
+  }
+}
+
 export function hasStoredSiteSettings(): boolean {
   if (typeof window === "undefined") return false;
   return localStorage.getItem(SITE_SETTINGS_STORAGE_KEY) !== null;

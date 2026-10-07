@@ -36,11 +36,10 @@ function relationRank(relation: string): number {
   return RELATION_ORDER[relation.toLowerCase()] ?? 50;
 }
 
-export async function getShikimoriRelatedAnimes(
+export function mapShikimoriRelatedEntries(
+  entries: ShikimoriRelatedEntry[] | null | undefined,
   shikimoriId: number,
-  init?: RequestInit,
-): Promise<ShikimoriRelatedAnimeBrief[]> {
-  const entries = await shikimoriFetch<ShikimoriRelatedEntry[]>(`/animes/${shikimoriId}/related`, init);
+): ShikimoriRelatedAnimeBrief[] {
   if (!entries?.length) return [];
 
   const byId = new Map<number, ShikimoriRelatedAnimeBrief>();
@@ -83,4 +82,19 @@ export async function getShikimoriRelatedAnimes(
       return aTime - bTime;
     })
     .slice(0, 24);
+}
+
+export async function fetchShikimoriRelatedEntries(
+  shikimoriId: number,
+  init?: RequestInit,
+): Promise<ShikimoriRelatedEntry[] | null> {
+  return shikimoriFetch<ShikimoriRelatedEntry[]>(`/animes/${shikimoriId}/related`, init);
+}
+
+export async function getShikimoriRelatedAnimes(
+  shikimoriId: number,
+  init?: RequestInit,
+): Promise<ShikimoriRelatedAnimeBrief[]> {
+  const entries = await fetchShikimoriRelatedEntries(shikimoriId, init);
+  return mapShikimoriRelatedEntries(entries, shikimoriId);
 }

@@ -157,7 +157,10 @@ export async function PUT(request: NextRequest, { params }: RouteParams) {
     return NextResponse.json({ listInfo });
   } catch (error) {
     if (isListMutationAuthError(error)) {
-      return NextResponse.json({ error: error.message }, { status: 401 });
+      return NextResponse.json(
+        { error: "shikimori_auth", message: error.message },
+        { status: 401 },
+      );
     }
 
     const message = error instanceof Error ? error.message : "Не удалось обновить список";

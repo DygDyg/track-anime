@@ -34,7 +34,7 @@
 |---|--------|-------|--------|
 | 1.1 | Вход — loading на кнопках | `login/page.tsx`, `HeaderAuth.tsx`, `ReleaseCardQuickActions.tsx`, `ProfileFriendButton.tsx`, `BottomNavProfileFab.tsx`, `AuthProvider.tsx` | ✅ |
 | 1.2 | Выход — «Выйти…» | `HeaderAuth.tsx`, `BottomNavProfileFab.tsx`, `AuthProvider.tsx` | ✅ |
-| 1.3 | Reconnect Shikimori | UI с `reconnectShikimori` | ⏭ нет UI (только API в `AuthProvider`) |
+| 1.3 | Reconnect Shikimori | UI с `reconnectShikimori` / баннер `notifyShikimoriAuthExpired` | ✅ `AuthProvider` + `/user/.../favorites` |
 
 ---
 
@@ -151,4 +151,4 @@
 ## Вне scope (намеренно)
 
 - Полная замена всех `Link` на `NavLink` по всему приложению — `AnimeLink` и `Header` уже имеют свой прогресс
-- UI для `reconnectShikimori` — нет экрана/кнопки в продукте
+- (снято) UI для `reconnectShikimori` — есть баннер и `/user/.../favorites` reconnect

@@ -12,6 +12,7 @@ import {
   TRANSLATION_INTRO_OFFSET_MIN_SEC,
   TRANSLATION_INTRO_OFFSET_STEP_SEC,
 } from "@/lib/translation-intro-offset";
+import { matchesFuzzyText } from "@/lib/fuzzy-text-match";
 
 function formatDateTime(value: string | null): string {
   if (!value) return "—";
@@ -122,9 +123,8 @@ export function TranslationIntroOffsetsPanel({
     if (hideMatchingForced) {
       rows = rows.filter((row) => !isAverageMatchingForced(row, data.forcedOffsets));
     }
-    const q = query.trim().toLowerCase();
-    if (!q) return rows;
-    return rows.filter((row) => row.translationName.toLowerCase().includes(q));
+    if (!query.trim()) return rows;
+    return rows.filter((row) => matchesFuzzyText(query, row.translationName));
   }, [data.forcedOffsets, hideMatchingForced, hideWithoutAverage, query, tableRows]);
 
   const refresh = useCallback(async () => {

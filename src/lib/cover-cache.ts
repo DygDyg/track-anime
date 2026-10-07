@@ -3,9 +3,10 @@ import fs from "fs";
 import fsPromises from "fs/promises";
 import path from "path";
 import sharp from "sharp";
-import type { CoverCacheRuntimeSettings } from "@/lib/admin/cover-cache-settings";
+import { listEnabledCoverSources, type CoverCacheRuntimeSettings } from "@/lib/admin/cover-cache-settings";
 import { kodikSearch } from "@/kodik/client";
 import {
+  collectPosterCandidatesFromSource,
   discoverPosterCandidates,
   discoverPosterUrlQuick,
   type PosterFallbackSource,
@@ -17,11 +18,13 @@ export const DEFAULT_COVER_MAX_HEIGHT = 450;
 export const DEFAULT_COVER_THUMB_MAX_WIDTH = 320;
 export const DEFAULT_COVER_THUMB_QUALITY = 68;
 export const DEFAULT_COVER_BROWSER_CACHE_SEC = 60 * 60 * 24 * 7;
+/** Стабильный разброс свежести поверх maxAgeDays: 0…7 дней. */
+export const COVER_FRESHNESS_JITTER_DAYS = 7;
 
 const FETCH_UA =
   "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36";
 
-export type CoverFetchSource = "cache" | PosterFallbackSource | "worldart" | "none";
+export type CoverFetchSource = "cache" | PosterFallbackSource | "none";
 
 export type CoverFetchResult = {
   filePath: string;
@@ -108,13 +111,40 @@ function resolveAbsoluteUrl(baseUrl: string, relativeUrl: string): string {
   }
 }
 
+/** Стабильный 0…n-1 от shikimoriId (без рандома на каждый запрос). */
+function stableJitterDays(shikimoriId: number, maxExclusive: number): number {
+  if (maxExclusive <= 0) return 0;
+  let x = shikimoriId >>> 0;
+  x = Math.imul(x ^ (x >>> 16), 0x7feb352d);
+  x = Math.imul(x ^ (x >>> 15), 0x846ca68b);
+  x = (x ^ (x >>> 16)) >>> 0;
+  return x % maxExclusive;
+}
+
+/**
+ * Эффективный TTL в днях: maxAgeDays…maxAgeDays+7 для id-кэша.
+ * maxAgeDays ≤ 0 → без устаревания. Без shikimoriId → без jitter.
+ */
+export function effectiveCoverMaxAgeDays(
+  maxAgeDays: number,
+  shikimoriId?: number,
+): number {
+  if (maxAgeDays <= 0) return maxAgeDays;
+  if (shikimoriId == null || !Number.isInteger(shikimoriId) || shikimoriId <= 0) {
+    return maxAgeDays;
+  }
+  return maxAgeDays + stableJitterDays(shikimoriId, COVER_FRESHNESS_JITTER_DAYS + 1);
+}
+
 function getCacheState(
   destPath: string,
   maxAgeDays: number,
+  shikimoriId?: number,
 ): "fresh" | "stale" | "missing" {
   if (!cacheFileExists(destPath)) return "missing";
-  if (maxAgeDays <= 0) return "fresh";
-  const maxAgeMs = maxAgeDays * 24 * 60 * 60 * 1000;
+  const effectiveDays = effectiveCoverMaxAgeDays(maxAgeDays, shikimoriId);
+  if (effectiveDays <= 0) return "fresh";
+  const maxAgeMs = effectiveDays * 24 * 60 * 60 * 1000;
   if (Date.now() - cacheFileStat(destPath).mtimeMs > maxAgeMs) return "stale";
   return "fresh";
 }
@@ -323,16 +353,27 @@ async function downloadCoverFromSources(options: {
   const { shikimoriId, url, destPath, settings } = options;
 
   if (shikimoriId) {
-    const candidates = await discoverPosterCandidates(shikimoriId, url);
-    for (const candidate of candidates) {
-      const buf = await fetchImageBuffer(candidate.url, candidate.url);
-      if (buf && (await saveCoverWebp(buf, destPath, settings))) {
-        return candidate.source;
+    const seen = new Set<string>();
+    for (const sourceId of listEnabledCoverSources(settings.sourceOrder)) {
+      if (sourceId === "worldart") {
+        const worldArt = await tryKodikWorldArt(shikimoriId, destPath, settings);
+        if (worldArt) return worldArt;
+        continue;
+      }
+
+      const candidates = await collectPosterCandidatesFromSource({
+        sourceId,
+        shikimoriId,
+        directUrl: url,
+        seen,
+      });
+      for (const candidate of candidates) {
+        const buf = await fetchImageBuffer(candidate.url, candidate.url);
+        if (buf && (await saveCoverWebp(buf, destPath, settings))) {
+          return candidate.source;
+        }
       }
     }
-
-    const worldArt = await tryKodikWorldArt(shikimoriId, destPath, settings);
-    if (worldArt) return worldArt;
     return null;
   }
 
@@ -349,13 +390,18 @@ async function downloadCoverFromSources(options: {
 export async function resolveCoverSourceUrl(options: {
   shikimoriId?: number;
   url?: string;
+  settings?: Pick<CoverCacheRuntimeSettings, "sourceOrder">;
 }): Promise<string | null> {
-  const { shikimoriId, url } = options;
+  const { shikimoriId, url, settings } = options;
   if (!shikimoriId) {
     return url && !isShikimoriMissingImage(url) ? url : null;
   }
 
-  const candidates = await discoverPosterCandidates(shikimoriId, url);
+  const candidates = await discoverPosterCandidates(
+    shikimoriId,
+    url,
+    settings?.sourceOrder,
+  );
   return candidates[0]?.url ?? null;
 }
 
@@ -373,7 +419,7 @@ export function getFreshCoverCachePath(
   settings: Pick<CoverCacheRuntimeSettings, "maxAgeDays">,
 ): string | null {
   const destPath = coverCacheFileForId(shikimoriId);
-  if (getCacheState(destPath, settings.maxAgeDays) !== "fresh") return null;
+  if (getCacheState(destPath, settings.maxAgeDays, shikimoriId) !== "fresh") return null;
   if (!cacheFileExists(destPath)) return null;
   return destPath;
 }
@@ -456,14 +502,18 @@ export async function fetchAndCacheCover(options: {
     : coverCacheFilePath(`url-${crypto.createHash("md5").update(url!).digest("hex")}.webp`);
 
   if (!settings.enabled) {
-    const sourceUrl = await resolveCoverSourceUrl({ shikimoriId, url });
+    const sourceUrl = await resolveCoverSourceUrl({
+      shikimoriId,
+      url,
+      settings,
+    });
     if (!sourceUrl) return null;
     const buf = await fetchImageBuffer(sourceUrl, sourceUrl);
     if (!buf) return null;
     return { filePath: destPath, source: "url", cached: false, buffer: buf };
   }
 
-  const cacheState = getCacheState(destPath, settings.maxAgeDays);
+  const cacheState = getCacheState(destPath, settings.maxAgeDays, shikimoriId);
 
   if (!force && cacheState === "fresh") {
     return { filePath: destPath, source: "cache", cached: true };
@@ -548,6 +598,10 @@ export function buildCoverBufferResponse(
   const ifModifiedSince = request.headers.get("if-modified-since");
   const ifNoneMatch = request.headers.get("if-none-match");
 
+  // Без immutable: обложки тайтлов обновляются (анонс → KV), а URL стабильный.
+  // Браузер сможет перепроверить по ETag после истечения max-age.
+  const cacheControl = `public, max-age=${browserCacheSec}`;
+
   if (
     (ifModifiedSince && ifModifiedSince === lastModifiedHeader) ||
     (ifNoneMatch && ifNoneMatch.trim() === etag)
@@ -555,7 +609,7 @@ export function buildCoverBufferResponse(
     return new Response(null, {
       status: 304,
       headers: {
-        "Cache-Control": `public, max-age=${browserCacheSec}, immutable`,
+        "Cache-Control": cacheControl,
         "Last-Modified": lastModifiedHeader,
         ETag: etag,
       },
@@ -567,7 +621,7 @@ export function buildCoverBufferResponse(
   return new Response(new Uint8Array(buffer), {
     headers: {
       "Content-Type": "image/webp",
-      "Cache-Control": `public, max-age=${browserCacheSec}, immutable`,
+      "Cache-Control": cacheControl,
       Expires: expires,
       "Last-Modified": lastModifiedHeader,
       ETag: etag,

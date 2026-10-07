@@ -141,6 +141,13 @@ export function KodikPlayerBetaEpisodeStrip({
     syncScrollState();
   };
 
+  const scrollByStep = (direction: -1 | 1) => {
+    const node = stripRef.current;
+    if (!node || scrollState.max <= 0) return;
+    const step = Math.max(280, Math.round(node.clientWidth * 0.75));
+    node.scrollBy({ left: direction * step, behavior: "smooth" });
+  };
+
   const stripClass = overlay
     ? "kodik-player-beta-episodes kodik-player-beta-episodes--overlay flex select-none gap-1.5 overflow-x-auto p-2 pt-1.5"
     : "kodik-player-beta-episodes flex select-none gap-1.5 overflow-x-auto border-b border-border bg-[#0f0f0f] p-2";
@@ -208,16 +215,30 @@ export function KodikPlayerBetaEpisodeStrip({
   return (
     <div className={shellClass}>
       {canScrollLeft ? (
-        <div
-          aria-hidden="true"
-          className="kodik-player-beta-episodes-edge kodik-player-beta-episodes-edge--left"
-        />
+        <div className="kodik-player-beta-episodes-edge kodik-player-beta-episodes-edge--left">
+          <button
+            type="button"
+            aria-label="Прокрутить серии влево"
+            className="kodik-player-beta-episodes-scroll-btn"
+            onMouseDown={(event) => event.preventDefault()}
+            onClick={() => scrollByStep(-1)}
+          >
+            ‹
+          </button>
+        </div>
       ) : null}
       {canScrollRight ? (
-        <div
-          aria-hidden="true"
-          className="kodik-player-beta-episodes-edge kodik-player-beta-episodes-edge--right"
-        />
+        <div className="kodik-player-beta-episodes-edge kodik-player-beta-episodes-edge--right">
+          <button
+            type="button"
+            aria-label="Прокрутить серии вправо"
+            className="kodik-player-beta-episodes-scroll-btn"
+            onMouseDown={(event) => event.preventDefault()}
+            onClick={() => scrollByStep(1)}
+          >
+            ›
+          </button>
+        </div>
       ) : null}
       <div ref={stripRef} className={stripClass} onScroll={syncScrollState} onWheel={handleWheel}>
         {showSeasonSelect ? (

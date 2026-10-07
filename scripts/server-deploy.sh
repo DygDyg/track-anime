@@ -4,7 +4,7 @@
 set -euo pipefail
 
 APP_DIR="${APP_DIR:-/var/www/ta_new}"
-SITE_URL="${SITE_URL:-https://track-anime.dygdyg.ru/}"
+SITE_URL="${SITE_URL:-https://track-anime.win/}"
 SERVICE_NAME="${SERVICE_NAME:-track-anime}"
 WATCH_PARTY_SERVICE_NAME="${WATCH_PARTY_SERVICE_NAME:-track-anime-watch-party}"
 NPM_CI_TIMEOUT="${NPM_CI_TIMEOUT:-10m}"

@@ -7,12 +7,68 @@
 #
 # См. docs/DEPLOY.md
 
+# npm/cmd often inherits PowerShell 7 PSModulePath into Windows PowerShell 5.1.
+# That loads incompatible Utility modules and breaks Get-FileHash.
+if ($PSVersionTable.PSEdition -eq "Desktop") {
+    $modulePaths = @($env:PSModulePath -split ";" | ForEach-Object { $_.Trim() } | Where-Object { $_ })
+    $polluted = $false
+    foreach ($path in $modulePaths) {
+        if ($path -match '(?i)([\\/]|^)PowerShell([\\/](Modules|7)|$)' -and $path -notmatch '(?i)WindowsPowerShell') {
+            $polluted = $true
+            break
+        }
+    }
+    if ($polluted -or -not (Get-Command Get-FileHash -ErrorAction SilentlyContinue)) {
+        $restored = [System.Collections.Generic.List[string]]::new()
+        foreach ($candidate in @(
+                (Join-Path $HOME "Documents\WindowsPowerShell\Modules"),
+                (Join-Path ${env:ProgramFiles} "WindowsPowerShell\Modules"),
+                (Join-Path $PSHOME "Modules")
+            )) {
+            if ($candidate -and (Test-Path -LiteralPath $candidate) -and -not $restored.Contains($candidate)) {
+                $restored.Add($candidate) | Out-Null
+            }
+        }
+        foreach ($path in $modulePaths) {
+            if ($path -match '(?i)WindowsPowerShell' -and -not $restored.Contains($path)) {
+                $restored.Insert(0, $path)
+            }
+        }
+        $env:PSModulePath = ($restored | Select-Object -Unique) -join ";"
+        Remove-Module Microsoft.PowerShell.Utility -Force -ErrorAction SilentlyContinue
+        Import-Module Microsoft.PowerShell.Utility -Force -ErrorAction SilentlyContinue
+    }
+}
+
 $script:TaDeployConfigCache = $null
 $script:TaDeployConfigPath = $null
 $script:TaDeployProxyCommand = $null
 $script:TaDeployHttpProxyUrl = $null
 $script:TaDeployWantedProxyUrl = $null
 $script:TaDeployProxyDisabledReason = ""
+
+function Get-TaDeployFileSha256 {
+    param(
+        [Parameter(Mandatory = $true)][string]$LiteralPath
+    )
+
+    if (Get-Command Get-FileHash -ErrorAction SilentlyContinue) {
+        return (Get-FileHash -Algorithm SHA256 -LiteralPath $LiteralPath).Hash
+    }
+
+    $sha = [System.Security.Cryptography.SHA256]::Create()
+    try {
+        $stream = [System.IO.File]::OpenRead($LiteralPath)
+        try {
+            $bytes = $sha.ComputeHash($stream)
+        } finally {
+            $stream.Dispose()
+        }
+    } finally {
+        $sha.Dispose()
+    }
+    return ([System.BitConverter]::ToString($bytes) -replace "-", "")
+}
 
 function Get-TaDeployProjectRoot {
     return (Resolve-Path (Join-Path $PSScriptRoot "..")).Path

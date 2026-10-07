@@ -34,7 +34,23 @@ function mapUser(user: {
   };
 }
 
+/** Продлевать expiresAt/cookie, если до конца сессии осталось меньше этого порога. */
+const SESSION_SLIDING_RENEW_BEFORE_MS = 90 * 24 * 60 * 60 * 1000; // 90 дней
+
+export type SessionLookup = {
+  token: string;
+  sessionId: string;
+  expiresAt: Date;
+  user: AuthUser;
+};
+
 export async function getSession(): Promise<AuthSession | null> {
+  const looked = await lookupSession();
+  return looked ? { user: looked.user } : null;
+}
+
+/** Полный lookup сессии (для sliding renewal в route handlers). */
+export async function lookupSession(): Promise<SessionLookup | null> {
   const cookieStore = await cookies();
   const token = cookieStore.get(authConfig.sessionCookie)?.value;
   if (!token) return null;
@@ -55,7 +71,27 @@ export async function getSession(): Promise<AuthSession | null> {
     where: { userId: session.user.id },
     select: { userId: true },
   });
-  return { user: mapUser({ ...session.user, localCredential }) };
+  return {
+    token,
+    sessionId: session.id,
+    expiresAt: session.expiresAt,
+    user: mapUser({ ...session.user, localCredential }),
+  };
+}
+
+/** Sliding renewal: сдвигает expiresAt на полный TTL, если осталось < 90 дней. */
+export async function touchSessionIfNeeded(sessionId: string, expiresAt: Date): Promise<Date> {
+  const remainingMs = expiresAt.getTime() - Date.now();
+  if (remainingMs >= SESSION_SLIDING_RENEW_BEFORE_MS) {
+    return expiresAt;
+  }
+
+  const nextExpiresAt = new Date(Date.now() + authConfig.sessionMaxAgeSec * 1000);
+  await prisma.session.update({
+    where: { id: sessionId },
+    data: { expiresAt: nextExpiresAt },
+  });
+  return nextExpiresAt;
 }
 
 export async function createSession(userId: string): Promise<string> {
@@ -85,7 +121,7 @@ export function sessionCookieOptions(token: string, secure = process.env.NODE_EN
     value: token,
     httpOnly: true,
     sameSite: "lax" as const,
-    secure: process.env.NODE_ENV === "production",
+    secure,
     path: "/",
     maxAge: authConfig.sessionMaxAgeSec,
   };

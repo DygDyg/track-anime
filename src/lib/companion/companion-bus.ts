@@ -39,7 +39,7 @@ const listeners = new Set<CompanionReactionListener>();
 export function getCompanionSituation(pathname: string): CompanionAnimation {
   if (pathname.startsWith("/anime/")) return "sitting";
   if (pathname.startsWith("/search")) return "searching";
-  if (pathname.startsWith("/favorites")) return "favorites";
+  if (pathname.startsWith("/favorites") || /^\/user\/\d+\/favorites/.test(pathname)) return "favorites";
   if (pathname.startsWith("/history")) return "history";
   if (pathname.startsWith("/calendar")) return "calendar";
   return "idle";

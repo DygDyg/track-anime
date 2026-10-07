@@ -1,9 +1,10 @@
 "use client";
 
+import { NotificationChannelLabel } from "@/components/admin/NotificationChannelIcons";
 import { NotificationMessageTemplatesSettings } from "@/components/settings/NotificationMessageTemplatesSettings";
 import { useSiteSettings } from "@/components/SiteSettingsProvider";
 import Link from "next/link";
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useState, type ReactNode } from "react";
 import { useSearchParams } from "next/navigation";
 import { subscribeBrowserPush, unsubscribeBrowserPush, hasActivePushSubscription, readBrowserPushEnabled } from "@/lib/notifications/browser-client";
 import {
@@ -29,7 +30,7 @@ function ToggleRow({
   compact = false,
   className = "",
 }: {
-  label: string;
+  label: ReactNode;
   hint?: string;
   hintOnClick?: () => void;
   checked: boolean;
@@ -97,6 +98,7 @@ export function NotificationsSettingsTab({ variant = "full" }: { variant?: "full
   const [androidShell, setAndroidShell] = useState(false);
   const [androidFcmEnabled, setAndroidFcmEnabled] = useState(false);
   const [androidFcmActive, setAndroidFcmActive] = useState(false);
+  const [appPromoEnabled, setAppPromoEnabled] = useState(false);
 
   const loadPreferences = useCallback(async () => {
     setLoading(true);
@@ -125,6 +127,26 @@ export function NotificationsSettingsTab({ variant = "full" }: { variant?: "full
       void hasActiveAndroidFcmSubscription().then(setAndroidFcmActive);
     }
   }, []);
+
+  useEffect(() => {
+    if (androidShell) {
+      setAppPromoEnabled(false);
+      return;
+    }
+    let cancelled = false;
+    void fetch("/api/settings/app-promo", { cache: "no-store" })
+      .then(async (res) => {
+        if (!res.ok) return;
+        const data = (await res.json()) as { settings?: { enabled?: boolean } };
+        if (!cancelled) setAppPromoEnabled(Boolean(data.settings?.enabled));
+      })
+      .catch(() => {
+        if (!cancelled) setAppPromoEnabled(false);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [androidShell]);
 
   useEffect(() => {
     const discord = searchParams.get("discord");
@@ -409,7 +431,9 @@ export function NotificationsSettingsTab({ variant = "full" }: { variant?: "full
       {prefs.fcmConfigured && androidShell ? (
         <ToggleRow
           compact={isCompact}
-          label="Уведомления Android"
+          label={
+            <NotificationChannelLabel channel="fcm" label="Уведомления Android" />
+          }
           hint={
             isCompact
               ? androidFcmActive
@@ -434,7 +458,9 @@ export function NotificationsSettingsTab({ variant = "full" }: { variant?: "full
       {prefs.browserPushConfigured && !androidShell ? (
         <ToggleRow
           compact={isCompact}
-          label="Уведомления в браузере"
+          label={
+            <NotificationChannelLabel channel="browser" label="Уведомления в браузере" />
+          }
           hint={
             isCompact
               ? browserPushActive
@@ -460,7 +486,7 @@ export function NotificationsSettingsTab({ variant = "full" }: { variant?: "full
         isCompact ? (
           <ToggleRow
             compact
-            label="Telegram"
+            label={<NotificationChannelLabel channel="telegram" />}
             hint={
               prefs.telegramLinked
                 ? prefs.telegramBotUsername
@@ -476,7 +502,7 @@ export function NotificationsSettingsTab({ variant = "full" }: { variant?: "full
         ) : (
         <div className="rounded-lg border border-border bg-card px-3 py-2.5">
           <ToggleRow
-            label="Telegram"
+            label={<NotificationChannelLabel channel="telegram" />}
             hint={
               prefs.telegramLinked
                 ? `Привязан${prefs.telegramBotUsername ? ` (@${prefs.telegramBotUsername})` : ""}`
@@ -525,7 +551,7 @@ export function NotificationsSettingsTab({ variant = "full" }: { variant?: "full
         isCompact ? (
           <ToggleRow
             compact
-            label="VK"
+            label={<NotificationChannelLabel channel="vk" />}
             hint={prefs.vkLinked ? "Привязан" : "Привязка в настройках"}
             hintOnClick={!prefs.vkLinked ? openChannelsSettings : undefined}
             checked={prefs.vkEnabled}
@@ -535,7 +561,7 @@ export function NotificationsSettingsTab({ variant = "full" }: { variant?: "full
         ) : (
         <div className="rounded-lg border border-border bg-card px-3 py-2.5">
           <ToggleRow
-            label="VK"
+            label={<NotificationChannelLabel channel="vk" />}
             hint={prefs.vkLinked ? "Сообщество привязано" : "Привяжите сообщество по ссылке"}
             checked={prefs.vkEnabled}
             disabled={saving || !prefs.historyNewEnabled || !prefs.vkLinked}
@@ -580,7 +606,7 @@ export function NotificationsSettingsTab({ variant = "full" }: { variant?: "full
         isCompact ? (
           <ToggleRow
             compact
-            label="Discord"
+            label={<NotificationChannelLabel channel="discord" />}
             hint={
               !prefs.discordLinked
                 ? "Привязка в настройках"
@@ -600,7 +626,7 @@ export function NotificationsSettingsTab({ variant = "full" }: { variant?: "full
         ) : (
         <div className="rounded-lg border border-border bg-card px-3 py-2.5">
           <ToggleRow
-            label="Discord"
+            label={<NotificationChannelLabel channel="discord" />}
             hint={
               prefs.discordLinked && !prefs.discordDmVerified
                 ? "Привязан, но бот не может писать в ЛС — вступите на сервер или добавьте бота"
@@ -725,6 +751,15 @@ export function NotificationsSettingsTab({ variant = "full" }: { variant?: "full
               ? "Сообщим о продолжении в той же озвучке."
               : "Уведомление при выходе новой серии в тайтле из вашей истории просмотра — в той же озвучке, что вы смотрели. При открытой вкладке сайт опрашивает сервер каждые 30\u00a0с; для фона включите push в браузере или уведомления Android в приложении."}
           </p>
+          {!androidShell && appPromoEnabled ? (
+            <p className="mt-2 text-xs leading-relaxed text-muted">
+              В{" "}
+              <Link href="/app" className="font-medium text-accent hover:underline">
+                приложении для Android
+              </Link>{" "}
+              — системные уведомления даже при закрытом сайте и без рекламы.
+            </p>
+          ) : null}
         </div>
         {isCompact ? (
           <button

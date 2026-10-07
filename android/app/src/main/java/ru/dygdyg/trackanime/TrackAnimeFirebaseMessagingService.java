@@ -43,7 +43,7 @@ public final class TrackAnimeFirebaseMessagingService extends FirebaseMessagingS
                 message.getNotification() != null ? message.getNotification().getBody() : null,
                 ""
         );
-        String url = firstNonEmpty(data.get("url"), "https://track-anime.dygdyg.ru/");
+        String url = firstNonEmpty(data.get("url"), "https://track-anime.win/");
         String tag = firstNonEmpty(data.get("tag"), "history-new");
 
         Intent open = new Intent(this, MainActivity.class);

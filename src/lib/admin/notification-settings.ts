@@ -1,6 +1,10 @@
 import { prisma } from "@/lib/prisma";
 import { verifyDiscordBotApplicationId } from "@/lib/notifications/discord-oauth";
 import {
+  authUrlFallback,
+  normalizeNotificationLinkBaseUrl,
+} from "@/lib/notifications/link-base-url";
+import {
   DEFAULT_NOTIFICATION_TEMPLATES,
   normalizeNotificationTemplates,
   type NotificationMessageTemplates,
@@ -9,6 +13,12 @@ import {
 export const NOTIFICATION_SETTINGS_ID = "default";
 
 export type NotificationSettingsDto = {
+  /** Сохранённый домен ссылок; null = брать AUTH_URL */
+  linkBaseUrl: string | null;
+  /** Фактически используемый origin для pageUrl в уведомлениях */
+  linkBaseUrlEffective: string;
+  /** AUTH_URL (fallback), для подсказки в UI */
+  authUrlFallback: string;
   telegramBotTokenSet: boolean;
   telegramBotUsername: string | null;
   vkBotTokenSet: boolean;
@@ -32,6 +42,7 @@ export type NotificationSettingsDto = {
   messageTemplates: NotificationMessageTemplates;
   updatedAt: string;
   envFallback: {
+    linkBaseUrl: boolean;
     telegram: boolean;
     vk: boolean;
     discord: boolean;
@@ -40,6 +51,7 @@ export type NotificationSettingsDto = {
 };
 
 export type NotificationSettingsSecrets = {
+  linkBaseUrl: string | null;
   telegramBotToken: string | null;
   telegramBotUsername: string | null;
   vkBotToken: string | null;
@@ -95,7 +107,18 @@ export function isValidVkGroupId(value: string): boolean {
 }
 
 function readEnvSecrets(): NotificationSettingsSecrets {
+  let linkBaseUrl: string | null = null;
+  const rawLink = trimOrNull(process.env.NOTIFICATION_LINK_BASE_URL);
+  if (rawLink) {
+    try {
+      linkBaseUrl = normalizeNotificationLinkBaseUrl(rawLink);
+    } catch {
+      linkBaseUrl = null;
+    }
+  }
+
   return {
+    linkBaseUrl,
     telegramBotToken: trimOrNull(process.env.TELEGRAM_BOT_TOKEN),
     telegramBotUsername: trimOrNull(process.env.TELEGRAM_BOT_USERNAME),
     vkBotToken: trimOrNull(process.env.VK_BOT_TOKEN),
@@ -119,6 +142,7 @@ function mergeSecrets(
   env: NotificationSettingsSecrets,
 ): NotificationSettingsSecrets {
   return {
+    linkBaseUrl: db?.linkBaseUrl ?? env.linkBaseUrl,
     telegramBotToken: db?.telegramBotToken ?? env.telegramBotToken,
     telegramBotUsername: db?.telegramBotUsername ?? env.telegramBotUsername,
     vkBotToken: db?.vkBotToken ?? env.vkBotToken,
@@ -170,6 +194,7 @@ async function readDbSecrets(): Promise<NotificationSettingsSecrets | null> {
     if (!row) return null;
 
     return {
+      linkBaseUrl: row.linkBaseUrl,
       telegramBotToken: row.telegramBotToken,
       telegramBotUsername: row.telegramBotUsername,
       vkBotToken: row.vkBotToken,
@@ -213,12 +238,19 @@ export async function getNotificationMessageTemplates(): Promise<NotificationMes
   return secrets.messageTemplates;
 }
 
+/** Origin для pageUrl / обложек в уведомлениях. */
+export async function getNotificationLinkBaseUrl(): Promise<string> {
+  const secrets = await getNotificationSettingsSecrets();
+  return secrets.linkBaseUrl ?? authUrlFallback();
+}
+
 export { DEFAULT_NOTIFICATION_TEMPLATES };
 
 export async function getNotificationSettingsDto(): Promise<NotificationSettingsDto> {
   const env = readEnvSecrets();
   const db = await readDbSecrets();
   const merged = mergeSecrets(db, env);
+  const authFallback = authUrlFallback();
 
   let updatedAt = new Date(0).toISOString();
   try {
@@ -236,6 +268,9 @@ export async function getNotificationSettingsDto(): Promise<NotificationSettings
     : null;
 
   return {
+    linkBaseUrl: merged.linkBaseUrl,
+    linkBaseUrlEffective: merged.linkBaseUrl ?? authFallback,
+    authUrlFallback: authFallback,
     telegramBotTokenSet: Boolean(merged.telegramBotToken),
     telegramBotUsername: merged.telegramBotUsername,
     vkBotTokenSet: Boolean(merged.vkBotToken),
@@ -270,6 +305,7 @@ export async function getNotificationSettingsDto(): Promise<NotificationSettings
     messageTemplates: merged.messageTemplates,
     updatedAt,
     envFallback: {
+      linkBaseUrl: Boolean(!db?.linkBaseUrl && env.linkBaseUrl),
       telegram: Boolean(!db?.telegramBotToken && env.telegramBotToken),
       vk: Boolean(!db?.vkBotToken && env.vkBotToken),
       discord: Boolean(
@@ -286,6 +322,7 @@ export async function getNotificationSettingsDto(): Promise<NotificationSettings
 type SecretPatch = string | null | undefined;
 
 export async function updateNotificationSettings(input: {
+  linkBaseUrl?: SecretPatch;
   telegramBotToken?: SecretPatch;
   telegramBotUsername?: SecretPatch;
   vkBotToken?: SecretPatch;
@@ -308,8 +345,13 @@ export async function updateNotificationSettings(input: {
 
   const apply = (key: keyof typeof input, field: string) => {
     if (input[key] === undefined) return;
-    data[field] = trimOrNull(input[key]);
+    data[field] = trimOrNull(input[key] as SecretPatch);
   };
+
+  if (input.linkBaseUrl !== undefined) {
+    const raw = trimOrNull(input.linkBaseUrl);
+    data.linkBaseUrl = raw ? normalizeNotificationLinkBaseUrl(raw) : null;
+  }
 
   apply("telegramBotToken", "telegramBotToken");
   apply("telegramBotUsername", "telegramBotUsername");

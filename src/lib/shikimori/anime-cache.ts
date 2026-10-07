@@ -4,6 +4,10 @@ import {
   SHIKIMORI_CACHE_TRANSLATION_TYPE,
 } from "@/db/save-shikimori-material";
 import { prisma } from "@/lib/prisma";
+import {
+  didAnimeStatusChange,
+  invalidateRelationSnapshots,
+} from "@/lib/shikimori/relation-snapshot";
 import type { ShikimoriAnime } from "@/lib/shikimori/types";
 
 export const SHIKIMORI_ANIME_CACHE_TTL_MS = 24 * 60 * 60 * 1000;
@@ -60,6 +64,8 @@ export async function persistShikimoriAnimeCache(anime: ShikimoriAnime): Promise
   const syncedAt = new Date().toISOString();
   const title = anime.russian || anime.name;
   const year = yearFromShikimoriDate(anime.aired_on ?? anime.released_on);
+  const previous = await loadStaleShikimoriAnimeFromCache(anime.id);
+  const statusChanged = didAnimeStatusChange(previous?.status, anime.status);
 
   await prisma.kodikMaterial.upsert({
     where: { kodikId: shikimoriStubKodikId(anime.id) },
@@ -103,6 +109,12 @@ export async function persistShikimoriAnimeCache(anime: ShikimoriAnime): Promise
       },
     },
   });
+
+  if (statusChanged) {
+    await invalidateRelationSnapshots(anime.id).catch((error) => {
+      console.warn("[anime-cache] relation snapshot invalidate failed:", anime.id, error);
+    });
+  }
 }
 
 export function parseShikimoriAnimeFromMaterialData(data: unknown): ShikimoriAnime | null {

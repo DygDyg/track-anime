@@ -1,4 +1,8 @@
+"use client";
+
+import { useMemo } from "react";
 import Link from "next/link";
+import { SortableTh, useAdminTableSort } from "@/components/admin/AudienceBreakdownTable";
 import { adminClass } from "@/components/admin/admin-styles";
 import type { WatchPartyHistorySessionDto } from "@/lib/admin/watch-party-history";
 
@@ -54,13 +58,42 @@ export function WatchPartyHistoryPanel({
 }: {
   sessions: WatchPartyHistorySessionDto[];
 }) {
+  const { sortKey, sortDir, toggle } = useAdminTableSort<
+    "createdAt" | "title" | "creator" | "participants" | "duration"
+  >("createdAt", "desc");
+
+  const sorted = useMemo(() => {
+    const mul = sortDir === "asc" ? 1 : -1;
+    return [...sessions].sort((a, b) => {
+      if (sortKey === "createdAt") {
+        return (new Date(a.createdAt).getTime() - new Date(b.createdAt).getTime()) * mul;
+      }
+      if (sortKey === "title") {
+        const at = a.animeTitle ?? String(a.shikimoriId);
+        const bt = b.animeTitle ?? String(b.shikimoriId);
+        return at.localeCompare(bt, "ru") * mul;
+      }
+      if (sortKey === "creator") {
+        return a.creatorNickname.localeCompare(b.creatorNickname, "ru") * mul;
+      }
+      if (sortKey === "participants") {
+        return (a.maxParticipants - b.maxParticipants) * mul;
+      }
+      const ad =
+        (a.endedAt ? new Date(a.endedAt).getTime() : Date.now()) - new Date(a.createdAt).getTime();
+      const bd =
+        (b.endedAt ? new Date(b.endedAt).getTime() : Date.now()) - new Date(b.createdAt).getTime();
+      return (ad - bd) * mul;
+    });
+  }, [sessions, sortKey, sortDir]);
+
   return (
     <section className={`${adminClass.panel} space-y-4`}>
       <div>
         <h3 className="text-base font-semibold text-foreground">История запусков</h3>
         <p className="mt-1 text-xs text-muted">
-          Сессии пишутся WebSocket-сервером: тайтл, состав, создатель и права комнаты. Последние{" "}
-          {sessions.length || 50}.
+          Сессии пишутся WebSocket-сервером: тайтл, состав, создатель и права комнаты. Клик по
+          заголовку сортирует список.
         </p>
       </div>
 
@@ -70,84 +103,152 @@ export function WatchPartyHistoryPanel({
           просмотра (нужен обновлённый watch-party сервер).
         </p>
       ) : (
-        <div className="space-y-3">
-          {sessions.map((session) => (
-            <article
-              key={session.id}
-              className="rounded-lg border border-border bg-background p-3"
-            >
-              <div className="flex flex-wrap items-start justify-between gap-3">
-                <div>
-                  <p className="text-sm font-semibold text-foreground">
-                    Комната {session.roomKey}
-                    {session.active ? (
-                      <span className="ml-2 rounded bg-accent/15 px-1.5 py-0.5 text-[10px] font-semibold uppercase text-accent">
-                        активна
+        <>
+          <div className="overflow-x-auto">
+            <table className="w-full text-left text-sm">
+              <thead>
+                <tr className={adminClass.tableHead}>
+                  <SortableTh
+                    label="Когда"
+                    active={sortKey === "createdAt"}
+                    dir={sortDir}
+                    onClick={() => toggle("createdAt")}
+                  />
+                  <SortableTh
+                    label="Тайтл"
+                    active={sortKey === "title"}
+                    dir={sortDir}
+                    onClick={() => toggle("title")}
+                  />
+                  <SortableTh
+                    label="Создатель"
+                    active={sortKey === "creator"}
+                    dir={sortDir}
+                    onClick={() => toggle("creator")}
+                  />
+                  <SortableTh
+                    label="Участн."
+                    active={sortKey === "participants"}
+                    dir={sortDir}
+                    onClick={() => toggle("participants")}
+                  />
+                  <SortableTh
+                    label="Длит."
+                    active={sortKey === "duration"}
+                    dir={sortDir}
+                    onClick={() => toggle("duration")}
+                  />
+                </tr>
+              </thead>
+              <tbody>
+                {sorted.map((session) => (
+                  <tr key={`sum-${session.id}`} className={adminClass.tableRow}>
+                    <td className="py-2 pr-3 text-xs text-muted">
+                      {formatDateTime(session.createdAt)}
+                      {session.active ? (
+                        <span className="ml-2 rounded bg-accent/15 px-1.5 py-0.5 text-[10px] font-semibold uppercase text-accent">
+                          активна
+                        </span>
+                      ) : null}
+                    </td>
+                    <td className="py-2 pr-3">
+                      <Link href={`/anime/${session.shikimoriId}`} className={adminClass.textLink}>
+                        {session.animeTitle ?? `Shikimori ${session.shikimoriId}`}
+                      </Link>
+                      <span className="mt-0.5 block text-xs text-muted">
+                        #{session.roomKey} · S{session.seasonNumber} · E{session.episodeNumber}
                       </span>
-                    ) : null}
-                  </p>
-                  <p className="mt-1 text-sm text-foreground">
-                    <Link
-                      href={`/anime/${session.shikimoriId}`}
-                      className={adminClass.textLink}
-                    >
-                      {session.animeTitle ?? `Shikimori ${session.shikimoriId}`}
-                    </Link>
-                    {" · "}
-                    S{session.seasonNumber} · E{session.episodeNumber}
-                    {session.translationTitle ? ` · ${session.translationTitle}` : ""}
-                  </p>
-                  <p className="mt-1 text-xs text-muted">
-                    Создал: {session.creatorNickname}
-                    {" · "}
-                    {formatDateTime(session.createdAt)}
-                    {" → "}
-                    {session.endedAt ? formatDateTime(session.endedAt) : "сейчас"}
-                    {" · "}
-                    {formatDuration(session.createdAt, session.endedAt)}
-                    {" · макс. "}
-                    {session.maxParticipants} участн.
-                  </p>
-                </div>
-              </div>
+                    </td>
+                    <td className="py-2 pr-3 text-foreground">{session.creatorNickname}</td>
+                    <td className="py-2 pr-3 tabular-nums">{session.maxParticipants}</td>
+                    <td className="py-2 text-xs text-muted">
+                      {formatDuration(session.createdAt, session.endedAt)}
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
 
-              <PermissionChips session={session} />
-
-              <div className="mt-3 overflow-x-auto">
-                <table className="min-w-full text-left text-xs">
-                  <thead className="text-muted">
-                    <tr className="border-b border-border">
-                      <th className="py-2 pr-3 font-medium">Участник</th>
-                      <th className="py-2 pr-3 font-medium">Роль</th>
-                      <th className="py-2 pr-3 font-medium">Вошёл</th>
-                      <th className="py-2 pr-3 font-medium">Вышел</th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {session.participants.map((p) => (
-                      <tr
-                        key={`${session.id}-${p.userId}-${p.joinedAt}`}
-                        className="border-b border-border/60 last:border-0"
+          <div className="space-y-3">
+            {sorted.map((session) => (
+              <article
+                key={session.id}
+                className="rounded-lg border border-border bg-background p-3"
+              >
+                <div className="flex flex-wrap items-start justify-between gap-3">
+                  <div>
+                    <p className="text-sm font-semibold text-foreground">
+                      Комната {session.roomKey}
+                      {session.active ? (
+                        <span className="ml-2 rounded bg-accent/15 px-1.5 py-0.5 text-[10px] font-semibold uppercase text-accent">
+                          активна
+                        </span>
+                      ) : null}
+                    </p>
+                    <p className="mt-1 text-sm text-foreground">
+                      <Link
+                        href={`/anime/${session.shikimoriId}`}
+                        className={adminClass.textLink}
                       >
-                        <td className="py-2 pr-3 text-foreground">{p.nickname}</td>
-                        <td className="py-2 pr-3 text-muted">
-                          {[
-                            p.isCreator ? "создатель" : null,
-                            p.wasMaster ? "мастер" : null,
-                          ]
-                            .filter(Boolean)
-                            .join(" · ") || "участник"}
-                        </td>
-                        <td className="py-2 pr-3 text-muted">{formatDateTime(p.joinedAt)}</td>
-                        <td className="py-2 pr-3 text-muted">{formatDateTime(p.leftAt)}</td>
+                        {session.animeTitle ?? `Shikimori ${session.shikimoriId}`}
+                      </Link>
+                      {" · "}
+                      S{session.seasonNumber} · E{session.episodeNumber}
+                      {session.translationTitle ? ` · ${session.translationTitle}` : ""}
+                    </p>
+                    <p className="mt-1 text-xs text-muted">
+                      Создал: {session.creatorNickname}
+                      {" · "}
+                      {formatDateTime(session.createdAt)}
+                      {" → "}
+                      {session.endedAt ? formatDateTime(session.endedAt) : "сейчас"}
+                      {" · "}
+                      {formatDuration(session.createdAt, session.endedAt)}
+                      {" · макс. "}
+                      {session.maxParticipants} участн.
+                    </p>
+                  </div>
+                </div>
+
+                <PermissionChips session={session} />
+
+                <div className="mt-3 overflow-x-auto">
+                  <table className="min-w-full text-left text-xs">
+                    <thead className="text-muted">
+                      <tr className="border-b border-border">
+                        <th className="py-2 pr-3 font-medium">Участник</th>
+                        <th className="py-2 pr-3 font-medium">Роль</th>
+                        <th className="py-2 pr-3 font-medium">Вошёл</th>
+                        <th className="py-2 pr-3 font-medium">Вышел</th>
                       </tr>
-                    ))}
-                  </tbody>
-                </table>
-              </div>
-            </article>
-          ))}
-        </div>
+                    </thead>
+                    <tbody>
+                      {session.participants.map((p) => (
+                        <tr
+                          key={`${session.id}-${p.userId}-${p.joinedAt}`}
+                          className="border-b border-border/60 last:border-0"
+                        >
+                          <td className="py-2 pr-3 text-foreground">{p.nickname}</td>
+                          <td className="py-2 pr-3 text-muted">
+                            {[
+                              p.isCreator ? "создатель" : null,
+                              p.wasMaster ? "мастер" : null,
+                            ]
+                              .filter(Boolean)
+                              .join(" · ") || "участник"}
+                          </td>
+                          <td className="py-2 pr-3 text-muted">{formatDateTime(p.joinedAt)}</td>
+                          <td className="py-2 pr-3 text-muted">{formatDateTime(p.leftAt)}</td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              </article>
+            ))}
+          </div>
+        </>
       )}
     </section>
   );

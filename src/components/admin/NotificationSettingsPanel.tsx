@@ -2,7 +2,12 @@
 
 import { useCallback, useEffect, useState } from "react";
 import { adminClass } from "@/components/admin/admin-styles";
+import { NotificationChannelLabel } from "@/components/admin/NotificationChannelIcons";
 import type { NotificationSettingsDto } from "@/lib/admin/notification-settings";
+import {
+  GITHUB_PAGES_LINK_BASE_URL,
+  isGithubPagesLinkBaseUrl,
+} from "@/lib/notifications/link-base-url";
 import {
   DEFAULT_NOTIFICATION_TEMPLATES,
   NOTIFICATION_TEMPLATE_PLACEHOLDERS,
@@ -59,6 +64,10 @@ export function NotificationSettingsPanel({
   currentUserId: string;
 }) {
   const [settings, setSettings] = useState(initialSettings);
+  const [linkBaseUrlDraft, setLinkBaseUrlDraft] = useState(initialSettings.linkBaseUrl ?? "");
+  const [useGithubPagesMirror, setUseGithubPagesMirror] = useState(
+    isGithubPagesLinkBaseUrl(initialSettings.linkBaseUrl),
+  );
   const [telegramBotToken, setTelegramBotToken] = useState("");
   const [telegramBotUsername, setTelegramBotUsername] = useState(
     initialSettings.telegramBotUsername ?? "",
@@ -173,6 +182,9 @@ export function NotificationSettingsPanel({
 
     try {
       const body: Record<string, unknown> = {
+        linkBaseUrl: useGithubPagesMirror
+          ? GITHUB_PAGES_LINK_BASE_URL
+          : linkBaseUrlDraft.trim() || null,
         telegramBotUsername: telegramBotUsername.trim() || null,
         vkGroupId: vkGroupId.trim() || null,
         vkGroupScreenName: vkGroupScreenName.trim() || null,
@@ -206,6 +218,8 @@ export function NotificationSettingsPanel({
       if (data.settings) {
         setSettings(data.settings);
         setMessageTemplates(data.settings.messageTemplates);
+        setLinkBaseUrlDraft(data.settings.linkBaseUrl ?? "");
+        setUseGithubPagesMirror(isGithubPagesLinkBaseUrl(data.settings.linkBaseUrl));
         setTelegramBotUsername(data.settings.telegramBotUsername ?? "");
         setVkGroupId(data.settings.vkGroupId ?? "");
         setVkGroupScreenName(data.settings.vkGroupScreenName ?? "");
@@ -319,10 +333,15 @@ export function NotificationSettingsPanel({
           </div>
         </div>
         <p className="text-xs text-muted">Обновлено: {formatDateTime(settings.updatedAt)}</p>
-        {settings.envFallback.telegram || settings.envFallback.vk || settings.envFallback.discord || settings.envFallback.vapid ? (
+        {settings.envFallback.linkBaseUrl ||
+        settings.envFallback.telegram ||
+        settings.envFallback.vk ||
+        settings.envFallback.discord ||
+        settings.envFallback.vapid ? (
           <p className={`text-xs ${adminClass.alertSuccess}`}>
             Fallback из .env:{" "}
             {[
+              settings.envFallback.linkBaseUrl ? "домен ссылок" : null,
               settings.envFallback.telegram ? "Telegram" : null,
               settings.envFallback.vk ? "VK" : null,
               settings.envFallback.discord ? "Discord" : null,
@@ -332,6 +351,59 @@ export function NotificationSettingsPanel({
               .join(", ")}
           </p>
         ) : null}
+      </section>
+
+      <section className={`${adminClass.panel} space-y-4`}>
+        <div>
+          <h2 className="text-lg font-semibold text-foreground">Домен ссылок в уведомлениях</h2>
+          <p className="mt-1 text-sm text-muted">
+            Используется в Discord / Telegram / VK / FCM (`pageUrl`). Не меняет OAuth (
+            <code className={adminClass.code}>AUTH_URL</code>
+            ). Пустое поле ={" "}
+            <code className={adminClass.code}>{settings.authUrlFallback}</code>. Пример:{" "}
+            <code className={adminClass.code}>
+              {settings.linkBaseUrlEffective}/anime/{DEFAULT_TEST_SHIKIMORI_ID}
+            </code>
+          </p>
+        </div>
+        <label className="block space-y-1">
+          <span className="text-sm font-medium text-foreground">Базовый URL</span>
+          <input
+            type="url"
+            value={useGithubPagesMirror ? GITHUB_PAGES_LINK_BASE_URL : linkBaseUrlDraft}
+            onChange={(event) => {
+              setUseGithubPagesMirror(false);
+              setLinkBaseUrlDraft(event.target.value);
+            }}
+            disabled={useGithubPagesMirror}
+            placeholder={settings.authUrlFallback}
+            className={`${adminClass.input} w-full`}
+          />
+        </label>
+        <label className="flex cursor-pointer items-start gap-2 text-sm">
+          <input
+            type="checkbox"
+            className="mt-1"
+            checked={useGithubPagesMirror}
+            onChange={(event) => {
+              const checked = event.target.checked;
+              setUseGithubPagesMirror(checked);
+              if (checked) {
+                setLinkBaseUrlDraft(GITHUB_PAGES_LINK_BASE_URL);
+              }
+            }}
+          />
+          <span>
+            <span className="font-medium text-foreground">
+              Использовать {GITHUB_PAGES_LINK_BASE_URL.replace(/^https:\/\//, "")}
+            </span>
+            <span className="mt-0.5 block text-xs text-muted">
+              Роутер на GitHub Pages: проверяет живые зеркала и переносит путь тайтла (
+              <code className="text-[11px]">/anime/…</code>
+              ) на выбранный сайт.
+            </span>
+          </span>
+        </label>
       </section>
 
       <section className={`${adminClass.panel} space-y-4`}>
@@ -671,7 +743,11 @@ export function NotificationSettingsPanel({
                 }
                 className="site-checkbox"
               />
-              {channel === "fcm" ? "Android FCM" : channel}
+              <NotificationChannelLabel
+                channel={channel}
+                label={channel === "browser" ? "Браузер" : undefined}
+                iconClassName="h-3.5 w-3.5"
+              />
             </label>
           ))}
         </div>

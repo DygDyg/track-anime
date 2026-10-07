@@ -15,7 +15,7 @@ function Get-TaDeployHttpConnectExe {
         return $null
     }
 
-    $srcHash = (Get-FileHash -Algorithm SHA256 -LiteralPath $src).Hash
+    $srcHash = Get-TaDeployFileSha256 -LiteralPath $src
     $wanted = "$sourceVersion-$srcHash"
     if ((Test-Path -LiteralPath $exe) -and (Test-Path -LiteralPath $stamp)) {
         $existing = (Get-Content -LiteralPath $stamp -Raw).Trim()

@@ -125,7 +125,7 @@ Shikimori host (`shikimori.io` / `shikimori.one`) настраивается в 
 ### Session (`src/lib/auth/session.ts`)
 
 - Cookie `ta.session` → `Session` row в БД
-- TTL 30 дней
+- TTL 1 год + sliding renewal (продление при визитах, если осталось < 90 дней)
 - `getSession()` — основная точка проверки auth
 
 ### Prisma (`src/lib/prisma.ts`)

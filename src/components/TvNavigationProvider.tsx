@@ -13,11 +13,15 @@ import {
   isTvBackKey,
   isTvChromeElement,
   isTvPageNearTop,
+  isTvPointerScrollModeActive,
+  isTvSearchEditing,
   markTvNavigationActive,
   isTvNavigationSessionActive,
+  scrollTvPage,
   scrollTvPageUp,
   shouldIgnoreTvNavigation,
   startTvFocusableCacheWatch,
+  startTvPointerScrollWatch,
   type TvNavDirection,
 } from "@/lib/tv-navigation";
 
@@ -64,6 +68,11 @@ export function TvNavigationProvider() {
   }, [settings.tvNavigationEnabled]);
 
   useEffect(() => {
+    if (!settings.tvNavigationEnabled) return;
+    return startTvPointerScrollWatch();
+  }, [settings.tvNavigationEnabled]);
+
+  useEffect(() => {
     return installAndroidBackBridge();
   }, []);
 
@@ -92,13 +101,21 @@ export function TvNavigationProvider() {
         const focusedInScope = Boolean(current && focusables.includes(current));
         const tvNavActive = isTvNavigationSessionActive();
         const tvLike = isTvLikeDevice();
+        const pointerScroll =
+          !openModal && isTvPointerScrollModeActive() && !isTvSearchEditing();
 
-        if (!tvLike && !tvNavActive && !focusedInScope && !openModal) {
+        if (!tvLike && !tvNavActive && !focusedInScope && !openModal && !pointerScroll) {
           return;
         }
 
         event.preventDefault();
         markTvNavigationActive();
+
+        // Air mouse recently moved: D-pad scrolls the page instead of hopping focus.
+        if (pointerScroll) {
+          scrollTvPage(direction);
+          return;
+        }
 
         let navCurrent =
           current && focusables.includes(current) ? current : null;

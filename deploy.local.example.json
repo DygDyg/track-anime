@@ -4,7 +4,7 @@
   "proxyPassword": "",
   "proxyCommand": "",
 
-  "remote": "root@195.26.230.35",
+  "remote": "root@194.180.189.34",
   "serverAppDir": "/var/www/ta_new",
   "sshKey": "%USERPROFILE%\\.ssh\\id_rsa",
 

@@ -2,19 +2,23 @@
 
 import Link from "next/link";
 import { useState } from "react";
+import { NotificationChannelBadges } from "@/components/admin/NotificationChannelIcons";
 import { adminClass } from "@/components/admin/admin-styles";
+import type { AdminUserRow } from "@/lib/admin/stats";
 import { userProfilePath } from "@/lib/public-user";
 
-type UserRow = {
-  id: string;
-  shikimoriId: number;
-  nickname: string;
-  isAdmin: boolean;
-  createdAt: string;
-  lastLoginAt: string | null;
-  sessions: number;
-  listEntries: number;
-};
+type UserRow = AdminUserRow;
+
+type SortKey =
+  | "nickname"
+  | "shikimoriId"
+  | "sessions"
+  | "listEntries"
+  | "createdAt"
+  | "lastLoginAt"
+  | "isAdmin";
+
+type SortDir = "asc" | "desc";
 
 function formatAdminDateTime(value: string | null): string {
   if (!value) return "—";
@@ -27,10 +31,84 @@ function formatAdminDateTime(value: string | null): string {
   });
 }
 
+function compareUsers(a: UserRow, b: UserRow, key: SortKey, dir: SortDir): number {
+  const sign = dir === "asc" ? 1 : -1;
+  switch (key) {
+    case "nickname":
+      return sign * a.nickname.localeCompare(b.nickname, "ru", { sensitivity: "base" });
+    case "shikimoriId":
+      return sign * (a.shikimoriId - b.shikimoriId);
+    case "sessions":
+      return sign * (a.sessions - b.sessions);
+    case "listEntries":
+      return sign * (a.listEntries - b.listEntries);
+    case "createdAt":
+      return sign * (Date.parse(a.createdAt) - Date.parse(b.createdAt));
+    case "lastLoginAt": {
+      const aTs = a.lastLoginAt ? Date.parse(a.lastLoginAt) : 0;
+      const bTs = b.lastLoginAt ? Date.parse(b.lastLoginAt) : 0;
+      return sign * (aTs - bTs);
+    }
+    case "isAdmin":
+      return sign * (Number(a.isAdmin) - Number(b.isAdmin));
+    default:
+      return 0;
+  }
+}
+
+function SortHeader({
+  label,
+  column,
+  sortKey,
+  sortDir,
+  onSort,
+}: {
+  label: string;
+  column: SortKey;
+  sortKey: SortKey;
+  sortDir: SortDir;
+  onSort: (key: SortKey) => void;
+}) {
+  const active = sortKey === column;
+  const marker = active ? (sortDir === "asc" ? " ↑" : " ↓") : "";
+
+  return (
+    <th className="px-4 py-3">
+      <button
+        type="button"
+        onClick={() => onSort(column)}
+        className={[
+          "inline-flex items-center gap-0.5 font-medium transition hover:text-foreground",
+          active ? "text-foreground" : "text-inherit",
+        ].join(" ")}
+        aria-sort={active ? (sortDir === "asc" ? "ascending" : "descending") : "none"}
+      >
+        {label}
+        <span className="tabular-nums text-muted" aria-hidden>
+          {marker || " ↕"}
+        </span>
+      </button>
+    </th>
+  );
+}
+
 export function AdminUsersTable({ initialUsers }: { initialUsers: UserRow[] }) {
   const [users, setUsers] = useState(initialUsers);
   const [busyId, setBusyId] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const [sortKey, setSortKey] = useState<SortKey>("createdAt");
+  const [sortDir, setSortDir] = useState<SortDir>("desc");
+
+  const sortedUsers = [...users].sort((a, b) => compareUsers(a, b, sortKey, sortDir));
+
+  function onSort(key: SortKey) {
+    if (sortKey === key) {
+      setSortDir((prev) => (prev === "asc" ? "desc" : "asc"));
+      return;
+    }
+    setSortKey(key);
+    setSortDir(key === "nickname" ? "asc" : "desc");
+  }
 
   async function toggleAdmin(userId: string, nextValue: boolean) {
     setBusyId(userId);
@@ -66,20 +144,25 @@ export function AdminUsersTable({ initialUsers }: { initialUsers: UserRow[] }) {
         <table className="min-w-full text-left text-sm">
           <thead className={adminClass.tableHead}>
             <tr>
-              <th className="px-4 py-3">Пользователь</th>
-              <th className="px-4 py-3">Shikimori ID</th>
-              <th className="px-4 py-3">Сессии</th>
-              <th className="px-4 py-3">Список</th>
-              <th className="px-4 py-3">Регистрация</th>
-              <th className="px-4 py-3">Последний вход</th>
+              <SortHeader label="Пользователь" column="nickname" sortKey={sortKey} sortDir={sortDir} onSort={onSort} />
+              <SortHeader label="Shikimori ID" column="shikimoriId" sortKey={sortKey} sortDir={sortDir} onSort={onSort} />
+              <SortHeader label="Сессии" column="sessions" sortKey={sortKey} sortDir={sortDir} onSort={onSort} />
+              <SortHeader label="Список" column="listEntries" sortKey={sortKey} sortDir={sortDir} onSort={onSort} />
+              <SortHeader label="Регистрация" column="createdAt" sortKey={sortKey} sortDir={sortDir} onSort={onSort} />
+              <SortHeader label="Последний визит" column="lastLoginAt" sortKey={sortKey} sortDir={sortDir} onSort={onSort} />
               <th className="px-4 py-3">Профиль</th>
-              <th className="px-4 py-3">Админ</th>
+              <SortHeader label="Админ" column="isAdmin" sortKey={sortKey} sortDir={sortDir} onSort={onSort} />
             </tr>
           </thead>
           <tbody>
-            {users.map((user) => (
+            {sortedUsers.map((user) => (
               <tr key={user.id} className={adminClass.tableRow}>
-                <td className="px-4 py-3 font-semibold text-foreground">{user.nickname}</td>
+                <td className="px-4 py-3 font-semibold text-foreground">
+                  <span className="inline-flex flex-wrap items-center gap-y-1">
+                    {user.nickname}
+                    <NotificationChannelBadges channels={user.notificationChannels} />
+                  </span>
+                </td>
                 <td className="px-4 py-3 tabular-nums text-muted">{user.shikimoriId}</td>
                 <td className="px-4 py-3 tabular-nums text-muted">{user.sessions}</td>
                 <td className="px-4 py-3 tabular-nums text-muted">{user.listEntries}</td>

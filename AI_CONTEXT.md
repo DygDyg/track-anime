@@ -19,22 +19,24 @@ Next.js anime streaming site with Shikimori OAuth + Kodik player. Data lives in 
 | Task | Start here |
 |------|------------|
 | Fix auth/login | `src/lib/auth/shikimori-oauth.ts`, `src/lib/auth/local-credentials.ts`, `src/lib/auth/qr-login.ts`, `src/app/api/auth/callback/shikimori/route.ts` |
-| Fix player | `src/components/anime/KodikPlayer.tsx`, `src/lib/kodik-player-api.ts` |
+| Fix player | `src/components/anime/KodikPlayer.tsx`, `src/lib/kodik-player-api.ts`, `CvhWatchSection.tsx`, `CvhPlayerFrame.tsx`, `src/lib/cvh-player.ts`, `src/lib/anime-watch-share.ts`, `MoveToCompletedBanner.tsx`, `src/lib/move-to-completed-prompt.ts` |
 | Fix watch party | `src/hooks/useWatchParty.ts`, `scripts/watch-party-server.mjs`, `scripts/watch-party-history.mjs`, `src/components/anime/AnimeWatchPanel.tsx`, `src/lib/admin/watch-party-history.ts` |
 | Fix home feed | `src/lib/releases.ts`, `src/components/ReleaseFeed.tsx` |
 | Fix calendar | `src/lib/calendar.ts`, `src/components/calendar/CalendarView.tsx`, `src/lib/shikimori/calendar-api.ts` |
-| Fix history cards | `src/components/history/HistoryWatchCard.tsx`, `src/lib/history-watch-card.ts` — единый UI для /history и «Новое в вашей истории» |
+| Fix history cards | `src/components/history/HistoryWatchCard.tsx`, `src/lib/history-watch-card.ts`, `HistoryView.tsx` — единый UI для /history и «Новое в вашей истории»; на `/history` вкладки «Актуальные» / «Просмотрено» / «Отложено» / «Брошено» (по умолчанию без completed/on_hold/dropped) |
 | Fix history upcoming | `src/lib/history-upcoming-soon.ts`, `HistoryUpcomingSoonPanel.tsx` — блок «Скоро выйдут» на `/history` и на главной над «Новое в вашей истории» (если count > 0; озвучка: last ep + 7д, окно 12ч) |
 | Fix anime page | `src/lib/anime-page.ts`, `src/app/anime/[shikimoriId]/page.tsx` |
-| Fix lists/favorites | `src/lib/favorites-sync.ts`, `src/lib/shikimori/user-list-mutations.ts` |
+| Fix lists/favorites | `src/app/user/[shikimoriId]/favorites/page.tsx`, `FavoritesView.tsx`, `src/lib/favorites-sync.ts`, `src/lib/shikimori/user-list-mutations.ts` |
 | Fix search | `src/lib/search.ts` (server-only, raw SQL) |
 | Fix import/sync | `src/lib/admin/kodik-sync.ts`, `scripts/kodik-import-full.ts` |
 | Fix MAL ID / AniSkip mapping | `src/lib/admin/mal-id-sync.ts`, `src/lib/shikimori/mal-id.ts`, `src/lib/aniskip.ts`, `MalIdSyncPanel.tsx` |
-| Fix posters | `src/lib/poster.ts`, `AnimePoster.tsx`, `src/lib/cover-cache.ts`, `src/app/api/cover/route.ts` |
+| Fix posters | `src/lib/poster.ts`, `AnimePoster.tsx`, `src/lib/cover-cache.ts`, `src/lib/poster-fallback.ts`, `src/lib/admin/cover-cache-settings.ts`, `src/app/api/cover/route.ts`, `/admin/covers` |
 | Fix notifications | `src/lib/notifications/`, `src/app/api/notifications/`, `scripts/notification-worker.ts` |
 | Fix companion | `src/components/companion/AquaCoderCompanion.tsx`, `src/lib/companion/AquaCoderCanvas.ts`, `src/lib/companion/companion-bus.ts`, `public/companion/aqua-coder-chibi/`, `aqua-coder-web/` |
 | Fix admin | `src/lib/auth/admin.ts`, `src/app/admin/` |
-| Fix audience analytics | `src/lib/analytics/track.ts`, `src/lib/admin/audience-stats.ts`, `src/app/admin/audience/`, `src/components/SiteAnalyticsBeacon.tsx` |
+| Fix DB WebDAV backup | `src/lib/admin/db-backup.ts`, `db-backup-settings.ts`, `db-backup-webdav.ts`, `DbBackupSettingsPanel.tsx`, `/admin/db`, cron в `kodik-sync-scheduled.ts` |
+| Fix app promo | `src/lib/admin/app-promo-settings.ts`, `AndroidAppPromoPrompt.tsx`, `DesktopAppPromoPrompt.tsx`, `/admin/app-promo` |
+| Fix audience analytics | `src/lib/analytics/track.ts`, `src/lib/admin/audience-stats.ts`, `src/lib/admin/watch-share-log.ts`, `WatchShareLogPanel.tsx`, `src/app/admin/audience/`, `WatchPartyStatsPanel.tsx`, `src/components/SiteAnalyticsBeacon.tsx` |
 
 ## Request routing (multi-task / dispatcher)
 
@@ -46,10 +48,10 @@ Codex: использовать эту таблицу напрямую и чит
 | Тема | Ключевые слова | Стартовые файлы |
 |------|----------------|-----------------|
 | Mobile UI | мобильн, UI, header, nav, избранн | `FavoritesView.tsx`, `Header.tsx`, `PwaBottomNav.tsx`, `globals.css` |
-| Anime page | lightbox, player expand, trailer, screenshots | `AnimePageView.tsx`, `AnimeWatchPanel.tsx`, `KodikPlayer.tsx` |
-| Covers / posters | обложк, poster, thumb, cover | `AnimePoster.tsx`, `src/lib/poster.ts`, `cover-cache.ts`, `src/app/api/cover/route.ts` |
+| Anime page | lightbox, player expand, trailer, screenshots | `AnimePageView.tsx`, `AnimeWatchPanel.tsx`, `KodikPlayer.tsx`, `KodikPlayerBetaViewport.tsx` |
+| Covers / posters | обложк, poster, thumb, cover | `AnimePoster.tsx`, `src/lib/poster.ts`, `cover-cache.ts`, `poster-fallback.ts`, `cover-cache-settings.ts`, `src/app/api/cover/route.ts` |
 | Lists / sync | списк, sync, rewatches, shikimori | `favorites-sync.ts`, `user-list-mutations.ts` |
-| Player | kodik, плеер, progress | `KodikPlayer.tsx`, `kodik-player-api.ts` |
+| Player | kodik, cvh, videohub, плеер, progress, theater, по высоте | `KodikPlayer.tsx`, `KodikPlayerBetaViewport.tsx`, `CvhWatchSection.tsx`, `kodik-player-api.ts`, `cvh-player.ts`, `globals.css` (`.kodik-player-beta-stage--height-expanded`, `data-player-theater`) |
 | Deploy | деплой, deploy, prod | `scripts/deploy-auto.ps1`, `deploy.ps1`, `deploy-rpc.ps1`, `deploy-apk.ps1`, `deploy-windows-app.ps1`, `docs/DEPLOY.md` |
 | Auth | oauth, login, session | `shikimori-oauth.ts`, `src/app/api/auth/` |
 | Home feed | главная, лента | `releases.ts`, `ReleaseFeed.tsx` |
@@ -75,12 +77,14 @@ Details: `DECISIONS.md`, если файл присутствует. Если ф
 2. **Shikimori ID is the URL key** — not internal DB id, not kodikId
 3. **KodikMaterial = one translation** — multiple materials per anime
 4. **Watch progress is per shikimoriId** — not per translation
-5. **Feed requires sync** — empty home = no KodikEpisodeRelease rows
-6. **OAuth User-Agent** — must match Shikimori app name (`SHIKIMORI_APP_NAME`)
-7. **Redirect URI** — must exactly match Shikimori OAuth app settings
-8. **Shikimori host** — configurable (`.io` vs `.one`), stored in DB
-9. **CLI scripts use own PrismaClient** — not always the singleton
-10. **Russian UI** — user-facing strings are Russian
+5. **Last-episode «Просмотрено» banner** — armed when watch-history returns `cleared`; shown on pause or TA fullscreen exit; does not auto-set `completed`
+6. **Auth session refresh must keep `user` identity** — `AuthProvider` refreshes on focus/visibility; equal users must not get a new object or `AnimeWatchPanel` boot remounts the player
+7. **Feed requires sync** — empty home = no KodikEpisodeRelease rows
+8. **OAuth User-Agent** — must match Shikimori app name (`SHIKIMORI_APP_NAME`)
+9. **Redirect URI** — must exactly match Shikimori OAuth app settings
+10. **Shikimori host** — configurable (`.io` vs `.one`), stored in DB
+11. **CLI scripts use own PrismaClient** — not always the singleton
+12. **Russian UI** — user-facing strings are Russian
 
 ## Data Flow Shortcuts
 
@@ -111,14 +115,16 @@ Calendar: `/calendar` → calendar.ts → local Kodik DB or Shikimori `/api/cale
 | Problem | Likely cause |
 |---------|--------------|
 | Empty home feed | No sync run — `npm run kodik:sync` |
+| Admin stale-DB banner | Sync older than 2h — check cron / `kodik-sync.log`; preview `/?adminSyncBannerPreview=1` |
 | OAuth fails | Redirect URI mismatch, HTTP instead of HTTPS in prod |
-| 401 on list update | Expired Shikimori token — check `auth-client.ts` refresh |
+| 401 on list update | Expired Shikimori token — баннер «Связь с Shikimori истекла — переподключите» / `auth-client.ts` refresh |
 | Anime page 404 | Invalid shikimoriId or no Shikimori data |
 | No player | No KodikMaterial for shikimoriId — page auto-ensures via Kodik search; import/sync use `anime,anime-serial` (films are `type=anime`) |
 | Rate limit errors | Shikimori/Kodik rate limiter — check `rate-limiter.ts` |
 | Poster missing | Fallback chain exhausted — check materialData, Shikimori cache |
+| Anime page poster ≠ lightbox | Страница должна быть `size="full"` на том же `/api/cover?id=` что lightbox; не `size=thumb` (разный browser cache). Cover без `immutable` |
 | Import stuck | Check `KodikImportJob` status in DB or admin panel |
-| Session lost | Cookie domain/path, or expired Session row |
+| Session lost | Cookie host-only (другой mirror в браузере), год без визитов (TTL 1г + sliding), или wipe cookie в оболочке при sync с пустого хоста (исправлено); debug: `Session` + `ta.session` |
 | In-app flood on phone/PC reopen | Per-device `localStorage` since without account cursor, or catch-up without progress filter — check `inAppNotifySince` + `rebuild-payload.ts` |
 | Android closed-app push missing | Need FCM env on server + readable SA JSON (`www-data`) + user toggle «Уведомления Android» (or first-run banner in shell); Web Push does not work in WebView shell |
 | Phone dev: no JS, TitleCover only | Open via LAN IP without `allowedDevOrigins` — restart `npm run dev`, use `http://192.168.x.x:3000` |
@@ -126,6 +132,7 @@ Calendar: `/calendar` → calendar.ts → local Kodik DB or Shikimori `/api/cale
 | Brand logo does not rotate | No `.webp` files in `public/brand-logos`, `BrandRotationSettings.enabled=false`, or interval slot has not changed yet |
 | Android TV lag / blur | Full desktop UI in WebView; TV sets `data-tv-nav` which disables blur/companion — check inject in `BaseWebActivity.enableTvSiteNavigation` |
 | Kodik video freezes, audio continues | GPU pressure from page chrome (screenshot `blur-md`, pattern parallax, companion RAF) or React thrash on `time_update`. Playback sets `data-player-playing`; panel skips position-only state updates (timeline in beta viewport; skip clock from `liveProgressRef`); focus reclaim is event-driven not polling; refresh / «Перезапустить плеер» remounts iframe |
+| Legacy Kodik iframe has no episode list | Embed is `/seria/` (single episode). Legacy mode must stay on `/serial/`/`/season/` — see `allowSeriaRemount` in `player-url.ts` / `AnimeWatchPanel` |
 | TV search opens IME on focus | HeaderSearch idle uses wrapper `data-tv-focus`; OK/Enter required to edit |
 | Title search miss on synonym/описка | Strict fuzzy needs all tokens; empty query then tries layout + partial-token fuzzy in `search.ts` |
 | App settings dialog ignores D-pad | Native dialog needs focus drawables + `requestFocus` — see `showAppSettings` |
@@ -177,8 +184,10 @@ npm run watch-party:server
 - `User.shikimoriId` — unique, from OAuth
 - `LocalCredential` — optional local login (case-preserved) + `loginNormalized` + password hash for the same `User`
 - `QrLoginRequest` — one-time QR approval state; the QR itself never contains a session token
+- `QrCodeScanner` — webcam QR scan via `getUserMedia`; native `BarcodeDetector` when available, otherwise `jsQR` (desktop Chrome)
 - `UserWatchProgress` — unique (userId, shikimoriId)
 - `WatchPartySettings` — global TA-плеер совместный просмотр toggles
+- `AppPromoSettings` — soft-promo приложений: `enabled` (mobile) + `desktopEnabled` (PC)
 - `KodikEpisodeRelease` — home feed source
 - `UserNotificationPreferences`, `UserNotificationLink`, `NotificationDelivery` — notifications state
 - `AnimeExternalIdMap` — server-side external ID cache (`shikimoriId -> malId`)

@@ -32,6 +32,12 @@ public sealed class AppPreferences
         set { _data.LastSessionHost = value; Save(); }
     }
 
+    public bool HadTaSession
+    {
+        get => _data.HadTaSession;
+        set { _data.HadTaSession = value; Save(); }
+    }
+
     public ProxyMode ProxyMode
     {
         get => _data.ProxyMode;
@@ -101,6 +107,7 @@ public sealed class AppPreferences
     private sealed class PrefData
     {
         public string? LastSessionHost { get; set; }
+        public bool HadTaSession { get; set; }
         public ProxyMode ProxyMode { get; set; } = ProxyMode.Server;
         public string? ProxyHost { get; set; }
         public int ProxyPort { get; set; }

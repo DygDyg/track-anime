@@ -1,4 +1,5 @@
 import Link from "next/link";
+import { AdminServerLoadPanel } from "@/components/admin/AdminServerLoadPanel";
 import { AdminSiteVersionPanel } from "@/components/admin/AdminSiteVersionPanel";
 import { AdminStoragePanel } from "@/components/admin/AdminStoragePanel";
 import { StatCard } from "@/components/admin/StatCard";
@@ -14,6 +15,8 @@ export default async function AdminDashboardPage() {
 
   return (
     <div className="space-y-6">
+      <AdminServerLoadPanel />
+
       <AdminSiteVersionPanel build={stats.build} />
 
       <section>
@@ -36,10 +39,20 @@ export default async function AdminDashboardPage() {
           <StatCard label="DAU (гости+аккаунты)" value={audience.dau} />
           <StatCard label="Онлайн (~15 мин)" value={audience.activeNow} />
           <StatCard label="MAU (30 дней)" value={audience.mau} />
+          <StatCard
+            label="Плеер Kodik / TA (30 дн.)"
+            value={audience.playerKodik.people}
+            hint={`запусков: ${audience.playerKodik.hits.toLocaleString("ru-RU")}`}
+          />
+          <StatCard
+            label="Плеер VideoHUB (30 дн.)"
+            value={audience.playerCvh.people}
+            hint={`запусков: ${audience.playerCvh.hits.toLocaleString("ru-RU")}`}
+          />
         </div>
         <p className="mt-3 text-sm">
           <Link href="/admin/audience" className={adminClass.textLink}>
-            Аудитория и платформы →
+            Аналитика и платформы →
           </Link>
         </p>
       </section>

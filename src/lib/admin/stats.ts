@@ -192,10 +192,12 @@ export type AdminUserRow = {
   avatar: string | null;
   isAdmin: boolean;
   createdAt: string;
-  /** Последнее создание серверной сессии (вход), ISO или null если сессий нет. */
+  /** Последняя активность на сайте (analytics beacon), ISO или null. */
   lastLoginAt: string | null;
   sessions: number;
   listEntries: number;
+  /** Активные каналы уведомлений (enabled + привязка / токен). */
+  notificationChannels: Array<"telegram" | "vk" | "discord" | "browser" | "fcm">;
 };
 
 export async function getAdminUsers(limit = 50): Promise<AdminUserRow[]> {
@@ -203,31 +205,74 @@ export async function getAdminUsers(limit = 50): Promise<AdminUserRow[]> {
     orderBy: { createdAt: "desc" },
     take: limit,
     include: {
+      notificationPreferences: {
+        select: {
+          historyNewEnabled: true,
+          telegramEnabled: true,
+          vkEnabled: true,
+          discordEnabled: true,
+        },
+      },
+      notificationLink: {
+        select: {
+          telegramChatId: true,
+          vkUserId: true,
+          discordUserId: true,
+        },
+      },
       _count: {
         select: {
           sessions: true,
           animeListEntries: true,
+          pushSubscriptions: true,
+          fcmDeviceTokens: true,
         },
-      },
-      sessions: {
-        orderBy: { createdAt: "desc" },
-        take: 1,
-        select: { createdAt: true },
       },
     },
   });
 
-  return users.map((user) => ({
-    id: user.id,
-    shikimoriId: user.shikimoriId,
-    nickname: user.nickname,
-    avatar: user.avatar,
-    isAdmin: user.isAdmin,
-    createdAt: user.createdAt.toISOString(),
-    lastLoginAt: user.sessions[0]?.createdAt.toISOString() ?? null,
-    sessions: user._count.sessions,
-    listEntries: user._count.animeListEntries,
-  }));
+  const userIds = users.map((user) => user.id);
+  const visitors =
+    userIds.length === 0
+      ? []
+      : await prisma.siteVisitor.findMany({
+          where: { userId: { in: userIds } },
+          select: { userId: true, lastSeenAt: true },
+        });
+
+  const lastSeenByUserId = new Map<string, Date>();
+  for (const visitor of visitors) {
+    if (!visitor.userId) continue;
+    const prev = lastSeenByUserId.get(visitor.userId);
+    if (!prev || visitor.lastSeenAt > prev) {
+      lastSeenByUserId.set(visitor.userId, visitor.lastSeenAt);
+    }
+  }
+
+  return users.map((user) => {
+    const prefs = user.notificationPreferences;
+    const link = user.notificationLink;
+    const historyOn = Boolean(prefs?.historyNewEnabled);
+    const channels: AdminUserRow["notificationChannels"] = [];
+    if (historyOn && prefs?.telegramEnabled && link?.telegramChatId) channels.push("telegram");
+    if (historyOn && prefs?.vkEnabled && link?.vkUserId) channels.push("vk");
+    if (historyOn && prefs?.discordEnabled && link?.discordUserId) channels.push("discord");
+    if (historyOn && user._count.pushSubscriptions > 0) channels.push("browser");
+    if (historyOn && user._count.fcmDeviceTokens > 0) channels.push("fcm");
+
+    return {
+      id: user.id,
+      shikimoriId: user.shikimoriId,
+      nickname: user.nickname,
+      avatar: user.avatar,
+      isAdmin: user.isAdmin,
+      createdAt: user.createdAt.toISOString(),
+      lastLoginAt: lastSeenByUserId.get(user.id)?.toISOString() ?? null,
+      sessions: user._count.sessions,
+      listEntries: user._count.animeListEntries,
+      notificationChannels: channels,
+    };
+  });
 }
 
 export type DataQualityStats = {

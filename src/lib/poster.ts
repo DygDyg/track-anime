@@ -5,14 +5,20 @@ export type CoverCacheSize = "full" | "thumb";
 export type PosterResolveOptions = {
   shikimoriId?: number | null;
   size?: CoverCacheSize;
+  /** Cache-bust query for /api/cover after force refresh */
+  cacheBust?: string | number | null;
 };
 
 /** URL прокси-кэша. Прямая ссылка на источник не передаётся — сервер берёт её только при промахе/устаревании. */
-export function coverCacheUrl(shikimoriId: number, size: CoverCacheSize = "full"): string {
-  if (size === "thumb") {
-    return `/api/cover?id=${shikimoriId}&size=thumb`;
-  }
-  return `/api/cover?id=${shikimoriId}`;
+export function coverCacheUrl(
+  shikimoriId: number,
+  size: CoverCacheSize = "full",
+  cacheBust?: string | number | null,
+): string {
+  const base =
+    size === "thumb" ? `/api/cover?id=${shikimoriId}&size=thumb` : `/api/cover?id=${shikimoriId}`;
+  if (cacheBust == null || cacheBust === "") return base;
+  return `${base}&_=${encodeURIComponent(String(cacheBust))}`;
 }
 
 export function resolvePosterUrl(
@@ -20,7 +26,7 @@ export function resolvePosterUrl(
   options?: PosterResolveOptions,
 ): string | null {
   if (options?.shikimoriId) {
-    return coverCacheUrl(options.shikimoriId, options.size ?? "thumb");
+    return coverCacheUrl(options.shikimoriId, options.size ?? "thumb", options.cacheBust);
   }
   if (!url || isShikimoriMissingImage(url)) return null;
   return url;
@@ -89,12 +95,12 @@ export function getInitialPosterDisplayAttempt(
   fallbackUrl: string | null | undefined,
   options?: PosterResolveOptions,
 ): PosterDisplayAttempt {
-  const size = options?.size ?? "thumb";
   const shikimoriId = options?.shikimoriId;
 
-  if (size === "thumb" && shikimoriId) return "poster";
-  if (isValidImageUrl(posterUrl)) return "direct";
+  // С id всегда идём в /api/cover — иначе full на странице тайтла берёт прямой
+  // posterUrl (часто устаревший анонс), а lightbox уже обновлённый cover-cache.
   if (shikimoriId) return "poster";
+  if (isValidImageUrl(posterUrl)) return "direct";
   if (isValidImageUrl(fallbackUrl)) return "fallback";
   return "poster";
 }
@@ -116,7 +122,7 @@ export function resolvePosterDisplayUrl(
   }
 
   if (options?.shikimoriId) {
-    return coverCacheUrl(options.shikimoriId, size);
+    return coverCacheUrl(options.shikimoriId, size, options.cacheBust);
   }
 
   if (isValidImageUrl(posterUrl)) {

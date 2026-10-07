@@ -13,7 +13,7 @@ import { listStatusCardAccentClass } from "@/components/favorites/favorites-tab-
 import { useSiteSettings } from "@/components/SiteSettingsProvider";
 import { EXTERNAL_IMG_ATTRS } from "@/lib/external-image";
 import { shouldShowListBadge } from "@/lib/user-anime-list-status";
-import { episodeBadgeClass } from "@/lib/anime-labels";
+import { earlySeriesCardAccentClass, episodeBadgeClass, isEarlySeriesRelease } from "@/lib/anime-labels";
 import type { ReleaseItem, ReleaseItemDto } from "@/lib/releases";
 
 function EpisodeNumberBadge({
@@ -34,6 +34,16 @@ function EpisodeNumberBadge({
   );
 }
 
+function EarlySeriesNewBadge() {
+  return (
+    <div
+      className={`rounded-md border border-white/25 px-1.5 py-0.5 text-[10px] font-extrabold uppercase leading-none tracking-wide text-white shadow-[0_1px_3px_rgba(0,0,0,0.55)] sm:px-2 sm:text-[11px] ${earlySeriesCardAccentClass()}`}
+    >
+      NEW
+    </div>
+  );
+}
+
 export function ReleaseCard({
   release,
   hoverPanelPortal = false,
@@ -46,6 +56,7 @@ export function ReleaseCard({
   const listInfo = useUserListStatus(release.shikimoriId);
   const listAccentClass = listInfo ? listStatusCardAccentClass(listInfo.listStatus) : null;
   const showListMark = shouldShowListBadge(listInfo);
+  const showEarlySeriesMark = isEarlySeriesRelease(release.episodeNumber, release.kind);
 
   const watchHref = release.playerLink ?? "#";
   const animeHref = release.shikimoriId ? `/anime/${release.shikimoriId}` : null;
@@ -106,6 +117,12 @@ export function ReleaseCard({
           showListMark && listAccentClass ? `border-l-4 ${listAccentClass}` : "",
         ].join(" ")}
       >
+        {showEarlySeriesMark ? (
+          <div
+            aria-hidden
+            className={`pointer-events-none absolute inset-x-0 top-0 z-20 h-1 ${earlySeriesCardAccentClass()}`}
+          />
+        ) : null}
         {showScreenshotBackground ? (
           <>
             {/* eslint-disable-next-line @next/next/no-img-element */}
@@ -134,12 +151,23 @@ export function ReleaseCard({
               className="absolute right-1 top-1 z-20 md:right-1.5 md:top-1.5"
             />
             <AnimeKindCornerBadge kind={release.kind} className="absolute bottom-0 left-0 z-20" />
-            <div className="pointer-events-none absolute bottom-0 right-0 z-20">
+            <div className="pointer-events-none absolute bottom-0 right-0 z-20 flex flex-col items-end gap-0.5">
+              {/* Desktop: NEW над номером серии. На мобиле постер слишком узкий — см. текстовую колонку. */}
+              {showEarlySeriesMark ? (
+                <div className="hidden md:block">
+                  <EarlySeriesNewBadge />
+                </div>
+              ) : null}
               <EpisodeNumberBadge episode={release.episodeNumber} status={release.status} />
             </div>
           </div>
 
           <div className="flex min-w-0 flex-1 flex-col justify-center gap-1 py-0.5 md:min-h-0 md:flex-1 md:justify-start md:gap-0 md:p-3">
+            {showEarlySeriesMark ? (
+              <div className="md:hidden">
+                <EarlySeriesNewBadge />
+              </div>
+            ) : null}
             {title}
             <div className="md:mt-1.5 md:min-h-[1.125rem]">
               <TranslationBadge name={release.translationName} className="max-w-full" />

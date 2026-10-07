@@ -1,4 +1,3 @@
-import { unstable_cache } from "next/cache";
 import { prisma } from "@/lib/prisma";
 import { resolveMaterialPosterUrl, type MaterialPosterSource } from "@/lib/material-poster";
 import { pickScreenshotUrl } from "@/lib/screenshots";
@@ -7,17 +6,30 @@ import {
   fetchShikimoriFranchise,
   mapFranchiseChronology,
   mapFranchiseSeasons,
+  type ShikimoriFranchiseResponse,
 } from "@/lib/shikimori/franchise";
 import {
+  fetchShikimoriRelatedEntries,
   getShikimoriRelatedAnimes,
+  mapShikimoriRelatedEntries,
   type ShikimoriRelatedAnimeBrief,
 } from "@/lib/shikimori/related";
-import { getShikimoriSimilarAnimes } from "@/lib/shikimori/similar";
+import {
+  fetchShikimoriSimilarAnimes,
+  mapShikimoriSimilarAnimes,
+} from "@/lib/shikimori/similar";
+import {
+  loadRelationSnapshot,
+  persistRelationSnapshot,
+  RELATION_SNAPSHOT_KIND,
+} from "@/lib/shikimori/relation-snapshot";
 import {
   isShikimoriRateLimitError,
   isShikimoriTransientFetchError,
   shikimoriAssetUrl,
 } from "@/lib/shikimori/client";
+import type { ShikimoriAnimeBrief, ShikimoriRelatedEntry } from "@/lib/shikimori/types";
+import type { Prisma } from "@prisma/client";
 
 export type RelatedAnimeDto = ShikimoriRelatedAnimeBrief;
 
@@ -29,8 +41,6 @@ export type RelatedAnimesBundle = {
   direct: RelatedAnimeDto[];
 };
 
-const RELATED_BUNDLE_CACHE_SECONDS = 7 * 24 * 60 * 60; // 7 дней — сезоны/хронология/напрямую
-const SIMILAR_CACHE_SECONDS = 3600;
 const NON_CRITICAL_SHIKIMORI_TIMEOUT_MS = 2_500;
 
 const SEASON_MOVIE_KINDS = new Set(["tv", "movie"]);
@@ -52,6 +62,35 @@ type MaterialRow = {
   lastEpisode: number | null;
   materialData: unknown;
 };
+
+function isSoftShikimoriError(error: unknown): boolean {
+  return isShikimoriRateLimitError(error) || isShikimoriTransientFetchError(error);
+}
+
+function nonCriticalShikimoriInit(): RequestInit {
+  return { signal: AbortSignal.timeout(NON_CRITICAL_SHIKIMORI_TIMEOUT_MS) };
+}
+
+function parseRelatedPayload(payload: unknown): ShikimoriRelatedEntry[] | null {
+  if (!Array.isArray(payload)) return null;
+  return payload as ShikimoriRelatedEntry[];
+}
+
+function parseFranchisePayload(payload: unknown): ShikimoriFranchiseResponse | null {
+  if (!payload || typeof payload !== "object") return null;
+  const nodes = (payload as ShikimoriFranchiseResponse).nodes;
+  if (!Array.isArray(nodes)) return null;
+  return payload as ShikimoriFranchiseResponse;
+}
+
+function parseSimilarPayload(payload: unknown): ShikimoriAnimeBrief[] | null {
+  if (!Array.isArray(payload)) return null;
+  return payload as ShikimoriAnimeBrief[];
+}
+
+function emptyFranchise(shikimoriId: number): ShikimoriFranchiseResponse {
+  return { links: [], nodes: [], current_id: shikimoriId };
+}
 
 async function mergeShikimoriCache(
   items: ShikimoriRelatedAnimeBrief[],
@@ -172,6 +211,28 @@ async function enrichRelatedBriefs(items: ShikimoriRelatedAnimeBrief[]): Promise
   });
 }
 
+async function buildBundleFromPayloads(
+  shikimoriId: number,
+  relatedEntries: ShikimoriRelatedEntry[] | null,
+  franchise: ShikimoriFranchiseResponse | null,
+): Promise<RelatedAnimesBundle> {
+  const directRaw = mapShikimoriRelatedEntries(relatedEntries, shikimoriId);
+  const franchiseSeasons = franchise?.nodes?.length ? mapFranchiseSeasons(franchise) : [];
+  const franchiseChronology = franchise?.nodes?.length ? mapFranchiseChronology(franchise) : [];
+
+  const [direct, seasonsRaw, chronology] = await Promise.all([
+    enrichRelatedBriefs(directRaw),
+    enrichRelatedBriefs(franchiseSeasons),
+    enrichRelatedBriefs(franchiseChronology),
+  ]);
+
+  return {
+    seasons: seasonsRaw.filter((item) => isSeasonOrMovieKind(item.kind)),
+    chronology,
+    direct,
+  };
+}
+
 /** Напрямую — только прямые связи из /related (без манги). */
 export async function getRelatedAnimesDirect(shikimoriId: number): Promise<RelatedAnimeDto[]> {
   const related = await getShikimoriRelatedAnimes(shikimoriId);
@@ -199,44 +260,50 @@ const EMPTY_RELATED_BUNDLE: RelatedAnimesBundle = {
   direct: [],
 };
 
-function nonCriticalShikimoriInit(): RequestInit {
-  return { signal: AbortSignal.timeout(NON_CRITICAL_SHIKIMORI_TIMEOUT_MS) };
-}
-
-async function getRelatedAnimesBundleUncached(shikimoriId: number): Promise<RelatedAnimesBundle> {
-  const [directRaw, franchise] = await Promise.all([
-    getShikimoriRelatedAnimes(shikimoriId, nonCriticalShikimoriInit()),
-    fetchShikimoriFranchise(shikimoriId, nonCriticalShikimoriInit()),
-  ]);
-
-  const franchiseSeasons = franchise?.nodes?.length ? mapFranchiseSeasons(franchise) : [];
-  const franchiseChronology = franchise?.nodes?.length ? mapFranchiseChronology(franchise) : [];
-
-  const [direct, seasonsRaw, chronology] = await Promise.all([
-    enrichRelatedBriefs(directRaw),
-    enrichRelatedBriefs(franchiseSeasons),
-    enrichRelatedBriefs(franchiseChronology),
-  ]);
-
-  const seasons = seasonsRaw.filter((item) => isSeasonOrMovieKind(item.kind));
-
-  return { seasons, chronology, direct };
-}
-
+/**
+ * Связанные аниме: Postgres snapshot first (allow stale), Shikimori refresh when stale/miss.
+ */
 export async function getRelatedAnimesBundle(shikimoriId: number): Promise<RelatedAnimesBundle> {
-  try {
-    return await unstable_cache(
-      async () => getRelatedAnimesBundleUncached(shikimoriId),
-      ["related-animes-bundle", String(shikimoriId)],
-      { revalidate: RELATED_BUNDLE_CACHE_SECONDS, tags: [`related-animes-${shikimoriId}`] },
-    )();
-  } catch (error) {
-    if (isShikimoriRateLimitError(error) || isShikimoriTransientFetchError(error)) {
-      console.warn("[anime-related] bundle unavailable:", shikimoriId);
-      return EMPTY_RELATED_BUNDLE;
+  const [relatedSnap, franchiseSnap] = await Promise.all([
+    loadRelationSnapshot(shikimoriId, RELATION_SNAPSHOT_KIND.related),
+    loadRelationSnapshot(shikimoriId, RELATION_SNAPSHOT_KIND.franchise),
+  ]);
+
+  let relatedEntries = parseRelatedPayload(relatedSnap?.payload);
+  let franchise = parseFranchisePayload(franchiseSnap?.payload);
+
+  const needRelated = !relatedSnap?.fresh || relatedEntries == null;
+  const needFranchise = !franchiseSnap?.fresh || franchise == null;
+
+  if (needRelated) {
+    try {
+      const fetched = await fetchShikimoriRelatedEntries(shikimoriId, nonCriticalShikimoriInit());
+      const payload = (fetched ?? []) as Prisma.InputJsonValue;
+      await persistRelationSnapshot(shikimoriId, RELATION_SNAPSHOT_KIND.related, payload);
+      relatedEntries = parseRelatedPayload(payload);
+    } catch (error) {
+      if (!isSoftShikimoriError(error)) throw error;
+      console.warn("[anime-related] direct unavailable:", shikimoriId);
     }
-    throw error;
   }
+
+  if (needFranchise) {
+    try {
+      const fetched = await fetchShikimoriFranchise(shikimoriId, nonCriticalShikimoriInit());
+      const payload = (fetched ?? emptyFranchise(shikimoriId)) as Prisma.InputJsonValue;
+      await persistRelationSnapshot(shikimoriId, RELATION_SNAPSHOT_KIND.franchise, payload);
+      franchise = parseFranchisePayload(payload);
+    } catch (error) {
+      if (!isSoftShikimoriError(error)) throw error;
+      console.warn("[anime-related] franchise unavailable:", shikimoriId);
+    }
+  }
+
+  if (relatedEntries == null && franchise == null) {
+    return EMPTY_RELATED_BUNDLE;
+  }
+
+  return buildBundleFromPayloads(shikimoriId, relatedEntries, franchise);
 }
 
 /** @deprecated Используйте getRelatedAnimesDirect или getRelatedAnimesBundle */
@@ -244,29 +311,25 @@ export async function getRelatedAnimes(shikimoriId: number): Promise<RelatedAnim
   return getRelatedAnimesDirect(shikimoriId);
 }
 
-/** Похожие аниме из Shikimori /similar. */
-async function getSimilarAnimesUncached(shikimoriId: number): Promise<RelatedAnimeDto[]> {
-  const similar = await getShikimoriSimilarAnimes(shikimoriId, nonCriticalShikimoriInit());
-  return enrichRelatedBriefs(similar);
-}
-
+/**
+ * Похожие аниме: Postgres snapshot first (allow stale), Shikimori refresh when stale/miss.
+ */
 export async function getSimilarAnimes(shikimoriId: number): Promise<RelatedAnimeDto[]> {
-  try {
-    return await unstable_cache(
-      async () => getSimilarAnimesUncached(shikimoriId),
-      ["similar-animes", String(shikimoriId)],
-      { revalidate: SIMILAR_CACHE_SECONDS, tags: [`similar-animes-${shikimoriId}`] },
-    )();
-  } catch (error) {
-    if (isShikimoriTransientFetchError(error)) {
-      console.warn("[anime-related] similar unavailable:", shikimoriId);
-      return [];
-    }
+  const snap = await loadRelationSnapshot(shikimoriId, RELATION_SNAPSHOT_KIND.similar);
+  let similarItems = parseSimilarPayload(snap?.payload);
 
-    if (isShikimoriRateLimitError(error)) {
-      console.warn("[anime-related] similar rate limited:", shikimoriId);
-      return [];
+  if (!snap?.fresh || similarItems == null) {
+    try {
+      const fetched = await fetchShikimoriSimilarAnimes(shikimoriId, nonCriticalShikimoriInit());
+      const payload = (fetched ?? []) as Prisma.InputJsonValue;
+      await persistRelationSnapshot(shikimoriId, RELATION_SNAPSHOT_KIND.similar, payload);
+      similarItems = parseSimilarPayload(payload);
+    } catch (error) {
+      if (!isSoftShikimoriError(error)) throw error;
+      console.warn("[anime-related] similar unavailable:", shikimoriId);
     }
-    throw error;
   }
+
+  if (similarItems == null) return [];
+  return enrichRelatedBriefs(mapShikimoriSimilarAnimes(similarItems, shikimoriId));
 }

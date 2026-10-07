@@ -69,6 +69,19 @@ export function episodeBadgeClass(status: string | null): string {
   }
 }
 
+/** Ранний выход многосерийного тайтла (1–3 серии) — верхняя полоска на карточке главной */
+const EARLY_SERIES_EPISODE_MAX = 3;
+
+export function isEarlySeriesRelease(episodeNumber: number, kind: string | null): boolean {
+  if (kind === "movie") return false;
+  return episodeNumber >= 1 && episodeNumber <= EARLY_SERIES_EPISODE_MAX;
+}
+
+/** Градиентная верхняя полоска (синий → зелёный → красный), отдельно от палитры списков */
+export function earlySeriesCardAccentClass(): string {
+  return "bg-gradient-to-r from-blue-500 via-green-500 to-red-500";
+}
+
 export function labelRating(rating: string | null): string | null {
   if (!rating) return null;
   return RATING_LABELS[rating] ?? rating.toUpperCase();

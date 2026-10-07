@@ -37,15 +37,125 @@ import { useDiscordConfig } from "@/hooks/useDiscordConfig";
 import { useDiscordPresence } from "@/hooks/useDiscordPresence";
 import { useForcedTranslationIntroOffsets } from "@/hooks/useForcedTranslationIntroOffsets";
 import { useWatchParty } from "@/hooks/useWatchParty";
+import { reportAnimePlay, reportAnimeWatchShare } from "@/lib/analytics/client-report";
 import { coverCacheUrl } from "@/lib/poster";
 import { applyIntroOffset, resolveTranslationIntroOffsetSec } from "@/lib/translation-intro-offset";
+import { matchesFuzzyText } from "@/lib/fuzzy-text-match";
 import type { WatchPartyCommand, WatchPartyPlaybackState } from "@/lib/watch-party/types";
 import { setAndroidKeepScreenOn } from "@/lib/android-app";
 import { withKodikPlayerCacheBust, resolveKodikPlayerEpisodeSwitch, isSingleEpisodeKodikPlayerLink } from "@/lib/player-url";
+import {
+  buildAnimeWatchShareUrl,
+  hasAnimeWatchEpisodeDeepLink,
+  parseAnimeWatchDeepLinkFromLocation,
+  type AnimeWatchPlayerParam,
+} from "@/lib/anime-watch-share";
+import { playCopySound } from "@/lib/copy-feedback";
+import { CvhWatchSection } from "@/components/anime/CvhWatchSection";
+import { MoveToCompletedBanner } from "@/components/anime/MoveToCompletedBanner";
+import { matchKodikTranslationForCvhVoice } from "@/lib/cvh-player";
+import {
+  useUserListStatus,
+  useUserListStatusActions,
+} from "@/components/favorites/UserListStatusProvider";
+import {  canOfferMoveToCompleted,
+  isMoveToCompletedDismissed,
+} from "@/lib/move-to-completed-prompt";
+
+type PlayerBalancer = AnimeWatchPlayerParam;
+
+function PlayerBalancerSwitch({
+  value,
+  onChange,
+}: {
+  value: PlayerBalancer;
+  onChange: (next: PlayerBalancer) => void;
+}) {
+  const trackRef = useRef<HTMLDivElement>(null);
+  const taRef = useRef<HTMLButtonElement>(null);
+  const cvhRef = useRef<HTMLButtonElement>(null);
+  const [thumb, setThumb] = useState({ left: 2, width: 0 });
+
+  const syncThumb = useCallback(() => {
+    const track = trackRef.current;
+    const active = value === "cvh" ? cvhRef.current : taRef.current;
+    if (!track || !active) return;
+    const trackBox = track.getBoundingClientRect();
+    const activeBox = active.getBoundingClientRect();
+    setThumb({
+      left: activeBox.left - trackBox.left,
+      width: activeBox.width,
+    });
+  }, [value]);
+
+  useEffect(() => {
+    syncThumb();
+    const track = trackRef.current;
+    if (!track || typeof ResizeObserver === "undefined") return;
+
+    const observer = new ResizeObserver(() => syncThumb());
+    observer.observe(track);
+    if (taRef.current) observer.observe(taRef.current);
+    if (cvhRef.current) observer.observe(cvhRef.current);
+    window.addEventListener("resize", syncThumb);
+    return () => {
+      observer.disconnect();
+      window.removeEventListener("resize", syncThumb);
+    };
+  }, [syncThumb]);
+
+  return (
+    <div
+      ref={trackRef}
+      className="relative inline-flex items-center rounded-md border border-border bg-background p-0.5 text-xs"
+      role="group"
+      aria-label="Балансер плеера"
+    >
+      <span
+        aria-hidden
+        className="pointer-events-none absolute top-0.5 bottom-0.5 z-0 rounded"
+        style={{
+          left: thumb.left,
+          width: thumb.width,
+          backgroundColor: "color-mix(in srgb, var(--accent) 38%, transparent)",
+          boxShadow: "inset 0 0 0 1px color-mix(in srgb, var(--accent) 55%, transparent)",
+          transition:
+            "left 220ms cubic-bezier(0.22, 1, 0.36, 1), width 220ms cubic-bezier(0.22, 1, 0.36, 1)",
+        }}
+      />
+      <button
+        ref={taRef}
+        type="button"
+        aria-pressed={value === "kodik"}
+        onClick={() => onChange("kodik")}
+        className={[
+          "relative z-10 shrink-0 rounded px-3 py-1.5 font-medium transition-colors duration-200",
+          value === "kodik" ? "text-foreground" : "text-muted hover:text-foreground",
+        ].join(" ")}
+      >
+        TA
+      </button>
+      <button
+        ref={cvhRef}
+        type="button"
+        aria-pressed={value === "cvh"}
+        onClick={() => onChange("cvh")}
+        className={[
+          "relative z-10 shrink-0 rounded px-3 py-1.5 font-medium transition-colors duration-200",
+          value === "cvh" ? "text-foreground" : "text-muted hover:text-foreground",
+        ].join(" ")}
+      >
+        VideoHUB
+      </button>
+    </div>
+  );
+}
 
 type Props = {
   shikimoriId: number;
+  malId?: number | null;
   animeTitle: string;
+  animeStatus?: string | null;
   translations: KodikTranslationDto[];
   episodesTotal?: number | null;
 };
@@ -177,6 +287,39 @@ function IconPlayerRefresh({ spinning = false }: { spinning?: boolean }) {
   );
 }
 
+function IconShareLink() {
+  return (
+    <svg viewBox="0 0 24 24" className="h-4 w-4" fill="none" stroke="currentColor" strokeWidth="1.9" aria-hidden>
+      <path
+        d="M10 13a5 5 0 0 0 7.54.54l1.92-1.92a5 5 0 0 0-7.07-7.07l-1.1 1.1"
+        strokeLinecap="round"
+        strokeLinejoin="round"
+      />
+      <path
+        d="M14 11a5 5 0 0 0-7.54-.54L4.54 12.38a5 5 0 0 0 7.07 7.07l1.1-1.1"
+        strokeLinecap="round"
+        strokeLinejoin="round"
+      />
+    </svg>
+  );
+}
+
+async function copyTextToClipboard(text: string): Promise<void> {
+  if (navigator.clipboard?.writeText) {
+    await navigator.clipboard.writeText(text);
+    return;
+  }
+  const textarea = document.createElement("textarea");
+  textarea.value = text;
+  textarea.setAttribute("readonly", "");
+  textarea.style.position = "fixed";
+  textarea.style.opacity = "0";
+  document.body.appendChild(textarea);
+  textarea.select();
+  document.execCommand("copy");
+  document.body.removeChild(textarea);
+}
+
 function IconSkipTimesFound() {
   return (
     <svg viewBox="0 0 24 24" className="h-4 w-4 fill-current" aria-hidden>
@@ -238,6 +381,15 @@ function PlayerLoadingOverlay({
 }
 
 type ProgressPayload = KodikPlayerProgressPayload;
+
+type DeepLinkInvite = {
+  kodikId: string;
+  translationTitle: string;
+  seasonNumber: number;
+  episodeNumber: number;
+  positionSeconds: number;
+  player: PlayerBalancer;
+};
 
 function readWatchPartyTranslationSyncEnabled() {
   if (typeof window === "undefined") return true;
@@ -379,12 +531,19 @@ function skipTimeKey(
 
 export function AnimeWatchPanel({
   shikimoriId,
+  malId = null,
   animeTitle,
+  animeStatus = null,
   translations,
   episodesTotal,
 }: Props) {
   const { user } = useAuth();
+  const listInfo = useUserListStatus(shikimoriId);
+  const { loading: listsLoading } = useUserListStatusActions();
   const { settings, updateSettings } = useSiteSettings();
+  const [playerBalancer, setPlayerBalancer] = useState<PlayerBalancer>("kodik");
+  const [shareLinkCopied, setShareLinkCopied] = useState(false);
+  const [deepLinkInvite, setDeepLinkInvite] = useState<DeepLinkInvite | null>(null);
   const forcedIntroOffsets = useForcedTranslationIntroOffsets();
   const { applicationId, largeImageKey, configured: discordConfigured } = useDiscordConfig();
   const discordPresenceEnabled = settings.discordPresenceEnabled && discordConfigured;
@@ -407,6 +566,7 @@ export function AnimeWatchPanel({
   );
 
   const [selectedId, setSelectedId] = useState("");
+  const [translationQuery, setTranslationQuery] = useState("");
   const [continueProgress, setContinueProgress] = useState<WatchProgressDto | null>(null);
   const [bootResume, setBootResume] = useState<KodikPlayerResume | null>(null);
   const [ready, setReady] = useState(false);
@@ -419,6 +579,7 @@ export function AnimeWatchPanel({
   const [skipClockSeconds, setSkipClockSeconds] = useState(0);
   const [playerResetNonce, setPlayerResetNonce] = useState(0);
   const [isNativeFullscreen, setIsNativeFullscreen] = useState(false);
+  const [showMoveToCompletedBanner, setShowMoveToCompletedBanner] = useState(false);
   const [fullscreenTranslationsOpen, setFullscreenTranslationsOpen] = useState(false);
   const [fullscreenTranslationsHovered, setFullscreenTranslationsHovered] = useState(false);
   const [betaTheaterMode, setBetaTheaterMode] =
@@ -453,9 +614,13 @@ export function AnimeWatchPanel({
     positionSeconds: 0,
   });
   const episodeEndCandidateRef = useRef<ProgressPayload | null>(null);
+  const pendingCompletedPromptRef = useRef(false);
+  const tryShowMoveToCompletedPromptRef = useRef<(episodeNumber: number) => void>(() => {});
+  const armMoveToCompletedPromptRef = useRef<(episodeNumber: number) => void>(() => {});
   const latestProgressRef = useRef<ProgressPayload | null>(null);
   const lastSavedFingerprintRef = useRef("");
   const savingRef = useRef(false);
+  const disableWatchHistorySaveRef = useRef(false);
   const pendingContinueRef = useRef<KodikPlayerResume | null>(null);
   const pendingContinueOptionsRef = useRef<{ uiEpisodeAlreadyTargeted?: boolean } | undefined>(undefined);
   const lastContinueResumeRef = useRef<KodikPlayerResume | null>(null);
@@ -463,6 +628,10 @@ export function AnimeWatchPanel({
   const episodeSeriaLinksRef = useRef<Map<string, string>>(new Map());
   /** Applied by selectedId effect so translation switch does not clobber episode remount. */
   const pendingPlayerSrcRef = useRef<string | null>(null);
+  /** Legacy Kodik chrome needs `/serial/` — `/seria/` hides native episode list. */
+  const useLegacyKodikPlayerRef = useRef(settings.useLegacyKodikPlayer);
+  useLegacyKodikPlayerRef.current = settings.useLegacyKodikPlayer;
+  const allowSeriaPlayerRemount = !settings.useLegacyKodikPlayer;
   const silentContinueFlowRef = useRef(false);
   const suppressContinueOverlayRef = useRef(false);
   const autoSkippedIntervalsRef = useRef(new Set<string>());
@@ -494,6 +663,11 @@ export function AnimeWatchPanel({
     return map;
   }, [playable]);
 
+  const filteredPlayable = useMemo(() => {
+    if (!translationQuery.trim()) return playable;
+    return playable.filter((tr) => matchesFuzzyText(translationQuery, tr.translationTitle));
+  }, [playable, translationQuery]);
+
   const applyPositionOffset = useCallback(
     (resume: KodikPlayerResume, toKodikId: string, fromKodikId?: string): KodikPlayerResume => {
       const toTranslation = playableByKodikId.get(toKodikId);
@@ -520,6 +694,18 @@ export function AnimeWatchPanel({
     }),
     [],
   );
+
+  useEffect(() => {
+    const deepLink = parseAnimeWatchDeepLinkFromLocation();
+    setPlayerBalancer(deepLink.player ?? "kodik");
+    disableWatchHistorySaveRef.current = deepLink.disableHistorySave;
+  }, [shikimoriId]);
+
+  useEffect(() => {
+    if (!shareLinkCopied) return;
+    const timer = window.setTimeout(() => setShareLinkCopied(false), 2200);
+    return () => window.clearTimeout(timer);
+  }, [shareLinkCopied]);
 
   useEffect(() => {
     selectedIdRef.current = selectedId;
@@ -549,24 +735,156 @@ export function AnimeWatchPanel({
   useEffect(() => {
     let cancelled = false;
 
+    async function applyEpisodeBoot(kodikId: string, resume: KodikPlayerResume) {
+      setPlayerEpisode({
+        seasonNumber: resume.seasonNumber,
+        episodeNumber: resume.episodeNumber,
+      });
+      liveProgressRef.current = {
+        seasonNumber: resume.seasonNumber,
+        episodeNumber: resume.episodeNumber,
+        positionSeconds: resume.positionSeconds,
+      };
+      pendingContinueRef.current = null;
+      pendingContinueOptionsRef.current = undefined;
+      setBootResume(resume);
+
+      // Resolve /seria/ before setSelectedId so the selectedId effect applies it, not material.
+      // Legacy Kodik keeps the serial embed — `/seria/` has no native episode selector.
+      const bootLink = await loadEpisodePlayerLink(
+        shikimoriId,
+        kodikId,
+        resume.seasonNumber,
+        resume.episodeNumber,
+      );
+      if (cancelled) return;
+      const bootSeria = resolveContinueSeriaEmbedLink(bootLink);
+      if (bootSeria) {
+        episodeSeriaLinksRef.current.set(
+          episodeSeriaCacheKey(kodikId, resume.seasonNumber, resume.episodeNumber),
+          bootSeria,
+        );
+        if (!useLegacyKodikPlayerRef.current) {
+          pendingPlayerSrcRef.current = withKodikPlayerCacheBust(bootSeria, Date.now());
+        }
+      }
+    }
+
+    function clearEpisodeBoot() {
+      setBootResume(null);
+      pendingContinueRef.current = null;
+      pendingContinueOptionsRef.current = undefined;
+    }
+
+    async function resolveInitialSelection(progress: WatchProgressDto | null) {
+      const deepLink = parseAnimeWatchDeepLinkFromLocation();
+      const savedKodikId = progress?.kodikId;
+      const savedTranslationOk =
+        Boolean(savedKodikId) && playable.some((tr) => tr.kodikId === savedKodikId);
+
+      let selectedKodikId = playable[0]?.kodikId ?? "";
+      if (savedTranslationOk && savedKodikId) {
+        selectedKodikId = savedKodikId;
+      }
+      if (deepLink.translationId != null) {
+        const match = playable.find((tr) => tr.translationId === deepLink.translationId);
+        if (match?.kodikId) {
+          selectedKodikId = match.kodikId;
+        }
+      }
+
+      if (hasAnimeWatchEpisodeDeepLink(deepLink) && selectedKodikId) {
+        const resume: KodikPlayerResume = {
+          seasonNumber: deepLink.season ?? progress?.seasonNumber ?? 1,
+          episodeNumber: deepLink.episode ?? progress?.episodeNumber ?? 1,
+          positionSeconds: deepLink.positionSeconds ?? 0,
+        };
+        // UI + seria prep only — soft boot seek skipped; play goes through Continue-flow overlay.
+        setPlayerEpisode({
+          seasonNumber: resume.seasonNumber,
+          episodeNumber: resume.episodeNumber,
+        });
+        liveProgressRef.current = {
+          seasonNumber: resume.seasonNumber,
+          episodeNumber: resume.episodeNumber,
+          positionSeconds: resume.positionSeconds,
+        };
+        clearEpisodeBoot();
+
+        const bootLink = await loadEpisodePlayerLink(
+          shikimoriId,
+          selectedKodikId,
+          resume.seasonNumber,
+          resume.episodeNumber,
+        );
+        if (cancelled) return;
+        const bootSeria = resolveContinueSeriaEmbedLink(bootLink);
+        if (bootSeria) {
+          episodeSeriaLinksRef.current.set(
+            episodeSeriaCacheKey(selectedKodikId, resume.seasonNumber, resume.episodeNumber),
+            bootSeria,
+          );
+          if (!useLegacyKodikPlayerRef.current) {
+            pendingPlayerSrcRef.current = withKodikPlayerCacheBust(bootSeria, Date.now());
+          }
+        }
+
+        const translation =
+          playable.find((tr) => tr.kodikId === selectedKodikId) ?? null;
+        if (!cancelled) {
+          setDeepLinkInvite({
+            kodikId: selectedKodikId,
+            translationTitle: translation?.translationTitle ?? "Озвучка",
+            seasonNumber: resume.seasonNumber,
+            episodeNumber: resume.episodeNumber,
+            positionSeconds: resume.positionSeconds,
+            player: deepLink.player ?? "kodik",
+          });
+        }
+      } else if (
+        progress &&
+        progress.positionSeconds >= MIN_SAVE_POSITION_SECONDS &&
+        savedTranslationOk &&
+        savedKodikId &&
+        savedKodikId === selectedKodikId
+      ) {
+        const resume = compensatePlayerReloadResume(
+          applyPositionOffset(
+            {
+              seasonNumber: progress.seasonNumber,
+              episodeNumber: progress.episodeNumber,
+              positionSeconds: progress.positionSeconds,
+            },
+            savedKodikId,
+          ),
+        );
+        // UI сразу на сохранённой серии; мягкий seek без continue-flow —
+        // полный pause-continue на холодном iframe зависает с оверлеем «Переход…».
+        await applyEpisodeBoot(savedKodikId, resume);
+      } else {
+        clearEpisodeBoot();
+      }
+
+      if (!cancelled) {
+        setSelectedId(selectedKodikId);
+      }
+    }
+
     async function loadProgress() {
       if (!user) {
         setContinueProgress(null);
-        setBootResume(null);
-        pendingContinueRef.current = null;
-        pendingContinueOptionsRef.current = undefined;
         setContinueLoading(false);
         setContinueTarget(null);
-        setSelectedId(playable[0]?.kodikId ?? "");
-        setReady(true);
+        await resolveInitialSelection(null);
+        if (!cancelled) setReady(true);
         return;
       }
 
       try {
         const res = await fetch(`/api/user/watch-history/${shikimoriId}`, { cache: "no-store" });
         if (!res.ok) {
-          setSelectedId(playable[0]?.kodikId ?? "");
-          setReady(true);
+          await resolveInitialSelection(null);
+          if (!cancelled) setReady(true);
           return;
         }
 
@@ -575,72 +893,11 @@ export function AnimeWatchPanel({
 
         const progress = data.progress ?? null;
         setContinueProgress(progress);
-
-        const savedKodikId = progress?.kodikId;
-        const savedTranslationOk =
-          Boolean(savedKodikId) && playable.some((tr) => tr.kodikId === savedKodikId);
-
-        if (
-          progress &&
-          progress.positionSeconds >= MIN_SAVE_POSITION_SECONDS &&
-          savedTranslationOk &&
-          savedKodikId
-        ) {
-          const resume = compensatePlayerReloadResume(
-            applyPositionOffset(
-              {
-                seasonNumber: progress.seasonNumber,
-                episodeNumber: progress.episodeNumber,
-                positionSeconds: progress.positionSeconds,
-              },
-              savedKodikId,
-            ),
-          );
-
-          // UI сразу на сохранённой серии; мягкий seek без continue-flow —
-          // полный pause-continue на холодном iframe зависает с оверлеем «Переход…».
-          setPlayerEpisode({
-            seasonNumber: resume.seasonNumber,
-            episodeNumber: resume.episodeNumber,
-          });
-          liveProgressRef.current = {
-            seasonNumber: resume.seasonNumber,
-            episodeNumber: resume.episodeNumber,
-            positionSeconds: resume.positionSeconds,
-          };
-          pendingContinueRef.current = null;
-          pendingContinueOptionsRef.current = undefined;
-          setBootResume(resume);
-
-          // Resolve /seria/ before setSelectedId so the selectedId effect applies it, not material.
-          const bootLink = await loadEpisodePlayerLink(
-            shikimoriId,
-            savedKodikId,
-            resume.seasonNumber,
-            resume.episodeNumber,
-          );
-          if (cancelled) return;
-          const bootSeria = resolveContinueSeriaEmbedLink(bootLink);
-          if (bootSeria) {
-            episodeSeriaLinksRef.current.set(
-              episodeSeriaCacheKey(savedKodikId, resume.seasonNumber, resume.episodeNumber),
-              bootSeria,
-            );
-            pendingPlayerSrcRef.current = withKodikPlayerCacheBust(bootSeria, Date.now());
-          }
-        } else {
-          setBootResume(null);
-          pendingContinueRef.current = null;
-          pendingContinueOptionsRef.current = undefined;
-        }
-
-        if (savedTranslationOk && savedKodikId) {
-          setSelectedId(savedKodikId);
-        } else {
-          setSelectedId(playable[0]?.kodikId ?? "");
-        }
+        await resolveInitialSelection(progress);
       } catch {
-        if (!cancelled) setSelectedId(playable[0]?.kodikId ?? "");
+        if (!cancelled) {
+          await resolveInitialSelection(null);
+        }
       } finally {
         if (!cancelled) setReady(true);
       }
@@ -648,6 +905,7 @@ export function AnimeWatchPanel({
 
     setReady(false);
     setBootResume(null);
+    setDeepLinkInvite(null);
     pendingContinueRef.current = null;
     pendingContinueOptionsRef.current = undefined;
     silentContinueFlowRef.current = false;
@@ -660,7 +918,9 @@ export function AnimeWatchPanel({
     return () => {
       cancelled = true;
     };
-  }, [user, shikimoriId, playable, applyPositionOffset]);
+    // Depend on stable auth id — full `user` object used to refresh on window focus and
+    // remount the player (setReady(false) → loadProgress) on every Alt-Tab / iframe click.
+  }, [user?.id, shikimoriId, playable, applyPositionOffset]);
 
   useEffect(() => {
     const onHistoryUpdated = (event: Event) => {
@@ -703,7 +963,14 @@ export function AnimeWatchPanel({
   }, [playable, selectedId]);
 
   useEffect(() => {
-    if (typeof window === "undefined" || window.location.hash !== "#player") return;
+    if (typeof window === "undefined") return;
+    const deepLink = parseAnimeWatchDeepLinkFromLocation();
+    const shouldScroll =
+      window.location.hash === "#player" ||
+      deepLink.player != null ||
+      hasAnimeWatchEpisodeDeepLink(deepLink) ||
+      deepLink.translationId != null;
+    if (!shouldScroll) return;
     const el = document.getElementById("player");
     el?.scrollIntoView({ behavior: "smooth", block: "start" });
   }, [ready]);
@@ -722,6 +989,7 @@ export function AnimeWatchPanel({
       kodikId: string,
       options?: { skipMinPosition?: boolean; force?: boolean },
     ) => {
+      if (disableWatchHistorySaveRef.current) return;
       if (!user || savingRef.current) return;
       if (!options?.skipMinPosition && payload.positionSeconds < MIN_SAVE_POSITION_SECONDS) return;
 
@@ -753,6 +1021,9 @@ export function AnimeWatchPanel({
         if (data.cleared || data.progress === null) {
           lastSavedFingerprintRef.current = fingerprint;
           setContinueProgress(null);
+          if (data.cleared) {
+            armMoveToCompletedPromptRef.current(payload.episodeNumber);
+          }
           return;
         }
         if (data.progress) {
@@ -885,7 +1156,7 @@ export function AnimeWatchPanel({
       pendingContinueModeRef.current = mode;
       setSelectedId(kodikId);
 
-      // Prefer /seria/ of the same S/E on the new translation when available.
+      // Prefer /seria/ of the same S/E on the new translation when available (TA player only).
       void (async () => {
         const link = await loadEpisodePlayerLink(
           shikimoriId,
@@ -900,6 +1171,7 @@ export function AnimeWatchPanel({
           episodeSeriaCacheKey(kodikId, adjusted.seasonNumber, adjusted.episodeNumber),
           seria,
         );
+        if (useLegacyKodikPlayerRef.current) return;
         setPlayerSrc(withKodikPlayerCacheBust(seria, Date.now()));
         setPlayerResetNonce((nonce) => nonce + 1);
       })();
@@ -925,6 +1197,17 @@ export function AnimeWatchPanel({
     [switchTranslationWithResume],
   );
 
+  /** Sync Kodik translation + watch-history when user picks a CVH voice (or widget reports one). */
+  const handleCvhVoiceStudioChange = useCallback(
+    (studio: string) => {
+      const match = matchKodikTranslationForCvhVoice(studio, playable);
+      if (!match || match.kodikId === selectedIdRef.current) return;
+      setSelectedId(match.kodikId);
+      saveTranslation(match.kodikId);
+    },
+    [playable, saveTranslation],
+  );
+
   const handlePause = useCallback(
     (payload: ProgressPayload) => {
       liveProgressRef.current = payload;
@@ -937,6 +1220,9 @@ export function AnimeWatchPanel({
       markPaused();
       if (payload.positionSeconds >= MIN_SAVE_POSITION_SECONDS) {
         latestProgressRef.current = payload;
+      }
+      if (pendingCompletedPromptRef.current) {
+        tryShowMoveToCompletedPromptRef.current(payload.episodeNumber);
       }
       void saveProgressNow(payload, selectedIdRef.current);
     },
@@ -1045,15 +1331,16 @@ export function AnimeWatchPanel({
       if (resume && resume.positionSeconds >= 1) {
         setBootResume(compensatePlayerReloadResume(resume));
       }
-      const seriaLink = resume
-        ? episodeSeriaLinksRef.current.get(
-            episodeSeriaCacheKey(
-              selectedIdRef.current || selectedId,
-              resume.seasonNumber,
-              resume.episodeNumber,
-            ),
-          )
-        : null;
+      const seriaLink =
+        resume && !useLegacyKodikPlayerRef.current
+          ? episodeSeriaLinksRef.current.get(
+              episodeSeriaCacheKey(
+                selectedIdRef.current || selectedId,
+                resume.seasonNumber,
+                resume.episodeNumber,
+              ),
+            )
+          : null;
       const baseLink =
         seriaLink ?? playable.find((tr) => tr.kodikId === selectedId)?.playerLink ?? null;
       if (baseLink) {
@@ -1153,77 +1440,131 @@ export function AnimeWatchPanel({
     [],
   );
 
-  const handleContinue = () => {
-    if (!continueProgress || continueLoading) return;
+  const startContinueResume = useCallback(
+    (target: {
+      kodikId: string;
+      seasonNumber: number;
+      episodeNumber: number;
+      positionSeconds: number;
+    }) => {
+      if (continueLoading) return;
 
-    const resume = applyPositionOffset(
-      {
-        seasonNumber: continueProgress.seasonNumber,
-        episodeNumber: continueProgress.episodeNumber,
-        positionSeconds: continueProgress.positionSeconds,
-      },
-      continueProgress.kodikId,
-    );
-
-    lastContinueResumeRef.current = resume;
-    setContinueLoading(true);
-    setContinueTarget({ episodeNumber: resume.episodeNumber });
-    pendingContinueModeRef.current = "play";
-    isPausedRef.current = false;
-
-    const el = document.getElementById("player");
-    el?.scrollIntoView({ behavior: "auto", block: "start" });
-
-    const switchToKodikId =
-      continueProgress.kodikId !== selectedIdRef.current ? continueProgress.kodikId : undefined;
-
-    const startWithSeriaOrFallback = (seriaLink: string | null) => {
-      if (seriaLink) {
-        remountToEpisodeEmbed({
-          resume,
-          embedLink: seriaLink,
-          switchToKodikId,
-          showLoadingOverlay: true,
-        });
-        return;
+      // CVH Partners API has no seek — always resume in TA player.
+      const switchingFromCvh = playerBalancer === "cvh";
+      if (switchingFromCvh) {
+        setPlayerBalancer("kodik");
       }
 
-      if (switchToKodikId) {
-        pendingContinueRef.current = resume;
-        pendingContinueOptionsRef.current = { uiEpisodeAlreadyTargeted: true };
-        setBootResume(null);
-        setSelectedId(switchToKodikId);
-      } else {
-        playerRef.current?.seekTo(resume, "play", { uiEpisodeAlreadyTargeted: true });
-      }
-    };
+      const resume = applyPositionOffset(
+        {
+          seasonNumber: target.seasonNumber,
+          episodeNumber: target.episodeNumber,
+          positionSeconds: target.positionSeconds,
+        },
+        target.kodikId,
+      );
 
-    const cachedSeria = getCachedSeriaLink(
-      continueProgress.kodikId,
-      resume.seasonNumber,
-      resume.episodeNumber,
-    );
-    if (cachedSeria) {
-      startWithSeriaOrFallback(cachedSeria);
-      return;
-    }
+      lastContinueResumeRef.current = resume;
+      setContinueLoading(true);
+      setContinueTarget({ episodeNumber: resume.episodeNumber });
+      pendingContinueModeRef.current = "play";
+      isPausedRef.current = false;
 
-    void (async () => {
-      const link = await loadEpisodePlayerLink(
-        shikimoriId,
-        continueProgress.kodikId,
+      const el = document.getElementById("player");
+      el?.scrollIntoView({ behavior: "auto", block: "start" });
+
+      const switchToKodikId =
+        target.kodikId !== selectedIdRef.current ? target.kodikId : undefined;
+
+      const startWithSeriaOrFallback = (seriaLink: string | null) => {
+        if (seriaLink && !useLegacyKodikPlayerRef.current) {
+          remountToEpisodeEmbed({
+            resume,
+            embedLink: seriaLink,
+            switchToKodikId,
+            showLoadingOverlay: true,
+          });
+          return;
+        }
+
+        if (switchToKodikId || switchingFromCvh) {
+          pendingContinueRef.current = resume;
+          pendingContinueOptionsRef.current = { uiEpisodeAlreadyTargeted: true };
+          setBootResume(null);
+          if (switchToKodikId) {
+            setSelectedId(switchToKodikId);
+          } else {
+            const baseLink =
+              playable.find((tr) => tr.kodikId === selectedIdRef.current)?.playerLink ?? null;
+            if (baseLink) {
+              setPlayerSrc(withKodikPlayerCacheBust(baseLink, Date.now()));
+            }
+            setPlayerResetNonce((nonce) => nonce + 1);
+          }
+        } else {
+          playerRef.current?.seekTo(resume, "play", { uiEpisodeAlreadyTargeted: true });
+        }
+      };
+
+      const cachedSeria = getCachedSeriaLink(
+        target.kodikId,
         resume.seasonNumber,
         resume.episodeNumber,
       );
-      startWithSeriaOrFallback(
-        rememberSeriaLink(
-          continueProgress.kodikId,
+      if (cachedSeria) {
+        startWithSeriaOrFallback(cachedSeria);
+        return;
+      }
+
+      void (async () => {
+        const link = await loadEpisodePlayerLink(
+          shikimoriId,
+          target.kodikId,
           resume.seasonNumber,
           resume.episodeNumber,
-          link,
-        ),
-      );
-    })();
+        );
+        startWithSeriaOrFallback(
+          rememberSeriaLink(
+            target.kodikId,
+            resume.seasonNumber,
+            resume.episodeNumber,
+            link,
+          ),
+        );
+      })();
+    },
+    [
+      applyPositionOffset,
+      continueLoading,
+      getCachedSeriaLink,
+      playable,
+      playerBalancer,
+      rememberSeriaLink,
+      remountToEpisodeEmbed,
+      shikimoriId,
+    ],
+  );
+
+  const handleContinue = () => {
+    if (!continueProgress) return;
+    startContinueResume({
+      kodikId: continueProgress.kodikId,
+      seasonNumber: continueProgress.seasonNumber,
+      episodeNumber: continueProgress.episodeNumber,
+      positionSeconds: continueProgress.positionSeconds,
+    });
+  };
+
+  const handleDeepLinkPlay = () => {
+    if (!deepLinkInvite || continueLoading) return;
+    const invite = deepLinkInvite;
+    setDeepLinkInvite(null);
+    startContinueResume({
+      kodikId: invite.kodikId,
+      seasonNumber: invite.seasonNumber,
+      episodeNumber: invite.episodeNumber,
+      positionSeconds: invite.positionSeconds,
+    });
   };
 
   const handleSeekSkip = (deltaSeconds: number) => {
@@ -1320,6 +1661,11 @@ export function AnimeWatchPanel({
 
       const resolveAndApplyEpisodeSwitch = (switchToKodikId?: string) => {
         const targetKodikId = switchToKodikId ?? selectedIdRef.current;
+        if (useLegacyKodikPlayerRef.current) {
+          const materialLink = playableByKodikId.get(targetKodikId)?.playerLink ?? null;
+          applyEpisodeSwitch(materialLink, switchToKodikId);
+          return;
+        }
         const cached = getCachedSeriaLink(
           targetKodikId,
           resume.seasonNumber,
@@ -1665,17 +2011,25 @@ export function AnimeWatchPanel({
     selectedId,
   ]);
 
-  const setUseLegacyKodikPlayer = useCallback(
-    (enabled: boolean) => {
-      updateSettings({ useLegacyKodikPlayer: enabled });
-      if (enabled) {
-        setBetaTheaterMode("normal");
-        setFullscreenTranslationsOpen(false);
-        setFullscreenTranslationsHovered(false);
-      }
-    },
-    [updateSettings],
-  );
+  const wasLegacyKodikPlayerRef = useRef(settings.useLegacyKodikPlayer);
+  // When legacy Kodik is enabled from settings, unlock `/seria/` → material serial.
+  useEffect(() => {
+    const wasLegacy = wasLegacyKodikPlayerRef.current;
+    wasLegacyKodikPlayerRef.current = settings.useLegacyKodikPlayer;
+    if (!settings.useLegacyKodikPlayer || wasLegacy) return;
+
+    setBetaTheaterMode("normal");
+    setFullscreenTranslationsOpen(false);
+    setFullscreenTranslationsHovered(false);
+    const materialLink = playableByKodikId.get(selectedIdRef.current)?.playerLink;
+    if (!materialLink || !isSingleEpisodeKodikPlayerLink(playerSrc || materialLink)) return;
+    const resume = { ...liveProgressRef.current };
+    pendingContinueRef.current = resume;
+    pendingContinueOptionsRef.current = { uiEpisodeAlreadyTargeted: true };
+    pendingContinueModeRef.current = isPausedRef.current ? "pause" : "play";
+    setPlayerSrc(withKodikPlayerCacheBust(materialLink, Date.now()));
+    setPlayerResetNonce((nonce) => nonce + 1);
+  }, [playableByKodikId, playerSrc, settings.useLegacyKodikPlayer]);
 
   const roomSeekDisabled = seekSkipDisabled || (watchParty.isConnected && !watchParty.canSeek);
   const roomEpisodeSelectionDisabled =
@@ -1706,6 +2060,21 @@ export function AnimeWatchPanel({
     });
   }, [isNativeFullscreen]);
 
+  useEffect(() => {
+    const root = document.documentElement;
+    const active = betaTheaterMode === "height" && !isNativeFullscreen;
+    if (active) {
+      root.setAttribute("data-player-theater", "height");
+    } else {
+      root.removeAttribute("data-player-theater");
+      root.removeAttribute("data-player-theater-chrome");
+    }
+    return () => {
+      root.removeAttribute("data-player-theater");
+      root.removeAttribute("data-player-theater-chrome");
+    };
+  }, [betaTheaterMode, isNativeFullscreen]);
+
   const handlePlaybackStateChange = useCallback((state: KodikPlayerPlaybackState) => {
     isPlayingRef.current = state.isPlaying;
     durationSecondsRef.current = state.durationSeconds;
@@ -1714,6 +2083,10 @@ export function AnimeWatchPanel({
       const initialized = playbackStateInitializedRef.current;
       const playingChanged = previous.isPlaying !== state.isPlaying;
       playbackStateInitializedRef.current = true;
+
+      if (!previous.isPlaying && state.isPlaying) {
+        reportAnimePlay(shikimoriId, "kodik");
+      }
 
       if (playingChanged && !applyingWatchPartyCommandRef.current) {
         if (suppressNextPlaybackBroadcastRef.current) {
@@ -1743,7 +2116,7 @@ export function AnimeWatchPanel({
 
       return state;
     });
-  }, []);
+  }, [shikimoriId]);
 
   useEffect(() => {
     autoSkippedIntervalsRef.current.clear();
@@ -2069,12 +2442,74 @@ export function AnimeWatchPanel({
         setFullscreenTranslationsOpen(false);
         setFullscreenTranslationsHovered(false);
         unlockScreenOrientation();
+        if (pendingCompletedPromptRef.current) {
+          tryShowMoveToCompletedPromptRef.current(liveProgressRef.current.episodeNumber);
+        }
       }
     };
 
     document.addEventListener("fullscreenchange", onFullscreenChange);
     return () => document.removeEventListener("fullscreenchange", onFullscreenChange);
   }, []);
+
+  const closeMoveToCompletedBanner = useCallback(() => {
+    setShowMoveToCompletedBanner(false);
+  }, []);
+
+  const tryShowMoveToCompletedPrompt = useCallback(
+    (episodeNumber: number) => {
+      if (!user?.id) {
+        pendingCompletedPromptRef.current = false;
+        return;
+      }
+      if (listsLoading) {
+        pendingCompletedPromptRef.current = true;
+        return;
+      }
+      if (listInfo?.listStatus === "completed") {
+        pendingCompletedPromptRef.current = false;
+        return;
+      }
+      if (isMoveToCompletedDismissed(shikimoriId)) {
+        pendingCompletedPromptRef.current = false;
+        return;
+      }
+      if (
+        !canOfferMoveToCompleted({
+          animeStatus,
+          episodeNumber,
+          episodesTotal,
+        })
+      ) {
+        pendingCompletedPromptRef.current = false;
+        return;
+      }
+      pendingCompletedPromptRef.current = false;
+      setShowMoveToCompletedBanner(true);
+    },
+    [animeStatus, episodesTotal, listInfo?.listStatus, listsLoading, shikimoriId, user?.id],
+  );
+
+  tryShowMoveToCompletedPromptRef.current = tryShowMoveToCompletedPrompt;
+
+  const armMoveToCompletedPrompt = useCallback(
+    (episodeNumber: number) => {
+      pendingCompletedPromptRef.current = true;
+      // Show only after pause or fullscreen exit — don't interrupt active playback.
+      if (isPausedRef.current) {
+        tryShowMoveToCompletedPrompt(episodeNumber);
+      }
+    },
+    [tryShowMoveToCompletedPrompt],
+  );
+
+  armMoveToCompletedPromptRef.current = armMoveToCompletedPrompt;
+
+  useEffect(() => {
+    if (!pendingCompletedPromptRef.current || listsLoading) return;
+    if (!isPausedRef.current) return;
+    tryShowMoveToCompletedPrompt(liveProgressRef.current.episodeNumber);
+  }, [listsLoading, listInfo?.listStatus, tryShowMoveToCompletedPrompt]);
 
   useEffect(() => {
     const stage = betaFullscreenRef.current;
@@ -2158,17 +2593,19 @@ export function AnimeWatchPanel({
       setContinueLoading(true);
       setContinueTarget({ episodeNumber: pendingContinueRef.current.episodeNumber });
     }
-    const seriaLink = getCachedSeriaLink(
-      selectedIdRef.current,
-      resolvedResume.seasonNumber,
-      resolvedResume.episodeNumber,
-    );
+    const seriaLink = allowSeriaPlayerRemount
+      ? getCachedSeriaLink(
+          selectedIdRef.current,
+          resolvedResume.seasonNumber,
+          resolvedResume.episodeNumber,
+        )
+      : null;
     const baseLink = seriaLink ?? selectedPlayerLink;
     if (baseLink) {
       setPlayerSrc(withKodikPlayerCacheBust(baseLink, Date.now()));
     }
     setPlayerResetNonce((nonce) => nonce + 1);
-  }, [getCachedSeriaLink, selectedPlayerLink]);
+  }, [allowSeriaPlayerRemount, getCachedSeriaLink, selectedPlayerLink]);
 
   const handlePlayerRefresh = useCallback(() => {
     if (!ready || continueLoading) return;
@@ -2208,6 +2645,7 @@ export function AnimeWatchPanel({
           scopedPlayerLink: seriaOrScoped ?? scopedPlayerLink,
           currentSeasonNumber: liveProgressRef.current.seasonNumber,
           targetSeasonNumber: seasonNumber,
+          allowSeriaRemount: allowSeriaPlayerRemount,
         });
 
         if (needsPlayerRemount) {
@@ -2238,6 +2676,7 @@ export function AnimeWatchPanel({
       })();
     },
     [
+      allowSeriaPlayerRemount,
       getCachedSeriaLink,
       playableByKodikId,
       playerSrc,
@@ -2620,53 +3059,147 @@ export function AnimeWatchPanel({
     </label>
   );
 
+  const handleShareWatchLink = useCallback(async () => {
+    if (typeof window === "undefined") return;
+    const progress = liveProgressRef.current;
+    const url = buildAnimeWatchShareUrl({
+      origin: window.location.origin,
+      shikimoriId,
+      player: playerBalancer,
+      season: progress.seasonNumber || playerEpisode.seasonNumber,
+      episode: progress.episodeNumber || playerEpisode.episodeNumber,
+      translationId: selected?.translationId ?? null,
+      positionSeconds: progress.positionSeconds,
+    });
+    try {
+      await copyTextToClipboard(url);
+      setShareLinkCopied(true);
+      if (!settings.reduceMotion) {
+        playCopySound();
+      }
+      emitCompanionReaction("celebrate");
+      reportAnimeWatchShare({
+        shikimoriId,
+        animeTitle,
+        player: playerBalancer,
+        seasonNumber: progress.seasonNumber || playerEpisode.seasonNumber,
+        episodeNumber: progress.episodeNumber || playerEpisode.episodeNumber,
+        translationId: selected?.translationId ?? null,
+        translationTitle: selected?.translationTitle ?? null,
+        positionSeconds: progress.positionSeconds,
+        nosave: true,
+        shareUrl: url,
+      });
+    } catch {
+      setShareLinkCopied(false);
+      emitCompanionReaction("error");
+    }
+  }, [
+    animeTitle,
+    playerBalancer,
+    playerEpisode.episodeNumber,
+    playerEpisode.seasonNumber,
+    selected?.translationId,
+    selected?.translationTitle,
+    settings.reduceMotion,
+    shikimoriId,
+  ]);
+
+  const renderPlayerBalancerSwitch = () => (
+    <div className="flex flex-wrap items-center gap-2">
+      <PlayerBalancerSwitch value={playerBalancer} onChange={setPlayerBalancer} />
+      <button
+        type="button"
+        onClick={() => void handleShareWatchLink()}
+        aria-label="Скопировать ссылку на серию, озвучку и таймкод"
+        title={
+          shareLinkCopied
+            ? "Ссылка скопирована"
+            : "Скопировать ссылку на плеер, серию, озвучку и таймкод (без записи в историю)"
+        }
+        className={[
+          "inline-flex h-8 w-8 items-center justify-center rounded-md border transition",
+          shareLinkCopied
+            ? "border-accent/55 bg-accent/15 text-accent"
+            : "border-border bg-background text-foreground hover:border-accent/40 hover:bg-surface-dim",
+        ].join(" ")}
+      >
+        <IconShareLink />
+      </button>
+      {shareLinkCopied ? (
+        <span className="text-xs font-medium text-accent" role="status" aria-live="polite">
+          Ссылка скопирована
+        </span>
+      ) : null}
+    </div>
+  );
+
+  const renderTranslationSearch = () => {
+    if (playable.length <= 5) return null;
+    return (
+      <input
+        type="search"
+        value={translationQuery}
+        onChange={(event) => setTranslationQuery(event.target.value)}
+        placeholder="Поиск озвучки…"
+        aria-label="Поиск озвучки"
+        className="h-8 min-w-0 flex-1 rounded-md border border-border bg-background px-2.5 text-xs text-foreground outline-none placeholder:text-muted focus:border-accent/50 sm:max-w-[14rem]"
+      />
+    );
+  };
+
   const renderTranslationButtons = () => (
-    <ul className="grid grid-cols-[repeat(auto-fill,minmax(9.5rem,1fr))] items-stretch gap-2">
-      {playable.map((tr) => {
-        const active = tr.kodikId === selected.kodikId;
-        const progress = formatEpisodeProgress(tr.lastSeason, tr.lastEpisode);
-        const seasonsBadge = formatKodikSeasonsBadge(tr.availableSeasons);
-        const studioId = resolveTranslationStudioId(tr.translationTitle);
-        const autoSkipEnabled = isTranslationAutoSkipEnabled(tr.translationId);
-        return (
-          <li key={tr.kodikId} className="flex min-w-0">
-            <button
-              type="button"
-              onClick={() => handleRoomTranslationSelect(tr.kodikId)}
-              disabled={roomTranslationSelectionDisabled}
-              aria-pressed={active}
-              data-studio={studioId ?? undefined}
-              className={[
-                "translation-btn relative flex h-full w-full flex-col items-center justify-center rounded-lg border px-3 py-1.5 text-center text-xs transition disabled:cursor-wait disabled:opacity-50",
-                active ? "translation-btn--active" : "",
-                studioId
-                  ? active
-                    ? "ring-2 ring-white/75 ring-offset-1 ring-offset-card"
-                    : "hover:brightness-110"
-                  : active
-                    ? "border-accent bg-accent/20 text-foreground ring-2 ring-white/75 ring-offset-1 ring-offset-card"
-                    : "border-border bg-background text-muted hover:border-accent/40 hover:text-foreground",
-              ].join(" ")}
-            >
-              <span className="font-medium leading-snug line-clamp-2">{tr.translationTitle}</span>
-              {progress ? (
-                <span className="mt-0.5 text-[10px] leading-tight opacity-80">{progress}</span>
-              ) : null}
-              {seasonsBadge ? (
-                <span className="mt-1 rounded border border-white/20 bg-black/20 px-1.5 py-0.5 text-[10px] font-semibold leading-tight text-white/90">
-                  {seasonsBadge}
-                </span>
-              ) : null}
-              {autoSkipEnabled ? (
-                <span className="pointer-events-none absolute bottom-1 left-1 rounded border border-emerald-300/55 bg-black/45 px-1 text-[9px] font-black leading-3 text-emerald-100 shadow-sm">
-                  AP
-                </span>
-              ) : null}
-            </button>
-          </li>
-        );
-      })}
-    </ul>
+    <>
+      <ul className="grid grid-cols-[repeat(auto-fill,minmax(9.5rem,1fr))] items-stretch gap-2">
+        {filteredPlayable.map((tr) => {
+          const active = tr.kodikId === selected.kodikId;
+          const progress = formatEpisodeProgress(tr.lastSeason, tr.lastEpisode);
+          const seasonsBadge = formatKodikSeasonsBadge(tr.availableSeasons);
+          const studioId = resolveTranslationStudioId(tr.translationTitle);
+          const autoSkipEnabled = isTranslationAutoSkipEnabled(tr.translationId);
+          return (
+            <li key={tr.kodikId} className="flex min-w-0">
+              <button
+                type="button"
+                onClick={() => handleRoomTranslationSelect(tr.kodikId)}
+                disabled={roomTranslationSelectionDisabled}
+                aria-pressed={active}
+                data-studio={studioId ?? undefined}
+                className={[
+                  "translation-btn relative flex h-full w-full flex-col items-center justify-center rounded-lg border px-3 py-1.5 text-center text-xs transition disabled:cursor-wait disabled:opacity-50",
+                  active ? "translation-btn--active" : "",
+                  studioId
+                    ? active
+                      ? "ring-2 ring-white/75 ring-offset-1 ring-offset-card"
+                      : "hover:brightness-110"
+                    : active
+                      ? "border-accent bg-accent/20 text-foreground ring-2 ring-white/75 ring-offset-1 ring-offset-card"
+                      : "border-border bg-background text-muted hover:border-accent/40 hover:text-foreground",
+                ].join(" ")}
+              >
+                <span className="font-medium leading-snug line-clamp-2">{tr.translationTitle}</span>
+                {progress ? (
+                  <span className="mt-0.5 text-[10px] leading-tight opacity-80">{progress}</span>
+                ) : null}
+                {seasonsBadge ? (
+                  <span className="mt-1 rounded border border-white/20 bg-black/20 px-1.5 py-0.5 text-[10px] font-semibold leading-tight text-white/90">
+                    {seasonsBadge}
+                  </span>
+                ) : null}
+                {autoSkipEnabled ? (
+                  <span className="pointer-events-none absolute bottom-1 left-1 rounded border border-emerald-300/55 bg-black/45 px-1 text-[9px] font-black leading-3 text-emerald-100 shadow-sm">
+                    AP
+                  </span>
+                ) : null}
+              </button>
+            </li>
+          );
+        })}
+      </ul>
+      {filteredPlayable.length === 0 ? (
+        <p className="mt-2 text-xs text-muted">Ничего не найдено</p>
+      ) : null}
+    </>
   );
 
   const renderWatchPartySyncIndicator = () =>
@@ -2695,7 +3228,54 @@ export function AnimeWatchPanel({
       </div>
     ) : null;
 
+  const renderDeepLinkInviteOverlay = () => {
+    if (!deepLinkInvite || continueLoading) return null;
+    const playerLabel = deepLinkInvite.player === "cvh" ? "VideoHUB" : "TA";
+    const seasonLabel = formatKodikSeasonLabel(deepLinkInvite.seasonNumber);
+    const episodeLabel = formatEpisodeOfTotal(deepLinkInvite.episodeNumber, episodesTotal ?? null);
+    const timeLabel =
+      deepLinkInvite.positionSeconds > 0
+        ? formatWatchPosition(deepLinkInvite.positionSeconds)
+        : null;
+
+    return (
+      <div className="absolute inset-0 z-[55] flex items-center justify-center bg-black/55 px-4">
+        <div className="flex max-w-sm flex-col items-center gap-3 rounded-xl border border-white/15 bg-black/85 px-5 py-5 text-center text-sm text-white shadow-xl backdrop-blur-sm">
+          <p className="text-xs font-medium uppercase tracking-wide text-white/55">
+            Переход по ссылке
+          </p>
+          <div className="space-y-1">
+            <p className="text-base font-semibold text-white">{deepLinkInvite.translationTitle}</p>
+            <p className="text-sm text-white/75">
+              {playerLabel} · {seasonLabel} · {episodeLabel}
+              {timeLabel ? ` · ${timeLabel}` : ""}
+            </p>
+          </div>
+          <button
+            type="button"
+            onClick={handleDeepLinkPlay}
+            disabled={continueLoading}
+            className="mt-1 inline-flex items-center gap-2 rounded-md border border-accent/55 bg-accent/20 px-5 py-2.5 text-sm font-semibold text-accent transition hover:border-accent hover:bg-accent/30 active:scale-[0.98]"
+          >
+            <svg viewBox="0 0 24 24" className="h-4 w-4 fill-current" aria-hidden>
+              <path d="M8 5v14l11-7z" />
+            </svg>
+            Воспроизвести
+          </button>
+          <button
+            type="button"
+            onClick={() => setDeepLinkInvite(null)}
+            className="text-xs text-white/50 transition hover:text-white/80"
+          >
+            Закрыть
+          </button>
+        </div>
+      </div>
+    );
+  };
+
   const renderWatchPartyPanel = () => {
+    if (playerBalancer === "cvh") return null;
     if (!betaChromeless || !ready || !selected?.playerLink) return null;
     if (watchParty.settingsLoading) return null;
     if (!watchParty.settings.enabled) return null;
@@ -2976,6 +3556,7 @@ export function AnimeWatchPanel({
 
   const showContinue =
     user &&
+    !deepLinkInvite &&
     continueProgress &&
     !playback.isPlaying &&
     continueProgress.positionSeconds >= MIN_SAVE_POSITION_SECONDS &&
@@ -3060,141 +3641,129 @@ export function AnimeWatchPanel({
       id="player"
       className="scroll-mt-20 rounded-xl border border-border bg-card p-4 shadow-lg shadow-black/40 sm:p-5"
     >
-      <div className="mb-4 flex flex-wrap items-center justify-between gap-3">
-        <h2 className="text-lg font-semibold text-foreground">Смотреть</h2>
-        <div className="flex flex-wrap items-center gap-2">
-          {ready && selected?.playerLink && !betaChromeless ? (
+      <div className="mb-4 space-y-3">
+        <div className="flex flex-wrap items-center justify-between gap-3">
+          <h2 className="text-lg font-semibold text-foreground">Смотреть</h2>
+          <div className="flex flex-wrap items-center gap-2">
+            {ready && selected?.playerLink && !betaChromeless ? (
+              <button
+                type="button"
+                onClick={togglePlayerExpanded}
+                className="hidden rounded-lg border border-border bg-background px-3 py-2 text-xs font-medium text-foreground transition hover:border-accent/40 hover:bg-surface-dim md:inline-flex"
+                aria-pressed={playerExpanded}
+              >
+                {playerExpanded ? "Стандартный размер" : "На весь экран"}
+              </button>
+            ) : null}
+            {showContinue && continueProgress ? (
             <button
               type="button"
-              onClick={togglePlayerExpanded}
-              className="hidden rounded-lg border border-border bg-background px-3 py-2 text-xs font-medium text-foreground transition hover:border-accent/40 hover:bg-surface-dim md:inline-flex"
-              aria-pressed={playerExpanded}
+              onClick={handleContinue}
+              disabled={continueLoading}
+              aria-busy={continueLoading}
+              className={[
+                "inline-flex items-center gap-2 rounded-lg border px-3 py-2 text-sm font-medium transition",
+                continueLoading
+                  ? "cursor-wait border-accent/60 bg-accent/20 text-accent"
+                  : "border-accent/40 bg-accent/10 text-accent hover:border-accent hover:bg-accent/15 active:scale-[0.98]",
+              ].join(" ")}
             >
-              {playerExpanded ? "Стандартный размер" : "На весь экран"}
+              {continueLoading ? (
+                <span
+                  aria-hidden
+                  className="inline-block h-4 w-4 animate-spin rounded-full border-2 border-current border-r-transparent"
+                />
+              ) : null}
+              <span>{continueLoading ? "Переход…" : "Продолжить"}</span>
+              <span className="text-xs font-normal text-muted">
+                {continueTranslation?.translationTitle
+                  ? `${continueTranslation.translationTitle} · `
+                  : ""}
+                {formatEpisodeOfTotal(continueProgress.episodeNumber, episodesTotal ?? null)} ·{" "}
+                {formatWatchPosition(continueProgress.positionSeconds)}
+              </span>
             </button>
-          ) : null}
-          {showContinue && continueProgress ? (
-          <button
-            type="button"
-            onClick={handleContinue}
-            disabled={continueLoading}
-            aria-busy={continueLoading}
-            className={[
-              "inline-flex items-center gap-2 rounded-lg border px-3 py-2 text-sm font-medium transition",
-              continueLoading
-                ? "cursor-wait border-accent/60 bg-accent/20 text-accent"
-                : "border-accent/40 bg-accent/10 text-accent hover:border-accent hover:bg-accent/15 active:scale-[0.98]",
-            ].join(" ")}
-          >
-            {continueLoading ? (
-              <span
-                aria-hidden
-                className="inline-block h-4 w-4 animate-spin rounded-full border-2 border-current border-r-transparent"
-              />
             ) : null}
-            <span>{continueLoading ? "Переход…" : "Продолжить"}</span>
-            <span className="text-xs font-normal text-muted">
-              {continueTranslation?.translationTitle
-                ? `${continueTranslation.translationTitle} · `
-                : ""}
-              {formatEpisodeOfTotal(continueProgress.episodeNumber, episodesTotal ?? null)} ·{" "}
-              {formatWatchPosition(continueProgress.positionSeconds)}
-            </span>
-          </button>
-          ) : null}
+          </div>
         </div>
+        {renderPlayerBalancerSwitch()}
       </div>
 
       {!user ? (
         <p className="mb-3 text-xs text-muted">Войдите, чтобы сохранять прогресс просмотра.</p>
       ) : null}
 
+      <MoveToCompletedBanner
+        shikimoriId={shikimoriId}
+        open={showMoveToCompletedBanner}
+        onClose={closeMoveToCompletedBanner}
+      />
+
       <div className="flex flex-col gap-2">
-        {ready && selected?.playerLink ? (
+        {ready && selected?.playerLink && user?.isAdmin ? (
           <div className="flex flex-wrap items-center gap-2">
-            <div className="flex flex-wrap items-center gap-2">
-              <label className="inline-flex cursor-pointer items-center gap-2 rounded-md border border-border bg-background px-2.5 py-1.5 text-xs font-medium text-foreground transition hover:border-accent/40 hover:bg-surface-dim">
-                <input
-                  type="checkbox"
-                  checked={settings.useLegacyKodikPlayer}
-                  onChange={(event) => setUseLegacyKodikPlayer(event.target.checked)}
-                  className="h-4 w-4 rounded border-border accent-accent"
-                />
-                <span
-                  title="Оригинальный legacy-плеер Kodik. Некоторые функции сайта могут не работать в нём."
-                  className="inline-flex h-5 items-center justify-center rounded-md border border-amber-300/35 bg-amber-400/10 px-1.5 text-xs font-black leading-none text-amber-200"
-                >
-                  Kodik
+            <div className="group relative">
+              <button
+                type="button"
+                onClick={() => setSkipTimesPopupPinned(true)}
+                className={[
+                  "inline-flex items-center gap-1.5 rounded-md border px-2.5 py-1.5 text-xs font-medium transition",
+                  skipTimesInfo?.found && skipTimesInfo.results.length > 0
+                    ? "border-emerald-400/40 bg-emerald-500/10 text-emerald-300 hover:border-emerald-300 hover:bg-emerald-500/15"
+                    : skipTimesLoading || roundedEpisodeLength < 300
+                      ? "border-amber-400/40 bg-amber-500/10 text-amber-300 hover:border-amber-300 hover:bg-amber-500/15"
+                      : "border-border bg-background text-muted hover:border-accent/40 hover:bg-surface-dim",
+                ].join(" ")}
+                aria-label="Диагностика AniSkip"
+              >
+                <IconSkipTimesFound />
+                <span>
+                  {skipTimesLoading || roundedEpisodeLength < 300
+                    ? "…"
+                    : skipTimesInfo?.results.length ?? 0}
                 </span>
-              </label>
-              {settings.useLegacyKodikPlayer ? (
-                <span className="text-xs text-amber-200/90">
-                  Legacy: часть функций TA недоступна
-                </span>
-              ) : null}
-              {user?.isAdmin && ready && selected?.playerLink ? (
-                <div className="group relative">
-                  <button
-                    type="button"
-                    onClick={() => setSkipTimesPopupPinned(true)}
-                    className={[
-                      "inline-flex items-center gap-1.5 rounded-md border px-2.5 py-1.5 text-xs font-medium transition",
-                      skipTimesInfo?.found && skipTimesInfo.results.length > 0
-                        ? "border-emerald-400/40 bg-emerald-500/10 text-emerald-300 hover:border-emerald-300 hover:bg-emerald-500/15"
-                        : skipTimesLoading || roundedEpisodeLength < 300
-                          ? "border-amber-400/40 bg-amber-500/10 text-amber-300 hover:border-amber-300 hover:bg-amber-500/15"
-                          : "border-border bg-background text-muted hover:border-accent/40 hover:bg-surface-dim",
-                    ].join(" ")}
-                    aria-label="Диагностика AniSkip"
-                  >
-                    <IconSkipTimesFound />
-                    <span>
-                      {skipTimesLoading || roundedEpisodeLength < 300
-                        ? "…"
-                        : skipTimesInfo?.results.length ?? 0}
+              </button>
+              <div
+                className={[
+                  "absolute left-0 top-full z-40 mt-2 w-[min(22rem,calc(100vw-2rem))] rounded-lg border border-border bg-card p-3 text-xs text-foreground shadow-xl shadow-black/35",
+                  skipTimesPopupPinned
+                    ? "block"
+                    : "hidden group-focus-within:block group-hover:block",
+                ].join(" ")}
+              >
+                <div className="mb-2 flex items-start justify-between gap-3">
+                  <div>
+                    <p className="font-semibold text-foreground">
+                      {skipTimesInfo?.found
+                        ? "AniSkip тайминги найдены"
+                        : skipTimesLoading
+                          ? "AniSkip ищет тайминги"
+                          : roundedEpisodeLength < 300
+                            ? "AniSkip ждёт длительность"
+                            : "AniSkip тайминги не найдены"}
+                    </p>
+                    <p className="mt-0.5 text-muted">
+                      {skipTimesInfo
+                        ? `${skipTimeSourceLabel(skipTimesInfo.source)} · MAL ${skipTimesInfo.malId ?? "—"}`
+                        : `S${playerEpisode.seasonNumber} · E${playerEpisode.episodeNumber}`}
+                    </p>
+                  </div>
+                  <div className="flex items-center gap-1.5">
+                    <span className="rounded border border-border bg-background px-1.5 py-0.5 text-[10px] uppercase text-muted">
+                      admin
                     </span>
-                  </button>
-                  <div
-                    className={[
-                      "absolute left-0 top-full z-40 mt-2 w-[min(22rem,calc(100vw-2rem))] rounded-lg border border-border bg-card p-3 text-xs text-foreground shadow-xl shadow-black/35",
-                      skipTimesPopupPinned
-                        ? "block"
-                        : "hidden group-focus-within:block group-hover:block",
-                    ].join(" ")}
-                  >
-                    <div className="mb-2 flex items-start justify-between gap-3">
-                      <div>
-                        <p className="font-semibold text-foreground">
-                          {skipTimesInfo?.found
-                            ? "AniSkip тайминги найдены"
-                            : skipTimesLoading
-                              ? "AniSkip ищет тайминги"
-                              : roundedEpisodeLength < 300
-                                ? "AniSkip ждёт длительность"
-                                : "AniSkip тайминги не найдены"}
-                        </p>
-                        <p className="mt-0.5 text-muted">
-                          {skipTimesInfo
-                            ? `${skipTimeSourceLabel(skipTimesInfo.source)} · MAL ${skipTimesInfo.malId ?? "—"}`
-                            : `S${playerEpisode.seasonNumber} · E${playerEpisode.episodeNumber}`}
-                        </p>
-                      </div>
-                      <div className="flex items-center gap-1.5">
-                        <span className="rounded border border-border bg-background px-1.5 py-0.5 text-[10px] uppercase text-muted">
-                          admin
-                        </span>
-                        {skipTimesPopupPinned ? (
-                          <button
-                            type="button"
-                            onClick={() => setSkipTimesPopupPinned(false)}
-                            aria-label="Закрыть окно AniSkip"
-                            className="inline-flex h-6 w-6 items-center justify-center rounded-md border border-border bg-background text-sm leading-none text-muted transition hover:border-accent/40 hover:text-foreground"
-                          >
-                            ×
-                          </button>
-                        ) : null}
-                      </div>
-                    </div>
+                    {skipTimesPopupPinned ? (
+                      <button
+                        type="button"
+                        onClick={() => setSkipTimesPopupPinned(false)}
+                        aria-label="Закрыть окно AniSkip"
+                        className="inline-flex h-6 w-6 items-center justify-center rounded-md border border-border bg-background text-sm leading-none text-muted transition hover:border-accent/40 hover:text-foreground"
+                      >
+                        ×
+                      </button>
+                    ) : null}
+                  </div>
+                </div>
                     <dl className="grid grid-cols-2 gap-x-3 gap-y-1 text-muted">
                       <dt>Серия</dt>
                       <dd className="text-right text-foreground">
@@ -3270,12 +3839,25 @@ export function AnimeWatchPanel({
                     </div>
                   </div>
                 </div>
-              ) : null}
-            </div>
           </div>
         ) : null}
         {renderWatchPartyPanel()}
-        {!ready ? (
+        {playerBalancer === "cvh" ? (
+          <div className="relative min-w-0">
+            {renderDeepLinkInviteOverlay()}
+            <CvhWatchSection
+              shikimoriId={shikimoriId}
+              malId={malId}
+              animeTitle={animeTitle}
+              preferredVoiceTitle={selected?.translationTitle ?? null}
+              preferredSeason={playerEpisode.seasonNumber}
+              preferredEpisode={playerEpisode.episodeNumber}
+              onProgress={trackProgress}
+              onPause={handlePause}
+              onVoiceStudioChange={handleCvhVoiceStudioChange}
+            />
+          </div>
+        ) : !ready ? (
           <div className="aspect-video animate-pulse rounded-lg bg-surface-dim" />
         ) : selected?.playerLink ? (
           betaChromeless ? (
@@ -3290,6 +3872,7 @@ export function AnimeWatchPanel({
               <div ref={playerExpandedHostRef} className="kodik-player-beta-player-host relative min-w-0">
                 {renderWatchPartySyncIndicator()}
                 {renderWatchPartyStartOverlay()}
+                {renderDeepLinkInviteOverlay()}
                 <KodikPlayerBetaViewport
                   playerRef={playerRef}
                   playerKey={`${selected.kodikId}-${playerResetNonce}-beta-${playerSrc}`}
@@ -3369,7 +3952,10 @@ export function AnimeWatchPanel({
                     <p className="text-xs font-medium uppercase tracking-wide text-muted">Озвучка</p>
                     {renderAutoSkipControl()}
                   </div>
-                  {renderPlayerRefreshButton()}
+                  <div className="flex min-w-0 flex-1 items-center justify-end gap-2 sm:flex-initial">
+                    {renderTranslationSearch()}
+                    {renderPlayerRefreshButton()}
+                  </div>
                 </div>
                 {renderTranslationButtons()}
               </div>
@@ -3384,6 +3970,7 @@ export function AnimeWatchPanel({
           >
             {renderWatchPartySyncIndicator()}
             {renderWatchPartyStartOverlay()}
+            {renderDeepLinkInviteOverlay()}
             <KodikPlayerBetaEpisodeStrip
               shikimoriId={shikimoriId}
               kodikId={selected.kodikId}
@@ -3416,9 +4003,13 @@ export function AnimeWatchPanel({
             />
           </div>
           )
-        ) : null}
+        ) : (
+          <div className="rounded-lg border border-border bg-card px-4 py-6 text-sm text-muted">
+            Нет ссылки Kodik для этого тайтла. Можно попробовать VideoHUB.
+          </div>
+        )}
 
-        {ready && selected?.playerLink && !betaChromeless ? (
+        {playerBalancer === "kodik" && ready && selected?.playerLink && !betaChromeless ? (
           <div className="flex justify-stretch gap-2 sm:justify-end">
             {pendingAutoSkip ? (
               <button
@@ -3467,14 +4058,17 @@ export function AnimeWatchPanel({
         ) : null}
       </div>
 
-      {!betaChromeless ? (
+      {!betaChromeless && playerBalancer === "kodik" ? (
       <div className="mt-4">
         <div className="mb-2 flex flex-wrap items-center justify-between gap-2">
           <div className="flex flex-wrap items-center gap-2">
             <p className="text-xs font-medium uppercase tracking-wide text-muted">Озвучка</p>
             {renderAutoSkipControl()}
           </div>
-          {renderPlayerRefreshButton()}
+          <div className="flex min-w-0 flex-1 items-center justify-end gap-2 sm:flex-initial">
+            {renderTranslationSearch()}
+            {renderPlayerRefreshButton()}
+          </div>
         </div>
         {renderTranslationButtons()}
       </div>

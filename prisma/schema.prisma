@@ -17,6 +17,46 @@ model KodikSyncSettings {
   updatedAt       DateTime  @updatedAt
 }
 
+/// Бекап PostgreSQL на WebDAV (облако)
+model DbBackupSettings {
+  id              String    @id @default("default")
+  /// Автобекап по cron (kodik:sync:scheduled)
+  enabled         Boolean   @default(false)
+  intervalHours   Int       @default(24)
+  webdavUrl       String    @default("")
+  webdavUsername  String    @default("")
+  webdavPassword  String?   @db.Text
+  /// Папка на WebDAV; внутри создаётся подпапка по дате бекапа
+  remoteFolder    String    @default("/track-anime-backups")
+  /// Лимит размера одного файла (байты) — чанки под лимит облака
+  maxFileBytes    Int       @default(99614720)
+  /// Какие таблицы копировать: { "KodikMaterial": true, ... }; нет ключа = включено
+  includedTables  Json      @default("{}")
+  lastAutoRunAt   DateTime?
+  /// Запрос ручного запуска из админки (подхватит cron или API)
+  runRequestedAt  DateTime?
+  updatedAt       DateTime  @updatedAt
+}
+
+/// История запусков WebDAV-бекапа
+model DbBackupRun {
+  id             String    @id @default(cuid())
+  trigger        String
+  status         String
+  remoteFolder   String?
+  uploadedFiles  Int       @default(0)
+  uploadedBytes  BigInt    @default(0)
+  tablesTotal    Int       @default(0)
+  tablesDone     Int       @default(0)
+  error          String?   @db.Text
+  startedAt      DateTime  @default(now())
+  finishedAt     DateTime?
+  durationMs     Int?
+
+  @@index([startedAt(sort: Desc)])
+  @@index([status, startedAt(sort: Desc)])
+}
+
 /// Кэш обложек (/api/cover)
 model CoverCacheSettings {
   id                String   @id @default("default")
@@ -25,6 +65,8 @@ model CoverCacheSettings {
   quality           Int      @default(70)
   maxHeight         Int      @default(450)
   browserCacheDays  Int      @default(7)
+  /// Порядок и вкл/выкл источников обложки: { order: string[], enabled: Record<string, boolean> }
+  sourceOrder       Json     @default("{\"order\":[\"url\",\"kodik\",\"material_db\",\"cvh\",\"shikimori\",\"worldart\"],\"enabled\":{\"url\":true,\"kodik\":true,\"material_db\":true,\"shikimori\":true,\"cvh\":true,\"worldart\":true}}")
   updatedAt         DateTime @updatedAt
 }
 
@@ -44,6 +86,18 @@ model AnimeExternalIdMap {
   updatedAt   DateTime @updatedAt
 
   @@index([malId])
+}
+
+/// Снимок related / franchise / similar с Shikimori (SWR для блоков на странице аниме)
+model AnimeRelationSnapshot {
+  shikimoriId Int
+  kind        String
+  payload     Json
+  syncedAt    DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  @@unique([shikimoriId, kind])
+  @@index([syncedAt])
 }
 
 /// Тайминги пропуска OP/ED/recap из внешних источников (AniSkip)
@@ -166,6 +220,16 @@ model BrandRotationSettings {
   updatedAt       DateTime @updatedAt
 }
 
+/// Ненавязчивое промо приложений на сайте (можно выключить по каналам в админке)
+model AppPromoSettings {
+  id String @id @default("default")
+  /// Soft-banner + намёк в уведомлениях для Android-браузера
+  enabled Boolean @default(true)
+  /// Soft-banner + кнопка в шапке для десктопа
+  desktopEnabled Boolean @default(true)
+  updatedAt DateTime @updatedAt
+}
+
 /// Принудительное смещение интро по озвучкам (перекрывает настройки пользователей)
 model TranslationIntroSettings {
   id            String   @id @default("default")
@@ -176,6 +240,8 @@ model TranslationIntroSettings {
 /// API уведомлений (Telegram, VK, Discord DM, Web Push VAPID)
 model NotificationSettings {
   id                              String   @id @default("default")
+  /// Публичный origin для ссылок в уведомлениях (Discord/Telegram/VK/FCM). null = AUTH_URL
+  linkBaseUrl                     String?
   telegramBotToken                String?  @db.Text
   telegramBotUsername             String?
   vkBotToken                      String?  @db.Text
@@ -352,6 +418,7 @@ model User {
   fcmDeviceTokens         FcmDeviceToken[]
   approvedQrLogins        QrLoginRequest[] @relation("QrLoginApprover")
   siteVisitors            SiteVisitor[]
+  watchShareEvents        AnimeWatchShareEvent[]
 }
 
 /// Нормализованные жанры материала для индексируемого публичного поиска.
@@ -671,12 +738,41 @@ model SiteVisitor {
   uaHash      String?
   lastPath    String?
   lastPathAt  DateTime?
+  /// Отдельный throttle для play (не сбрасывается page-view)
+  lastPlayPath String?
+  lastPlayAt   DateTime?
   createdAt   DateTime @default(now())
   updatedAt   DateTime @updatedAt
 
   @@index([userId])
   @@index([lastSeenAt])
   @@index([clientKind])
+}
+
+/// Копия ссылки на серию/озвучку/таймкод (кнопка-цепочка у плеера) — лог для /admin/audience.
+model AnimeWatchShareEvent {
+  id               String   @id @default(cuid())
+  createdAt        DateTime @default(now())
+  userId           String?
+  user             User?    @relation(fields: [userId], references: [id], onDelete: SetNull)
+  /// Снимок ника на момент копирования (гость → «Гость»).
+  nickname         String
+  avatar           String?
+  shikimoriId      Int
+  animeTitle       String
+  /// kodik | cvh
+  player           String   @default("kodik")
+  seasonNumber     Int      @default(1)
+  episodeNumber    Int      @default(1)
+  translationId    Int?
+  translationTitle String?
+  positionSeconds  Float    @default(0)
+  nosave           Boolean  @default(true)
+  shareUrl         String?  @db.Text
+
+  @@index([createdAt(sort: Desc)])
+  @@index([userId, createdAt(sort: Desc)])
+  @@index([shikimoriId, createdAt(sort: Desc)])
 }
 
 /// Дневная активность уникальной личности (u:userId или v:visitorKey)

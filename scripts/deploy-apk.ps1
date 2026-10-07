@@ -9,7 +9,7 @@
 # См. docs/DEPLOY.md, docs/ANDROID.md
 
 param(
-    [string]$Remote = "root@195.26.230.35",
+    [string]$Remote = "root@194.180.189.34",
     [string]$SshKey = "$env:USERPROFILE\.ssh\id_rsa",
     [string]$ServerAppDir = "/var/www/ta_new",
     [string]$ApkPath = "",
@@ -20,15 +20,15 @@ $ErrorActionPreference = "Stop"
 
 . (Join-Path $PSScriptRoot "deploy-config.ps1")
 
-$DefaultRemote = "root@195.26.230.35"
+$DefaultRemote = "root@194.180.189.34"
 $DefaultSshKey = "$env:USERPROFILE\.ssh\id_rsa"
 $DefaultServerAppDir = "/var/www/ta_new"
 
 $ProjectRoot = (Resolve-Path (Join-Path $PSScriptRoot "..")).Path
 $LocalApk = Join-Path $ProjectRoot "public\downloads\TrackAnime.apk"
 $LocalManifest = Join-Path $ProjectRoot "public\downloads\TrackAnime.json"
-$DownloadUrl = "https://ta.dygdyg.ru/downloads/TrackAnime.apk"
-$ManifestUrl = "https://ta.dygdyg.ru/downloads/TrackAnime.json"
+$DownloadUrl = "https://track-anime.win/downloads/TrackAnime.apk"
+$ManifestUrl = "https://track-anime.win/downloads/TrackAnime.json"
 
 Merge-TaDeployLocalParams `
     -Remote ([ref]$Remote) `

@@ -6,6 +6,8 @@ import {
 } from "@/lib/anime-labels";
 import type { HistoryNewMaterialRow } from "@/lib/history-new-match";
 import { resolveMaterialPosterUrl, type MaterialPosterSource } from "@/lib/material-poster";
+import { getNotificationLinkBaseUrl } from "@/lib/admin/notification-settings";
+import { authUrlFallback } from "@/lib/notifications/link-base-url";
 import type { HistoryNewNotificationPayload } from "@/lib/notifications/types";
 import { buildEpisodeLabel } from "@/lib/notifications/templates";
 import { isValidImageUrl, normalizeDirectImageUrl } from "@/lib/poster";
@@ -39,12 +41,8 @@ function readPosterUrl(material: HistoryNewMaterialRow): string | null {
   });
 }
 
-function buildSiteBaseUrl(): string {
-  return (process.env.AUTH_URL ?? "http://localhost:3000").replace(/\/$/, "");
-}
-
-function buildPageUrl(shikimoriId: number): string {
-  return `${buildSiteBaseUrl()}/anime/${shikimoriId}`;
+function buildPageUrl(baseUrl: string, shikimoriId: number): string {
+  return `${baseUrl}/anime/${shikimoriId}`;
 }
 
 function stripHtml(text: string): string {
@@ -176,10 +174,21 @@ export async function resolveNotificationAnimeMeta(
   };
 }
 
+function linkBaseFromPageUrl(pageUrl: string): string {
+  try {
+    const url = new URL(pageUrl);
+    const match = url.pathname.match(/^(.*)\/anime\/\d+\/?$/i);
+    const prefix = match?.[1] ?? "";
+    return `${url.origin}${prefix}`;
+  } catch {
+    return authUrlFallback();
+  }
+}
+
 export function resolveNotificationPosterUrl(
-  payload: Pick<HistoryNewNotificationPayload, "posterUrl" | "shikimoriId">,
+  payload: Pick<HistoryNewNotificationPayload, "posterUrl" | "shikimoriId" | "pageUrl">,
 ): string {
-  const base = buildSiteBaseUrl();
+  const base = linkBaseFromPageUrl(payload.pageUrl);
 
   if (payload.posterUrl && isValidImageUrl(payload.posterUrl)) {
     const url = payload.posterUrl.trim();
@@ -204,6 +213,7 @@ export async function buildHistoryNewNotificationPayload(input: {
   const animeMeta =
     input.animeMeta ??
     (await resolveNotificationAnimeMeta(shikimoriId, input.material.materialData));
+  const baseUrl = await getNotificationLinkBaseUrl();
 
   return {
     materialId: input.material.kodikId,
@@ -213,7 +223,7 @@ export async function buildHistoryNewNotificationPayload(input: {
     episodeNumber: input.episodeNumber,
     translationName: input.material.translationTitle,
     posterUrl: readPosterUrl(input.material),
-    pageUrl: buildPageUrl(shikimoriId),
+    pageUrl: buildPageUrl(baseUrl, shikimoriId),
     watchedSeasonNumber: input.watchedSeasonNumber,
     watchedEpisodeNumber: input.watchedEpisodeNumber,
     ...animeMeta,

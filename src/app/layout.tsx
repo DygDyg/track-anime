@@ -33,6 +33,7 @@ import { getActiveBrandAsset } from "@/lib/brand-rotation";
 import { getSiteBuildFingerprint } from "@/lib/admin/build-info";
 import { ClientUpdateGuard } from "@/components/ClientUpdateGuard";
 import { SiteAnalyticsBeacon } from "@/components/SiteAnalyticsBeacon";
+import { LEGACY_REDIRECT_BOOTSTRAP_SCRIPT } from "@/lib/legacy-domain-redirect";
 import "./globals.css";
 import "./translation-badges.css";
 
@@ -109,6 +110,7 @@ export default async function RootLayout({ children }: { children: React.ReactNo
     <html lang="ru" suppressHydrationWarning data-theme="dark">
       <head>
         <meta name="darkreader-lock" />
+        <script dangerouslySetInnerHTML={{ __html: LEGACY_REDIRECT_BOOTSTRAP_SCRIPT }} />
       </head>
       <body
         className={`${siteFontBodyClassName} min-h-screen font-sans antialiased`}

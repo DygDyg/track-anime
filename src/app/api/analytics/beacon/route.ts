@@ -10,6 +10,8 @@ type BeaconBody = {
   path?: unknown;
   isPwa?: unknown;
   isTv?: unknown;
+  model?: unknown;
+  mobile?: unknown;
 };
 
 export async function POST(request: NextRequest) {
@@ -29,6 +31,8 @@ export async function POST(request: NextRequest) {
     clientHints: {
       isPwa: body?.isPwa === true,
       isTv: body?.isTv === true,
+      model: typeof body?.model === "string" ? body.model.slice(0, 80) : undefined,
+      mobile: body?.mobile === true,
     },
   });
 

@@ -20,6 +20,8 @@ import { isShikimoriMissingImage, shikimoriAssetUrl } from "@/lib/shikimori/clie
 import { getShikimoriEndpoints, shikimoriSiteUrl } from "@/lib/shikimori/endpoints";
 import { pickYoutubeTrailerId } from "@/lib/shikimori/trailer";
 import type { ShikimoriAnime, ShikimoriStudio } from "@/lib/shikimori/types";
+import { compareTranslationsByEpisodesAndPopular } from "@/lib/translation-sort";
+import { resolveMalIdForShikimoriId } from "@/lib/shikimori/mal-id";
 
 export type KodikTranslationDto = {
   kodikId: string;
@@ -35,6 +37,7 @@ export type KodikTranslationDto = {
 
 export type AnimePageDto = {
   shikimoriId: number;
+  malId: number | null;
   title: string;
   titleOriginal: string | null;
   posterUrl: string | null;
@@ -338,6 +341,7 @@ function mapAnimeToDto(
 
   return {
     shikimoriId,
+    malId: null,
     title,
     titleOriginal: anime?.name ?? null,
     posterUrl,
@@ -398,13 +402,14 @@ async function loadAnimePageMaterials(shikimoriId: number) {
 export const getAnimePageData = cache(async (shikimoriId: number): Promise<AnimePageDto | null> => {
   await getShikimoriEndpoints();
 
-  let [materials, releasePoster] = await Promise.all([
+  let [materials, releasePoster, malId] = await Promise.all([
     loadAnimePageMaterials(shikimoriId),
     prisma.kodikEpisodeRelease.findFirst({
       where: { shikimoriId },
       orderBy: { releasedAt: "desc" },
       select: { posterUrl: true },
     }),
+    resolveMalIdForShikimoriId(shikimoriId).catch(() => null),
   ]);
 
   let hasRealMaterials = materials.some((m) => !isShikimoriStubMaterial(m.kodikId));
@@ -441,7 +446,8 @@ export const getAnimePageData = cache(async (shikimoriId: number): Promise<Anime
       availableSeasons: m.seasons.filter((season) => season.seasonNumber >= 0),
       playerLink: normalizePlayerLink(m.playerLink),
       quality: m.quality,
-    }));
+    }))
+    .sort(compareTranslationsByEpisodesAndPopular);
 
   const materialsForMeta = materials.filter((m) => !isShikimoriStubMaterial(m.kodikId));
   const metaMaterials = materialsForMeta.length > 0 ? materialsForMeta : materials;
@@ -476,5 +482,5 @@ export const getAnimePageData = cache(async (shikimoriId: number): Promise<Anime
     }
   }
 
-  return dto;
+  return { ...dto, malId };
 });

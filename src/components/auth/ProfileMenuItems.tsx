@@ -7,7 +7,7 @@ import { useAuth } from "@/components/auth/AuthProvider";
 import { profileMenuItemClass, profileMenuLogoutClass } from "@/components/auth/profile-menu-styles";
 import { isTrackAnimeAndroidApp, TRACK_ANIME_ANDROID_SETTINGS_URL } from "@/lib/android-app";
 import { isTrackAnimeWindowsApp, TRACK_ANIME_WINDOWS_SETTINGS_URL } from "@/lib/windows-app";
-import { userProfilePath } from "@/lib/public-user";
+import { userFavoritesPath, userProfilePath } from "@/lib/public-user";
 
 export function LocalCredentialWarningIcon({
   className = "absolute -right-1.5 -top-1.5 h-4 w-4 drop-shadow",
@@ -45,6 +45,7 @@ export function ProfileMenuItems({ centered = false, onNavigate, onScanQr }: Pro
   if (!user) return null;
 
   const profileHref = userProfilePath(user.shikimoriId);
+  const favoritesHref = userFavoritesPath(user.shikimoriId);
   const needsLocalCredential = !user.hasLocalCredential;
 
   return (
@@ -58,7 +59,7 @@ export function ProfileMenuItems({ centered = false, onNavigate, onScanQr }: Pro
       <NavLink href="/history" role="menuitem" className={profileMenuItemClass(pathname === "/history", centered)} onClick={onNavigate}>
         История
       </NavLink>
-      <NavLink href="/favorites" role="menuitem" className={profileMenuItemClass(pathname === "/favorites" || pathname.startsWith("/favorites/"), centered)} onClick={onNavigate}>
+      <NavLink href={favoritesHref} role="menuitem" className={profileMenuItemClass(pathname === favoritesHref || pathname.startsWith(`${favoritesHref}/`), centered)} onClick={onNavigate}>
         Избранное
       </NavLink>
       {user.isAdmin ? <NavLink href="/admin" role="menuitem" className={profileMenuItemClass(pathname.startsWith("/admin"), centered)} onClick={onNavigate}>Админ</NavLink> : null}
@@ -75,7 +76,16 @@ export function ProfileMenuItems({ centered = false, onNavigate, onScanQr }: Pro
         >
           Настройки приложения
         </a>
-      ) : null}
+      ) : (
+        <NavLink
+          href="/app"
+          role="menuitem"
+          className={profileMenuItemClass(pathname === "/app" || pathname.startsWith("/app/"), centered)}
+          onClick={onNavigate}
+        >
+          Приложение
+        </NavLink>
+      )}
       <button
         type="button"
         role="menuitem"

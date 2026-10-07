@@ -19,6 +19,8 @@ type Props = {
   loading?: "lazy" | "eager";
   /** full — страница тайтла; thumb — карточки и списки */
   size?: CoverCacheSize;
+  /** Bust browser cache for /api/cover after force refresh */
+  cacheBust?: string | number | null;
 };
 
 function nextPosterAttempt(
@@ -48,20 +50,22 @@ export function AnimePoster({
   className = "",
   loading = "lazy",
   size = "thumb",
+  cacheBust,
 }: Props) {
+  const resolveOptions = { shikimoriId, size, cacheBust };
   const [attempt, setAttempt] = useState<PosterDisplayAttempt>(() =>
-    getInitialPosterDisplayAttempt(src, fallbackSrc, { shikimoriId, size }),
+    getInitialPosterDisplayAttempt(src, fallbackSrc, resolveOptions),
   );
   const [exhausted, setExhausted] = useState(false);
 
   useEffect(() => {
-    setAttempt(getInitialPosterDisplayAttempt(src, fallbackSrc, { shikimoriId, size }));
+    setAttempt(getInitialPosterDisplayAttempt(src, fallbackSrc, resolveOptions));
     setExhausted(false);
-  }, [src, fallbackSrc, shikimoriId, size]);
+  }, [src, fallbackSrc, shikimoriId, size, cacheBust]);
 
   const imageUrl = exhausted
     ? null
-    : resolvePosterDisplayUrl(attempt, src, fallbackSrc, { shikimoriId, size });
+    : resolvePosterDisplayUrl(attempt, src, fallbackSrc, resolveOptions);
 
   const handleError = useCallback(() => {
     setAttempt((current) => {

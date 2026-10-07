@@ -1,4 +1,22 @@
 import { prisma } from "@/lib/prisma";
+import {
+  COVER_SOURCE_IDS,
+  COVER_SOURCE_LABELS,
+  DEFAULT_COVER_SOURCE_ORDER,
+  listEnabledCoverSources,
+  normalizeCoverSourceOrder,
+  type CoverSourceId,
+  type CoverSourceOrderConfig,
+} from "@/lib/admin/cover-cache-sources";
+
+export {
+  COVER_SOURCE_IDS,
+  COVER_SOURCE_LABELS,
+  DEFAULT_COVER_SOURCE_ORDER,
+  listEnabledCoverSources,
+  normalizeCoverSourceOrder,
+};
+export type { CoverSourceId, CoverSourceOrderConfig };
 
 export const COVER_CACHE_SETTINGS_ID = "default";
 
@@ -11,6 +29,7 @@ export type CoverCacheSettingsDto = {
   quality: number;
   maxHeight: number;
   browserCacheDays: number;
+  sourceOrder: CoverSourceOrderConfig;
   updatedAt: string;
 };
 
@@ -20,6 +39,7 @@ export type CoverCacheRuntimeSettings = {
   quality: number;
   maxHeight: number;
   browserCacheSec: number;
+  sourceOrder: CoverSourceOrderConfig;
 };
 
 export const DEFAULT_COVER_CACHE_RUNTIME: CoverCacheRuntimeSettings = {
@@ -28,6 +48,7 @@ export const DEFAULT_COVER_CACHE_RUNTIME: CoverCacheRuntimeSettings = {
   quality: 70,
   maxHeight: 450,
   browserCacheSec: 7 * 24 * 60 * 60,
+  sourceOrder: DEFAULT_COVER_SOURCE_ORDER,
 };
 
 export const DEFAULT_COVER_CACHE_DTO: CoverCacheSettingsDto = {
@@ -36,6 +57,7 @@ export const DEFAULT_COVER_CACHE_DTO: CoverCacheSettingsDto = {
   quality: DEFAULT_COVER_CACHE_RUNTIME.quality,
   maxHeight: DEFAULT_COVER_CACHE_RUNTIME.maxHeight,
   browserCacheDays: 7,
+  sourceOrder: DEFAULT_COVER_SOURCE_ORDER,
   updatedAt: new Date(0).toISOString(),
 };
 
@@ -57,6 +79,7 @@ function toRuntime(row: {
   quality: number;
   maxHeight: number;
   browserCacheDays: number;
+  sourceOrder?: unknown;
 }): CoverCacheRuntimeSettings {
   return {
     enabled: row.enabled,
@@ -64,6 +87,7 @@ function toRuntime(row: {
     quality: row.quality,
     maxHeight: row.maxHeight,
     browserCacheSec: row.browserCacheDays * 24 * 60 * 60,
+    sourceOrder: normalizeCoverSourceOrder(row.sourceOrder),
   };
 }
 
@@ -73,6 +97,7 @@ function toDto(row: {
   quality: number;
   maxHeight: number;
   browserCacheDays: number;
+  sourceOrder?: unknown;
   updatedAt: Date;
 }): CoverCacheSettingsDto {
   return {
@@ -81,6 +106,7 @@ function toDto(row: {
     quality: row.quality,
     maxHeight: row.maxHeight,
     browserCacheDays: row.browserCacheDays,
+    sourceOrder: normalizeCoverSourceOrder(row.sourceOrder),
     updatedAt: row.updatedAt.toISOString(),
   };
 }
@@ -99,6 +125,7 @@ export async function ensureCoverCacheSettings(): Promise<void> {
       quality: DEFAULT_COVER_CACHE_RUNTIME.quality,
       maxHeight: DEFAULT_COVER_CACHE_RUNTIME.maxHeight,
       browserCacheDays: DEFAULT_COVER_CACHE_RUNTIME.browserCacheSec / (24 * 60 * 60),
+      sourceOrder: DEFAULT_COVER_SOURCE_ORDER,
     },
     update: {},
   });
@@ -142,6 +169,7 @@ export async function updateCoverCacheSettings(input: {
   quality?: number;
   maxHeight?: number;
   browserCacheDays?: number;
+  sourceOrder?: CoverSourceOrderConfig;
 }): Promise<CoverCacheSettingsDto> {
   await ensureCoverCacheSettings();
 
@@ -151,6 +179,7 @@ export async function updateCoverCacheSettings(input: {
     quality?: number;
     maxHeight?: number;
     browserCacheDays?: number;
+    sourceOrder?: CoverSourceOrderConfig;
   } = {};
 
   if (input.enabled !== undefined) data.enabled = input.enabled;
@@ -158,6 +187,7 @@ export async function updateCoverCacheSettings(input: {
   if (input.quality !== undefined) data.quality = input.quality;
   if (input.maxHeight !== undefined) data.maxHeight = input.maxHeight;
   if (input.browserCacheDays !== undefined) data.browserCacheDays = input.browserCacheDays;
+  if (input.sourceOrder !== undefined) data.sourceOrder = normalizeCoverSourceOrder(input.sourceOrder);
 
   await prisma.coverCacheSettings.update({
     where: { id: COVER_CACHE_SETTINGS_ID },

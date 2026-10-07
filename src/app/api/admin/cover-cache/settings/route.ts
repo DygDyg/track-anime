@@ -3,9 +3,13 @@ import { isAdminApiError, requireAdminApi } from "@/lib/auth/admin";
 import {
   COVER_BROWSER_CACHE_OPTIONS,
   COVER_MAX_AGE_OPTIONS,
+  COVER_SOURCE_IDS,
+  COVER_SOURCE_LABELS,
   getCoverCacheAdminStats,
   getCoverCacheSettingsDto,
+  normalizeCoverSourceOrder,
   updateCoverCacheSettings,
+  type CoverSourceOrderConfig,
 } from "@/lib/admin/cover-cache-settings";
 
 export const dynamic = "force-dynamic";
@@ -24,6 +28,8 @@ export async function GET() {
     stats,
     maxAgeOptions: COVER_MAX_AGE_OPTIONS,
     browserCacheOptions: COVER_BROWSER_CACHE_OPTIONS,
+    sourceIds: COVER_SOURCE_IDS,
+    sourceLabels: COVER_SOURCE_LABELS,
   });
 }
 
@@ -48,6 +54,7 @@ export async function PATCH(request: Request) {
     quality?: unknown;
     maxHeight?: unknown;
     browserCacheDays?: unknown;
+    sourceOrder?: unknown;
   };
 
   const patch: {
@@ -56,6 +63,7 @@ export async function PATCH(request: Request) {
     quality?: number;
     maxHeight?: number;
     browserCacheDays?: number;
+    sourceOrder?: CoverSourceOrderConfig;
   } = {};
 
   if (input.enabled !== undefined) {
@@ -107,6 +115,13 @@ export async function PATCH(request: Request) {
       );
     }
     patch.browserCacheDays = browserCacheDays;
+  }
+
+  if (input.sourceOrder !== undefined) {
+    if (!input.sourceOrder || typeof input.sourceOrder !== "object") {
+      return NextResponse.json({ error: "sourceOrder должен быть объектом" }, { status: 400 });
+    }
+    patch.sourceOrder = normalizeCoverSourceOrder(input.sourceOrder);
   }
 
   if (Object.keys(patch).length === 0) {

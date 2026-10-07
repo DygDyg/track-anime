@@ -1,0 +1,1264 @@
+{
+ "schemes": [],
+ "swagger": "2.0",
+ "info": {
+ "description": "Каталог контента: тайтлы, сезоны, эпизоды и их метаданные.",
+ "title": "Content API",
+ "contact": {},
+ "version": "0.1.0"
+ },
+ "host": "",
+ "basePath": "/",
+ "paths": {
+ "/api/v1/countries": {
+ "get": {
+ "security": [
+ {
+ "BearerAuth": []
+ }
+ ],
+ "description": "Все страны каталога — код (ISO 3166-1 alpha-2) и название. Перечень выдаётся целиком, без пагинации, отсортирован по коду.",
+ "consumes": [
+ "application/json"
+ ],
+ "produces": [
+ "application/json"
+ ],
+ "tags": [
+ "Справочники"
+ ],
+ "summary": "Перечень стран",
+ "responses": {
+ "200": {
+ "description": "OK",
+ "schema": {
+ "$ref": "#/definitions/response.ReferenceList"
+ }
+ },
+ "401": {
+ "description": "Unauthorized",
+ "schema": {
+ "$ref": "#/definitions/httputil.ErrorResponse"
+ }
+ },
+ "500": {
+ "description": "Internal Server Error",
+ "schema": {
+ "$ref": "#/definitions/httputil.ErrorResponse"
+ }
+ }
+ }
+ }
+ },
+ "/api/v1/genres": {
+ "get": {
+ "security": [
+ {
+ "BearerAuth": []
+ }
+ ],
+ "description": "Все жанры каталога — код и название. Перечень выдаётся целиком, без пагинации, отсортирован по коду. Жанры с одинаковым названием остаются разными записями с разными кодами.",
+ "consumes": [
+ "application/json"
+ ],
+ "produces": [
+ "application/json"
+ ],
+ "tags": [
+ "Справочники"
+ ],
+ "summary": "Перечень жанров",
+ "responses": {
+ "200": {
+ "description": "OK",
+ "schema": {
+ "$ref": "#/definitions/response.ReferenceList"
+ }
+ },
+ "401": {
+ "description": "Unauthorized",
+ "schema": {
+ "$ref": "#/definitions/httputil.ErrorResponse"
+ }
+ },
+ "500": {
+ "description": "Internal Server Error",
+ "schema": {
+ "$ref": "#/definitions/httputil.ErrorResponse"
+ }
+ }
+ }
+ }
+ },
+ "/api/v1/studios": {
+ "get": {
+ "security": [
+ {
+ "BearerAuth": []
+ }
+ ],
+ "consumes": [
+ "application/json"
+ ],
+ "produces": [
+ "application/json"
+ ],
+ "tags": [
+ "Справочники"
+ ],
+ "summary": "Список студий",
+ "responses": {
+ "200": {
+ "description": "OK",
+ "schema": {
+ "$ref": "#/definitions/response.StudioList"
+ }
+ },
+ "401": {
+ "description": "Unauthorized",
+ "schema": {
+ "$ref": "#/definitions/httputil.ErrorResponse"
+ }
+ },
+ "500": {
+ "description": "Internal Server Error",
+ "schema": {
+ "$ref": "#/definitions/httputil.ErrorResponse"
+ }
+ }
+ }
+ }
+ },
+ "/api/v1/titles": {
+ "get": {
+ "security": [
+ {
+ "BearerAuth": []
+ }
+ ],
+ "description": "Список тайтлов с фильтрами и пагинацией. Параметр-идентификатор\n(id, kinopoisk_id, imdb_id, mal_id, mdl_id), присланный пустым или из\nодних пробелов, отклоняется 400 вместо выборки всего каталога.",
+ "consumes": [
+ "application/json"
+ ],
+ "produces": [
+ "application/json"
+ ],
+ "tags": [
+ "Тайтлы"
+ ],
+ "summary": "Список тайтлов",
+ "parameters": [
+ {
+ "enum": [
+ "movie",
+ "tv"
+ ],
+ "type": "string",
+ "description": "Тип: movie — фильм, tv — сериал",
+ "name": "type",
+ "in": "query"
+ },
+ {
+ "type": "string",
+ "description": "ID тайтлов через запятую",
+ "name": "id",
+ "in": "query"
+ },
+ {
+ "type": "string",
+ "description": "Коды жанров через запятую — вернёт тайтлы с любым из них; коды берите в /titles/filters",
+ "name": "genres",
+ "in": "query"
+ },
+ {
+ "type": "string",
+ "description": "Коды стран через запятую — вернёт тайтлы с любой из них; коды берите в /titles/filters",
+ "name": "countries",
+ "in": "query"
+ },
+ {
+ "enum": [
+ "anime",
+ "dorama",
+ "turkey",
+ "west"
+ ],
+ "type": "string",
+ "description": "Направление: anime — аниме, dorama — дорама, turkey — турецкое, west — западное",
+ "name": "direction",
+ "in": "query"
+ },
+ {
+ "enum": [
+ "created_at_desc",
+ "created_at_asc",
+ "updated_at_desc",
+ "updated_at_asc",
+ "year_desc",
+ "year_asc",
+ "name_asc",
+ "name_desc"
+ ],
+ "type": "string",
+ "default": "created_at_desc",
+ "description": "Сортировка. Для инкрементальной синхронизации используйте updated_at_asc вместе с updated_since",
+ "name": "sort",
+ "in": "query"
+ },
+ {
+ "type": "string",
+ "description": "Курсор пагинации — значение next_cursor из предыдущего ответа",
+ "name": "cursor",
+ "in": "query"
+ },
+ {
+ "maximum": 100,
+ "minimum": 1,
+ "type": "integer",
+ "default": 20,
+ "description": "Размер страницы",
+ "name": "limit",
+ "in": "query"
+ },
+ {
+ "type": "string",
+ "description": "Вернуть только тайтлы, изменённые после этой даты. Формат RFC3339, например 2026-01-15T00:00:00Z. Пара с sort=updated_at_asc даёт детерминированный курсор по времени изменения",
+ "name": "updated_since",
+ "in": "query"
+ },
+ {
+ "maximum": 2100,
+ "minimum": 1900,
+ "type": "integer",
+ "description": "Год выпуска, от",
+ "name": "year_from",
+ "in": "query"
+ },
+ {
+ "maximum": 2100,
+ "minimum": 1900,
+ "type": "integer",
+ "description": "Год выпуска, до",
+ "name": "year_to",
+ "in": "query"
+ },
+ {
+ "maximum": 10,
+ "minimum": 0,
+ "type": "number",
+ "description": "Рейтинг, от",
+ "name": "rating_from",
+ "in": "query"
+ },
+ {
+ "maximum": 10,
+ "minimum": 0,
+ "type": "number",
+ "description": "Рейтинг, до",
+ "name": "rating_to",
+ "in": "query"
+ },
+ {
+ "type": "string",
+ "description": "Внешний ID Кинопоиска (точное совпадение)",
+ "name": "kinopoisk_id",
+ "in": "query"
+ },
+ {
+ "type": "string",
+ "description": "Внешний ID IMDb (точное совпадение)",
+ "name": "imdb_id",
+ "in": "query"
+ },
+ {
+ "type": "string",
+ "description": "Внешний ID MyAnimeList (точное совпадение)",
+ "name": "mal_id",
+ "in": "query"
+ },
+ {
+ "type": "string",
+ "description": "Внешний ID MyDramaList (точное совпадение)",
+ "name": "mdl_id",
+ "in": "query"
+ },
+ {
+ "type": "boolean",
+ "description": "Лицензия: true — только лицензионные, false — только нелицензионные; без параметра — все",
+ "name": "licensed",
+ "in": "query"
+ },
+ {
+ "type": "boolean",
+ "description": "Добавить в ответ общее количество",
+ "name": "with_count",
+ "in": "query"
+ }
+ ],
+ "responses": {
+ "200": {
+ "description": "OK",
+ "schema": {
+ "$ref": "#/definitions/response.TitleList"
+ }
+ },
+ "400": {
+ "description": "Bad Request",
+ "schema": {
+ "$ref": "#/definitions/httputil.ErrorResponse"
+ }
+ },
+ "401": {
+ "description": "Unauthorized",
+ "schema": {
+ "$ref": "#/definitions/httputil.ErrorResponse"
+ }
+ },
+ "500": {
+ "description": "Internal Server Error",
+ "schema": {
+ "$ref": "#/definitions/httputil.ErrorResponse"
+ }
+ }
+ }
+ }
+ },
+ "/api/v1/titles/filters": {
+ "get": {
+ "security": [
+ {
+ "BearerAuth": []
+ }
+ ],
+ "description": "Списки кодов для фильтров /titles: страны, жанры, теги, диапазон годов.",
+ "consumes": [
+ "application/json"
+ ],
+ "produces": [
+ "application/json"
+ ],
+ "tags": [
+ "Тайтлы"
+ ],
+ "summary": "Доступные фильтры",
+ "responses": {
+ "200": {
+ "description": "OK",
+ "schema": {
+ "$ref": "#/definitions/response.TitleFilters"
+ }
+ },
+ "401": {
+ "description": "Unauthorized",
+ "schema": {
+ "$ref": "#/definitions/httputil.ErrorResponse"
+ }
+ },
+ "500": {
+ "description": "Internal Server Error",
+ "schema": {
+ "$ref": "#/definitions/httputil.ErrorResponse"
+ }
+ }
+ }
+ }
+ },
+ "/api/v1/titles/restricted": {
+ "get": {
+ "security": [
+ {
+ "BearerAuth": []
+ }
+ ],
+ "description": "Тайтлы с метками ограничений (lgbt/licensed) — чтобы скрыть или особо обработать их на своей стороне. В обычную выдачу /titles они не попадают. Для инкрементальной синхронизации передавайте updated_since.",
+ "consumes": [
+ "application/json"
+ ],
+ "produces": [
+ "application/json"
+ ],
+ "tags": [
+ "Тайтлы"
+ ],
+ "summary": "Реестр ограниченных тайтлов",
+ "parameters": [
+ {
+ "enum": [
+ "lgbt",
+ "licensed"
+ ],
+ "type": "string",
+ "description": "Только одна метка: lgbt или licensed",
+ "name": "marker",
+ "in": "query"
+ },
+ {
+ "type": "string",
+ "description": "Вернуть только тайтлы, изменённые после этой даты. Формат RFC3339, например 2026-01-15T00:00:00Z",
+ "name": "updated_since",
+ "in": "query"
+ },
+ {
+ "type": "string",
+ "description": "Курсор пагинации — значение next_cursor из предыдущего ответа",
+ "name": "cursor",
+ "in": "query"
+ },
+ {
+ "maximum": 100,
+ "minimum": 1,
+ "type": "integer",
+ "default": 20,
+ "description": "Размер страницы",
+ "name": "limit",
+ "in": "query"
+ }
+ ],
+ "responses": {
+ "200": {
+ "description": "OK",
+ "schema": {
+ "$ref": "#/definitions/response.RestrictedTitleList"
+ }
+ },
+ "400": {
+ "description": "Bad Request",
+ "schema": {
+ "$ref": "#/definitions/httputil.ErrorResponse"
+ }
+ },
+ "401": {
+ "description": "Unauthorized",
+ "schema": {
+ "$ref": "#/definitions/httputil.ErrorResponse"
+ }
+ },
+ "500": {
+ "description": "Internal Server Error",
+ "schema": {
+ "$ref": "#/definitions/httputil.ErrorResponse"
+ }
+ }
+ }
+ }
+ },
+ "/api/v1/titles/search": {
+ "get": {
+ "security": [
+ {
+ "BearerAuth": []
+ }
+ ],
+ "description": "Поиск тайтлов по текстовому запросу.",
+ "consumes": [
+ "application/json"
+ ],
+ "produces": [
+ "application/json"
+ ],
+ "tags": [
+ "Тайтлы"
+ ],
+ "summary": "Поиск тайтлов",
+ "parameters": [
+ {
+ "type": "string",
+ "description": "Поисковый запрос",
+ "name": "q",
+ "in": "query",
+ "required": true
+ },
+ {
+ "maximum": 100,
+ "minimum": 1,
+ "type": "integer",
+ "default": 20,
+ "description": "Максимум результатов",
+ "name": "limit",
+ "in": "query"
+ }
+ ],
+ "responses": {
+ "200": {
+ "description": "OK",
+ "schema": {
+ "$ref": "#/definitions/response.TitleSearch"
+ }
+ },
+ "400": {
+ "description": "Bad Request",
+ "schema": {
+ "$ref": "#/definitions/httputil.ErrorResponse"
+ }
+ },
+ "401": {
+ "description": "Unauthorized",
+ "schema": {
+ "$ref": "#/definitions/httputil.ErrorResponse"
+ }
+ },
+ "500": {
+ "description": "Internal Server Error",
+ "schema": {
+ "$ref": "#/definitions/httputil.ErrorResponse"
+ }
+ }
+ }
+ }
+ },
+ "/api/v1/titles/{title_id}": {
+ "get": {
+ "security": [
+ {
+ "BearerAuth": []
+ }
+ ],
+ "description": "Полная информация о тайтле.",
+ "consumes": [
+ "application/json"
+ ],
+ "produces": [
+ "application/json"
+ ],
+ "tags": [
+ "Тайтлы"
+ ],
+ "summary": "Карточка тайтла",
+ "parameters": [
+ {
+ "type": "string",
+ "description": "ID тайтла",
+ "name": "title_id",
+ "in": "path",
+ "required": true
+ }
+ ],
+ "responses": {
+ "200": {
+ "description": "OK",
+ "schema": {
+ "$ref": "#/definitions/response.TitleDetail"
+ }
+ },
+ "401": {
+ "description": "Unauthorized",
+ "schema": {
+ "$ref": "#/definitions/httputil.ErrorResponse"
+ }
+ },
+ "404": {
+ "description": "Not Found",
+ "schema": {
+ "$ref": "#/definitions/httputil.ErrorResponse"
+ }
+ },
+ "500": {
+ "description": "Internal Server Error",
+ "schema": {
+ "$ref": "#/definitions/httputil.ErrorResponse"
+ }
+ }
+ }
+ }
+ },
+ "/api/v1/titles/{title_id}/seasons": {
+ "get": {
+ "security": [
+ {
+ "BearerAuth": []
+ }
+ ],
+ "description": "Список сезонов тайтла с пагинацией.",
+ "consumes": [
+ "application/json"
+ ],
+ "produces": [
+ "application/json"
+ ],
+ "tags": [
+ "Сезоны"
+ ],
+ "summary": "Сезоны тайтла",
+ "parameters": [
+ {
+ "type": "string",
+ "description": "ID тайтла",
+ "name": "title_id",
+ "in": "path",
+ "required": true
+ },
+ {
+ "type": "string",
+ "description": "Курсор пагинации — значение next_cursor из предыдущего ответа",
+ "name": "cursor",
+ "in": "query"
+ },
+ {
+ "maximum": 100,
+ "minimum": 1,
+ "type": "integer",
+ "default": 20,
+ "description": "Размер страницы",
+ "name": "limit",
+ "in": "query"
+ }
+ ],
+ "responses": {
+ "200": {
+ "description": "OK",
+ "schema": {
+ "$ref": "#/definitions/response.SeasonList"
+ }
+ },
+ "400": {
+ "description": "Bad Request",
+ "schema": {
+ "$ref": "#/definitions/httputil.ErrorResponse"
+ }
+ },
+ "401": {
+ "description": "Unauthorized",
+ "schema": {
+ "$ref": "#/definitions/httputil.ErrorResponse"
+ }
+ },
+ "404": {
+ "description": "Not Found",
+ "schema": {
+ "$ref": "#/definitions/httputil.ErrorResponse"
+ }
+ },
+ "500": {
+ "description": "Internal Server Error",
+ "schema": {
+ "$ref": "#/definitions/httputil.ErrorResponse"
+ }
+ }
+ }
+ }
+ },
+ "/api/v1/titles/{title_id}/seasons/{season_number}/episodes": {
+ "get": {
+ "security": [
+ {
+ "BearerAuth": []
+ }
+ ],
+ "description": "Список эпизодов сезона с пагинацией.",
+ "consumes": [
+ "application/json"
+ ],
+ "produces": [
+ "application/json"
+ ],
+ "tags": [
+ "Эпизоды"
+ ],
+ "summary": "Эпизоды сезона",
+ "parameters": [
+ {
+ "type": "string",
+ "description": "ID тайтла",
+ "name": "title_id",
+ "in": "path",
+ "required": true
+ },
+ {
+ "type": "string",
+ "description": "Номер сезона",
+ "name": "season_number",
+ "in": "path",
+ "required": true
+ },
+ {
+ "type": "string",
+ "description": "Курсор пагинации — значение next_cursor из предыдущего ответа",
+ "name": "cursor",
+ "in": "query"
+ },
+ {
+ "maximum": 100,
+ "minimum": 1,
+ "type": "integer",
+ "default": 20,
+ "description": "Размер страницы",
+ "name": "limit",
+ "in": "query"
+ }
+ ],
+ "responses": {
+ "200": {
+ "description": "OK",
+ "schema": {
+ "$ref": "#/definitions/response.EpisodeList"
+ }
+ },
+ "400": {
+ "description": "Bad Request",
+ "schema": {
+ "$ref": "#/definitions/httputil.ErrorResponse"
+ }
+ },
+ "401": {
+ "description": "Unauthorized",
+ "schema": {
+ "$ref": "#/definitions/httputil.ErrorResponse"
+ }
+ },
+ "404": {
+ "description": "Not Found",
+ "schema": {
+ "$ref": "#/definitions/httputil.ErrorResponse"
+ }
+ },
+ "500": {
+ "description": "Internal Server Error",
+ "schema": {
+ "$ref": "#/definitions/httputil.ErrorResponse"
+ }
+ }
+ }
+ }
+ }
+ },
+ "definitions": {
+ "httputil.ErrorBody": {
+ "type": "object",
+ "properties": {
+ "code": {
+ "type": "string"
+ },
+ "message": {
+ "type": "string"
+ }
+ }
+ },
+ "httputil.ErrorResponse": {
+ "type": "object",
+ "properties": {
+ "error": {
+ "$ref": "#/definitions/httputil.ErrorBody"
+ }
+ }
+ },
+ "response.CrewMember": {
+ "type": "object",
+ "properties": {
+ "external_ids": {
+ "type": "object",
+ "additionalProperties": {
+ "type": "string"
+ }
+ },
+ "person_name": {
+ "type": "string"
+ },
+ "role": {
+ "type": "string"
+ }
+ }
+ },
+ "response.EpisodeDetail": {
+ "type": "object",
+ "properties": {
+ "air_date": {
+ "type": "string"
+ },
+ "available_voices": {
+ "type": "array",
+ "items": {
+ "$ref": "#/definitions/response.VoiceInfo"
+ }
+ },
+ "duration": {
+ "type": "integer"
+ },
+ "name": {
+ "type": "string"
+ },
+ "number": {
+ "type": "string"
+ },
+ "source_qualities": {
+ "description": "SourceQualities is the distinct video resolutions of this episode (e.g.\n\"1080p\", \"720p\"), best-first. This is resolution, not the release source —\nfor HDRip/BDRip/WEB-DL see source_types.",
+ "type": "array",
+ "items": {
+ "type": "string"
+ }
+ },
+ "source_types": {
+ "description": "SourceTypes is the distinct release qualities of this episode (WEB-DL,\nBD-Rip, CAMRip, …), each with a stable code and a display label.",
+ "type": "array",
+ "items": {
+ "$ref": "#/definitions/response.SourceTypeInfo"
+ }
+ },
+ "thumbnail_url": {
+ "type": "string"
+ }
+ }
+ },
+ "response.EpisodeList": {
+ "type": "object",
+ "properties": {
+ "has_more": {
+ "type": "boolean"
+ },
+ "items": {
+ "type": "array",
+ "items": {
+ "$ref": "#/definitions/response.EpisodeDetail"
+ }
+ },
+ "next_cursor": {
+ "type": "string"
+ }
+ }
+ },
+ "response.ReferenceItem": {
+ "type": "object",
+ "properties": {
+ "code": {
+ "type": "string"
+ },
+ "name": {
+ "type": "string"
+ }
+ }
+ },
+ "response.ReferenceList": {
+ "type": "object",
+ "properties": {
+ "items": {
+ "type": "array",
+ "items": {
+ "$ref": "#/definitions/response.ReferenceItem"
+ }
+ }
+ }
+ },
+ "response.RestrictedTitleItem": {
+ "type": "object",
+ "properties": {
+ "external_ids": {
+ "type": "object",
+ "additionalProperties": {
+ "type": "string"
+ }
+ },
+ "id": {
+ "type": "string"
+ },
+ "lgbt": {
+ "type": "boolean"
+ },
+ "licensed": {
+ "type": "boolean"
+ },
+ "name": {
+ "type": "string"
+ },
+ "type": {
+ "type": "string"
+ },
+ "updated_at": {
+ "type": "string"
+ },
+ "year": {
+ "type": "integer"
+ }
+ }
+ },
+ "response.RestrictedTitleList": {
+ "type": "object",
+ "properties": {
+ "has_more": {
+ "type": "boolean"
+ },
+ "items": {
+ "type": "array",
+ "items": {
+ "$ref": "#/definitions/response.RestrictedTitleItem"
+ }
+ },
+ "next_cursor": {
+ "type": "string"
+ }
+ }
+ },
+ "response.SeasonList": {
+ "type": "object",
+ "properties": {
+ "has_more": {
+ "type": "boolean"
+ },
+ "items": {
+ "type": "array",
+ "items": {
+ "$ref": "#/definitions/response.SeasonSummary"
+ }
+ },
+ "next_cursor": {
+ "type": "string"
+ }
+ }
+ },
+ "response.SeasonSummary": {
+ "type": "object",
+ "properties": {
+ "available_episodes_count": {
+ "type": "integer"
+ },
+ "episodes_count": {
+ "type": "integer"
+ },
+ "name": {
+ "type": "string"
+ },
+ "number": {
+ "type": "string"
+ },
+ "year": {
+ "type": "integer"
+ }
+ }
+ },
+ "response.SourceTypeInfo": {
+ "type": "object",
+ "properties": {
+ "code": {
+ "type": "string"
+ },
+ "label": {
+ "type": "string"
+ }
+ }
+ },
+ "response.StudioItem": {
+ "type": "object",
+ "properties": {
+ "code": {
+ "type": "string"
+ },
+ "legacy_id": {
+ "type": "integer"
+ },
+ "name": {
+ "type": "string"
+ }
+ }
+ },
+ "response.StudioList": {
+ "type": "object",
+ "properties": {
+ "items": {
+ "type": "array",
+ "items": {
+ "$ref": "#/definitions/response.StudioItem"
+ }
+ }
+ }
+ },
+ "response.TitleDetail": {
+ "type": "object",
+ "properties": {
+ "alternative_names": {
+ "type": "array",
+ "items": {
+ "type": "string"
+ }
+ },
+ "available_voices": {
+ "description": "AvailableVoices is present for both films and series; empty means \"no\nvoices\", not \"field omitted\" (R-17) — no omitempty.",
+ "type": "array",
+ "items": {
+ "$ref": "#/definitions/response.VoiceInfo"
+ }
+ },
+ "backdrop_url": {
+ "type": "string"
+ },
+ "countries": {
+ "type": "array",
+ "items": {
+ "type": "string"
+ }
+ },
+ "country_codes": {
+ "description": "CountryCodes carries the title's country codes as stored, one-to-one with\nCountries, WITHOUT collapsing by display name (R-13, R-14). Countries above\nstays as-is for its existing consumer; this is an additive field.",
+ "type": "array",
+ "items": {
+ "type": "string"
+ }
+ },
+ "created_at": {
+ "type": "string"
+ },
+ "crew": {
+ "type": "array",
+ "items": {
+ "$ref": "#/definitions/response.CrewMember"
+ }
+ },
+ "description": {
+ "type": "string"
+ },
+ "duration": {
+ "type": "integer"
+ },
+ "english_name": {
+ "type": "string"
+ },
+ "external_ids": {
+ "type": "object",
+ "additionalProperties": {
+ "type": "string"
+ }
+ },
+ "genre_codes": {
+ "description": "GenreCodes carries the title's genre codes as stored, one-to-one with\nGenres, WITHOUT collapsing by display name: two genres sharing a display\nname stay two distinct codes here (R-13, R-14). Genres above stays as-is\nfor its existing consumer; this is an additive field.",
+ "type": "array",
+ "items": {
+ "type": "string"
+ }
+ },
+ "genres": {
+ "type": "array",
+ "items": {
+ "type": "string"
+ }
+ },
+ "id": {
+ "type": "string"
+ },
+ "imdb_rating": {
+ "type": "number"
+ },
+ "is_series": {
+ "type": "boolean"
+ },
+ "kinopoisk_rating": {
+ "type": "number"
+ },
+ "licensed": {
+ "type": "boolean"
+ },
+ "name": {
+ "type": "string"
+ },
+ "original_name": {
+ "type": "string"
+ },
+ "poster_url": {
+ "type": "string"
+ },
+ "premiere_date": {
+ "description": "PremiereDate is the earliest fully-parseable (YYYY-MM-DD) premiere date of\nthe title, or nil when none of the title's premieres parse as a full date\n(R-7, R-8). No year-only or synthetic fallback is substituted.",
+ "type": "string"
+ },
+ "seasons": {
+ "description": "Seasons is the per-season breakdown (number + episode counts) for a series.\nPresent only when is_series=true; omitted for films. Same shape and order as\nthe GET /titles/{id}/seasons endpoint, but returned in full (no pagination).",
+ "type": "array",
+ "items": {
+ "$ref": "#/definitions/response.SeasonSummary"
+ }
+ },
+ "seasons_count": {
+ "type": "integer"
+ },
+ "short_description": {
+ "type": "string"
+ },
+ "source_qualities": {
+ "description": "SourceQualities lists the distinct video resolutions available (e.g.\n\"1080p\", \"720p\"), sorted best-first. NOTE: this is resolution, not the\nrelease source — for HDRip/BDRip/WEB-DL see source_types.",
+ "type": "array",
+ "items": {
+ "type": "string"
+ }
+ },
+ "source_types": {
+ "description": "SourceTypes lists the distinct release qualities available (e.g. WEB-DL,\nBD-Rip, HDTV-Rip, CAMRip), each with a stable code and a display label. It\nis the union across the title's content: a film's own files, or all\nepisodes for a series.",
+ "type": "array",
+ "items": {
+ "$ref": "#/definitions/response.SourceTypeInfo"
+ }
+ },
+ "studios": {
+ "type": "array",
+ "items": {
+ "type": "string"
+ }
+ },
+ "tags": {
+ "type": "array",
+ "items": {
+ "type": "string"
+ }
+ },
+ "type": {
+ "type": "string"
+ },
+ "voice_studios": {
+ "type": "array",
+ "items": {
+ "type": "string"
+ }
+ },
+ "year": {
+ "type": "integer"
+ },
+ "year_end": {
+ "type": "integer"
+ }
+ }
+ },
+ "response.TitleFilters": {
+ "type": "object",
+ "properties": {
+ "countries": {
+ "type": "array",
+ "items": {
+ "type": "string"
+ }
+ },
+ "genres": {
+ "type": "array",
+ "items": {
+ "type": "string"
+ }
+ },
+ "tags": {
+ "type": "array",
+ "items": {
+ "type": "string"
+ }
+ },
+ "years": {
+ "$ref": "#/definitions/response.YearRange"
+ }
+ }
+ },
+ "response.TitleItem": {
+ "type": "object",
+ "properties": {
+ "created_at": {
+ "type": "string"
+ },
+ "external_ids": {
+ "type": "object",
+ "additionalProperties": {
+ "type": "string"
+ }
+ },
+ "id": {
+ "type": "string"
+ },
+ "imdb_rating": {
+ "type": "number"
+ },
+ "is_series": {
+ "type": "boolean"
+ },
+ "kinopoisk_rating": {
+ "type": "number"
+ },
+ "licensed": {
+ "type": "boolean"
+ },
+ "name": {
+ "type": "string"
+ },
+ "poster_url": {
+ "type": "string"
+ },
+ "tags": {
+ "type": "array",
+ "items": {
+ "type": "string"
+ }
+ },
+ "type": {
+ "type": "string"
+ },
+ "updated_at": {
+ "type": "string"
+ },
+ "year": {
+ "type": "integer"
+ }
+ }
+ },
+ "response.TitleList": {
+ "type": "object",
+ "properties": {
+ "has_more": {
+ "type": "boolean"
+ },
+ "items": {
+ "type": "array",
+ "items": {
+ "$ref": "#/definitions/response.TitleItem"
+ }
+ },
+ "next_cursor": {
+ "type": "string"
+ },
+ "total": {
+ "type": "integer"
+ }
+ }
+ },
+ "response.TitleSearch": {
+ "type": "object",
+ "properties": {
+ "items": {
+ "type": "array",
+ "items": {
+ "$ref": "#/definitions/response.TitleItem"
+ }
+ }
+ }
+ },
+ "response.VoiceInfo": {
+ "type": "object",
+ "properties": {
+ "created_at": {
+ "type": "string"
+ },
+ "language": {
+ "type": "string"
+ },
+ "studio_code": {
+ "type": "string"
+ },
+ "studio_name": {
+ "type": "string"
+ },
+ "voice_type": {
+ "type": "string"
+ },
+ "voice_type_label": {
+ "type": "string"
+ }
+ }
+ },
+ "response.YearRange": {
+ "type": "object",
+ "properties": {
+ "max": {
+ "type": "integer"
+ },
+ "min": {
+ "type": "integer"
+ }
+ }
+ }
+ },
+ "securityDefinitions": {
+ "BearerAuth": {
+ "type": "apiKey",
+ "name": "Authorization",
+ "in": "header"
+ }
+ }
+}

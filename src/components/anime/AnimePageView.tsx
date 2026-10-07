@@ -265,7 +265,9 @@ export function AnimePageView({ anime }: { anime: AnimePageDto }) {
 
           <AnimeWatchPanel
             shikimoriId={anime.shikimoriId}
+            malId={anime.malId}
             animeTitle={anime.title}
+            animeStatus={anime.status}
             translations={anime.translations}
             episodesTotal={anime.episodes}
           />

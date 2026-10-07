@@ -30,7 +30,10 @@ export async function GET() {
     });
   } catch (err) {
     if (err instanceof ShikimoriAuthError) {
-      return NextResponse.json({ error: "shikimori_auth" }, { status: 401 });
+      return NextResponse.json(
+        { error: "shikimori_auth", message: err.message },
+        { status: 401 },
+      );
     }
     console.error("[favorites]", err);
     return NextResponse.json({ error: "fetch_failed" }, { status: 502 });

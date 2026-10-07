@@ -55,10 +55,11 @@ npm run deploy:windows -- -SkipPublish
 
 ## Поведение
 
-- Зеркала: `track-anime.dygdyg.ru` → `track-anime.duckdns.org` → `ta.dygdyg.ru` (таймаут 12 с / сетевая ошибка).
+- Зеркала: список с `https://track-anime.github.io/mirrors.json` (порядок = приоритет; fallback: win → dygdyg → duckdns → ta; таймаут 12 с / сетевая ошибка).
+  Веб-роутер: https://track-anime.github.io/.
 - Если прямые зеркала недоступны — HTTP-прокси из настроек / `windows/TrackAnime/local.properties` (те же ключи, что у Android: `trackAnimeProxy*`).
 - Deep link `trackanime://settings` — нативные настройки оболочки; `taproxy://…` — как на Android.
-- Между тремя HTTPS-доменами синхронизируется только cookie `ta.session`.
+- Между тремя HTTPS-доменами синхронизируется только cookie `ta.session` (только положительное копирование; logout чистит все хосты).
 - AdBlocker на уровне `WebResourceRequested` (тот же набор правил, что в Android `AdBlocker.java`).
 - UA содержит `TrackAnimeWindows/1`; сайт показывает пункт «Настройки приложения» и блок загрузки на `/app`.
 - Bridge `window.TrackAnimeWindows` / `window.TrackAnimeAndroid`: keep-screen-on и яркость монитора.

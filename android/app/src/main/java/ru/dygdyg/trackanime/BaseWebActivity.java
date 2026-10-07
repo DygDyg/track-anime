@@ -16,6 +16,7 @@ import android.content.res.Configuration;
 import android.graphics.Color;
 import android.graphics.Typeface;
 import android.graphics.drawable.ColorDrawable;
+import android.media.AudioManager;
 import android.net.Uri;
 import android.os.Build;
 import android.os.Bundle;
@@ -62,13 +63,10 @@ import android.widget.Toast;
 
 abstract class BaseWebActivity extends Activity {
     private static final String LOG_TAG = "TrackAnimeWebView";
-    private static final String SITE_HOST = "track-anime.dygdyg.ru";
-    private static final String SITE_URL = "https://" + SITE_HOST + "/";
-    private static final String MIRROR_HOST = "track-anime.duckdns.org";
-    private static final String MIRROR_URL = "https://" + MIRROR_HOST + "/";
-    private static final String THIRD_MIRROR_HOST = "ta.dygdyg.ru";
-    private static final String THIRD_MIRROR_URL = "https://" + THIRD_MIRROR_HOST + "/";
-    private static final String[] SITE_HOSTS = { SITE_HOST, MIRROR_HOST, THIRD_MIRROR_HOST };
+    /** Актуальный список с track-anime.github.io/mirrors.json (fallback — MirrorCatalog.FALLBACK_HOSTS). */
+    private String[] siteHosts = MirrorCatalog.FALLBACK_HOSTS.clone();
+    private boolean mirrorsReady;
+    private Uri pendingLaunchUri;
     private static final long MIRROR_FALLBACK_DELAY_MS = 12_000L;
     private static final String SESSION_COOKIE_NAME = "ta.session";
     private static final String PREFERENCES_NAME = "track-anime-app";
@@ -89,7 +87,7 @@ abstract class BaseWebActivity extends Activity {
     private boolean currentLoadStarted;
     private boolean siteReady;
     private boolean softReloadPending;
-    private String lastSuccessfulUrl = SITE_URL;
+    private String lastSuccessfulUrl = MirrorCatalog.primaryUrl(MirrorCatalog.FALLBACK_HOSTS);
     private String currentHost;
     private SharedPreferences preferences;
     private UpdateManager updateManager;
@@ -127,14 +125,32 @@ abstract class BaseWebActivity extends Activity {
         webView.setBackgroundColor(Color.rgb(12, 14, 20));
         webView.setLayoutParams(new ViewGroup.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT));
         webView.getSettings().setJavaScriptEnabled(true);
-        // Model/OS for admin audience analytics (parsed server-side from UA).
+        // Brand/model/OS for admin audience analytics (like phone Settings → About).
+        String brand = android.os.Build.MANUFACTURER != null ? android.os.Build.MANUFACTURER.trim() : "";
+        if (brand.isEmpty() && android.os.Build.BRAND != null) {
+            brand = android.os.Build.BRAND.trim();
+        }
         String model = android.os.Build.MODEL != null ? android.os.Build.MODEL.trim() : "";
         String release = android.os.Build.VERSION.RELEASE != null ? android.os.Build.VERSION.RELEASE.trim() : "";
-        if (model.isEmpty()) model = "Android";
+        if (brand.isEmpty()) brand = "Android";
+        if (model.isEmpty()) model = "unknown";
         if (release.isEmpty()) release = String.valueOf(android.os.Build.VERSION.SDK_INT);
+        // UA must not contain raw ';' / ')' inside tokens (parser splits on them).
+        brand = brand.replace(';', ',').replace(')', ']').replace('(', '[');
+        model = model.replace(';', ',').replace(')', ']').replace('(', '[');
+        // Avoid "Samsung Samsung SM-…" when MODEL already includes brand.
+        String modelLower = model.toLowerCase(java.util.Locale.US);
+        String brandLower = brand.toLowerCase(java.util.Locale.US);
+        if (modelLower.startsWith(brandLower + " ") || modelLower.equals(brandLower)) {
+            brand = brand.substring(0, 1).toUpperCase(java.util.Locale.US)
+                    + (brand.length() > 1 ? brand.substring(1) : "");
+        } else {
+            brand = brand.substring(0, 1).toUpperCase(java.util.Locale.US)
+                    + (brand.length() > 1 ? brand.substring(1) : "");
+        }
         webView.getSettings().setUserAgentString(
                 webView.getSettings().getUserAgentString()
-                        + " TrackAnimeAndroid/1 (" + model + "; Android " + release + ")");
+                        + " TrackAnimeAndroid/1 (" + brand + "; " + model + "; Android " + release + ")");
         webView.getSettings().setDomStorageEnabled(true);
         webView.getSettings().setMediaPlaybackRequiresUserGesture(false);
         webView.getSettings().setAllowFileAccess(false);
@@ -156,7 +172,19 @@ abstract class BaseWebActivity extends Activity {
         applySystemBarsPolicy();
         showBootstrapStatus("Поиск рабочего зеркала…");
         ensureHistoryNewNotificationChannel();
-        handleLaunchUri(getIntent().getData());
+        pendingLaunchUri = getIntent().getData();
+        MirrorCatalog.fetchAsync(hosts -> handler.post(() -> {
+            siteHosts = hosts != null && hosts.length > 0 ? hosts : MirrorCatalog.FALLBACK_HOSTS.clone();
+            mirrorsReady = true;
+            lastSuccessfulUrl = getPrimaryUrl();
+            Uri launch = pendingLaunchUri;
+            pendingLaunchUri = null;
+            handleLaunchUri(launch);
+        }));
+    }
+
+    private String getPrimaryUrl() {
+        return MirrorCatalog.primaryUrl(siteHosts);
     }
 
     @Override protected void onDestroy() {
@@ -173,6 +201,10 @@ abstract class BaseWebActivity extends Activity {
     @Override protected void onNewIntent(Intent intent) {
         super.onNewIntent(intent);
         setIntent(intent);
+        if (!mirrorsReady) {
+            pendingLaunchUri = intent.getData();
+            return;
+        }
         handleLaunchUri(intent.getData());
     }
 
@@ -477,12 +509,12 @@ abstract class BaseWebActivity extends Activity {
         if (isAppSettingsUri(requestedUri)) {
             String currentUrl = webView != null ? webView.getUrl() : null;
             if (!isAllowedSiteUrl(currentUrl == null ? null : Uri.parse(currentUrl))) {
-                loadSite(SITE_URL);
+                loadSite(getPrimaryUrl());
             }
             handler.post(this::showAppSettings);
             return;
         }
-        loadSite(isAllowedSiteUrl(requestedUri) ? requestedUri.toString() : SITE_URL);
+        loadSite(isAllowedSiteUrl(requestedUri) ? requestedUri.toString() : getPrimaryUrl());
     }
 
     /** Full reconnect from the error stub or deep link — restarts mirror/proxy chain. */
@@ -491,7 +523,7 @@ abstract class BaseWebActivity extends Activity {
         proxyFallbackAttempted = false;
         siteReady = false;
         String target = lastSuccessfulUrl;
-        if (!isAllowedSiteUrl(Uri.parse(target))) target = SITE_URL;
+        if (!isAllowedSiteUrl(Uri.parse(target))) target = getPrimaryUrl();
         loadSite(target);
     }
 
@@ -499,7 +531,7 @@ abstract class BaseWebActivity extends Activity {
     private void softReloadWithoutMirrorSwitch() {
         handler.removeCallbacks(mirrorFallback);
         String target = lastSuccessfulUrl;
-        if (!isAllowedSiteUrl(Uri.parse(target))) target = SITE_URL;
+        if (!isAllowedSiteUrl(Uri.parse(target))) target = getPrimaryUrl();
         Log.w(LOG_TAG, "Soft reload without mirror switch: " + target);
         webView.loadUrl(target);
     }
@@ -510,7 +542,7 @@ abstract class BaseWebActivity extends Activity {
             Toast.makeText(this, parsed.error, Toast.LENGTH_LONG).show();
             String currentUrl = webView != null ? webView.getUrl() : null;
             if (!isAllowedSiteUrl(currentUrl == null ? null : Uri.parse(currentUrl))) {
-                loadSite(SITE_URL);
+                loadSite(getPrimaryUrl());
             }
             return;
         }
@@ -538,7 +570,7 @@ abstract class BaseWebActivity extends Activity {
         proxyFallback.clearOverride(() -> {
             Toast.makeText(this, toastMessage, Toast.LENGTH_SHORT).show();
             String currentUrl = webView != null ? webView.getUrl() : null;
-            loadSite(isAllowedSiteUrl(currentUrl == null ? null : Uri.parse(currentUrl)) ? currentUrl : SITE_URL);
+            loadSite(isAllowedSiteUrl(currentUrl == null ? null : Uri.parse(currentUrl)) ? currentUrl : getPrimaryUrl());
         });
     }
 
@@ -559,7 +591,7 @@ abstract class BaseWebActivity extends Activity {
 
     private boolean isSiteHost(String host) {
         if (host == null) return false;
-        for (String siteHost : SITE_HOSTS) {
+        for (String siteHost : siteHosts) {
             if (siteHost.equalsIgnoreCase(host)) return true;
         }
         return false;
@@ -609,8 +641,8 @@ abstract class BaseWebActivity extends Activity {
     }
 
     private String getNextHost(String host) {
-        for (int index = 0; index < SITE_HOSTS.length - 1; index += 1) {
-            if (SITE_HOSTS[index].equalsIgnoreCase(host)) return SITE_HOSTS[index + 1];
+        for (int index = 0; index < siteHosts.length - 1; index += 1) {
+            if (siteHosts[index].equalsIgnoreCase(host)) return siteHosts[index + 1];
         }
         return null;
     }
@@ -634,7 +666,7 @@ abstract class BaseWebActivity extends Activity {
             proxyFallbackAttempted = true;
             Log.w(LOG_TAG, "All direct mirrors failed; trying proxy fallback.");
             showBootstrapStatus("Прямые зеркала недоступны.\nПодключение через прокси…");
-            proxyFallback.enable(() -> loadSite(SITE_URL));
+            proxyFallback.enable(() -> loadSite(getPrimaryUrl()));
             return;
         }
         showLoadErrorPage(webView, reason);
@@ -671,10 +703,15 @@ abstract class BaseWebActivity extends Activity {
         }
 
         String sessionValue = getCookieValue(sourceHost, SESSION_COOKIE_NAME);
-        String cookie = sessionValue == null
-                ? SESSION_COOKIE_NAME + "=; Path=/; Max-Age=0; Secure; HttpOnly; SameSite=Lax"
-                : SESSION_COOKIE_NAME + "=" + sessionValue
-                    + "; Path=/; Max-Age=2592000; Secure; HttpOnly; SameSite=Lax";
+        // Не затираем сессию на других зеркалах пустым источником (failover / гонка).
+        // Явный logout чистит все хосты через clearSessionCookieOnAllHosts().
+        if (sessionValue == null || sessionValue.isEmpty()) {
+            onComplete.run();
+            return;
+        }
+
+        String cookie = SESSION_COOKIE_NAME + "=" + sessionValue
+                + "; Path=/; Max-Age=31536000; Secure; HttpOnly; SameSite=Lax";
         CookieManager.getInstance().setCookie(
                 "https://" + targetHost + "/",
                 cookie,
@@ -685,6 +722,18 @@ abstract class BaseWebActivity extends Activity {
                     }
                 }
         );
+    }
+
+    private void clearSessionCookieOnAllHosts() {
+        CookieManager cookies = CookieManager.getInstance();
+        for (String host : siteHosts) {
+            cookies.setCookie(
+                    "https://" + host + "/",
+                    SESSION_COOKIE_NAME + "=; Path=/; Max-Age=0; Secure; HttpOnly; SameSite=Lax",
+                    null
+            );
+        }
+        cookies.flush();
     }
 
     private String getCookieValue(String host, String name) {
@@ -702,7 +751,18 @@ abstract class BaseWebActivity extends Activity {
     private void synchronizeSessionFromCurrentHost(String currentHost) {
         if (!isSiteHost(currentHost)) return;
         preferences.edit().putString(LAST_SESSION_HOST_KEY, currentHost).apply();
-        for (String otherHost : SITE_HOSTS) {
+        String sessionValue = getCookieValue(currentHost, SESSION_COOKIE_NAME);
+        if (sessionValue == null || sessionValue.isEmpty()) {
+            // Cookie пропал на текущем хосте после того, как сессия уже была —
+            // скорее logout: чистим зеркала, иначе оставляем чужие cookie как есть.
+            if (preferences.getBoolean("had-ta-session", false)) {
+                preferences.edit().putBoolean("had-ta-session", false).apply();
+                clearSessionCookieOnAllHosts();
+            }
+            return;
+        }
+        preferences.edit().putBoolean("had-ta-session", true).apply();
+        for (String otherHost : siteHosts) {
             if (!otherHost.equalsIgnoreCase(currentHost)) {
                 copySessionCookie(currentHost, otherHost, () -> { });
             }
@@ -1310,7 +1370,7 @@ abstract class BaseWebActivity extends Activity {
             proxyFallbackAttempted = false;
             String url = webView.getUrl();
             showBootstrapStatus("Очистка кэша. Повторное подключение…");
-            loadSite(isAllowedSiteUrl(url == null ? null : Uri.parse(url)) ? url : SITE_URL);
+            loadSite(isAllowedSiteUrl(url == null ? null : Uri.parse(url)) ? url : getPrimaryUrl());
             Toast.makeText(this, "Кэш очищен.", Toast.LENGTH_SHORT).show();
             dialog.dismiss();
         });
@@ -1459,6 +1519,31 @@ abstract class BaseWebActivity extends Activity {
             }
         }
 
+        @JavascriptInterface
+        public boolean hasStreamVolumeControl() {
+            return true;
+        }
+
+        @JavascriptInterface
+        public float getStreamVolume() {
+            AudioManager am = (AudioManager) getSystemService(AUDIO_SERVICE);
+            if (am == null) return 1f;
+            int max = am.getStreamMaxVolume(AudioManager.STREAM_MUSIC);
+            if (max <= 0) return 1f;
+            int current = am.getStreamVolume(AudioManager.STREAM_MUSIC);
+            return Math.max(0f, Math.min(1f, current / (float) max));
+        }
+
+        @JavascriptInterface
+        public void setStreamVolume(double value) {
+            float clamped = (float) Math.max(0.0, Math.min(1.0, value));
+            if (Looper.myLooper() == Looper.getMainLooper()) {
+                applyStreamVolume(clamped);
+            } else {
+                handler.post(() -> applyStreamVolume(clamped));
+            }
+        }
+
         private void applyWindowBrightness(float clamped) {
             windowBrightnessOverride = clamped;
             Window window = getWindow();
@@ -1473,6 +1558,15 @@ abstract class BaseWebActivity extends Activity {
             WindowManager.LayoutParams lp = window.getAttributes();
             lp.screenBrightness = WindowManager.LayoutParams.BRIGHTNESS_OVERRIDE_NONE;
             window.setAttributes(lp);
+        }
+
+        private void applyStreamVolume(float clamped) {
+            AudioManager am = (AudioManager) getSystemService(AUDIO_SERVICE);
+            if (am == null) return;
+            int max = am.getStreamMaxVolume(AudioManager.STREAM_MUSIC);
+            if (max <= 0) return;
+            int level = Math.round(clamped * max);
+            am.setStreamVolume(AudioManager.STREAM_MUSIC, level, 0);
         }
     }
 
@@ -1579,7 +1673,7 @@ abstract class BaseWebActivity extends Activity {
                 + "<p>Не удалось загрузить Track Anime. Проверьте интернет и VPN (V2Ray/прокси), затем повторите.</p>"
                 + "<a class=\"btn\" href=\"trackanime://retry\">Повторить</a>"
                 + "<a class=\"btn secondary\" href=\"trackanime://settings\">Настройки приложения</a>"
-                + "<small>" + safeReason + "<br>" + SITE_URL + "</small></div>"
+                + "<small>" + safeReason + "<br>" + getPrimaryUrl() + "</small></div>"
                 + "<script>(function(){"
                 + "var startY=0,pulling=false,armed=false,ptr=document.getElementById('ptr');"
                 + "function reset(){pulling=false;armed=false;if(ptr){ptr.className='';ptr.style.transform='translate(-50%,-100%)';}}"
@@ -1603,7 +1697,7 @@ abstract class BaseWebActivity extends Activity {
                 + "document.addEventListener('touchcancel',reset);"
                 + "})();</script>"
                 + "</body></html>";
-        // about:blank base avoids location.replace(SITE_URL) no-op when history already equals SITE_URL.
+        // about:blank base avoids location.replace(getPrimaryUrl()) no-op when history already equals getPrimaryUrl().
         view.loadDataWithBaseURL("about:blank", html, "text/html", "utf-8", null);
     }
 

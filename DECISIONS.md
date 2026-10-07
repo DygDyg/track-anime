@@ -10,7 +10,10 @@
 ## Posters / covers
 
 - **Карточки и превью** — `size="thumb"` → `/api/cover?id=&size=thumb` (320px, q≈68), см. `poster.ts`, `cover-cache.ts`.
+- **Страница тайтла (`AnimePosterCover`)** — `size="full"` и lightbox на тот же `/api/cover?id=` (без `size=thumb`), чтобы браузерный кэш thumb/full не расходился (анонс vs актуальный KV).
 - **Lightbox / полный просмотр** — full image, не thumb.
+- При наличии `shikimoriId` `AnimePoster` всегда стартует с cover-cache, не с прямого `posterUrl`.
+- Cover `Cache-Control` без `immutable` — URL стабильный, контент может смениться.
 
 ## Shikimori lists sync
 
@@ -23,7 +26,7 @@
 
 ## Deploy
 
-- Prod: `https://ta.dygdyg.ru/`, сервер `root@195.26.230.35`, `/var/www/ta_new`.
+- Prod: `https://ta.dygdyg.ru/`, сервер `root@194.180.189.34`, `/var/www/ta_new`.
 - Локально: `.\scripts\deploy.ps1` (сборка на сервере). См. `docs/DEPLOY.md`.
 
 ## AI workflow

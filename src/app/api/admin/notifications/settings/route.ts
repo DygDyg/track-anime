@@ -46,6 +46,7 @@ export async function PATCH(request: Request) {
   const patch: Parameters<typeof updateNotificationSettings>[0] = {};
 
   const stringFields = [
+    "linkBaseUrl",
     "telegramBotToken",
     "telegramBotUsername",
     "vkBotToken",

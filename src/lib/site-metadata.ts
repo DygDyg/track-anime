@@ -102,24 +102,37 @@ export function buildAnimePageMetadata(input: {
   kind: string | null;
   episodes: number | null;
   episodesAired: number | null;
+  /** Строка deep-link для превью Discord/Telegram (плеер · серия · озвучка · таймкод). */
+  watchShareMetaLine?: string | null;
+  /** Полный path+query для og:url, если шарят конкретный момент. */
+  watchShareCanonicalPath?: string | null;
 }): Metadata {
-  const ogTitle = buildOgTitle(input.title, input.kind);
+  const ogTitleBase = buildOgTitle(input.title, input.kind);
+  const shareLine = input.watchShareMetaLine?.trim() || null;
+  const ogTitle = shareLine
+    ? truncateMetaTitle(
+        `${ogTitleBase} · ${shareLine}`,
+        Math.max(META_TITLE_MAX + 48, 72),
+      )
+    : ogTitleBase;
   const statsLine = buildAnimeMetaStatsLine(input);
   const descriptionBody = buildMetaDescription(
     input.description,
     `${input.title} — смотреть онлайн на ${SITE_NAME}`,
   );
-  const pageDescription = limitMetaDescription(
-    statsLine ? `${statsLine}. ${descriptionBody}` : descriptionBody,
+  const descriptionParts = [shareLine, statsLine || null, descriptionBody].filter(
+    (part): part is string => Boolean(part),
   );
-  const canonicalPath = `/anime/${input.shikimoriId}`;
+  const pageDescription = limitMetaDescription(descriptionParts.join(". "));
+  const canonicalPath =
+    input.watchShareCanonicalPath?.trim() || `/anime/${input.shikimoriId}`;
   const images = buildPosterImages(input.posterUrl, `Постер «${input.title}»`, input.shikimoriId);
   const imageUrls = images.map((image) => image.url);
 
   return {
     title: { absolute: `${ogTitle} — ${SITE_NAME}` },
     description: pageDescription,
-    alternates: { canonical: canonicalPath },
+    alternates: { canonical: `/anime/${input.shikimoriId}` },
     openGraph: {
       title: ogTitle,
       description: pageDescription,

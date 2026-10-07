@@ -39,8 +39,18 @@ export function isPwaNavHiddenPath(pathname: string): boolean {
   return pathname === "/login";
 }
 
-export function isPwaNavActive(pathname: string, href: string): boolean {
+export function isPwaNavActive(
+  pathname: string,
+  href: string,
+  options?: { ownShikimoriId?: number | null },
+): boolean {
   if (href === "/") return pathname === "/";
+  if (href === "/favorites") {
+    if (pathname === "/favorites" || pathname.startsWith("/favorites/")) return true;
+    const ownId = options?.ownShikimoriId;
+    if (ownId && pathname === `/user/${ownId}/favorites`) return true;
+    return false;
+  }
   return pathname === href || pathname.startsWith(`${href}/`);
 }
 

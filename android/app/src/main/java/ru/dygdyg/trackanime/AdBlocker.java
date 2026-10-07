@@ -20,7 +20,10 @@ final class AdBlocker {
             "<VAST version=\"3.0\"></VAST>".getBytes(StandardCharsets.UTF_8);
 
     private static final String[] ALLOWED_HOST_SUFFIXES = {
+            "track-anime.win",
             "track-anime.dygdyg.ru",
+            "track-anime.duckdns.org",
+            "ta.dygdyg.ru",
             "shikimori.one",
             "shikimori.io",
             "shiki.one",
@@ -173,7 +176,12 @@ final class AdBlocker {
         String referer = header(request, "Referer");
 
         // Never block the site itself (only ad-shaped paths on CDNs below).
-        if (host.equals("track-anime.dygdyg.ru") || host.endsWith(".track-anime.dygdyg.ru")) {
+        if (host.equals("track-anime.win")
+                || host.equals("track-anime.dygdyg.ru")
+                || host.equals("track-anime.duckdns.org")
+                || host.equals("ta.dygdyg.ru")
+                || host.endsWith(".track-anime.win")
+                || host.endsWith(".track-anime.dygdyg.ru")) {
             return false;
         }
 

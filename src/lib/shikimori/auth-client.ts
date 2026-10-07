@@ -3,13 +3,15 @@ import { getShikimoriUserAgent } from "@/lib/auth/shikimori-user-agent";
 import { refreshShikimoriToken, tokenExpiresAt } from "@/lib/auth/shikimori-oauth";
 import { getShikimoriEndpoints } from "@/lib/shikimori/endpoints";
 import { shikimoriRateLimit, shikimoriRetryAfterMs } from "@/lib/shikimori/rate-limiter";
+import { SHIKIMORI_RELOGIN_MESSAGE } from "@/lib/shikimori/auth-messages";
+
 const MAX_RETRIES = 5;
 const REFRESH_BUFFER_MS = 5 * 60 * 1000;
 
-export const SHIKIMORI_RELOGIN_MESSAGE = "Сессия Shikimori истекла — войдите заново";
+export { SHIKIMORI_RELOGIN_MESSAGE } from "@/lib/shikimori/auth-messages";
 
 export class ShikimoriAuthError extends Error {
-  constructor(message: string) {
+  constructor(message: string = SHIKIMORI_RELOGIN_MESSAGE) {
     super(message);
     this.name = "ShikimoriAuthError";
   }

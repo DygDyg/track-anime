@@ -3,6 +3,7 @@
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { useEffect, useState } from "react";
+import { useAuth } from "@/components/auth/AuthProvider";
 import { BottomNavProfileFab } from "@/components/BottomNavProfileFab";
 import { useNavigationClick } from "@/components/NavigationProgress";
 import { isStandaloneMode } from "@/hooks/usePwaInstall";
@@ -60,7 +61,8 @@ const NAV_ICONS: Record<string, typeof HomeIcon> = {
 
 function PwaBottomNavLink({ href, label }: { href: string; label: string }) {
   const pathname = usePathname();
-  const active = isPwaNavActive(pathname, href);
+  const { user } = useAuth();
+  const active = isPwaNavActive(pathname, href, { ownShikimoriId: user?.shikimoriId });
   const handleClick = useNavigationClick(href);
   const Icon = NAV_ICONS[href] ?? HomeIcon;
 
