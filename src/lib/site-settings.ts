@@ -140,6 +140,8 @@ export type SiteSettings = {
   playerControlsIdleMs: number;
   /** Локально для браузера: навигация стрелками по карточкам сайта */
   tvNavigationEnabled: boolean;
+  /** Локально для браузера: крупные кнопки UI TA-плеера (телефон / ультраширокий) */
+  playerLargeUi: boolean;
   /** Локально для браузера: показывать companion Aqua Coder в правом нижнем углу */
   companionEnabled: boolean;
   /** Локально для браузера: масштаб companion (1 = кадр 192×208) */
@@ -151,6 +153,7 @@ export type SiteSettings = {
 /** Настройки, которые не синхронизируются с аккаунтом — только localStorage браузера. */
 export const LOCAL_ONLY_SITE_SETTING_KEYS = [
   "tvNavigationEnabled",
+  "playerLargeUi",
   "reduceMotion",
   "reduceAvatarDecorationMotion",
   "companionEnabled",
@@ -165,6 +168,7 @@ export function pickLocalOnlySiteSettings(
 ): Pick<SiteSettings, LocalOnlySiteSettingKey> {
   return {
     tvNavigationEnabled: settings.tvNavigationEnabled,
+    playerLargeUi: settings.playerLargeUi,
     reduceMotion: settings.reduceMotion,
     reduceAvatarDecorationMotion: settings.reduceAvatarDecorationMotion,
     companionEnabled: settings.companionEnabled,
@@ -178,6 +182,7 @@ export function stripLocalOnlySiteSettings(
 ): Omit<SiteSettings, LocalOnlySiteSettingKey> {
   const {
     tvNavigationEnabled: _tvNavigationEnabled,
+    playerLargeUi: _playerLargeUi,
     reduceMotion: _reduceMotion,
     reduceAvatarDecorationMotion: _reduceAvatarDecorationMotion,
     companionEnabled: _companionEnabled,
@@ -236,6 +241,7 @@ export const DEFAULT_SITE_SETTINGS: SiteSettings = {
   betaHiddenProgressThickness: BETA_HIDDEN_PROGRESS_THICKNESS_DEFAULT,
   playerControlsIdleMs: PLAYER_CONTROLS_IDLE_MS_DEFAULT,
   tvNavigationEnabled: true,
+  playerLargeUi: false,
   companionEnabled: true,
   companionScale: COMPANION_SCALE_DEFAULT,
   companionStaticAnimations: false,
@@ -451,6 +457,7 @@ export function normalizeSiteSettings(raw: unknown): SiteSettings {
     ),
     playerControlsIdleMs: normalizePlayerControlsIdleMs(raw.playerControlsIdleMs),
     tvNavigationEnabled: raw.tvNavigationEnabled !== false,
+    playerLargeUi: raw.playerLargeUi === true,
     companionEnabled: raw.companionEnabled !== false,
     companionScale: normalizeCompanionScale(raw.companionScale),
     companionStaticAnimations: raw.companionStaticAnimations === true,
@@ -519,7 +526,7 @@ export function hasStoredSiteSettings(): boolean {
 
 export function buildSiteSettingsInitScript(defaults: SiteSettings): string {
   const fallback = JSON.stringify(defaults);
-  return `(function(){try{var k="${SITE_SETTINGS_STORAGE_KEY}";var raw=localStorage.getItem(k);var d=raw?JSON.parse(raw):${fallback};var el=document.documentElement;var f=d.fontFamily||"inter";var c=d.cursorStyle||"default";var s=d.cardSize||"normal";var a=d.accentPreset||"blue";var b=d.backgroundDim||"medium";var bg=typeof d.backgroundImageUrl==="string"&&d.backgroundImageUrl.length>0;var allowed=${JSON.stringify(SITE_FONT_IDS)};var cursors=${JSON.stringify(SITE_CURSOR_OPTIONS.map((item) => item.id))};if(allowed.indexOf(f)===-1)f="inter";if(cursors.indexOf(c)===-1)c="default";el.setAttribute("data-font",f);el.setAttribute("data-cursor",c);el.setAttribute("data-card-size",s);el.setAttribute("data-accent",a);el.setAttribute("data-bg-dim",b);el.setAttribute("data-site-bg",bg?"true":"false");el.setAttribute("data-tv-nav-enabled",d.tvNavigationEnabled===false?"false":"true");if(d.tvNavigationEnabled===false)el.removeAttribute("data-tv-nav");if(d.reduceMotion===true)el.setAttribute("data-reduce-motion","true");else el.removeAttribute("data-reduce-motion");}catch(e){}})();`;
+  return `(function(){try{var k="${SITE_SETTINGS_STORAGE_KEY}";var raw=localStorage.getItem(k);var d=raw?JSON.parse(raw):${fallback};var el=document.documentElement;var f=d.fontFamily||"inter";var c=d.cursorStyle||"default";var s=d.cardSize||"normal";var a=d.accentPreset||"blue";var b=d.backgroundDim||"medium";var bg=typeof d.backgroundImageUrl==="string"&&d.backgroundImageUrl.length>0;var allowed=${JSON.stringify(SITE_FONT_IDS)};var cursors=${JSON.stringify(SITE_CURSOR_OPTIONS.map((item) => item.id))};if(allowed.indexOf(f)===-1)f="inter";if(cursors.indexOf(c)===-1)c="default";el.setAttribute("data-font",f);el.setAttribute("data-cursor",c);el.setAttribute("data-card-size",s);el.setAttribute("data-accent",a);el.setAttribute("data-bg-dim",b);el.setAttribute("data-site-bg",bg?"true":"false");el.setAttribute("data-tv-nav-enabled",d.tvNavigationEnabled===false?"false":"true");if(d.tvNavigationEnabled===false)el.removeAttribute("data-tv-nav");if(d.playerLargeUi===true)el.setAttribute("data-player-large-ui","true");else el.removeAttribute("data-player-large-ui");if(d.reduceMotion===true)el.setAttribute("data-reduce-motion","true");else el.removeAttribute("data-reduce-motion");}catch(e){}})();`;
 }
 
 export const siteSettingsInitScript = buildSiteSettingsInitScript(DEFAULT_SITE_SETTINGS);
@@ -543,6 +550,11 @@ export function applySiteSettings(settings: SiteSettings): void {
   root.setAttribute("data-tv-nav-enabled", settings.tvNavigationEnabled ? "true" : "false");
   if (!settings.tvNavigationEnabled) {
     root.removeAttribute("data-tv-nav");
+  }
+  if (settings.playerLargeUi) {
+    root.setAttribute("data-player-large-ui", "true");
+  } else {
+    root.removeAttribute("data-player-large-ui");
   }
   localStorage.setItem(SITE_SETTINGS_STORAGE_KEY, JSON.stringify(settings));
 }

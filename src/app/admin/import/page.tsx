@@ -67,6 +67,12 @@ export default async function AdminImportPage() {
             variant="secondary"
             idleHint="Проставляет releasedAt из kodikUpdatedAt для всех релизов."
           />
+          <AdminActionButton
+            label="Обновить кеш «Новинки»"
+            endpoint="/api/admin/home-novelties/revalidate"
+            variant="secondary"
+            idleHint="Сбрасывает суточный TTL блока «Новинки» на главной. Список пересчитается из БД при следующем открытии /."
+          />
         </div>
       </section>
 

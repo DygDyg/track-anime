@@ -2,11 +2,13 @@ import type { Metadata } from "next";
 import { AdminStaleDbBanner } from "@/components/AdminStaleDbBanner";
 import { HistoryNewEpisodesSection, type HistoryNewEpisodeDto } from "@/components/HistoryNewEpisodesSection";
 import { HistoryUpcomingSoonPanel } from "@/components/history/HistoryUpcomingSoonPanel";
+import { HomeNoveltiesSection } from "@/components/HomeNoveltiesSection";
 import { ReleaseFeed } from "@/components/ReleaseFeed";
 import { getKodikDbFreshness } from "@/lib/admin/kodik-db-freshness";
 import { getSession } from "@/lib/auth/session";
 import { getHistoryNewEpisodes } from "@/lib/history-new-episodes";
 import { getHistoryUpcomingSoon } from "@/lib/history-upcoming-soon";
+import { getHomeNovelties } from "@/lib/home-novelties";
 import { getRecentReleasesPage, serializeRelease } from "@/lib/releases";
 import { buildSitePageMetadata, defaultSiteDescription } from "@/lib/site-metadata";
 
@@ -30,15 +32,17 @@ export default async function HomePage({ searchParams }: HomePageProps) {
   const session = await getSession();
   const isAdmin = Boolean(session?.user.isAdmin);
 
-  const [{ items, hasMore, nextCursor }, historyNewEpisodes, upcomingSoon, freshness] =
+  const [{ items, hasMore, nextCursor }, novelties, historyNewEpisodes, upcomingSoon, freshness] =
     await Promise.all([
       getRecentReleasesPage(PAGE_SIZE),
+      getHomeNovelties(),
       session ? getHistoryNewEpisodes(session.user.id) : Promise.resolve([]),
       session ? getHistoryUpcomingSoon(session.user.id) : Promise.resolve([]),
       isAdmin ? getKodikDbFreshness() : Promise.resolve(null),
     ]);
 
   const initialItems = items.map(serializeRelease);
+  const noveltyItems = novelties.map(serializeRelease);
   const historyItems: HistoryNewEpisodeDto[] = historyNewEpisodes.map((item) => ({
     ...serializeRelease(item),
     watchedSeasonNumber: item.watchedSeasonNumber,
@@ -48,7 +52,8 @@ export default async function HomePage({ searchParams }: HomePageProps) {
     watchedProgressPercent: item.watchedProgressPercent,
   }));
   const historyIds = historyItems.map((item) => item.id);
-  const hasPersonalizedBlocks = historyItems.length > 0 || upcomingSoon.length > 0;
+  const hasHomeBlocks =
+    noveltyItems.length > 0 || historyItems.length > 0 || upcomingSoon.length > 0;
 
   return (
     <div className="py-5 sm:py-8">
@@ -62,9 +67,11 @@ export default async function HomePage({ searchParams }: HomePageProps) {
         </div>
       ) : null}
 
+      {noveltyItems.length > 0 ? <HomeNoveltiesSection items={noveltyItems} /> : null}
+
       {historyItems.length > 0 ? <HistoryNewEpisodesSection items={historyItems} /> : null}
 
-      {initialItems.length === 0 && !hasPersonalizedBlocks ? (
+      {initialItems.length === 0 && !hasHomeBlocks ? (
         <div className="mx-3 rounded-xl border border-dashed border-border bg-card/50 p-6 text-center sm:mx-6 sm:p-10 lg:mx-8">
           <p className="text-muted">Пока нет данных. Запустите синхронизацию:</p>
           <code className="mt-3 inline-block rounded bg-background px-3 py-1 text-sm text-accent">

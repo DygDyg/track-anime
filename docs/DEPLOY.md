@@ -61,7 +61,7 @@ npm run deploy:apk -- -ApkPath "android\app\build\outputs\apk\release\app-releas
 .\scripts\deploy.ps1 -ApkPath "android\app\build\outputs\apk\release\app-release.apk"
 ```
 
-Скрипт публикации положит APK в `public/downloads/TrackAnime.apk`, посчитает версию и SHA-256 через Android Build-Tools и создаст `public/downloads/TrackAnime.json`.
+Скрипт публикации положит APK в `public/downloads/TrackAnime.apk`, посчитает версию и SHA-256 через Android Build-Tools и создаст `public/downloads/TrackAnime.json`. После заливки на сервер `deploy-apk.ps1` синхронизирует те же файлы в репозиторий GitHub Pages (`githubIoRepo` в `deploy.local.json`, пример — `deploy.local.example.json`) и вызывает там `GIT_PUSH.bat`, чтобы in-app update мог читать `https://track-anime.github.io/downloads/TrackAnime.json` даже когда зеркала сайта недоступны. Если каталог Pages не найден — предупреждение, деплой на сервер не откатывается.
 
 ### Windows exe
 

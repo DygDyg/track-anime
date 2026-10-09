@@ -14,7 +14,15 @@ import { LIST_STATUS_LABELS } from "@/lib/shikimori/user-rates";
 import type { ShikimoriListStatus } from "@/lib/shikimori/user-rates.types";
 import { LoadingSpinner } from "@/components/ui/LoadingSpinner";
 
-const QUICK_LIST_ACTIONS: ShikimoriListStatus[] = ["watching", "planned", "completed"];
+/** Порядок как во вкладках избранного: 2 ряда по 3 */
+const QUICK_LIST_ACTIONS: ShikimoriListStatus[] = [
+  "watching",
+  "planned",
+  "completed",
+  "on_hold",
+  "dropped",
+  "rewatching",
+];
 
 function quickActionClass(theme: FavoritesTabTheme, active: boolean): string {
   const layout =
@@ -45,6 +53,29 @@ function ListStatusIcon({ status }: { status: ShikimoriListStatus }) {
       return (
         <svg viewBox="0 0 20 20" className="h-5 w-5" fill="none" stroke="currentColor" strokeWidth="1.75" aria-hidden>
           <path d="M5.5 10.5 8.5 13.5 14.5 7" strokeLinecap="round" strokeLinejoin="round" />
+        </svg>
+      );
+    case "on_hold":
+      return (
+        <svg viewBox="0 0 20 20" className="h-5 w-5" fill="none" stroke="currentColor" strokeWidth="1.5" aria-hidden>
+          <rect x="5.5" y="5" width="2.75" height="10" rx="0.75" fill="currentColor" stroke="none" />
+          <rect x="11.75" y="5" width="2.75" height="10" rx="0.75" fill="currentColor" stroke="none" />
+        </svg>
+      );
+    case "dropped":
+      return (
+        <svg viewBox="0 0 20 20" className="h-5 w-5" fill="none" stroke="currentColor" strokeWidth="1.75" aria-hidden>
+          <path d="M6 6l8 8M14 6l-8 8" strokeLinecap="round" />
+        </svg>
+      );
+    case "rewatching":
+      return (
+        <svg viewBox="0 0 20 20" className="h-5 w-5" fill="none" stroke="currentColor" strokeWidth="1.5" aria-hidden>
+          <path
+            d="M15.5 10a5.5 5.5 0 1 1-1.4-3.7"
+            strokeLinecap="round"
+          />
+          <path d="M15.5 4.5v3.5H12" strokeLinecap="round" strokeLinejoin="round" />
         </svg>
       );
     default:

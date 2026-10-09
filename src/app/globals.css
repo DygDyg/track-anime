@@ -2221,6 +2221,157 @@ html[data-player-theater="height"][data-player-theater-chrome="hidden"] .site-he
   }
 }
 
+/* Large player UI (local setting): bigger hit targets on phone / ultrawide.
+   Keep bottom chrome ≤ skip-passthrough clearance (5.75rem with playerLargeUi).
+   Do not change the quality-split flex gap (clamp on «Авто») — that hole must stay aligned. */
+html[data-player-large-ui="true"] .kodik-player-beta-controls--overlay {
+  margin: 0 0.5rem 0.5rem;
+  padding: 0.45rem 0.55rem 0.5rem;
+}
+
+html[data-player-large-ui="true"] .kodik-player-beta-controls-row {
+  gap: 0.375rem;
+}
+
+html[data-player-large-ui="true"] .kodik-player-beta-controls-actions,
+html[data-player-large-ui="true"] .kodik-player-beta-volume-group {
+  gap: 0.375rem;
+}
+
+html[data-player-large-ui="true"] .kodik-player-beta-controls-row button {
+  min-height: 3rem;
+  height: 3rem;
+}
+
+/* Icon buttons only — leave «Авто» width to its inline clamp (quality gap). */
+html[data-player-large-ui="true"]
+  .kodik-player-beta-controls-row
+  > button:not(.kodik-player-beta-seek-button):not(.kodik-player-beta-quality-button),
+html[data-player-large-ui="true"] .kodik-player-beta-controls-actions > button,
+html[data-player-large-ui="true"] .kodik-player-beta-volume-group > button {
+  min-width: 3rem;
+  width: 3rem;
+}
+
+html[data-player-large-ui="true"] .kodik-player-beta-quality-button {
+  min-height: 3rem;
+  height: 3rem;
+  /* width stays clamp(2.5rem, 6vw, 5rem) from inline style — matches quality-split gap */
+}
+
+html[data-player-large-ui="true"] .kodik-player-beta-seek-button {
+  min-width: 3rem;
+  width: auto;
+  padding-inline: 0.5rem;
+  font-size: 0.875rem;
+  font-weight: 600;
+}
+
+html[data-player-large-ui="true"] .kodik-player-beta-controls-row button svg {
+  width: 1.5rem;
+  height: 1.5rem;
+}
+
+html[data-player-large-ui="true"] .kodik-player-beta-controls-row .tabular-nums {
+  font-size: 0.875rem;
+  min-width: 8.5rem;
+}
+
+html[data-player-large-ui="true"] .kodik-player-beta-mobile-time {
+  font-size: 0.8125rem;
+}
+
+html[data-player-large-ui="true"] .kodik-player-beta-controls .kodik-player-beta-progress.site-range,
+html[data-player-large-ui="true"] .kodik-player-beta-controls .kodik-player-beta-volume.site-range {
+  height: 0.5rem;
+}
+
+html[data-player-large-ui="true"] .kodik-player-beta-controls .site-range::-webkit-slider-thumb {
+  width: 1.25rem;
+  height: 1.25rem;
+}
+
+html[data-player-large-ui="true"] .kodik-player-beta-controls .site-range::-moz-range-thumb {
+  width: 1.25rem;
+  height: 1.25rem;
+}
+
+html[data-player-large-ui="true"] .kodik-player-beta-controls .kodik-player-beta-range.site-range::-moz-range-track,
+html[data-player-large-ui="true"] .kodik-player-beta-controls .kodik-player-beta-range.site-range::-moz-range-progress {
+  height: 0.5rem;
+}
+
+html[data-player-large-ui="true"] .kodik-player-beta-volume.site-range {
+  width: 6rem;
+}
+
+html[data-player-large-ui="true"] .kodik-player-beta-episodes-shell {
+  padding: 0.5rem;
+}
+
+html[data-player-large-ui="true"] .kodik-player-beta-episodes--overlay {
+  padding: 0.5rem;
+  gap: 0.5rem;
+}
+
+html[data-player-large-ui="true"] .kodik-player-beta-episodes select,
+html[data-player-large-ui="true"] .kodik-player-beta-episodes button {
+  height: 2.75rem;
+  min-height: 2.75rem;
+  min-width: 2.75rem;
+  font-size: 0.875rem;
+}
+
+html[data-player-large-ui="true"] .kodik-player-beta-episodes-edge {
+  width: 3.25rem;
+}
+
+html[data-player-large-ui="true"] .kodik-player-beta-episodes-scroll-btn {
+  height: 2.75rem;
+  width: 2.5rem;
+  font-size: 1.5rem;
+}
+
+html[data-player-large-ui="true"] .kodik-player-beta-translations-toggle {
+  bottom: 0.35rem;
+  min-height: 2.25rem;
+  gap: 0.35rem;
+  padding: 0.35rem 0.75rem;
+  font-size: 0.75rem;
+}
+
+html[data-player-large-ui="true"] .kodik-player-beta-translations-toggle svg {
+  width: 1.125rem;
+  height: 1.125rem;
+}
+
+html[data-player-large-ui="true"] .kodik-player-beta-kodik-ui-toggle,
+html[data-player-large-ui="true"] .kodik-player-beta-kodik-ui-return {
+  min-height: 2.25rem;
+  padding: 0.4rem 0.85rem;
+  font-size: 0.875rem;
+}
+
+@media (max-width: 639px) {
+  html[data-player-large-ui="true"] .kodik-player-beta-controls-row {
+    gap: 0.35rem;
+  }
+
+  html[data-player-large-ui="true"] .kodik-player-beta-controls-row button,
+  html[data-player-large-ui="true"]
+    .kodik-player-beta-controls-row
+    > button:not(.kodik-player-beta-seek-button):not(.kodik-player-beta-quality-button),
+  html[data-player-large-ui="true"] .kodik-player-beta-controls-actions > button,
+  html[data-player-large-ui="true"] .kodik-player-beta-volume-group > button {
+    width: 100%;
+    min-width: 0;
+  }
+
+  html[data-player-large-ui="true"] .kodik-player-beta-seek-button {
+    padding-inline: 0.35rem;
+  }
+}
+
 .translation-btn {
   position: relative;
   overflow: hidden;

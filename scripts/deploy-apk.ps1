@@ -215,4 +215,64 @@ if ($manifestCode -ne "200") {
     throw "Manifest URL returned HTTP $manifestCode ($ManifestUrl)"
 }
 
+function Resolve-GithubIoRepoPath {
+    $cfg = Get-TaDeployLocalConfig
+    $fromConfig = Get-TaDeployConfigValue -Config $cfg -Names @("githubIoRepo", "GithubIoRepo") -Default $null
+    if ($fromConfig) {
+        $expanded = [Environment]::ExpandEnvironmentVariables([string]$fromConfig)
+        if (Test-Path -LiteralPath $expanded -PathType Container) {
+            return (Resolve-Path -LiteralPath $expanded).Path
+        }
+        Write-Step "githubIoRepo not found: $expanded (skip Pages sync)" -Color Yellow
+        return $null
+    }
+    $defaultPath = "D:\GitHub\track-anime.github.io"
+    if (Test-Path -LiteralPath $defaultPath -PathType Container) {
+        return $defaultPath
+    }
+    Write-Step "github.io repo not configured (set githubIoRepo in deploy.local.json); skip Pages sync" -Color Yellow
+    return $null
+}
+
+function Sync-ApkToGithubIoPages {
+    param([string]$RepoPath)
+
+    $downloadsDir = Join-Path $RepoPath "downloads"
+    New-Item -ItemType Directory -Path $downloadsDir -Force | Out-Null
+    Copy-Item -LiteralPath $LocalApk -Destination (Join-Path $downloadsDir "TrackAnime.apk") -Force
+    Copy-Item -LiteralPath $LocalManifest -Destination (Join-Path $downloadsDir "TrackAnime.json") -Force
+    Write-Step "copied APK + manifest to $downloadsDir"
+
+    $pushBat = Join-Path $RepoPath "GIT_PUSH.bat"
+    if (-not (Test-Path -LiteralPath $pushBat)) {
+        Write-Step "GIT_PUSH.bat missing in $RepoPath; files copied but not pushed" -Color Yellow
+        return
+    }
+
+    Write-Step "push Pages repo via GIT_PUSH.bat..."
+    $prevEap = $ErrorActionPreference
+    $ErrorActionPreference = "Continue"
+    try {
+        # /c so timeout/pause in the bat cannot hang the deploy script forever.
+        & cmd.exe /c "`"$pushBat`""
+        $exit = $LASTEXITCODE
+    } finally {
+        $ErrorActionPreference = $prevEap
+    }
+    if ($exit -ne 0) {
+        Write-Step "GIT_PUSH.bat exited $exit (server APK already published)" -Color Yellow
+        return
+    }
+    Write-Step "github.io Pages sync done" -Color Green
+}
+
+$githubIoRepo = Resolve-GithubIoRepoPath
+if ($githubIoRepo) {
+    try {
+        Sync-ApkToGithubIoPages -RepoPath $githubIoRepo
+    } catch {
+        Write-Step "github.io sync failed: $($_.Exception.Message) (server APK already published)" -Color Yellow
+    }
+}
+
 Write-Step "done ($DownloadUrl)" -Color Green

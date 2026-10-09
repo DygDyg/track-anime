@@ -5,17 +5,13 @@ import { createPortal } from "react-dom";
 import { useEffect, useLayoutEffect, useRef, useState, type CSSProperties, type RefObject } from "react";
 import { AnimeLink } from "@/components/AnimeLink";
 import { AdminAnimeDebugButton } from "@/components/admin/AdminAnimeDebugButton";
-import { AnimeKindInfoLink } from "@/components/AnimeKindInfoLink";
 import { AnimePoster } from "@/components/AnimePoster";
-import { AnimeScoreBadge } from "@/components/AnimeScoreBadge";
 import { FavoriteRewatchBadge } from "@/components/favorites/FavoriteRewatchBadge";
-import { GenreInfoLink } from "@/components/GenreInfoLink";
 import { useUserListStatus } from "@/components/favorites/UserListStatusProvider";
+import { ReleaseCardGenresRow, ReleaseCardMetaRow } from "@/components/ReleaseCardPreviewMeta";
 import { ReleaseCardQuickActions } from "@/components/ReleaseCardQuickActions";
 import { TranslationBadge } from "@/components/TranslationBadge";
 import { LoadingSpinner } from "@/components/ui/LoadingSpinner";
-import { labelKind, labelStatus, statusBadgeClass } from "@/lib/anime-labels";
-import { kindBadgeClass } from "@/lib/anime-kind-theme";
 import {
   computeHoverPanelOffsetX,
   computeHoverPortalStyle,
@@ -86,63 +82,6 @@ function ReleaseRewatchBadge({
       readOnly={readOnly}
       className="text-[11px]"
     />
-  );
-}
-
-function ReleaseMetaRow({ release }: { release: HoverPanelReleaseInput }) {
-  const kindLabel = labelKind(release.kind);
-  const kindClass = kindBadgeClass(release.kind);
-  const statusLabel = labelStatus(release.status);
-  const statusClass = statusBadgeClass(release.status);
-  const catalogEpisodes = "catalogEpisodes" in release ? release.catalogEpisodes : null;
-  const episodeLabel =
-    release.episodeNumber > 0
-      ? `${release.episodeNumber} серия`
-      : catalogEpisodes
-        ? `${catalogEpisodes} эп.`
-        : null;
-
-  return (
-    <div className="flex flex-wrap items-center gap-1.5 text-xs">
-      {release.score ? <AnimeScoreBadge score={release.score} variant="inline" size="sm" /> : null}
-      {episodeLabel ? (
-        <span className="font-semibold tabular-nums text-foreground">{episodeLabel}</span>
-      ) : null}
-      {kindLabel && kindClass ? (
-        <>
-          <span className="text-muted/70">·</span>
-          <AnimeKindInfoLink kind={release.kind} className={kindClass}>
-            {kindLabel}
-          </AnimeKindInfoLink>
-        </>
-      ) : null}
-      {statusLabel && statusClass ? (
-        <>
-          <span className="text-muted/70">·</span>
-          <span className={`rounded-full border px-2 py-0.5 text-[10px] font-semibold leading-none ${statusClass}`}>
-            {statusLabel}
-          </span>
-        </>
-      ) : null}
-    </div>
-  );
-}
-
-function ReleaseGenresRow({ genres }: { genres: string[] }) {
-  if (genres.length === 0) return null;
-
-  return (
-    <p className="text-xs leading-relaxed">
-      <span className="text-muted">Жанры: </span>
-      {genres.slice(0, 6).map((genre, index) => (
-        <span key={genre}>
-          {index > 0 ? ", " : null}
-          <GenreInfoLink genre={genre} className="font-medium text-accent transition hover:underline">
-            {genre}
-          </GenreInfoLink>
-        </span>
-      ))}
-    </p>
   );
 }
 
@@ -563,12 +502,12 @@ export function ReleaseCardHoverPanel({
           )}
 
           <div className="flex flex-wrap items-center gap-1.5">
-            <ReleaseMetaRow release={release} />
+            <ReleaseCardMetaRow release={release} />
             {release.shikimoriId ? (
               <ReleaseRewatchBadge shikimoriId={release.shikimoriId} readOnly={readOnly} />
             ) : null}
           </div>
-          <ReleaseGenresRow genres={release.genres} />
+          <ReleaseCardGenresRow genres={release.genres} />
 
           {description ? (
             <p className="line-clamp-3 text-xs leading-relaxed text-foreground/90">{description}</p>

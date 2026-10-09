@@ -31,6 +31,8 @@ import java.util.concurrent.Executors;
 final class UpdateManager {
     private static final String LOG_TAG = "TrackAnimeUpdate";
     private static final String MANIFEST_PATH = "/downloads/TrackAnime.json";
+    /** Same durable host as {@link MirrorCatalog#MIRRORS_JSON_URL}. */
+    private static final String PAGES_MANIFEST_URL = "https://track-anime.github.io/downloads/TrackAnime.json";
     private final Activity activity;
     private final ExecutorService executor = Executors.newSingleThreadExecutor();
     private volatile boolean checkInProgress;
@@ -40,15 +42,38 @@ final class UpdateManager {
         this.activity = activity;
     }
 
+    /**
+     * Startup check against GitHub Pages only — no mirror host required.
+     * Invokes {@code onFinished} on the UI thread when the check completes
+     * (update offered, already current, or network failure).
+     */
+    void checkPagesForUpdate(Runnable onFinished) {
+        if (checkInProgress || updateDialogShown) {
+            if (onFinished != null) activity.runOnUiThread(onFinished);
+            return;
+        }
+        checkInProgress = true;
+        executor.execute(() -> {
+            try {
+                tryLoadManifest(Uri.parse(PAGES_MANIFEST_URL));
+            } finally {
+                checkInProgress = false;
+                if (onFinished != null) activity.runOnUiThread(onFinished);
+            }
+        });
+    }
+
     void checkForUpdate(Uri loadedUri) {
         if (checkInProgress || updateDialogShown || loadedUri == null || !"https".equalsIgnoreCase(loadedUri.getScheme())) return;
         String host = loadedUri.getHost();
         if (host == null) return;
         checkInProgress = true;
-        Uri manifestUri = new Uri.Builder().scheme("https").authority(host).path(MANIFEST_PATH).build();
+        Uri mirrorManifestUri = new Uri.Builder().scheme("https").authority(host).path(MANIFEST_PATH).build();
         executor.execute(() -> {
             try {
-                loadManifest(manifestUri);
+                if (!tryLoadManifest(Uri.parse(PAGES_MANIFEST_URL))) {
+                    tryLoadManifest(mirrorManifestUri);
+                }
             } finally {
                 checkInProgress = false;
             }
@@ -59,11 +84,15 @@ final class UpdateManager {
         executor.shutdownNow();
     }
 
-    private void loadManifest(Uri manifestUri) {
+    /** @return true if the manifest was read successfully (update offered or already current). */
+    private boolean tryLoadManifest(Uri manifestUri) {
         try {
             JSONObject manifest = new JSONObject(readText(manifestUri.toString()));
             long availableVersion = manifest.getLong("versionCode");
-            if (availableVersion <= currentVersionCode()) return;
+            if (availableVersion <= currentVersionCode()) {
+                Log.i(LOG_TAG, "Up to date via " + manifestUri.getHost());
+                return true;
+            }
 
             String versionName = manifest.getString("versionName");
             String apkUrl = manifest.getString("apkUrl");
@@ -81,8 +110,10 @@ final class UpdateManager {
             }
             updateDialogShown = true;
             activity.runOnUiThread(() -> showUpdateDialog(versionName, resolvedApkUri, sha256));
+            return true;
         } catch (Exception error) {
-            Log.w(LOG_TAG, "Update check skipped: " + error.getMessage());
+            Log.w(LOG_TAG, "Update check via " + manifestUri + " failed: " + error.getMessage());
+            return false;
         }
     }
 

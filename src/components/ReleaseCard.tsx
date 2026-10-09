@@ -6,6 +6,7 @@ import { AnimeLink } from "@/components/AnimeLink";
 import { AnimePoster } from "@/components/AnimePoster";
 import { AnimeScoreBadge } from "@/components/AnimeScoreBadge";
 import { RelativeTime } from "@/components/RelativeTime";
+import { ReleaseCardGenresRow, ReleaseCardMetaRow } from "@/components/ReleaseCardPreviewMeta";
 import { TranslationBadge } from "@/components/TranslationBadge";
 import { ListStatusBadge } from "@/components/favorites/ListStatusBadge";
 import { useUserListStatus } from "@/components/favorites/UserListStatusProvider";
@@ -34,10 +35,16 @@ function EpisodeNumberBadge({
   );
 }
 
-function EarlySeriesNewBadge() {
+function EarlySeriesNewBadge({ className = "" }: { className?: string }) {
   return (
     <div
-      className={`rounded-md border border-white/25 px-1.5 py-0.5 text-[10px] font-extrabold uppercase leading-none tracking-wide text-white shadow-[0_1px_3px_rgba(0,0,0,0.55)] sm:px-2 sm:text-[11px] ${earlySeriesCardAccentClass()}`}
+      className={[
+        "rounded-md border border-white/25 px-1.5 py-0.5 text-[10px] font-extrabold uppercase leading-none tracking-wide text-white shadow-[0_1px_3px_rgba(0,0,0,0.55)] sm:px-2 sm:text-[11px]",
+        earlySeriesCardAccentClass(),
+        className,
+      ]
+        .filter(Boolean)
+        .join(" ")}
     >
       NEW
     </div>
@@ -120,7 +127,7 @@ export function ReleaseCard({
         {showEarlySeriesMark ? (
           <div
             aria-hidden
-            className={`pointer-events-none absolute inset-x-0 top-0 z-20 h-1 ${earlySeriesCardAccentClass()}`}
+            className={`pointer-events-none absolute inset-x-0 top-0 z-20 hidden h-1 md:block ${earlySeriesCardAccentClass()}`}
           />
         ) : null}
         {showScreenshotBackground ? (
@@ -152,7 +159,7 @@ export function ReleaseCard({
             />
             <AnimeKindCornerBadge kind={release.kind} className="absolute bottom-0 left-0 z-20" />
             <div className="pointer-events-none absolute bottom-0 right-0 z-20 flex flex-col items-end gap-0.5">
-              {/* Desktop: NEW над номером серии. На мобиле постер слишком узкий — см. текстовую колонку. */}
+              {/* Desktop: NEW над номером серии. На мобиле — в ряду метаданных перед рейтингом. */}
               {showEarlySeriesMark ? (
                 <div className="hidden md:block">
                   <EarlySeriesNewBadge />
@@ -163,12 +170,16 @@ export function ReleaseCard({
           </div>
 
           <div className="flex min-w-0 flex-1 flex-col justify-center gap-1 py-0.5 md:min-h-0 md:flex-1 md:justify-start md:gap-0 md:p-3">
-            {showEarlySeriesMark ? (
-              <div className="md:hidden">
-                <EarlySeriesNewBadge />
-              </div>
-            ) : null}
             {title}
+            <div className="space-y-1 md:hidden">
+              <ReleaseCardMetaRow
+                release={release}
+                leading={
+                  showEarlySeriesMark ? <EarlySeriesNewBadge className="shrink-0" /> : null
+                }
+              />
+              <ReleaseCardGenresRow genres={release.genres} max={4} />
+            </div>
             <div className="md:mt-1.5 md:min-h-[1.125rem]">
               <TranslationBadge name={release.translationName} className="max-w-full" />
             </div>

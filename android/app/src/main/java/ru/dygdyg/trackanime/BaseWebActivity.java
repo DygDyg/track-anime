@@ -16,6 +16,7 @@ import android.content.res.Configuration;
 import android.graphics.Color;
 import android.graphics.Typeface;
 import android.graphics.drawable.ColorDrawable;
+import android.graphics.drawable.GradientDrawable;
 import android.media.AudioManager;
 import android.net.Uri;
 import android.os.Build;
@@ -50,9 +51,12 @@ import android.webkit.WebView;
 import android.webkit.WebViewClient;
 import android.webkit.ValueCallback;
 import android.widget.Button;
+import android.widget.CheckBox;
 import android.widget.EditText;
 import android.widget.FrameLayout;
 import android.widget.HorizontalScrollView;
+import android.widget.ImageButton;
+import android.widget.ImageView;
 import android.widget.LinearLayout;
 import android.widget.ProgressBar;
 import android.widget.RadioButton;
@@ -170,9 +174,15 @@ abstract class BaseWebActivity extends Activity {
         setContentView(rootLayout);
         applyDarkSystemBars();
         applySystemBarsPolicy();
-        showBootstrapStatus("Поиск рабочего зеркала…");
+        showBootstrapStatus("Проверка обновлений…");
         ensureHistoryNewNotificationChannel();
         pendingLaunchUri = getIntent().getData();
+        // Pages first (reachable even when mirrors are down), then mirror bootstrap.
+        updateManager.checkPagesForUpdate(this::startMirrorBootstrap);
+    }
+
+    private void startMirrorBootstrap() {
+        showBootstrapStatus("Поиск рабочего зеркала…");
         MirrorCatalog.fetchAsync(hosts -> handler.post(() -> {
             siteHosts = hosts != null && hosts.length > 0 ? hosts : MirrorCatalog.FALLBACK_HOSTS.clone();
             mirrorsReady = true;
@@ -293,12 +303,14 @@ abstract class BaseWebActivity extends Activity {
     }
 
     private View buildBootstrapOverlay() {
-        LinearLayout overlay = new LinearLayout(this);
-        overlay.setOrientation(LinearLayout.VERTICAL);
-        overlay.setGravity(Gravity.CENTER);
-        overlay.setBackgroundColor(Color.rgb(12, 14, 20));
-        overlay.setPadding(dp(28), dp(28), dp(28), dp(28));
-        overlay.setClickable(true);
+        FrameLayout root = new FrameLayout(this);
+        root.setBackgroundColor(Color.rgb(12, 14, 20));
+        root.setClickable(true);
+
+        LinearLayout content = new LinearLayout(this);
+        content.setOrientation(LinearLayout.VERTICAL);
+        content.setGravity(Gravity.CENTER);
+        content.setPadding(dp(28), dp(28), dp(28), dp(28));
 
         TextView title = new TextView(this);
         title.setText("Track Anime");
@@ -306,7 +318,7 @@ abstract class BaseWebActivity extends Activity {
         title.setTextSize(TypedValue.COMPLEX_UNIT_SP, 22);
         title.setTypeface(Typeface.create(Typeface.SANS_SERIF, Typeface.BOLD));
         title.setGravity(Gravity.CENTER_HORIZONTAL);
-        overlay.addView(title);
+        content.addView(title);
 
         ProgressBar progress = new ProgressBar(this);
         progress.setIndeterminate(true);
@@ -316,7 +328,7 @@ abstract class BaseWebActivity extends Activity {
         LinearLayout.LayoutParams progressParams = new LinearLayout.LayoutParams(dp(40), dp(40));
         progressParams.topMargin = dp(28);
         progressParams.gravity = Gravity.CENTER_HORIZONTAL;
-        overlay.addView(progress, progressParams);
+        content.addView(progress, progressParams);
 
         bootstrapStatus = new TextView(this);
         bootstrapStatus.setText("Поиск рабочего зеркала…");
@@ -327,9 +339,33 @@ abstract class BaseWebActivity extends Activity {
         LinearLayout.LayoutParams statusParams = new LinearLayout.LayoutParams(
                 ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT);
         statusParams.topMargin = dp(18);
-        overlay.addView(bootstrapStatus, statusParams);
+        content.addView(bootstrapStatus, statusParams);
 
-        return overlay;
+        root.addView(content, new FrameLayout.LayoutParams(
+                ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT));
+
+        GradientDrawable settingsBg = new GradientDrawable();
+        settingsBg.setColor(Color.rgb(24, 26, 32));
+        settingsBg.setCornerRadius(dp(12));
+        settingsBg.setStroke(dp(1), Color.rgb(45, 49, 58));
+
+        ImageButton settings = new ImageButton(this);
+        settings.setImageResource(R.drawable.shortcut_settings);
+        settings.setScaleType(ImageView.ScaleType.CENTER_INSIDE);
+        settings.setPadding(dp(12), dp(12), dp(12), dp(12));
+        settings.setBackground(settingsBg);
+        settings.setContentDescription("Настройки приложения");
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.LOLLIPOP) {
+            settings.setImageTintList(ColorStateList.valueOf(Color.rgb(163, 171, 189)));
+            settings.setElevation(dp(4));
+        }
+        settings.setOnClickListener(v -> showAppSettings());
+        FrameLayout.LayoutParams settingsParams = new FrameLayout.LayoutParams(dp(48), dp(48));
+        settingsParams.gravity = Gravity.BOTTOM | Gravity.END;
+        settingsParams.setMargins(dp(16), dp(16), dp(16), dp(16));
+        root.addView(settings, settingsParams);
+
+        return root;
     }
 
     private void showBootstrapStatus(String status) {
@@ -549,11 +585,13 @@ abstract class BaseWebActivity extends Activity {
 
         ProxyFallback.Settings next = parsed.settings;
         if (next.mode == ProxyFallback.Mode.SERVER) {
-            proxyFallback.saveSettings(new ProxyFallback.Settings(ProxyFallback.Mode.SERVER, "", 0, "", ""));
+            proxyFallback.saveConnectionKeepingScopes(
+                    new ProxyFallback.Settings(ProxyFallback.Mode.SERVER, "", 0, "", ""));
         } else if (next.mode == ProxyFallback.Mode.NONE) {
-            proxyFallback.saveSettings(new ProxyFallback.Settings(ProxyFallback.Mode.NONE, "", 0, "", ""));
+            proxyFallback.saveConnectionKeepingScopes(
+                    new ProxyFallback.Settings(ProxyFallback.Mode.NONE, "", 0, "", ""));
         } else {
-            proxyFallback.saveSettings(next);
+            proxyFallback.saveConnectionKeepingScopes(next);
         }
 
         proxyFallbackAttempted = false;
@@ -666,7 +704,7 @@ abstract class BaseWebActivity extends Activity {
             proxyFallbackAttempted = true;
             Log.w(LOG_TAG, "All direct mirrors failed; trying proxy fallback.");
             showBootstrapStatus("Прямые зеркала недоступны.\nПодключение через прокси…");
-            proxyFallback.enable(() -> loadSite(getPrimaryUrl()));
+            proxyFallback.enable(siteHosts, () -> loadSite(getPrimaryUrl()));
             return;
         }
         showLoadErrorPage(webView, reason);
@@ -817,6 +855,24 @@ abstract class BaseWebActivity extends Activity {
             }
             return false;
         });
+    }
+
+    private CheckBox settingsCheckOption(String label, boolean checked) {
+        CheckBox option = new CheckBox(this);
+        option.setId(View.generateViewId());
+        option.setText(label);
+        option.setChecked(checked);
+        option.setTextColor(color(R.color.foreground));
+        option.setTextSize(TypedValue.COMPLEX_UNIT_SP, 14);
+        option.setButtonTintList(ColorStateList.valueOf(color(R.color.accent)));
+        option.setBackgroundResource(R.drawable.settings_option_bg);
+        option.setPadding(dp(12), dp(10), dp(12), dp(10));
+        LinearLayout.LayoutParams params = new LinearLayout.LayoutParams(
+                ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT);
+        params.topMargin = dp(8);
+        option.setLayoutParams(params);
+        enableDpadActivation(option);
+        return option;
     }
 
     private RadioButton settingsOption(String label) {
@@ -1102,6 +1158,8 @@ abstract class BaseWebActivity extends Activity {
         proxyPanel.addView(settingsSectionTitle("HTTP-прокси"));
         proxyPanel.addView(settingsSectionHint(
                 "Только HTTP-прокси (не SOCKS и не VPN). Включается после ошибки всех прямых зеркал.\n\n"
+                        + "Галочки «Использовать для» ограничивают прокси выбранными сервисами "
+                        + "(остальной трафик идёт напрямую).\n\n"
                         + "Ссылка для другого устройства:\n"
                         + "• taproxy://адрес:порт\n"
                         + "• taproxy://логин:пароль@адрес:порт\n"
@@ -1116,6 +1174,25 @@ abstract class BaseWebActivity extends Activity {
         modes.addView(serverProxy);
         modes.addView(manualProxy);
         proxyPanel.addView(modes);
+
+        LinearLayout scopeBlock = new LinearLayout(this);
+        scopeBlock.setOrientation(LinearLayout.VERTICAL);
+        scopeBlock.setPadding(0, dp(12), 0, 0);
+        TextView scopeTitle = settingsSectionTitle("Использовать для");
+        LinearLayout.LayoutParams scopeTitleParams = new LinearLayout.LayoutParams(
+                ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT);
+        scopeTitle.setLayoutParams(scopeTitleParams);
+        scopeBlock.addView(scopeTitle);
+        scopeBlock.addView(settingsSectionHint(
+                "Track Anime — зеркала сайта и github.io. Kodik — плеер и CDN. Shikimori — OAuth и API."));
+        CheckBox scopeTrackAnime = settingsCheckOption("Track Anime", saved.useForTrackAnime);
+        CheckBox scopeKodik = settingsCheckOption("Kodik", saved.useForKodik);
+        CheckBox scopeShikimori = settingsCheckOption("Shikimori", saved.useForShikimori);
+        scopeBlock.addView(scopeTrackAnime);
+        scopeBlock.addView(scopeKodik);
+        scopeBlock.addView(scopeShikimori);
+        proxyPanel.addView(scopeBlock);
+
         LinearLayout manualFields = new LinearLayout(this);
         manualFields.setOrientation(LinearLayout.VERTICAL);
         manualFields.setPadding(0, dp(4), 0, 0);
@@ -1177,12 +1254,15 @@ abstract class BaseWebActivity extends Activity {
         int checkedId = saved.mode == ProxyFallback.Mode.NONE ? noProxy.getId()
                 : saved.mode == ProxyFallback.Mode.MANUAL ? manualProxy.getId() : serverProxy.getId();
         modes.check(checkedId);
-        manualFields.setVisibility(saved.mode == ProxyFallback.Mode.MANUAL ? View.VISIBLE : View.GONE);
-        refreshCopyButton.run();
-        modes.setOnCheckedChangeListener((group, checked) -> {
-            manualFields.setVisibility(checked == manualProxy.getId() ? View.VISIBLE : View.GONE);
+        Runnable refreshProxySections = () -> {
+            boolean proxyOn = modes.getCheckedRadioButtonId() != noProxy.getId();
+            scopeBlock.setVisibility(proxyOn ? View.VISIBLE : View.GONE);
+            manualFields.setVisibility(
+                    modes.getCheckedRadioButtonId() == manualProxy.getId() ? View.VISIBLE : View.GONE);
             refreshCopyButton.run();
-        });
+        };
+        refreshProxySections.run();
+        modes.setOnCheckedChangeListener((group, checked) -> refreshProxySections.run());
 
         LinearLayout cachePanel = settingsTabPanel();
         cachePanel.addView(settingsSectionTitle("Кэш WebView"));
@@ -1290,13 +1370,28 @@ abstract class BaseWebActivity extends Activity {
                     return;
                 }
             }
+            boolean useTa = scopeTrackAnime.isChecked();
+            boolean useKodik = scopeKodik.isChecked();
+            boolean useShiki = scopeShikimori.isChecked();
+            if (mode != ProxyFallback.Mode.NONE && !useTa && !useKodik && !useShiki) {
+                selectTab.onClick(navProxy);
+                Toast.makeText(this, "Выберите хотя бы один сервис для прокси.", Toast.LENGTH_LONG).show();
+                return;
+            }
             String nextBarsMode = barsModes.getCheckedRadioButtonId() == barsAlways.getId()
                     ? SYSTEM_BARS_MODE_ALWAYS
                     : barsModes.getCheckedRadioButtonId() == barsShow.getId()
                             ? SYSTEM_BARS_MODE_SHOW : SYSTEM_BARS_MODE_VIDEO;
             saveSystemBarsMode(nextBarsMode);
-            proxyFallback.saveSettings(new ProxyFallback.Settings(mode, host.getText().toString(), manualPort,
-                    username.getText().toString(), password.getText().toString()));
+            proxyFallback.saveSettings(new ProxyFallback.Settings(
+                    mode,
+                    host.getText().toString(),
+                    manualPort,
+                    username.getText().toString(),
+                    password.getText().toString(),
+                    useTa,
+                    useKodik,
+                    useShiki));
             proxyFallback.clearOverride(() -> {
                 applySystemBarsPolicy();
                 Toast.makeText(this, "Настройки сохранены.", Toast.LENGTH_SHORT).show();

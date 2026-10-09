@@ -64,7 +64,10 @@ const VOLUME_HUD_MS = 900;
 const KODIK_NATIVE_SKIP_PASSTHROUGH_WIDTH = "min(18rem, 44vw)";
 const KODIK_NATIVE_SKIP_PASSTHROUGH_HEIGHT = "3.75rem";
 const KODIK_NATIVE_SKIP_PASSTHROUGH_RIGHT = "0.5rem";
+/** Clearance above normal TA bottom chrome so Kodik OP/ED skip stays clickable. */
 const KODIK_NATIVE_SKIP_PASSTHROUGH_BOTTOM = "4.25rem";
+/** Same hole raised for `playerLargeUi` — taller TA controls (~3rem buttons + padding). */
+const KODIK_NATIVE_SKIP_PASSTHROUGH_BOTTOM_LARGE = "5.75rem";
 /** Hole over Kodik’s big center play/pause so TA chrome doesn’t steal the tap. */
 const KODIK_CENTER_PLAY_HOLE = "min(10.5rem, 34vmin)";
 const KODIK_CENTER_PLAY_HOLE_HALF = "min(5.25rem, 17vmin)";
@@ -1381,7 +1384,10 @@ export function KodikPlayerBetaViewport({
   ].join(" ");
   const clickLayerStyle = hideCursor ? { cursor: "none" } : undefined;
   const showClickLayer = !controlsDocked && clickLayerArmed;
-  const clickLayerAboveSkipBottom = `calc(${KODIK_NATIVE_SKIP_PASSTHROUGH_BOTTOM} + ${KODIK_NATIVE_SKIP_PASSTHROUGH_HEIGHT})`;
+  const skipPassthroughBottom = settings.playerLargeUi
+    ? KODIK_NATIVE_SKIP_PASSTHROUGH_BOTTOM_LARGE
+    : KODIK_NATIVE_SKIP_PASSTHROUGH_BOTTOM;
+  const clickLayerAboveSkipBottom = `calc(${skipPassthroughBottom} + ${KODIK_NATIVE_SKIP_PASSTHROUGH_HEIGHT})`;
   const centerHoleTop = `calc(50% - ${KODIK_CENTER_PLAY_HOLE_HALF})`;
   const centerHoleSideWidth = `calc(50% - ${KODIK_CENTER_PLAY_HOLE_HALF})`;
 
@@ -1586,7 +1592,7 @@ export function KodikPlayerBetaViewport({
                 ...clickLayerStyle,
                 left: 0,
                 right: `calc(${KODIK_NATIVE_SKIP_PASSTHROUGH_RIGHT} + ${KODIK_NATIVE_SKIP_PASSTHROUGH_WIDTH})`,
-                bottom: KODIK_NATIVE_SKIP_PASSTHROUGH_BOTTOM,
+                bottom: skipPassthroughBottom,
                 height: KODIK_NATIVE_SKIP_PASSTHROUGH_HEIGHT,
               }}
             />
@@ -1597,7 +1603,7 @@ export function KodikPlayerBetaViewport({
               style={{
                 ...clickLayerStyle,
                 right: 0,
-                bottom: KODIK_NATIVE_SKIP_PASSTHROUGH_BOTTOM,
+                bottom: skipPassthroughBottom,
                 width: KODIK_NATIVE_SKIP_PASSTHROUGH_RIGHT,
                 height: KODIK_NATIVE_SKIP_PASSTHROUGH_HEIGHT,
               }}
@@ -1608,7 +1614,7 @@ export function KodikPlayerBetaViewport({
                   "absolute inset-x-0 bottom-0 z-10",
                   clickLayerInteractive ? "pointer-events-auto" : "pointer-events-none",
                 ].join(" ")}
-                style={{ height: KODIK_NATIVE_SKIP_PASSTHROUGH_BOTTOM }}
+                style={{ height: skipPassthroughBottom }}
               />
             ) : (
               <div
@@ -1619,7 +1625,7 @@ export function KodikPlayerBetaViewport({
                   ...clickLayerStyle,
                   insetInline: 0,
                   bottom: 0,
-                  height: KODIK_NATIVE_SKIP_PASSTHROUGH_BOTTOM,
+                  height: skipPassthroughBottom,
                 }}
               />
             )}
@@ -1634,7 +1640,11 @@ export function KodikPlayerBetaViewport({
           <div
             className={[
               "kodik-player-beta-ta-chrome pointer-events-none absolute inset-x-2 z-30 flex justify-center",
-              controlsDocked ? "bottom-2" : "bottom-14 sm:bottom-16",
+              controlsDocked
+                ? "bottom-2"
+                : settings.playerLargeUi
+                  ? "bottom-20 sm:bottom-24"
+                  : "bottom-14 sm:bottom-16",
             ].join(" ")}
           >
             <div className={chromeHitTest || (controlsDocked && !passThroughHits) ? "pointer-events-auto" : "pointer-events-none"}>
@@ -1656,7 +1666,11 @@ export function KodikPlayerBetaViewport({
           <div
             className={[
               "pointer-events-none absolute inset-x-0 z-40 px-2 pb-1 sm:px-3",
-              controlsDocked ? "bottom-2" : "bottom-[4.25rem]",
+              controlsDocked
+                ? "bottom-2"
+                : settings.playerLargeUi
+                  ? "bottom-[5.75rem]"
+                  : "bottom-[4.25rem]",
             ].join(" ")}
           >
             <button
@@ -1673,7 +1687,11 @@ export function KodikPlayerBetaViewport({
           <div
             className={[
               "kodik-player-beta-ta-chrome pointer-events-auto absolute inset-x-0 z-40 flex justify-center px-2",
-              controlsDocked ? "bottom-10" : "bottom-20 sm:bottom-24",
+              controlsDocked
+                ? "bottom-10"
+                : settings.playerLargeUi
+                  ? "bottom-24 sm:bottom-28"
+                  : "bottom-20 sm:bottom-24",
             ].join(" ")}
           >
             {continueAction}

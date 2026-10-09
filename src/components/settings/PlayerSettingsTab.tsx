@@ -136,6 +136,27 @@ export function PlayerSettingsTab({ settings, updateSettings, updateLocalSetting
         </div>
       </section>
 
+      <section className="space-y-2 rounded-lg border border-border bg-background/60 p-3">
+        <div className="flex flex-wrap items-center justify-between gap-3">
+          <div className="min-w-0">
+            <SectionTitle>Крупный интерфейс</SectionTitle>
+            <SectionHint>
+              Локально для этого устройства. Увеличивает кнопки и полосу прогресса TA-плеера — удобнее
+              на телефоне и ультрашироком мониторе.
+            </SectionHint>
+          </div>
+          <label className="flex shrink-0 cursor-pointer items-center gap-2 text-sm font-medium text-foreground">
+            <input
+              type="checkbox"
+              checked={settings.playerLargeUi}
+              onChange={(event) => updateLocalSettings({ playerLargeUi: event.target.checked })}
+              className="h-4 w-4 rounded border-border accent-accent"
+            />
+            Включить
+          </label>
+        </div>
+      </section>
+
       <section className="space-y-3 rounded-lg border border-border bg-background/60 p-3">
         <div className="min-w-0">
           <SectionTitle>Полоса прогресса при скрытом интерфейсе</SectionTitle>

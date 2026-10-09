@@ -52,13 +52,20 @@ import {
 } from "@/lib/anime-watch-share";
 import { playCopySound } from "@/lib/copy-feedback";
 import { CvhWatchSection } from "@/components/anime/CvhWatchSection";
+import { AddToWatchingBanner } from "@/components/anime/AddToWatchingBanner";
 import { MoveToCompletedBanner } from "@/components/anime/MoveToCompletedBanner";
 import { matchKodikTranslationForCvhVoice } from "@/lib/cvh-player";
 import {
   useUserListStatus,
   useUserListStatusActions,
 } from "@/components/favorites/UserListStatusProvider";
-import {  canOfferMoveToCompleted,
+import {
+  canOfferAddToWatching,
+  isAddToWatchingDismissed,
+  isPastAddToWatchingThreshold,
+} from "@/lib/add-to-watching-prompt";
+import {
+  canOfferMoveToCompleted,
   isMoveToCompletedDismissed,
 } from "@/lib/move-to-completed-prompt";
 
@@ -580,6 +587,7 @@ export function AnimeWatchPanel({
   const [playerResetNonce, setPlayerResetNonce] = useState(0);
   const [isNativeFullscreen, setIsNativeFullscreen] = useState(false);
   const [showMoveToCompletedBanner, setShowMoveToCompletedBanner] = useState(false);
+  const [showAddToWatchingBanner, setShowAddToWatchingBanner] = useState(false);
   const [fullscreenTranslationsOpen, setFullscreenTranslationsOpen] = useState(false);
   const [fullscreenTranslationsHovered, setFullscreenTranslationsHovered] = useState(false);
   const [betaTheaterMode, setBetaTheaterMode] =
@@ -617,6 +625,10 @@ export function AnimeWatchPanel({
   const pendingCompletedPromptRef = useRef(false);
   const tryShowMoveToCompletedPromptRef = useRef<(episodeNumber: number) => void>(() => {});
   const armMoveToCompletedPromptRef = useRef<(episodeNumber: number) => void>(() => {});
+  const pendingWatchingPromptRef = useRef(false);
+  const watchingPromptArmedRef = useRef(false);
+  const tryShowAddToWatchingPromptRef = useRef<() => void>(() => {});
+  const armAddToWatchingPromptRef = useRef<() => void>(() => {});
   const latestProgressRef = useRef<ProgressPayload | null>(null);
   const lastSavedFingerprintRef = useRef("");
   const savingRef = useRef(false);
@@ -1022,6 +1034,8 @@ export function AnimeWatchPanel({
           lastSavedFingerprintRef.current = fingerprint;
           setContinueProgress(null);
           if (data.cleared) {
+            pendingWatchingPromptRef.current = false;
+            setShowAddToWatchingBanner(false);
             armMoveToCompletedPromptRef.current(payload.episodeNumber);
           }
           return;
@@ -1076,6 +1090,18 @@ export function AnimeWatchPanel({
           episodeEndCandidateRef.current = payload;
         } else if (!nearEnd || payload.positionSeconds < EPISODE_END_CANDIDATE_WINDOW_SECONDS) {
           episodeEndCandidateRef.current = null;
+        }
+
+        if (
+          !watchingPromptArmedRef.current &&
+          isPastAddToWatchingThreshold({
+            seasonNumber: payload.seasonNumber,
+            episodeNumber: payload.episodeNumber,
+            positionSeconds: payload.positionSeconds,
+            durationSeconds,
+          })
+        ) {
+          armAddToWatchingPromptRef.current();
         }
 
         const shouldGuardWatchPartyEnd =
@@ -1223,6 +1249,8 @@ export function AnimeWatchPanel({
       }
       if (pendingCompletedPromptRef.current) {
         tryShowMoveToCompletedPromptRef.current(payload.episodeNumber);
+      } else if (pendingWatchingPromptRef.current) {
+        tryShowAddToWatchingPromptRef.current();
       }
       void saveProgressNow(payload, selectedIdRef.current);
     },
@@ -2444,6 +2472,8 @@ export function AnimeWatchPanel({
         unlockScreenOrientation();
         if (pendingCompletedPromptRef.current) {
           tryShowMoveToCompletedPromptRef.current(liveProgressRef.current.episodeNumber);
+        } else if (pendingWatchingPromptRef.current) {
+          tryShowAddToWatchingPromptRef.current();
         }
       }
     };
@@ -2454,6 +2484,10 @@ export function AnimeWatchPanel({
 
   const closeMoveToCompletedBanner = useCallback(() => {
     setShowMoveToCompletedBanner(false);
+  }, []);
+
+  const closeAddToWatchingBanner = useCallback(() => {
+    setShowAddToWatchingBanner(false);
   }, []);
 
   const tryShowMoveToCompletedPrompt = useCallback(
@@ -2485,6 +2519,8 @@ export function AnimeWatchPanel({
         return;
       }
       pendingCompletedPromptRef.current = false;
+      pendingWatchingPromptRef.current = false;
+      setShowAddToWatchingBanner(false);
       setShowMoveToCompletedBanner(true);
     },
     [animeStatus, episodesTotal, listInfo?.listStatus, listsLoading, shikimoriId, user?.id],
@@ -2505,11 +2541,68 @@ export function AnimeWatchPanel({
 
   armMoveToCompletedPromptRef.current = armMoveToCompletedPrompt;
 
+  const tryShowAddToWatchingPrompt = useCallback(() => {
+    if (!user?.id) {
+      pendingWatchingPromptRef.current = false;
+      return;
+    }
+    if (listsLoading) {
+      pendingWatchingPromptRef.current = true;
+      return;
+    }
+    if (showMoveToCompletedBanner || pendingCompletedPromptRef.current) {
+      pendingWatchingPromptRef.current = false;
+      return;
+    }
+    if (isAddToWatchingDismissed(shikimoriId)) {
+      pendingWatchingPromptRef.current = false;
+      return;
+    }
+    if (
+      !canOfferAddToWatching({
+        listStatus: listInfo?.listStatus,
+        episodesTotal,
+      })
+    ) {
+      pendingWatchingPromptRef.current = false;
+      return;
+    }
+    pendingWatchingPromptRef.current = false;
+    setShowAddToWatchingBanner(true);
+  }, [
+    episodesTotal,
+    listInfo?.listStatus,
+    listsLoading,
+    shikimoriId,
+    showMoveToCompletedBanner,
+    user?.id,
+  ]);
+
+  tryShowAddToWatchingPromptRef.current = tryShowAddToWatchingPrompt;
+
+  const armAddToWatchingPrompt = useCallback(() => {
+    if (watchingPromptArmedRef.current) return;
+    watchingPromptArmedRef.current = true;
+    pendingWatchingPromptRef.current = true;
+    // Show only after pause or fullscreen exit — don't interrupt active playback.
+    if (isPausedRef.current) {
+      tryShowAddToWatchingPrompt();
+    }
+  }, [tryShowAddToWatchingPrompt]);
+
+  armAddToWatchingPromptRef.current = armAddToWatchingPrompt;
+
   useEffect(() => {
     if (!pendingCompletedPromptRef.current || listsLoading) return;
     if (!isPausedRef.current) return;
     tryShowMoveToCompletedPrompt(liveProgressRef.current.episodeNumber);
   }, [listsLoading, listInfo?.listStatus, tryShowMoveToCompletedPrompt]);
+
+  useEffect(() => {
+    if (!pendingWatchingPromptRef.current || listsLoading) return;
+    if (!isPausedRef.current) return;
+    tryShowAddToWatchingPrompt();
+  }, [listsLoading, listInfo?.listStatus, tryShowAddToWatchingPrompt]);
 
   useEffect(() => {
     const stage = betaFullscreenRef.current;
@@ -3697,6 +3790,12 @@ export function AnimeWatchPanel({
         shikimoriId={shikimoriId}
         open={showMoveToCompletedBanner}
         onClose={closeMoveToCompletedBanner}
+      />
+
+      <AddToWatchingBanner
+        shikimoriId={shikimoriId}
+        open={showAddToWatchingBanner && !showMoveToCompletedBanner}
+        onClose={closeAddToWatchingBanner}
       />
 
       <div className="flex flex-col gap-2">

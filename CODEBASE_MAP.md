@@ -205,6 +205,7 @@ Public analytics: `api/analytics/beacon` (POST) — visitor cookie + page aggreg
 | `cvh-player.ts` | CDN VideoHub pub/aggr (в т.ч. `shikimori`→MAL fallback), playlist helpers, URL для запасного `/cdn-iframe` |
 | `kodik-ensure-materials.ts` | On-demand Kodik materials by shikimoriId when page has none |
 | `releases.ts` | Home feed queries |
+| `home-novelties.ts` | Home «Новинки» block (shared 24h cache) |
 | `search.ts` | DB search (server-only) |
 | `search-settings.ts` | Search UI settings |
 | `favorites-page.ts` | Favorites page data |
@@ -248,7 +249,7 @@ Public analytics: `api/analytics/beacon` (POST) — visitor cookie + page aggreg
 
 | Folder | Key components |
 |--------|----------------|
-| `anime/` | `AnimePageView`, `AnimeWatchPanel`, `KodikPlayer`, `CvhWatchSection` / `CvhPlayerFrame`, `AnimeListActions`, `AnimeShikimoriRating` + `AnimeUserScoreVote` |
+| `anime/` | `AnimePageView`, `AnimeWatchPanel`, `KodikPlayer`, `CvhWatchSection` / `CvhPlayerFrame`, `MoveToCompletedBanner`, `AddToWatchingBanner`, `AnimeListActions`, `AnimeShikimoriRating` + `AnimeUserScoreVote` |
 | `admin/` | `AdminAnimeDebugButton` — защищённое окно данных тайтла/серии; `AdminForceCoverButton` — force-перекачка обложки на странице тайтла |
 | `auth/` | `AuthProvider` |
 | `header/` | `Header`, `HeaderSearch` |
@@ -263,7 +264,7 @@ Public analytics: `api/analytics/beacon` (POST) — visitor cookie + page aggreg
 | `user/` | `UsersSearchForm` |
 | `admin/` | Import/sync panels, MAL ID sync, notifications, DB explorer, stats |
 
-Root components: `ReleaseFeed`, `ReleaseCard`, `Header`, `RecentAnimeOpensButton`, `SiteBackground` → `PatternSiteBackground` (`pattern:*` only), `ThemeProvider`, `NavigationProgress`, `PullToRefresh`, `AquaCoderCompanion`, `ClientUpdateGuard` (checks new build in an open tab).
+Root components: `ReleaseFeed`, `ReleaseCard`, `HomeNoveltiesSection`, `Header`, `RecentAnimeOpensButton`, `SiteBackground` → `PatternSiteBackground` (`pattern:*` only), `ThemeProvider`, `NavigationProgress`, `PullToRefresh`, `AquaCoderCompanion`, `ClientUpdateGuard` (checks new build in an open tab).
 
 Brand assets: `public/brand-logos/` contains optional `.webp` logos for global rotation; fallback remains `public/logo.webp`.
 Companion assets: `public/companion/aqua-coder-chibi/` (manifest + per-animation WebP atlases); renderer `src/lib/companion/AquaCoderCanvas.ts`; reactions bus `src/lib/companion/companion-bus.ts`; source package `aqua-coder-web/`.

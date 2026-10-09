@@ -332,7 +332,7 @@ export function KodikPlayerBetaControls({
         onClick={handleQualityTap}
         onMouseDown={(e) => e.preventDefault()}
         className={[
-          "inline-flex h-10 shrink-0 items-center justify-center rounded-md text-[11px] font-semibold transition select-none disabled:cursor-not-allowed disabled:opacity-40 sm:h-9 sm:text-xs",
+          "kodik-player-beta-quality-button inline-flex h-10 shrink-0 items-center justify-center rounded-md text-[11px] font-semibold transition select-none disabled:cursor-not-allowed disabled:opacity-40 sm:h-9 sm:text-xs",
           playback.mediaUnlocked
             ? [
                 "cursor-pointer hover:bg-white/15 active:scale-95",

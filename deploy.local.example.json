@@ -7,6 +7,7 @@
   "remote": "root@194.180.189.34",
   "serverAppDir": "/var/www/ta_new",
   "sshKey": "%USERPROFILE%\\.ssh\\id_rsa",
+  "githubIoRepo": "D:\\GitHub\\track-anime.github.io",
 
   "uploadChunkSizeMB": 16,
   "connectTimeout": 40,

@@ -28,8 +28,8 @@ android {
         applicationId = "ru.dygdyg.trackanime"
         minSdk = 26
         targetSdk = 35
-        versionCode = 34
-        versionName = "1.3.25"
+        versionCode = 39
+        versionName = "1.3.30"
         buildConfigField("String", "FALLBACK_PROXY_HOST", localBuildConfigString("trackAnimeProxyHost"))
         buildConfigField("int", "FALLBACK_PROXY_PORT", localProperties.getProperty("trackAnimeProxyPort", "0"))
         buildConfigField("String", "FALLBACK_PROXY_USERNAME", localBuildConfigString("trackAnimeProxyUsername"))

@@ -19,9 +19,10 @@ Next.js anime streaming site with Shikimori OAuth + Kodik player. Data lives in 
 | Task | Start here |
 |------|------------|
 | Fix auth/login | `src/lib/auth/shikimori-oauth.ts`, `src/lib/auth/local-credentials.ts`, `src/lib/auth/qr-login.ts`, `src/app/api/auth/callback/shikimori/route.ts` |
-| Fix player | `src/components/anime/KodikPlayer.tsx`, `src/lib/kodik-player-api.ts`, `CvhWatchSection.tsx`, `CvhPlayerFrame.tsx`, `src/lib/cvh-player.ts`, `src/lib/anime-watch-share.ts`, `MoveToCompletedBanner.tsx`, `src/lib/move-to-completed-prompt.ts` |
+| Fix player | `src/components/anime/KodikPlayer.tsx`, `src/lib/kodik-player-api.ts`, `CvhWatchSection.tsx`, `CvhPlayerFrame.tsx`, `src/lib/cvh-player.ts`, `src/lib/anime-watch-share.ts`, `MoveToCompletedBanner.tsx`, `src/lib/move-to-completed-prompt.ts`, `AddToWatchingBanner.tsx`, `src/lib/add-to-watching-prompt.ts` |
 | Fix watch party | `src/hooks/useWatchParty.ts`, `scripts/watch-party-server.mjs`, `scripts/watch-party-history.mjs`, `src/components/anime/AnimeWatchPanel.tsx`, `src/lib/admin/watch-party-history.ts` |
-| Fix home feed | `src/lib/releases.ts`, `src/components/ReleaseFeed.tsx` |
+| Fix home feed | `src/lib/releases.ts`, `src/components/ReleaseFeed.tsx`, `src/lib/home-novelties.ts`, `HomeNoveltiesSection.tsx` |
+| Fix release card / hover / mobile sheet | `ReleaseCard.tsx`, `AnimeCardHoverShell.tsx`, `ReleaseCardHoverPanel.tsx`, `ReleaseCardMobileSheet.tsx`, `ReleaseCardPreviewMeta.tsx`, `ReleaseCardQuickActions.tsx` |
 | Fix calendar | `src/lib/calendar.ts`, `src/components/calendar/CalendarView.tsx`, `src/lib/shikimori/calendar-api.ts` |
 | Fix history cards | `src/components/history/HistoryWatchCard.tsx`, `src/lib/history-watch-card.ts`, `HistoryView.tsx` — единый UI для /history и «Новое в вашей истории»; на `/history` вкладки «Актуальные» / «Просмотрено» / «Отложено» / «Брошено» (по умолчанию без completed/on_hold/dropped) |
 | Fix history upcoming | `src/lib/history-upcoming-soon.ts`, `HistoryUpcomingSoonPanel.tsx` — блок «Скоро выйдут» на `/history` и на главной над «Новое в вашей истории» (если count > 0; озвучка: last ep + 7д, окно 12ч) |
@@ -54,7 +55,7 @@ Codex: использовать эту таблицу напрямую и чит
 | Player | kodik, cvh, videohub, плеер, progress, theater, по высоте | `KodikPlayer.tsx`, `KodikPlayerBetaViewport.tsx`, `CvhWatchSection.tsx`, `kodik-player-api.ts`, `cvh-player.ts`, `globals.css` (`.kodik-player-beta-stage--height-expanded`, `data-player-theater`) |
 | Deploy | деплой, deploy, prod | `scripts/deploy-auto.ps1`, `deploy.ps1`, `deploy-rpc.ps1`, `deploy-apk.ps1`, `deploy-windows-app.ps1`, `docs/DEPLOY.md` |
 | Auth | oauth, login, session | `shikimori-oauth.ts`, `src/app/api/auth/` |
-| Home feed | главная, лента | `releases.ts`, `ReleaseFeed.tsx` |
+| Home feed | главная, лента, новинки | `releases.ts`, `ReleaseFeed.tsx`, `home-novelties.ts`, `HomeNoveltiesSection.tsx` |
 | Notifications | уведомлен, push, telegram, vk, discord | `src/lib/notifications/`, `src/app/api/notifications/`, `NotificationSettingsPanel.tsx` |
 | Brand rotation | лого, логотип, favicon, бренд | `src/lib/brand-rotation.ts`, `src/components/admin/BrandRotationSettingsPanel.tsx`, `public/brand-logos/` |
 | Android TV | android tv, d-pad, тв-навигац | `TvNavigationProvider.tsx`, `tv-navigation.ts`, `HeaderSearch.tsx`, `BaseWebActivity.java`, `docs/ANDROID.md` |
@@ -78,18 +79,19 @@ Details: `DECISIONS.md`, если файл присутствует. Если ф
 3. **KodikMaterial = one translation** — multiple materials per anime
 4. **Watch progress is per shikimoriId** — not per translation
 5. **Last-episode «Просмотрено» banner** — armed when watch-history returns `cleared`; shown on pause or TA fullscreen exit; does not auto-set `completed`
-6. **Auth session refresh must keep `user` identity** — `AuthProvider` refreshes on focus/visibility; equal users must not get a new object or `AnimeWatchPanel` boot remounts the player
-7. **Feed requires sync** — empty home = no KodikEpisodeRelease rows
-8. **OAuth User-Agent** — must match Shikimori app name (`SHIKIMORI_APP_NAME`)
-9. **Redirect URI** — must exactly match Shikimori OAuth app settings
-10. **Shikimori host** — configurable (`.io` vs `.one`), stored in DB
-11. **CLI scripts use own PrismaClient** — not always the singleton
-12. **Russian UI** — user-facing strings are Russian
+6. **First-episode «Смотрю» banner** — armed when S1E1 progress passes 50% of player duration; shown on pause or TA fullscreen exit; does not auto-set `watching`; skipped for movies (`episodesTotal ≤ 1`) and existing watching/rewatching/completed
+7. **Auth session refresh must keep `user` identity** — `AuthProvider` refreshes on focus/visibility; equal users must not get a new object or `AnimeWatchPanel` boot remounts the player
+8. **Feed requires sync** — empty home = no KodikEpisodeRelease rows
+9. **OAuth User-Agent** — must match Shikimori app name (`SHIKIMORI_APP_NAME`)
+10. **Redirect URI** — must exactly match Shikimori OAuth app settings
+11. **Shikimori host** — configurable (`.io` vs `.one`), stored in DB
+12. **CLI scripts use own PrismaClient** — not always the singleton
+13. **Russian UI** — user-facing strings are Russian
 
 ## Data Flow Shortcuts
 
 ```
-Home:  KodikEpisodeRelease → releases.ts → ReleaseFeed
+Home:  KodikEpisodeRelease → releases.ts → ReleaseFeed; novelties → home-novelties.ts (24h cache) → HomeNoveltiesSection
 Anime: shikimoriId → anime-page.ts → Shikimori API + KodikMaterial DB
 Player: playerLink → KodikPlayer iframe → postMessage → watch-history API; TA player watch party → `useWatchParty` → WebSocket server
 Skip times: AnimeWatchPanel → /api/anime/[shikimoriId]/skip-times → aniskip.ts → AniSkip + DB cache → manual/auto OP/ED skip

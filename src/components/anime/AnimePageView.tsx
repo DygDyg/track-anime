@@ -232,9 +232,19 @@ export function AnimePageView({ anime }: { anime: AnimePageDto }) {
                     href={anime.shikimoriUrl}
                     target="_blank"
                     rel="noopener noreferrer"
-                    className="mt-4 inline-flex text-sm text-accent transition hover:underline"
+                    aria-label="Открыть на Shikimori"
+                    className="mt-4 inline-flex items-center gap-2.5 rounded-lg border border-border bg-[#0a0a0a] px-3.5 py-2 text-sm font-medium text-zinc-200 transition hover:border-accent/40 hover:bg-black hover:text-white"
                   >
-                    Открыть на Shikimori
+                    <span>Открыть на</span>
+                    {/* eslint-disable-next-line @next/next/no-img-element */}
+                    <img
+                      src="/shikimori-logo.png"
+                      alt=""
+                      width={102}
+                      height={30}
+                      className="h-[18px] w-auto select-none"
+                      decoding="async"
+                    />
                   </a>
                 ) : null}
 
