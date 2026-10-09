@@ -1,0 +1,93 @@
+# Backup deploy channel when SSH from a home PC is blocked (RKN etc.).
+# Default: manual only (workflow_dispatch). Optional auto on push to master.
+#
+# Secrets:
+#   DEPLOY_HOST      — e.g. 194.180.189.34
+#   DEPLOY_USER      — e.g. root
+#   DEPLOY_SSH_KEY   — private key with access to the host
+# Optional vars:
+#   DEPLOY_APP_DIR   — default /var/www/ta_new
+
+name: Deploy production (git pull)
+
+on:
+  workflow_dispatch:
+    inputs:
+      force:
+        description: "Force rebuild even if commit unchanged"
+        required: false
+        default: "true"
+        type: choice
+        options:
+          - "true"
+          - "false"
+  # Uncomment to auto-deploy on push (disable GitHub webhook auto-deploy to avoid double runs;
+  # screen lock still prevents overlapping builds).
+  # push:
+  #   branches: [master]
+  #   paths-ignore:
+  #     - "docs/**"
+  #     - "*.md"
+  #     - ".cursor/**"
+  #     - ".obsidian/**"
+
+concurrency:
+  group: production-git-deploy
+  cancel-in-progress: false
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    steps:
+      - name: Start git deploy over SSH
+        uses: appleboy/ssh-action@v1.2.0
+        with:
+          host: ${{ secrets.DEPLOY_HOST }}
+          username: ${{ secrets.DEPLOY_USER }}
+          key: ${{ secrets.DEPLOY_SSH_KEY }}
+          command_timeout: 5m
+          script: |
+            set -euo pipefail
+            APP_DIR="${{ vars.DEPLOY_APP_DIR }}"
+            if [ -z "$APP_DIR" ]; then APP_DIR=/var/www/ta_new; fi
+            FORCE="${{ github.event.inputs.force }}"
+            if [ -z "$FORCE" ]; then FORCE=true; fi
+            if [ "$FORCE" = "true" ]; then export GIT_DEPLOY_FORCE=1; else export GIT_DEPLOY_FORCE=0; fi
+            export GIT_DEPLOY_TRIGGER=actions
+            export APP_DIR
+            cd "$APP_DIR"
+            sed -i 's/\r$//' scripts/*.sh 2>/dev/null || true
+            set +e
+            bash scripts/server-deploy-git-bg.sh "$APP_DIR" /tmp/ta_deploy.log
+            start_ec=$?
+            set -e
+            if [ "$start_ec" -eq 2 ]; then
+              echo "Deploy already running; waiting for current screen session..."
+            elif [ "$start_ec" -ne 0 ]; then
+              echo "Failed to start deploy (exit $start_ec)" >&2
+              exit "$start_ec"
+            else
+              echo "Deploy started in screen ta_deploy."
+            fi
+            echo "Polling exit file..."
+            for i in $(seq 1 120); do
+              if [ -f /tmp/ta_deploy.exit ]; then
+                code=$(cat /tmp/ta_deploy.exit)
+                echo "exit=$code"
+                tail -n 60 /tmp/ta_deploy.log || true
+                exit "$code"
+              fi
+              if ! screen -list 2>/dev/null | grep -qE '[[:space:]][0-9]+\.ta_deploy[[:space:]]'; then
+                sleep 2
+                if [ -f /tmp/ta_deploy.exit ]; then
+                  code=$(cat /tmp/ta_deploy.exit)
+                  tail -n 60 /tmp/ta_deploy.log || true
+                  exit "$code"
+                fi
+              fi
+              sleep 15
+            done
+            echo "Timed out waiting for deploy" >&2
+            tail -n 80 /tmp/ta_deploy.log || true
+            exit 1

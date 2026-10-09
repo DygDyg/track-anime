@@ -15,7 +15,8 @@
 Авто-выбор по `git diff` (site / rpc / apk / windows — только то, что изменилось):
 
 ```powershell
-npm run deploy
+npm run deploy:smart   # предпочтительно: сам выберет SSH git / tar / Actions / webhook
+npm run deploy         # классика по git diff (нужен SSH)
 .\deploy.bat
 ```
 
@@ -84,7 +85,7 @@ npm run deploy:windows -- -SkipPublish
 
 ### Авто-деплой (`deploy-auto.ps1`)
 
-1. По умолчанию смотрит только dirty working tree (staged/unstaged/untracked). Для diff с `origin/main` — `-SinceMain` или `-BaseRef`
+1. По умолчанию смотрит только dirty working tree (staged/unstaged/untracked). Для diff с `origin/master` — `-SinceMain` или `-BaseRef`
 2. Классифицирует изменения:
    - `scripts/discord-rpc-tray/**`, exe → **rpc**
    - `android/**`, `public/downloads/TrackAnime.{apk,json}` → **apk**
@@ -119,6 +120,118 @@ ssh root@194.180.189.34 "cat /tmp/ta_deploy.exit; tail -80 /tmp/ta_deploy.log; s
 ```
 
 **Время:** ~50–60 секунд.
+
+---
+
+## Smart deploy (`npm run deploy:smart`)
+
+Когда нужно «просто задеплоить», а канал неизвестен (РКН режет SSH или нет):
+
+```powershell
+npm run deploy:smart
+.\scripts\deploy-smart.ps1
+.\scripts\deploy-smart.ps1 -DryRun          # только выбор канала + push-check
+.\scripts\deploy-smart.ps1 -Channel actions # принудительно Actions
+```
+
+Порядок выбора (`-Channel auto`):
+
+1. **ssh-git** — SSH жив и на сервере есть `.git` → `server-deploy-git-bg.sh`
+2. **ssh-tar** — SSH жив, git нет → классический `deploy.ps1`
+3. **actions** — SSH мёртв, `gh` залогинен → `gh workflow run deploy.yml`
+4. **webhook-push** — иначе: код уже запушен, ждём рост `GET /api/site-build` (нужен настроенный GitHub webhook)
+
+Скрипт сам делает `git push`, если есть незапушенные коммиты. Для агента Cursor: при просьбе «задеплой» запускать `deploy:smart`, не спрашивая канал (см. `.cursor/rules/deploy-smart.mdc`).
+
+---
+
+## Git-деплой (без SSH с вашего ПК)
+
+Когда `ssh`/`scp` из РФ до VPS нестабильны (РКН и т.п.), используйте **pull-модель**: код уже на GitHub, сервер сам делает `git fetch` + сборку.
+
+| Канал | Как | Когда |
+|-------|-----|--------|
+| Webhook | `push` → `POST /api/deploy/webhook` | основной авто-деплой |
+| Админка | `/admin` → «Задеплоить master» | вручную |
+| GitHub Actions | workflow `Deploy production (git pull)` → SSH с runner | запасной канал (`workflow_dispatch`) |
+| Классика | `deploy.ps1` / tar+scp | APK/Windows/RPC и первый bootstrap |
+
+Сборка та же: `npm ci` → Prisma → `next build` → restart (`DEPLOY_SOURCE=git` в `server-deploy.sh`). Бинарники `public/downloads/TrackAnime*.{apk,exe,json}` в git не лежат — их по-прежнему заливайте `deploy:apk` / `deploy:windows` / `deploy:rpc` (или Actions отдельно, если добавите).
+
+### Одноразовая настройка на сервере
+
+1. **Один раз** доставьте новый код классическим `deploy.ps1` (или вручную положите скрипты), пока git-деплоя ещё нет.
+
+2. Превратите `/var/www/ta_new` в git checkout (`.env` не в git — останется на месте):
+
+```bash
+cd /var/www/ta_new
+# deploy key: Settings → Deploy keys на github.com/DygDyg/track-anime
+# ~/.ssh/config Host github.com → IdentityFile для root
+git init
+git remote add origin git@github.com:DygDyg/track-anime.git
+git fetch origin master
+git checkout -f -B master origin/master
+# убедитесь, что .env на месте
+test -f .env && echo ".env ok"
+```
+
+3. Sudoers для `www-data` (как у ребута хоста):
+
+```bash
+bash /var/www/ta_new/scripts/install-git-deploy-sudoers.sh
+sudo -u www-data sudo -n /usr/local/sbin/ta-git-deploy-trigger admin 0
+```
+
+4. В окружении `track-anime.service` (или `.env`):
+
+```bash
+GIT_DEPLOY_ENABLED=1
+GIT_DEPLOY_BRANCH=master
+GIT_DEPLOY_WEBHOOK_SECRET="длинный_случайный_секрет"
+```
+
+`systemctl daemon-reload && systemctl restart track-anime`
+
+5. GitHub → Settings → Webhooks → Add webhook:
+
+- Payload URL: `https://track-anime.win/api/deploy/webhook`
+- Content type: `application/json`
+- Secret: тот же `GIT_DEPLOY_WEBHOOK_SECRET`
+- Events: Just the push event
+
+Ping должен вернуть `{ ok: true, pong: true }`.
+
+6. (Опционально) Actions: Secrets `DEPLOY_HOST`, `DEPLOY_USER`, `DEPLOY_SSH_KEY`. Запуск: Actions → **Deploy production (git pull)** → Run workflow. Авто-`push` в workflow закомментирован — чтобы не дублировать webhook; при необходимости раскомментируйте блок `push:` в `.github/workflows/deploy.yml`.
+
+### Поведение
+
+- Webhook деплоит только `refs/heads/master` (или `GIT_DEPLOY_BRANCH`).
+- Пуши только с `docs/`, `.cursor/`, markdown-доками проекта — **пропуск**.
+- Если commit уже совпадает с `origin/master` — сборка **пропускается** (кроме кнопки админки / Actions с force).
+- Параллельные запуски: screen-сессия `ta_deploy` (exit 2 = уже идёт).
+- Статус: `/tmp/ta_deploy_status.json`, лог `/tmp/ta_deploy.log`, панель на `/admin`.
+
+### Уведомление в Discord
+
+После полного деплоя (успех/ошибка) сервер может дернуть Discord Incoming Webhook:
+
+1. Канал Discord → Edit channel → Integrations → Webhooks → New → Copy URL  
+2. В `/var/www/ta_new/.env`:
+
+```bash
+DEPLOY_DISCORD_WEBHOOK_URL="https://discord.com/api/webhooks/...."
+# опционально: писать и про skip (уже актуальный commit)
+# DEPLOY_DISCORD_NOTIFY_SKIPPED=1
+```
+
+Работает для git и классического tar-деплоя (`server-deploy.sh` → `scripts/notify-deploy-discord.sh`). Если URL не задан — тишина. Ошибка Discord деплой не ломает.
+
+Ручной запуск на сервере:
+
+```bash
+GIT_DEPLOY_TRIGGER=cli GIT_DEPLOY_FORCE=1 bash /var/www/ta_new/scripts/server-deploy-git-bg.sh
+```
 
 ---
 
@@ -237,7 +350,7 @@ ssh -i "$env:USERPROFILE\.ssh\id_rsa" root@194.180.189.34 "echo ok"
 | Параметр | Описание |
 |----------|----------|
 | `-BaseRef` | База для committed diff (если задана — вместе с dirty) |
-| `-SinceMain` | То же, что `-BaseRef origin/main` (или `main`/`master`) |
+| `-SinceMain` | То же, что `-BaseRef origin/master` (или `main`/`master`) |
 | `-ForceSite` | Всегда включить деплой сайта |
 | `-ForceTrayRebuild` | Всегда включить `deploy:rpc` |
 | `-SkipPrecheck` | Не вызывать `deploy-precheck.ps1` перед site |

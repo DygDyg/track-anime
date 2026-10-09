@@ -2,6 +2,7 @@ import Link from "next/link";
 import { AdminServerLoadPanel } from "@/components/admin/AdminServerLoadPanel";
 import { AdminSiteVersionPanel } from "@/components/admin/AdminSiteVersionPanel";
 import { AdminStoragePanel } from "@/components/admin/AdminStoragePanel";
+import { GitDeployPanel } from "@/components/admin/GitDeployPanel";
 import { StatCard } from "@/components/admin/StatCard";
 import { ImportProgressPanel } from "@/components/admin/ImportProgressPanel";
 import { adminClass } from "@/components/admin/admin-styles";
@@ -16,6 +17,8 @@ export default async function AdminDashboardPage() {
   return (
     <div className="space-y-6">
       <AdminServerLoadPanel />
+
+      <GitDeployPanel />
 
       <AdminSiteVersionPanel build={stats.build} />
 

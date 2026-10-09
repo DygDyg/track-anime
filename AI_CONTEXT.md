@@ -53,7 +53,7 @@ Codex: использовать эту таблицу напрямую и чит
 | Covers / posters | обложк, poster, thumb, cover | `AnimePoster.tsx`, `src/lib/poster.ts`, `cover-cache.ts`, `poster-fallback.ts`, `cover-cache-settings.ts`, `src/app/api/cover/route.ts` |
 | Lists / sync | списк, sync, rewatches, shikimori | `favorites-sync.ts`, `user-list-mutations.ts` |
 | Player | kodik, cvh, videohub, плеер, progress, theater, по высоте | `KodikPlayer.tsx`, `KodikPlayerBetaViewport.tsx`, `CvhWatchSection.tsx`, `kodik-player-api.ts`, `cvh-player.ts`, `globals.css` (`.kodik-player-beta-stage--height-expanded`, `data-player-theater`) |
-| Deploy | деплой, deploy, prod | `scripts/deploy-auto.ps1`, `deploy.ps1`, `deploy-rpc.ps1`, `deploy-apk.ps1`, `deploy-windows-app.ps1`, `docs/DEPLOY.md` |
+| Deploy | деплой, deploy, prod | **`npm run deploy:smart`** (агент сам выбирает канал; не спрашивать webhook/Actions/SSH), `deploy-auto.ps1`, `git-deploy.ts`, `.github/workflows/deploy.yml`, `docs/DEPLOY.md` |
 | Auth | oauth, login, session | `shikimori-oauth.ts`, `src/app/api/auth/` |
 | Home feed | главная, лента, новинки | `releases.ts`, `ReleaseFeed.tsx`, `home-novelties.ts`, `HomeNoveltiesSection.tsx` |
 | Notifications | уведомлен, push, telegram, vk, discord | `src/lib/notifications/`, `src/app/api/notifications/`, `NotificationSettingsPanel.tsx` |

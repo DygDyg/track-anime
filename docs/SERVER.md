@@ -97,6 +97,12 @@ NODE_ENV="production"
 | `HOST_REBOOT_ENABLED` | нет | Ребут хоста из `/admin`. По умолчанию: `on` на Linux, `off` на Windows. `0`/`false` — выключить |
 | `HOST_REBOOT_DELAY_MINUTES` | нет | Задержка до ребута (1–60, по умолчанию 1) |
 | `HOST_REBOOT_COMMAND` | нет | Своя shell-команда вместо `sudo -n /sbin/shutdown -r +N` |
+| `GIT_DEPLOY_ENABLED` | нет | Git-деплой (webhook / админка). По умолчанию: `on` на Linux, `off` на Windows |
+| `GIT_DEPLOY_BRANCH` | нет | Ветка для pull (по умолчанию `main`) |
+| `GIT_DEPLOY_WEBHOOK_SECRET` | для webhook | Secret GitHub webhook → `POST /api/deploy/webhook` |
+| `GIT_DEPLOY_COMMAND` | нет | Команда запуска (по умолчанию `sudo -n /usr/local/sbin/ta-git-deploy-trigger`); к ней дописываются аргументы `trigger force` |
+| `DEPLOY_DISCORD_WEBHOOK_URL` | нет | Discord Incoming Webhook — сообщение об успехе/ошибке деплоя |
+| `DEPLOY_DISCORD_NOTIFY_SKIPPED` | нет | `1` — также уведомлять, если git-деплой пропущен (уже актуальный commit) |
 | `NODE_ENV` | для prod | `production` при `npm run start` |
 
 **Токен Kodik:** получите в [bd.kodikres.com](https://bd.kodikres.com) → API. Без токена скрипты `kodik:*` завершатся с ошибкой `KODIK_API_TOKEN не задан в .env`.
@@ -188,6 +194,17 @@ sudo systemctl status track-anime
 journalctl -u track-anime -f
 ```
 
+### Git-деплой из админки / GitHub webhook
+
+Кнопка «Задеплоить master» на `/admin` и webhook `POST /api/deploy/webhook` вызывают `sudo -n /usr/local/sbin/ta-git-deploy-trigger` → `git fetch/reset` → `server-deploy.sh` (`DEPLOY_SOURCE=git`) в screen `ta_deploy`. Подробности и bootstrap: [DEPLOY.md](./DEPLOY.md) (§ Git-деплой).
+
+```bash
+bash /var/www/ta_new/scripts/install-git-deploy-sudoers.sh
+sudo -u www-data sudo -n /usr/local/sbin/ta-git-deploy-trigger admin 0
+```
+
+Запасной канал: GitHub Actions `.github/workflows/deploy.yml` (SSH с runner, `workflow_dispatch`).
+
 ### Ребут хоста из админки (`/admin`)
 
 Кнопка «Перезагрузить» на вкладке Обзор вызывает `sudo -n /sbin/shutdown -r +N` (N = `HOST_REBOOT_DELAY_MINUTES`, по умолчанию 1). Перед запуском API блокирует ребут, если:
@@ -255,6 +272,7 @@ sudo systemctl start track-anime-watch-party
 
 Сертификаты Let's Encrypt (certbot timer):
 - `track-anime.win` (+ `www.track-anime.win`) — **отдельный** сертификат `/etc/letsencrypt/live/track-anime.win/`
+- `track-anime.dygdyg.ru` + `ta.dygdyg.ru` — **отдельный** `/etc/letsencrypt/live/track-anime-legacy.dygdyg.ru/` (не смешивать с `server.dygdyg.ru`: общий SAN-пакет ломает renew при NXDOMAIN/устаревших A-записях; Cloudflare Full Strict при expired origin → **526**)
 - остальные домены сервера — общий `/etc/letsencrypt/live/server.dygdyg.ru/` (не расширять его под `.win`)
 
 Выпуск только для нового домена без затрагивания старого:
@@ -403,7 +421,8 @@ npm run kodik:sync:scheduled
 
 ```powershell
 cd E:\GitHub\ta_new
-npm run deploy              # авто: site / rpc / apk по git diff
+npm run deploy:smart        # сам выбирает канал: SSH git / tar / Actions / webhook
+npm run deploy              # авто: site / rpc / apk по git diff (нужен SSH)
 .\scripts\deploy.ps1        # только сайт
 npm run deploy:rpc          # только Discord RPC exe
 npm run deploy:apk          # только Android APK

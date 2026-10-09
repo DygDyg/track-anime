@@ -119,9 +119,11 @@ ta_new/
 
 ### Admin (`api/admin/`)
 
-`stats`, `audience`, `audience/markdown`, `anime/[shikimoriId]/skip-times-prefetch`, `anime-debug`, `import/status`, `import/episodes`, `import/pending-materials`, `sync`, `sync/settings`, `sync/history`, `backfill-dates`, `brand-rotation/settings`, `cover-cache/settings`, `cover-cache/refresh-recent`, `discord/settings`, `notifications/settings`, `notifications/test`, `notifications/generate-vapid`, `search/settings`, `shikimori/settings`, `shikimori/anons-sync`, `shikimori/mal-id-sync`, `site-settings-defaults`, `translation-intro-offsets`, `watch-history/settings`, `watch-party/settings`, `watch-party/rooms`, `watch-party/history`, `users`, `db/search`, `db-backup/settings`, `db-backup/run`, `db-backup/test`, `todos`, `todos/[id]`
+`stats`, `audience`, `audience/markdown`, `anime/[shikimoriId]/skip-times-prefetch`, `anime-debug`, `import/status`, `import/episodes`, `import/pending-materials`, `sync`, `sync/settings`, `sync/history`, `backfill-dates`, `brand-rotation/settings`, `cover-cache/settings`, `cover-cache/refresh-recent`, `discord/settings`, `notifications/settings`, `notifications/test`, `notifications/generate-vapid`, `search/settings`, `shikimori/settings`, `shikimori/anons-sync`, `shikimori/mal-id-sync`, `site-settings-defaults`, `translation-intro-offsets`, `watch-history/settings`, `watch-party/settings`, `watch-party/rooms`, `watch-party/history`, `users`, `db/search`, `db-backup/settings`, `db-backup/run`, `db-backup/test`, `deploy`, `todos`, `todos/[id]`
 
 Public analytics: `api/analytics/beacon` (POST) — visitor cookie + page aggregates; `api/analytics/play` (POST) — anime playback starts; `api/analytics/watch-share` (POST) — deep-link copy log
+
+Git deploy webhook (HMAC, no session): `api/deploy/webhook` (POST)
 
 ## `src/lib/` — Core Modules
 
@@ -183,6 +185,7 @@ Public analytics: `api/analytics/beacon` (POST) — visitor cookie + page aggreg
 | `db-backup.ts`, `db-backup-settings.ts`, `db-backup-webdav.ts`, `db-backup-scheduler.ts` | WebDAV DB backup (tables, chunks, cron) |
 | `db-backup-format.ts`, `db-backup-settings-types.ts` | Client-safe backup types / formatBytes |
 | `stats.ts`, `storage-stats.ts`, `server-load.ts`, `server-load-types.ts`, `host-reboot.ts`, `host-reboot-types.ts` | Dashboard metrics, host load, guarded host reboot for `/admin` |
+| `git-deploy.ts`, `git-deploy-types.ts` | Git pull deploy: admin trigger, GitHub webhook verify, status/log |
 | `audience-stats.ts` | DAU/WAU/MAU, platforms, player Kodik/TA vs VideoHUB, section/title popularity |
 | `audience-stats-markdown.ts` | Markdown snapshot for `/admin/audience` export |
 | `watch-share-log.ts` | Admin DTO for anime watch deep-link copy log |
@@ -285,7 +288,7 @@ Error page asset: `public/404.webm` is used by the custom App Router 404 page.
 | `backup-db.ps1` | `db:backup` | Local Docker PostgreSQL dump |
 | `pull-prod-db.ps1` | `db:pull-prod`, `db:restore-prod` | Download production DB dump and optionally restore local dev DB |
 | `start-dev.bat` | — | Windows one-click dev startup: Docker/PostgreSQL, Prisma schema, watch-party WebSocket and Next.js |
-| `deploy-auto.ps1`, `deploy.ps1`, `deploy-rpc.ps1`, `deploy-apk.ps1`, `deploy-config.ps1`, `server-deploy.sh` | — | Deployment (auto / site / rpc / apk + local proxy) |
+| `deploy-smart.ps1`, `deploy-auto.ps1`, `deploy.ps1`, `deploy-rpc.ps1`, `deploy-apk.ps1`, `deploy-config.ps1`, `server-deploy.sh`, `server-deploy-from-git.sh`, `server-deploy-git-bg.sh`, `ta-git-deploy-trigger.sh`, `install-git-deploy-sudoers.sh`, `notify-deploy-discord.sh` | — | Deployment (smart channel, git/tar, Discord notify) |
 | `notification-worker.ts` | `notifications:worker` | Background notification delivery |
 | `watch-party-server.mjs` | `watch-party:server` | WebSocket rooms for TA-плеер совместный просмотр |
 | `watch-party-history.mjs` | (used by watch-party server) | Persist session history to Postgres |

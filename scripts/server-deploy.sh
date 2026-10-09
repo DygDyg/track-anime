@@ -1,6 +1,8 @@
 #!/bin/bash
-# Серверная часть деплоя. Запускается на production после upload tar.
-# Не запускайте вручную без архива в /tmp/ta_deploy.tar.gz — используйте scripts/deploy.ps1.
+# Серверная часть деплоя.
+# Режимы:
+#   DEPLOY_SOURCE=tar (по умолчанию) — нужен /tmp/ta_deploy.tar.gz (scripts/deploy.ps1)
+#   DEPLOY_SOURCE=git — код уже обновлён (scripts/server-deploy-from-git.sh)
 set -euo pipefail
 
 APP_DIR="${APP_DIR:-/var/www/ta_new}"
@@ -8,7 +10,36 @@ SITE_URL="${SITE_URL:-https://track-anime.win/}"
 SERVICE_NAME="${SERVICE_NAME:-track-anime}"
 WATCH_PARTY_SERVICE_NAME="${WATCH_PARTY_SERVICE_NAME:-track-anime-watch-party}"
 NPM_CI_TIMEOUT="${NPM_CI_TIMEOUT:-10m}"
+DEPLOY_SOURCE="${DEPLOY_SOURCE:-tar}"
 DEPLOY_PROGRESS_TOTAL=10
+DEPLOY_NOTIFY_COMMIT="${DEPLOY_NOTIFY_COMMIT:-}"
+DEPLOY_NOTIFY_TRIGGER="${DEPLOY_NOTIFY_TRIGGER:-${GIT_DEPLOY_TRIGGER:-cli}}"
+
+# Discord webhook (optional): success/error via EXIT trap
+_ta_deploy_ec=0
+_ta_deploy_build=""
+_ta_notify_deploy() {
+  local ec="${_ta_deploy_ec:-0}"
+  local status="success"
+  local msg="Production deploy finished"
+  if [ "$ec" -ne 0 ]; then
+    status="error"
+    msg="Production deploy failed (exit $ec)"
+  fi
+  if [ -z "${DEPLOY_NOTIFY_COMMIT:-}" ] && [ -d "$APP_DIR/.git" ]; then
+    DEPLOY_NOTIFY_COMMIT="$(git -C "$APP_DIR" rev-parse HEAD 2>/dev/null || true)"
+  fi
+  bash "$APP_DIR/scripts/notify-deploy-discord.sh" \
+    "$status" \
+    "$msg" \
+    "$ec" \
+    "${_ta_deploy_build:-}" \
+    "${DEPLOY_NOTIFY_COMMIT:-}" \
+    "${DEPLOY_NOTIFY_TRIGGER:-}" \
+    "$DEPLOY_SOURCE" \
+    >/dev/null 2>&1 || true
+}
+trap '_ta_deploy_ec=$?; _ta_notify_deploy; exit $_ta_deploy_ec' EXIT
 
 deploy_progress() {
   local step="$1"
@@ -50,16 +81,26 @@ run_with_heartbeat() {
 
 cd "$APP_DIR"
 
-deploy_progress 1 "extract"
-tar -xzf /tmp/ta_deploy.tar.gz
-rm -f /tmp/ta_deploy.tar.gz
+SOURCE_LABEL="Archive extracted"
+if [ "$DEPLOY_SOURCE" = "tar" ]; then
+  deploy_progress 1 "extract"
+  tar -xzf /tmp/ta_deploy.tar.gz
+  rm -f /tmp/ta_deploy.tar.gz
+elif [ "$DEPLOY_SOURCE" = "git" ]; then
+  deploy_progress 1 "git tree ready"
+  SOURCE_LABEL="Git tree synced"
+  echo "[deploy] DEPLOY_SOURCE=git (skip tar extract)"
+else
+  echo "[deploy] ERROR: unknown DEPLOY_SOURCE=$DEPLOY_SOURCE (expected tar|git)" >&2
+  exit 1
+fi
 
-# CRLF из Windows ломает bash (set: pipefail\r) — после extract, иначе tar перезапишет файлы
+# CRLF из Windows ломает bash (set: pipefail\r) — после обновления дерева
 for f in scripts/*.sh; do
   [ -f "$f" ] && sed -i 's/\r$//' "$f"
 done
 
-# Удаляем устаревшие файлы, которые tar не перезаписывает при удалении из репозитория
+# Удаляем устаревшие файлы, которые tar/git не всегда зачищают
 rm -f server.ts
 rm -rf src/components/watch-party src/app/api/watch-party
 rm -f src/server/watch-party-ws.ts src/lib/kodik-player-control.ts
@@ -84,6 +125,7 @@ BUILD_FILE="$APP_DIR/.build-number"
 BUILD_NUM=$(($(cat "$BUILD_FILE" 2>/dev/null || echo 0) + 1))
 echo "$BUILD_NUM" > "$BUILD_FILE"
 export BUILD_NUMBER="$BUILD_NUM"
+_ta_deploy_build="$BUILD_NUM"
 echo "[deploy] build number: $BUILD_NUM"
 
 deploy_progress 5 "cover cache setup"
@@ -151,8 +193,9 @@ echo "============================================================"
 echo "  Time:         $DEPLOY_TIME"
 echo "  Build:        #$BUILD_NUM"
 echo "  App dir:      $APP_DIR"
+echo "  Source:       $DEPLOY_SOURCE"
 echo ""
-echo "  [OK] Archive extracted"
+echo "  [OK] $SOURCE_LABEL"
 echo "  [OK] npm ci"
 echo "  [OK] Prisma generate + db push"
 echo "  [OK] Cover cache setup"
@@ -171,3 +214,4 @@ echo ""
 echo "  Production is up and running."
 echo "============================================================"
 echo "[deploy] success (build #$BUILD_NUM)"
+_ta_deploy_ec=0

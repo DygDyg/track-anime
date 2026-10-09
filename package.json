@@ -47,6 +47,7 @@
     "discord:tray:build": "electron-builder --project scripts/discord-rpc-tray --win portable",
     "discord:tray:publish": "npm run discord:tray:build && node scripts/publish-discord-tray-exe.mjs",
     "deploy": "scripts\\run-ps.cmd -File scripts/deploy-auto.ps1",
+    "deploy:smart": "scripts\\run-ps.cmd -File scripts/deploy-smart.ps1",
     "deploy:site": "scripts\\run-ps.cmd -File scripts/deploy.ps1",
     "deploy:release": "scripts\\run-ps.cmd -File scripts/deploy.ps1 -ForceTrayRebuild",
     "deploy:rpc": "scripts\\run-ps.cmd -File scripts/deploy-rpc.ps1",
