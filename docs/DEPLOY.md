@@ -2,10 +2,12 @@
 
 Руководство по выкладке на production-сервер с Windows.
 
-**Сервер:** `root@194.180.189.34`  
+**Сервер:** `root@151.245.136.79`  
 **Каталог на сервере:** `/var/www/ta_new`  
 **Сайт:** https://track-anime.win/
-**Зеркала:** https://track-anime.win/ и https://track-anime.duckdns.org/
+**Зеркала:** https://track-anime.win/, https://www.track-anime.win/ и https://track-anime.duckdns.org/
+
+**Миграция (окт 2026):** приложение и БД на `151.245.136.79`. Cloudflare origin для `track-anime.win` указывает на новый IP. На старом `194.180.189.34` в nginx `stream` ещё может быть запасной `upstream web_new` → новый:443 (rollback); через несколько дней можно убрать. Старый VPS не гасить сразу.
 **Редирект:** `track-anime.dygdyg.ru` и `ta.dygdyg.ru` → HTML-bounce (200, без кэшируемого 301) → `https://track-anime.win/*?legacy_redirect=1` только для обычных браузеров; сайт показывает модалку с актуальными ссылками (`track-anime.github.io`, `track-anime.win`). Android WebView (`; wv)`) и UA `TrackAnimeAndroid` / `TrackAnimeWindows` остаются на legacy-хосте (in-app update). Если модалка не появляется — скорее всего в браузере закэширован старый 301: инкогнито или очистка кэша для этих доменов.
 
 ---
@@ -108,15 +110,15 @@ npm run deploy:windows -- -SkipPublish
 Деплой идёт в screen-сессии — если SSH оборвётся, сборка **не остановится**. Можно подключиться:
 
 ```bash
-ssh -t root@194.180.189.34 screen -r ta_deploy
+ssh -t root@151.245.136.79 screen -r ta_deploy
 # или
-ssh root@194.180.189.34 tail -f /tmp/ta_deploy.log
+ssh root@151.245.136.79 tail -f /tmp/ta_deploy.log
 ```
 
 Если screen уже завершился, результат деплоя хранится в `/tmp/ta_deploy.exit`:
 
 ```bash
-ssh root@194.180.189.34 "cat /tmp/ta_deploy.exit; tail -80 /tmp/ta_deploy.log; screen -list"
+ssh root@151.245.136.79 "cat /tmp/ta_deploy.exit; tail -80 /tmp/ta_deploy.log; screen -list"
 ```
 
 **Время:** ~50–60 секунд.
@@ -242,14 +244,14 @@ GIT_DEPLOY_TRIGGER=cli GIT_DEPLOY_FORCE=1 bash /var/www/ta_new/scripts/server-de
 | SSH-ключ | `%USERPROFILE%\.ssh\id_rsa` |
 | `tar` | Windows 10+ (встроен) |
 | `scp`, `ssh` | OpenSSH Client (Windows) |
-| Доступ к серверу | `root@194.180.189.34` |
+| Доступ к серверу | `root@151.245.136.79` |
 | (опц.) HTTP-прокси | `deploy.local.json` + `ncat` / Git `connect.exe` |
 
 Проверка:
 
 ```powershell
 Test-Path "$env:USERPROFILE\.ssh\id_rsa"
-ssh -i "$env:USERPROFILE\.ssh\id_rsa" root@194.180.189.34 "echo ok"
+ssh -i "$env:USERPROFILE\.ssh\id_rsa" root@151.245.136.79 "echo ok"
 ```
 
 ---
@@ -331,7 +333,7 @@ ssh -i "$env:USERPROFILE\.ssh\id_rsa" root@194.180.189.34 "echo ok"
 
 | Параметр | По умолчанию | Описание |
 |----------|--------------|----------|
-| `-Remote` | `root@194.180.189.34` | SSH-хост |
+| `-Remote` | `root@151.245.136.79` | SSH-хост |
 | `-SshKey` | `~\.ssh\id_rsa` | Путь к приватному ключу |
 | `-ServerAppDir` | `/var/www/ta_new` | Каталог приложения на сервере |
 | `-UploadChunkSizeMB` | `48` | Размер частей архива для `scp`; меньше = устойчивее на плохом интернете |
@@ -401,22 +403,22 @@ tar -czf temp\deploy\ta_deploy.tar.gz `
   --exclude="*.tar.gz" --exclude="*.mp4" .
 
 scp -i $env:USERPROFILE\.ssh\id_rsa `
-  temp\deploy\ta_deploy.tar.gz root@194.180.189.34:/tmp/ta_deploy.tar.gz
+  temp\deploy\ta_deploy.tar.gz root@151.245.136.79:/tmp/ta_deploy.tar.gz
 
-ssh -i $env:USERPROFILE\.ssh\id_rsa root@194.180.189.34 `
+ssh -i $env:USERPROFILE\.ssh\id_rsa root@151.245.136.79 `
   "cd /var/www/ta_new && sed -i 's/\r$//' scripts/*.sh && bash scripts/server-deploy.sh"
 ```
 
 ### Только перезапуск (без нового кода)
 
 ```bash
-ssh root@194.180.189.34 "systemctl restart track-anime && systemctl status track-anime"
+ssh root@151.245.136.79 "systemctl restart track-anime && systemctl status track-anime"
 ```
 
 ### Только пересборка на сервере
 
 ```bash
-ssh root@194.180.189.34 "cd /var/www/ta_new && npm run build && chown -R www-data:www-data .next && systemctl restart track-anime"
+ssh root@151.245.136.79 "cd /var/www/ta_new && npm run build && chown -R www-data:www-data .next && systemctl restart track-anime"
 ```
 
 ---
@@ -446,10 +448,10 @@ ssh root@194.180.189.34 "cd /var/www/ta_new && npm run build && chown -R www-dat
 
 ```powershell
 # Логи сервиса
-ssh -i $env:USERPROFILE\.ssh\id_rsa root@194.180.189.34 "journalctl -u track-anime -n 50 --no-pager"
+ssh -i $env:USERPROFILE\.ssh\id_rsa root@151.245.136.79 "journalctl -u track-anime -n 50 --no-pager"
 
 # Статус
-ssh -i $env:USERPROFILE\.ssh\id_rsa root@194.180.189.34 "systemctl status track-anime"
+ssh -i $env:USERPROFILE\.ssh\id_rsa root@151.245.136.79 "systemctl status track-anime"
 ```
 
 ### Сайт 502 после деплоя
@@ -457,7 +459,7 @@ ssh -i $env:USERPROFILE\.ssh\id_rsa root@194.180.189.34 "systemctl status track-
 Сборка не завершилась — смотрите вывод `npm run build` в логе деплоя или:
 
 ```bash
-ssh root@194.180.189.34 "cd /var/www/ta_new && npm run build"
+ssh root@151.245.136.79 "cd /var/www/ta_new && npm run build"
 ```
 
 ### `set: pipefail: invalid option name`
@@ -474,7 +476,7 @@ CLI-скрипты исключены из `tsconfig.json` (`exclude: ["scripts"
 curl -s -o /dev/null -w '%{http_code}\n' https://track-anime.win/
 # ожидается: 200
 
-ssh root@194.180.189.34 "cat /var/www/ta_new/.build-number"
+ssh root@151.245.136.79 "cat /var/www/ta_new/.build-number"
 # номер текущего билда
 ```
 

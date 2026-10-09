@@ -34,6 +34,7 @@ function parseOriginHost(origin: string): string | null {
 /** Публичные домены Track Anime (OAuth и редиректы остаются на текущем host). */
 const DEFAULT_ALLOWED_ORIGIN_HOSTS = [
   "track-anime.win",
+  "www.track-anime.win",
   "ta.dygdyg.ru",
   "track-anime.dygdyg.ru",
   "track-anime.duckdns.org",
