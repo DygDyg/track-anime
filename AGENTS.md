@@ -37,7 +37,7 @@ Always:
 - prefer minimal targeted changes
 - keep project documentation consistent with behavior changes
 - verify with `npx tsc --noEmit` and/or `npm run build` when the change can affect TypeScript/runtime behavior
-- when the user asks to deploy production: run `npm run deploy:smart` (auto-picks SSH git / tar / Actions / webhook); do not ask which channel unless all fail
+- when the user asks to deploy production: run `npm run deploy:smart` (auto-commit local changes, then prefers webhook, then SSH git / tar / Actions); do not ask which channel unless all fail
 
 Before changing code:
 

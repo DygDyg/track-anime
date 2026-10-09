@@ -107,6 +107,20 @@ rm -f src/server/watch-party-ws.ts src/lib/kodik-player-control.ts
 rm -f scripts/ws-create-test.mjs scripts/test-ws.mjs scripts/fix-nginx-ws.sh
 rm -f src/middleware.ts src/src/middleware.ts src/src/proxy.ts
 
+# Discord: старт пересборки (финиш — EXIT trap ниже)
+if [ -z "${DEPLOY_NOTIFY_COMMIT:-}" ] && [ -d "$APP_DIR/.git" ]; then
+  DEPLOY_NOTIFY_COMMIT="$(git -C "$APP_DIR" rev-parse HEAD 2>/dev/null || true)"
+fi
+bash "$APP_DIR/scripts/notify-deploy-discord.sh" \
+  "started" \
+  "${SOURCE_LABEL}: идёт npm ci + next build" \
+  "" \
+  "" \
+  "${DEPLOY_NOTIFY_COMMIT:-}" \
+  "${DEPLOY_NOTIFY_TRIGGER:-}" \
+  "$DEPLOY_SOURCE" \
+  >/dev/null 2>&1 || true
+
 deploy_progress 2 "npm ci"
 echo "[deploy] npm ci uses quiet output; errors remain visible; timeout ${NPM_CI_TIMEOUT} (SIGKILL +15s)"
 # Without -k, GNU timeout only sends SIGTERM and can wait forever if npm ignores it

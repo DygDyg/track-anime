@@ -2,7 +2,7 @@
 $ErrorActionPreference = "Stop"
 
 $ProjectRoot = "D:\GitHub\ta_new"
-$Remote = "root@194.180.189.34"
+$Remote = "root@151.245.136.79"
 $RemoteDir = "/var/www/ta_new"
 $SshKey = "$env:USERPROFILE\.ssh\id_rsa"
 $BuildDirWsl = "/home/dygdyg/.cache/ta_new-build"

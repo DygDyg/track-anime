@@ -130,6 +130,15 @@ model DiscordSettings {
   updatedAt         DateTime @updatedAt
 }
 
+/// Discord Incoming Webhook для уведомлений о деплое (админка → data/deploy-discord-notify.json)
+model DeployDiscordSettings {
+  id             String   @id @default("default")
+  webhookUrl     String   @default("") @db.Text
+  notifyStarted  Boolean  @default(true)
+  notifyFinished Boolean  @default(true)
+  updatedAt      DateTime @updatedAt
+}
+
 /// Настройки сайта по умолчанию для новых пользователей и «Сбросить всё»
 model SiteSettingsDefaults {
   id        String   @id @default("default")
@@ -390,6 +399,37 @@ model KodikEpisodeRelease {
   @@index([shikimoriId])
   @@index([shikimoriId, releasedAt(sort: Desc)])
   @@index([materialId, seasonNumber, episodeNumber])
+}
+
+/// Метаданные материализованной общей ленты главной (нефильтрованной)
+model HomeFeedMeta {
+  id                String    @id @default("default")
+  /// empty | building | ready | stale
+  status            String    @default("empty")
+  /// Активное поколение строк HomeFeedItem
+  currentGeneration Int       @default(0)
+  itemCount         Int       @default(0)
+  headUpdatedAt     DateTime?
+  fullBuiltAt       DateTime?
+  lastError         String?
+  updatedAt         DateTime  @updatedAt
+}
+
+/// Карточка общей ленты главной (одна на тайтл; фильтры озвучек — на клиенте)
+model HomeFeedItem {
+  generation Int
+  rank       Int
+  titleId    String
+  /// releases | catalog
+  phase      String
+  releasedAt DateTime
+  /// ReleaseItemDto
+  payload    Json
+  updatedAt  DateTime @updatedAt
+
+  @@id([generation, rank])
+  @@index([generation, titleId])
+  @@index([generation, phase, rank])
 }
 
 /// Пользователь (вход через Shikimori OAuth)

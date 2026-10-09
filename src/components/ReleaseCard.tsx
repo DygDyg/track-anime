@@ -39,8 +39,7 @@ function EarlySeriesNewBadge({ className = "" }: { className?: string }) {
   return (
     <div
       className={[
-        "rounded-md border border-white/25 px-1.5 py-0.5 text-[10px] font-extrabold uppercase leading-none tracking-wide text-white shadow-[0_1px_3px_rgba(0,0,0,0.55)] sm:px-2 sm:text-[11px]",
-        earlySeriesCardAccentClass(),
+        "rounded-md border border-white/90 bg-emerald-600 px-1.5 py-0.5 text-[10px] font-extrabold uppercase leading-none tracking-wide text-white shadow-[0_1px_4px_rgba(0,0,0,0.85)] ring-1 ring-black/50 sm:px-2 sm:text-[11px]",
         className,
       ]
         .filter(Boolean)
@@ -127,7 +126,7 @@ export function ReleaseCard({
         {showEarlySeriesMark ? (
           <div
             aria-hidden
-            className={`pointer-events-none absolute inset-x-0 top-0 z-20 hidden h-1 md:block ${earlySeriesCardAccentClass()}`}
+            className={`pointer-events-none absolute inset-x-0 top-0 z-20 h-1 ${earlySeriesCardAccentClass()}`}
           />
         ) : null}
         {showScreenshotBackground ? (

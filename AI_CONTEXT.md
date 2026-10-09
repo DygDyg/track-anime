@@ -21,7 +21,7 @@ Next.js anime streaming site with Shikimori OAuth + Kodik player. Data lives in 
 | Fix auth/login | `src/lib/auth/shikimori-oauth.ts`, `src/lib/auth/local-credentials.ts`, `src/lib/auth/qr-login.ts`, `src/app/api/auth/callback/shikimori/route.ts` |
 | Fix player | `src/components/anime/KodikPlayer.tsx`, `src/lib/kodik-player-api.ts`, `CvhWatchSection.tsx`, `CvhPlayerFrame.tsx`, `src/lib/cvh-player.ts`, `src/lib/anime-watch-share.ts`, `MoveToCompletedBanner.tsx`, `src/lib/move-to-completed-prompt.ts`, `AddToWatchingBanner.tsx`, `src/lib/add-to-watching-prompt.ts` |
 | Fix watch party | `src/hooks/useWatchParty.ts`, `scripts/watch-party-server.mjs`, `scripts/watch-party-history.mjs`, `src/components/anime/AnimeWatchPanel.tsx`, `src/lib/admin/watch-party-history.ts` |
-| Fix home feed | `src/lib/releases.ts`, `src/components/ReleaseFeed.tsx`, `src/lib/home-novelties.ts`, `HomeNoveltiesSection.tsx` |
+| Fix home feed | `src/lib/releases.ts`, `src/lib/home-feed-cache.ts`, `src/components/ReleaseFeed.tsx`, `src/lib/home-novelties.ts`, `HomeNoveltiesSection.tsx` |
 | Fix release card / hover / mobile sheet | `ReleaseCard.tsx`, `AnimeCardHoverShell.tsx`, `ReleaseCardHoverPanel.tsx`, `ReleaseCardMobileSheet.tsx`, `ReleaseCardPreviewMeta.tsx`, `ReleaseCardQuickActions.tsx` |
 | Fix calendar | `src/lib/calendar.ts`, `src/components/calendar/CalendarView.tsx`, `src/lib/shikimori/calendar-api.ts` |
 | Fix history cards | `src/components/history/HistoryWatchCard.tsx`, `src/lib/history-watch-card.ts`, `HistoryView.tsx` — единый UI для /history и «Новое в вашей истории»; на `/history` вкладки «Актуальные» / «Просмотрено» / «Отложено» / «Брошено» (по умолчанию без completed/on_hold/dropped) |
@@ -55,7 +55,7 @@ Codex: использовать эту таблицу напрямую и чит
 | Player | kodik, cvh, videohub, плеер, progress, theater, по высоте | `KodikPlayer.tsx`, `KodikPlayerBetaViewport.tsx`, `CvhWatchSection.tsx`, `kodik-player-api.ts`, `cvh-player.ts`, `globals.css` (`.kodik-player-beta-stage--height-expanded`, `data-player-theater`) |
 | Deploy | деплой, deploy, prod | **`npm run deploy:smart`** (агент сам выбирает канал; не спрашивать webhook/Actions/SSH), `deploy-auto.ps1`, `git-deploy.ts`, `.github/workflows/deploy.yml`, `docs/DEPLOY.md` |
 | Auth | oauth, login, session | `shikimori-oauth.ts`, `src/app/api/auth/` |
-| Home feed | главная, лента, новинки | `releases.ts`, `ReleaseFeed.tsx`, `home-novelties.ts`, `HomeNoveltiesSection.tsx` |
+| Home feed | главная, лента, новинки | `releases.ts`, `home-feed-cache.ts`, `ReleaseFeed.tsx`, `home-novelties.ts`, `HomeNoveltiesSection.tsx` |
 | Notifications | уведомлен, push, telegram, vk, discord | `src/lib/notifications/`, `src/app/api/notifications/`, `NotificationSettingsPanel.tsx` |
 | Brand rotation | лого, логотип, favicon, бренд | `src/lib/brand-rotation.ts`, `src/components/admin/BrandRotationSettingsPanel.tsx`, `public/brand-logos/` |
 | Android TV | android tv, d-pad, тв-навигац | `TvNavigationProvider.tsx`, `tv-navigation.ts`, `HeaderSearch.tsx`, `BaseWebActivity.java`, `docs/ANDROID.md` |
@@ -91,7 +91,7 @@ Details: `DECISIONS.md`, если файл присутствует. Если ф
 ## Data Flow Shortcuts
 
 ```
-Home:  KodikEpisodeRelease → releases.ts → ReleaseFeed; novelties → home-novelties.ts (24h cache) → HomeNoveltiesSection
+Home:  KodikEpisodeRelease → home-feed-cache (HomeFeedItem) → releases.ts → ReleaseFeed; novelties → home-novelties.ts (24h cache) → HomeNoveltiesSection
 Anime: shikimoriId → anime-page.ts → Shikimori API + KodikMaterial DB
 Player: playerLink → KodikPlayer iframe → postMessage → watch-history API; TA player watch party → `useWatchParty` → WebSocket server
 Skip times: AnimeWatchPanel → /api/anime/[shikimoriId]/skip-times → aniskip.ts → AniSkip + DB cache → manual/auto OP/ED skip

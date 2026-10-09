@@ -2,7 +2,7 @@
 # Default: manual only (workflow_dispatch). Optional auto on push to master.
 #
 # Secrets:
-#   DEPLOY_HOST      — e.g. 194.180.189.34
+#   DEPLOY_HOST      — e.g. 151.245.136.79
 #   DEPLOY_USER      — e.g. root
 #   DEPLOY_SSH_KEY   — private key with access to the host
 # Optional vars:

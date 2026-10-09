@@ -4,7 +4,7 @@
 #   .\scripts\pull-prod-db.ps1 -Restore
 
 param(
-    [string]$Remote = "root@194.180.189.34",
+    [string]$Remote = "root@151.245.136.79",
     [string]$SshKey = "$env:USERPROFILE\.ssh\id_rsa",
     [string]$RemoteContainerName = "track-anime-db",
     [string]$LocalContainerName = "track-anime-db",

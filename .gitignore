@@ -10,10 +10,15 @@ data/cover-cache/*
 !data/cover-cache/.gitkeep
 data/image-cache/*
 !data/image-cache/.gitkeep
+data/deploy-discord-notify.json
 tmp/
 temp/
 
 # Local scratch/design files
+.obsidian/
+body.txt
+public/companion/*копия*/
+public/companion/* — копия/
 .cursorignore
 .chats/
 .cursor/

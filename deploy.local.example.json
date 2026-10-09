@@ -4,7 +4,7 @@
   "proxyPassword": "",
   "proxyCommand": "",
 
-  "remote": "root@194.180.189.34",
+  "remote": "root@151.245.136.79",
   "serverAppDir": "/var/www/ta_new",
   "sshKey": "%USERPROFILE%\\.ssh\\id_rsa",
   "githubIoRepo": "D:\\GitHub\\track-anime.github.io",

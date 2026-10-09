@@ -72,7 +72,7 @@ ta_new/
 
 | Route | Purpose |
 |-------|---------|
-| `releases` | Paginated home feed |
+| `releases` | Paginated home feed (from `HomeFeedItem`; `live=1` refreshes head) |
 | `search` | Anime search |
 | `search/suggest` | Header search suggestions |
 | `search/settings` | Public search UI settings |
@@ -119,7 +119,7 @@ ta_new/
 
 ### Admin (`api/admin/`)
 
-`stats`, `audience`, `audience/markdown`, `anime/[shikimoriId]/skip-times-prefetch`, `anime-debug`, `import/status`, `import/episodes`, `import/pending-materials`, `sync`, `sync/settings`, `sync/history`, `backfill-dates`, `brand-rotation/settings`, `cover-cache/settings`, `cover-cache/refresh-recent`, `discord/settings`, `notifications/settings`, `notifications/test`, `notifications/generate-vapid`, `search/settings`, `shikimori/settings`, `shikimori/anons-sync`, `shikimori/mal-id-sync`, `site-settings-defaults`, `translation-intro-offsets`, `watch-history/settings`, `watch-party/settings`, `watch-party/rooms`, `watch-party/history`, `users`, `db/search`, `db-backup/settings`, `db-backup/run`, `db-backup/test`, `deploy`, `todos`, `todos/[id]`
+`stats`, `audience`, `audience/markdown`, `anime/[shikimoriId]/skip-times-prefetch`, `anime-debug`, `import/status`, `import/episodes`, `import/pending-materials`, `sync`, `sync/settings`, `sync/history`, `backfill-dates`, `home-novelties/revalidate`, `home-feed/rebuild`, `brand-rotation/settings`, `cover-cache/settings`, `cover-cache/refresh-recent`, `discord/settings`, `notifications/settings`, `notifications/test`, `notifications/generate-vapid`, `search/settings`, `shikimori/settings`, `shikimori/anons-sync`, `shikimori/mal-id-sync`, `site-settings-defaults`, `translation-intro-offsets`, `watch-history/settings`, `watch-party/settings`, `watch-party/rooms`, `watch-party/history`, `users`, `db/search`, `db-backup/settings`, `db-backup/run`, `db-backup/test`, `deploy`, `deploy/discord-notify`, `todos`, `todos/[id]`
 
 Public analytics: `api/analytics/beacon` (POST) — visitor cookie + page aggregates; `api/analytics/play` (POST) — anime playback starts; `api/analytics/watch-share` (POST) — deep-link copy log
 
@@ -186,6 +186,7 @@ Git deploy webhook (HMAC, no session): `api/deploy/webhook` (POST)
 | `db-backup-format.ts`, `db-backup-settings-types.ts` | Client-safe backup types / formatBytes |
 | `stats.ts`, `storage-stats.ts`, `server-load.ts`, `server-load-types.ts`, `host-reboot.ts`, `host-reboot-types.ts` | Dashboard metrics, host load, guarded host reboot for `/admin` |
 | `git-deploy.ts`, `git-deploy-types.ts` | Git pull deploy: admin trigger, GitHub webhook verify, status/log |
+| `deploy-discord-settings.ts`, `deploy-discord-settings-types.ts` | Discord deploy notify URL + start/finish flags → `data/deploy-discord-notify.json` |
 | `audience-stats.ts` | DAU/WAU/MAU, platforms, player Kodik/TA vs VideoHUB, section/title popularity |
 | `audience-stats-markdown.ts` | Markdown snapshot for `/admin/audience` export |
 | `watch-share-log.ts` | Admin DTO for anime watch deep-link copy log |
@@ -207,7 +208,8 @@ Git deploy webhook (HMAC, no session): `api/deploy/webhook` (POST)
 | `anime-page.ts` | Anime page data loader |
 | `cvh-player.ts` | CDN VideoHub pub/aggr (в т.ч. `shikimori`→MAL fallback), playlist helpers, URL для запасного `/cdn-iframe` |
 | `kodik-ensure-materials.ts` | On-demand Kodik materials by shikimoriId when page has none |
-| `releases.ts` | Home feed queries |
+| `releases.ts` | Home feed queries (SQL builders + page API) |
+| `home-feed-cache.ts` | Materialized home feed (`HomeFeedItem` / meta, head+full rebuild) |
 | `home-novelties.ts` | Home «Новинки» block (shared 24h cache) |
 | `search.ts` | DB search (server-only) |
 | `search-settings.ts` | Search UI settings |
@@ -306,11 +308,12 @@ Error page asset: `public/404.webm` is used by the custom App Router 404 page.
 | `AnimeRelationSnapshot` | Cached Shikimori related/franchise/similar payloads (SWR) |
 | `AnimeEpisodeSkipTime` | Cached AniSkip OP/ED/recap intervals |
 | `KodikEpisode` | Episode with player link |
-| `KodikEpisodeRelease` | Home feed entries |
+| `KodikEpisodeRelease` | Home feed entries (source for releases phase) |
+| `HomeFeedMeta`, `HomeFeedItem` | Materialized shared home feed |
 | `User`, `Session`, `ShikimoriAccount`, `LocalCredential`, `QrLoginRequest` | Auth |
 | `UserAnimeListEntry`, `UserAnimeBookmark` | Shikimori list cache |
 | `UserWatchProgress` | Watch position |
 | `UserNotificationPreferences`, `UserNotificationLink`, `NotificationDelivery` | Notification settings, links, delivery log |
-| `DiscordSettings`, `NotificationSettings`, `SiteSettingsDefaults`, `TranslationIntroSettings`, `WatchHistorySettings`, `WatchPartySettings`, `AppPromoSettings` | Admin-configurable settings |
+| `DiscordSettings`, `DeployDiscordSettings`, `NotificationSettings`, `SiteSettingsDefaults`, `TranslationIntroSettings`, `WatchHistorySettings`, `WatchPartySettings`, `AppPromoSettings` | Admin-configurable settings |
 | `KodikImportJob`, `KodikSyncRun`, `KodikSyncSettings` | Import/sync state |
 | `DbBackupSettings`, `DbBackupRun` | WebDAV cloud backup settings + run history |

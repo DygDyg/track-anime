@@ -170,10 +170,12 @@ Shikimori host (`shikimori.io` / `shikimori.one`) настраивается в 
 - Pull user_rates и favourites с Shikimori → `UserAnimeListEntry`, `UserAnimeBookmark`
 - Метаданные в `UserListSync`
 
-### Releases feed (`src/lib/releases.ts`)
+### Releases feed (`src/lib/releases.ts` + `src/lib/home-feed-cache.ts`)
 
-- Cursor pagination по `KodikEpisodeRelease`
-- Фильтр по translation (site settings)
+- Общая нефильтрованная лента материализуется в `HomeFeedItem` / `HomeFeedMeta` (generation swap)
+- `/api/releases` читает только материализацию; тяжёлый catalog SQL — только в фоновом rebuild
+- Head (`phase=releases`) обновляется после kodik sync и при polling `live=1`
+- Фильтры озвучек / оценки / статуса — на клиенте (`ReleaseFeed` + site settings)
 
 ### Notifications (`src/lib/notifications/*`)
 
@@ -200,7 +202,7 @@ Shikimori host (`shikimori.io` / `shikimori.one`) настраивается в 
 | Data | Strategy |
 |------|----------|
 | Anime page | `revalidate = 3600` |
-| Home feed | page `revalidate = 300`; paginated `/api/releases` and server feed pages cache for 1 hour with tag `releases` |
+| Home feed | page `revalidate = 300`; лента из `HomeFeedItem` (HTTP `s-maxage` на `/api/releases`); full rebuild фон / admin; head refresh после sync и `live=1` |
 | Calendar | `unstable_cache`, `revalidate = 300`, tag `calendar`; ongoing source can be local Kodik DB or Shikimori `/api/calendar` |
 | Shikimori anime | DB cache + `unstable_cache` |
 | Posters | Disk cache via `/api/cover` |

@@ -8,7 +8,13 @@ import { pickScreenshotUrl } from "@/lib/screenshots";
 export const HOME_NOVELTIES_CACHE_TAG = "home-novelties";
 export const HOME_NOVELTIES_CACHE_SECONDS = 24 * 60 * 60;
 export const HOME_NOVELTIES_MAX_EPISODES = 5;
+/** Свежесть последней серии в Kodik (KodikEpisodeRelease.releasedAt). */
 export const HOME_NOVELTIES_MAX_AGE_DAYS = 30;
+/**
+ * Насколько давно мог стартовать сам тайтл (`aired_on`).
+ * Отсекает старые аниме, у которых недавно появилась новая озвучка.
+ */
+export const HOME_NOVELTIES_MAX_ANIME_AIRED_AGE_DAYS = 90;
 const DEFAULT_LIMIT = 48;
 
 type RawNoveltyRow = {
@@ -67,10 +73,14 @@ function mapNoveltyRow(row: RawNoveltyRow): ReleaseItem {
 
 /**
  * Ранние тайтлы для блока «Новинки» на главной:
- * сезон 1, ≤5 серий, последний релиз не старше 30 дней.
+ * сезон 1, ≤5 серий, последний релиз не старше 30 дней,
+ * старт показа (`aired_on`) не старше 90 дней — без старых доозвучек.
  */
 async function queryHomeNoveltiesUncached(limit: number): Promise<ReleaseItem[]> {
-  const cutoff = new Date(Date.now() - HOME_NOVELTIES_MAX_AGE_DAYS * 24 * 60 * 60 * 1000);
+  const releaseCutoff = new Date(Date.now() - HOME_NOVELTIES_MAX_AGE_DAYS * 24 * 60 * 60 * 1000);
+  const animeAiredCutoff = new Date(
+    Date.now() - HOME_NOVELTIES_MAX_ANIME_AIRED_AGE_DAYS * 24 * 60 * 60 * 1000,
+  );
   const maxEpisodes = HOME_NOVELTIES_MAX_EPISODES;
 
   const rows = await prisma.$queryRaw<RawNoveltyRow[]>`
@@ -94,7 +104,8 @@ async function queryHomeNoveltiesUncached(limit: number): Promise<ReleaseItem[]>
         kind,
         "animeScreenshots",
         "episodeScreenshots",
-        episodes_aired_proxy
+        episodes_aired_proxy,
+        anime_aired_on
       FROM (
         SELECT
           CASE
@@ -150,7 +161,22 @@ async function queryHomeNoveltiesUncached(limit: number): Promise<ReleaseItem[]>
               ELSE NULL
             END,
             r."episodeNumber"
-          ) AS episodes_aired_proxy
+          ) AS episodes_aired_proxy,
+          CASE
+            WHEN COALESCE(
+              NULLIF(m."materialData"->>'aired_at', ''),
+              NULLIF(m."materialData"->>'aired_on', ''),
+              NULLIF(m."materialData"->'anime_full'->>'aired_on', ''),
+              NULLIF(m."materialData"->'anime_full'->>'aired_at', '')
+            ) ~ '^\\d{4}-\\d{2}-\\d{2}'
+              THEN COALESCE(
+                NULLIF(m."materialData"->>'aired_at', ''),
+                NULLIF(m."materialData"->>'aired_on', ''),
+                NULLIF(m."materialData"->'anime_full'->>'aired_on', ''),
+                NULLIF(m."materialData"->'anime_full'->>'aired_at', '')
+              )::date
+            ELSE NULL
+          END AS anime_aired_on
         FROM "KodikEpisodeRelease" r
         INNER JOIN "KodikMaterial" m ON m."kodikId" = r."materialId"
         LEFT JOIN "KodikEpisode" e ON e."materialId" = r."materialId"
@@ -184,9 +210,11 @@ async function queryHomeNoveltiesUncached(limit: number): Promise<ReleaseItem[]>
       "animeScreenshots",
       "episodeScreenshots"
     FROM latest_release
-    WHERE "releasedAt" >= ${cutoff}
+    WHERE "releasedAt" >= ${releaseCutoff}
       AND episodes_aired_proxy <= ${maxEpisodes}
       AND (kind IS NULL OR LOWER(kind) <> 'movie')
+      AND anime_aired_on IS NOT NULL
+      AND anime_aired_on >= ${animeAiredCutoff}::date
     ORDER BY "releasedAt" DESC, id ASC
     LIMIT ${limit}
   `;

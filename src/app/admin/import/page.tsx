@@ -73,6 +73,12 @@ export default async function AdminImportPage() {
             variant="secondary"
             idleHint="Сбрасывает суточный TTL блока «Новинки» на главной. Список пересчитается из БД при следующем открытии /."
           />
+          <AdminActionButton
+            label="Пересобрать кеш ленты"
+            endpoint="/api/admin/home-feed/rebuild"
+            variant="secondary"
+            idleHint="Фоновая материализация общей ленты (releases + catalog). Скролл главной читает только этот кеш; озвучки фильтруются на клиенте."
+          />
         </div>
       </section>
 

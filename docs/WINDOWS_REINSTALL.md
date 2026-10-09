@@ -217,7 +217,7 @@ E:\WindowsBackupBeforeReinstall\.npmrc     -> C:\Users\<user>\.npmrc
 Проверь SSH-доступ к серверу:
 
 ```powershell
-ssh -i "$env:USERPROFILE\.ssh\id_rsa" root@194.180.189.34 "echo ok"
+ssh -i "$env:USERPROFILE\.ssh\id_rsa" root@151.245.136.79 "echo ok"
 ```
 
 Если ключи не переносились, создай новый SSH-ключ и добавь его туда, где нужен
@@ -376,7 +376,7 @@ npm run deploy
 | Главная пустая | Запусти `npm run kodik:sync` или восстанови dump БД |
 | На `C:` снова мало места | Проверь Docker Desktop `Disk image location`; Docker data disk должен быть на `E:` |
 | Login через Shikimori не работает | `AUTH_URL`, redirect URI в Shikimori OAuth app, `SHIKIMORI_CLIENT_ID/SECRET` |
-| `ssh root@194.180.189.34` не работает | Вернул ли `.ssh`, права ключа, есть ли ключ на сервере |
+| `ssh root@151.245.136.79` не работает | Вернул ли `.ssh`, права ключа, есть ли ключ на сервере |
 | Deploy не видит `tar`/`scp` | Установлен ли Git/OpenSSH, доступны ли команды из PowerShell |
 | С телефона не открывается dev | `npm run dev` слушает `0.0.0.0`, firewall Windows, правильный LAN IP |
 

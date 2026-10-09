@@ -148,7 +148,7 @@
 ## Команда для актуальных цифр на проде
 
 ```bash
-ssh root@194.180.189.34 "cd /var/www/ta_new && node scripts/check-db-stats.mjs"
+ssh root@151.245.136.79 "cd /var/www/ta_new && node scripts/check-db-stats.mjs"
 ```
 
 ---

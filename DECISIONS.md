@@ -26,7 +26,7 @@
 
 ## Deploy
 
-- Prod: `https://ta.dygdyg.ru/`, сервер `root@194.180.189.34`, `/var/www/ta_new`.
+- Prod: `https://track-anime.win/`, сервер `root@151.245.136.79`, `/var/www/ta_new`.
 - Локально: `.\scripts\deploy.ps1` (сборка на сервере). См. `docs/DEPLOY.md`.
 
 ## AI workflow

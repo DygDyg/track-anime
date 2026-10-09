@@ -2,6 +2,7 @@
 
 import { useCallback, useEffect, useState } from "react";
 import { adminClass } from "@/components/admin/admin-styles";
+import type { DeployDiscordSettingsDto } from "@/lib/admin/deploy-discord-settings-types";
 import type { GitDeployStatus } from "@/lib/admin/git-deploy-types";
 
 const POLL_IDLE_MS = 8_000;
@@ -34,6 +35,13 @@ export function GitDeployPanel() {
   const [deploying, setDeploying] = useState(false);
   const [message, setMessage] = useState<{ ok: boolean; text: string } | null>(null);
 
+  const [discordSettings, setDiscordSettings] = useState<DeployDiscordSettingsDto | null>(null);
+  const [webhookInput, setWebhookInput] = useState("");
+  const [notifyStarted, setNotifyStarted] = useState(true);
+  const [notifyFinished, setNotifyFinished] = useState(true);
+  const [savingDiscord, setSavingDiscord] = useState(false);
+  const [discordMessage, setDiscordMessage] = useState<{ ok: boolean; text: string } | null>(null);
+
   const refresh = useCallback(async () => {
     try {
       const res = await fetch("/api/admin/deploy", { cache: "no-store" });
@@ -47,9 +55,25 @@ export function GitDeployPanel() {
     }
   }, []);
 
+  const refreshDiscord = useCallback(async () => {
+    try {
+      const res = await fetch("/api/admin/deploy/discord-notify", { cache: "no-store" });
+      if (!res.ok) return;
+      const data = (await res.json()) as { settings?: DeployDiscordSettingsDto };
+      if (!data.settings) return;
+      setDiscordSettings(data.settings);
+      setNotifyStarted(data.settings.notifyStarted);
+      setNotifyFinished(data.settings.notifyFinished);
+      setWebhookInput("");
+    } catch {
+      /* ignore */
+    }
+  }, []);
+
   useEffect(() => {
     void refresh();
-  }, [refresh]);
+    void refreshDiscord();
+  }, [refresh, refreshDiscord]);
 
   useEffect(() => {
     const ms = status?.running ? POLL_RUNNING_MS : POLL_IDLE_MS;
@@ -98,6 +122,53 @@ export function GitDeployPanel() {
     }
   }
 
+  async function saveDiscordSettings(opts?: { clearWebhook?: boolean }) {
+    setSavingDiscord(true);
+    setDiscordMessage(null);
+    try {
+      const body: {
+        webhookUrl?: string;
+        clearWebhook?: boolean;
+        notifyStarted: boolean;
+        notifyFinished: boolean;
+      } = {
+        notifyStarted,
+        notifyFinished,
+      };
+      if (opts?.clearWebhook) body.clearWebhook = true;
+      else if (webhookInput.trim()) body.webhookUrl = webhookInput.trim();
+
+      const res = await fetch("/api/admin/deploy/discord-notify", {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(body),
+      });
+      const data = (await res.json()) as {
+        settings?: DeployDiscordSettingsDto;
+        error?: string;
+      };
+      if (!res.ok || !data.settings) {
+        setDiscordMessage({ ok: false, text: data.error ?? `Ошибка ${res.status}` });
+      } else {
+        setDiscordSettings(data.settings);
+        setNotifyStarted(data.settings.notifyStarted);
+        setNotifyFinished(data.settings.notifyFinished);
+        setWebhookInput("");
+        setDiscordMessage({
+          ok: true,
+          text: opts?.clearWebhook ? "Webhook очищен" : "Настройки Discord сохранены",
+        });
+      }
+    } catch (error) {
+      setDiscordMessage({
+        ok: false,
+        text: error instanceof Error ? error.message : "Не удалось сохранить",
+      });
+    } finally {
+      setSavingDiscord(false);
+    }
+  }
+
   if (loading && !status) {
     return (
       <section className={`${adminClass.panel} space-y-2`}>
@@ -141,7 +212,7 @@ export function GitDeployPanel() {
           </p>
         </div>
         <div>
-          <p className={adminClass.statLabel}>Webhook</p>
+          <p className={adminClass.statLabel}>GitHub webhook</p>
           <p className={adminClass.statValue}>{status.webhookConfigured ? "секрет задан" : "нет секрета"}</p>
         </div>
       </div>
@@ -170,6 +241,95 @@ export function GitDeployPanel() {
       {message ? (
         <p className={message.ok ? adminClass.alertSuccess : adminClass.alertError}>{message.text}</p>
       ) : null}
+
+      <div className="border-t border-border/40 pt-4 space-y-3">
+        <div>
+          <h3 className="text-base font-semibold text-foreground">Discord: уведомления о деплое</h3>
+          <p className="mt-1 text-sm text-muted">
+            Incoming Webhook. Бот: <strong>{discordSettings?.username ?? "Track-Amine"}</strong>, аватар —
+            текущая иконка сайта (<code className={adminClass.code}>/api/brand/favicon</code>).
+          </p>
+        </div>
+
+        <label className="block space-y-1">
+          <span className="text-sm text-muted">
+            URL webhook
+            {discordSettings?.webhookConfigured
+              ? ` (сейчас: ${discordSettings.webhookUrlMasked ?? "задан"})`
+              : " (не задан)"}
+          </span>
+          <input
+            type="password"
+            autoComplete="off"
+            className={`${adminClass.input} w-full`}
+            placeholder={
+              discordSettings?.webhookConfigured
+                ? "Оставьте пустым, чтобы не менять"
+                : "https://discord.com/api/webhooks/…"
+            }
+            value={webhookInput}
+            onChange={(e) => setWebhookInput(e.target.value)}
+          />
+        </label>
+
+        <div className="flex flex-wrap gap-4 text-sm text-foreground">
+          <label className="inline-flex items-center gap-2">
+            <input
+              type="checkbox"
+              checked={notifyStarted}
+              onChange={(e) => setNotifyStarted(e.target.checked)}
+            />
+            Уведомление о старте пересборки
+          </label>
+          <label className="inline-flex items-center gap-2">
+            <input
+              type="checkbox"
+              checked={notifyFinished}
+              onChange={(e) => setNotifyFinished(e.target.checked)}
+            />
+            Уведомление о завершении (OK / ошибка)
+          </label>
+        </div>
+
+        <div className="flex flex-wrap gap-2">
+          <button
+            type="button"
+            className={adminClass.btnPrimary}
+            disabled={savingDiscord}
+            onClick={() => void saveDiscordSettings()}
+          >
+            {savingDiscord ? "Сохранение…" : "Сохранить Discord"}
+          </button>
+          {discordSettings?.webhookConfigured ? (
+            <button
+              type="button"
+              className={adminClass.btnSecondary}
+              disabled={savingDiscord}
+              onClick={() => {
+                if (window.confirm("Очистить Discord webhook URL?")) {
+                  void saveDiscordSettings({ clearWebhook: true });
+                }
+              }}
+            >
+              Очистить URL
+            </button>
+          ) : null}
+          <button
+            type="button"
+            className={adminClass.btnSecondary}
+            disabled={savingDiscord}
+            onClick={() => void refreshDiscord()}
+          >
+            Обновить
+          </button>
+        </div>
+
+        {discordMessage ? (
+          <p className={discordMessage.ok ? adminClass.alertSuccess : adminClass.alertError}>
+            {discordMessage.text}
+          </p>
+        ) : null}
+      </div>
 
       {status.logTail ? (
         <details className="space-y-2">

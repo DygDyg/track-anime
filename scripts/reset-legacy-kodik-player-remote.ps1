@@ -2,14 +2,14 @@
 $ErrorActionPreference = "Stop"
 . (Join-Path $PSScriptRoot "deploy-config.ps1")
 
-$Remote = "root@194.180.189.34"
+$Remote = "root@151.245.136.79"
 $SshKey = "$env:USERPROFILE\.ssh\id_rsa"
 $ServerAppDir = "/var/www/ta_new"
 $UploadChunkSizeMB = 16
 
 Merge-TaDeployLocalParams `
     -Remote ([ref]$Remote) `
-    -DefaultRemote "root@194.180.189.34" `
+    -DefaultRemote "root@151.245.136.79" `
     -SshKey ([ref]$SshKey) `
     -DefaultSshKey "$env:USERPROFILE\.ssh\id_rsa" `
     -ServerAppDir ([ref]$ServerAppDir) `

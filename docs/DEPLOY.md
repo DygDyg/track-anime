@@ -138,12 +138,16 @@ npm run deploy:smart
 
 Порядок выбора (`-Channel auto`):
 
-1. **ssh-git** — SSH жив и на сервере есть `.git` → `server-deploy-git-bg.sh`
-2. **ssh-tar** — SSH жив, git нет → классический `deploy.ps1`
-3. **actions** — SSH мёртв, `gh` залогинен → `gh workflow run deploy.yml`
-4. **webhook-push** — иначе: код уже запушен, ждём рост `GET /api/site-build` (нужен настроенный GitHub webhook)
+1. **webhook-push** — `git push` → GitHub webhook на сервере; ждём рост `GET /api/site-build` (нужен `GIT_DEPLOY_WEBHOOK_SECRET`)
+2. **ssh-git** — fallback: SSH жив и на сервере есть `.git` → `server-deploy-git-bg.sh` (если нечего пушить + force, или webhook не подтвердился за 15 мин)
+3. **ssh-tar** — SSH жив, git нет → классический `deploy.ps1`
+4. **actions** — SSH мёртв, `gh` залогинен → `gh workflow run deploy.yml`
 
-Скрипт сам делает `git push`, если есть незапушенные коммиты. Для агента Cursor: при просьбе «задеплой» запускать `deploy:smart`, не спрашивая канал (см. `.cursor/rules/deploy-smart.mdc`).
+Перед push скрипт сам делает **auto-commit** локальных изменений (кроме мусора вроде `.obsidian/`, `test/results*`, `*.tsbuildinfo`; отключить: `-NoCommit`). Затем `git push`, если есть незапушенные коммиты. `-NoPush` пропускает и commit, и push.
+
+Если **нечего пушить** (рабочее дерево чистое и уже на origin) и включён force (по умолчанию) — webhook не сработает, будет fallback на **ssh-git** / Actions. Именно поэтому «задеплой» без нового коммита часто шёл через SSH: сервер пересобирал уже запушенный commit, а не локальные незакоммиченные правки.
+
+Для агента Cursor: при просьбе «задеплой» запускать `deploy:smart`, не спрашивая канал (см. `.cursor/rules/deploy-smart.mdc`).
 
 ---
 
@@ -216,10 +220,18 @@ Ping должен вернуть `{ ok: true, pong: true }`.
 
 ### Уведомление в Discord
 
-После полного деплоя (успех/ошибка) сервер может дернуть Discord Incoming Webhook:
+Сервер шлёт в Discord Incoming Webhook до **двух** сообщений (если URL задан и флаги включены):
+
+1. **Deploy started (rebuild)** — код уже на диске (git reset / tar extract), начинается `npm ci` + `next build`
+2. **Deploy OK / failed** — сборка и restart закончились
+
+Настройка (предпочтительно):
 
 1. Канал Discord → Edit channel → Integrations → Webhooks → New → Copy URL  
-2. В `/var/www/ta_new/.env`:
+2. Админка `/admin` → блок «Discord: уведомления о деплое» → URL + галочки старт/финиш  
+3. Сохранение пишет `data/deploy-discord-notify.json` (читает bash при деплое). Имя бота: **Track-Amine**, аватар: текущая иконка сайта (`/api/brand/favicon`).
+
+Запасной вариант через `.env` (если в админке URL ещё пустой — подхватится при первом чтении):
 
 ```bash
 DEPLOY_DISCORD_WEBHOOK_URL="https://discord.com/api/webhooks/...."

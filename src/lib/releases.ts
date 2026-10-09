@@ -1,5 +1,4 @@
 import { Prisma } from "@prisma/client";
-import { unstable_cache } from "next/cache";
 import { toDate, toIsoString } from "@/lib/dates";
 import { resolveMaterialPosterUrl } from "@/lib/material-poster";
 import { prisma } from "@/lib/prisma";
@@ -207,7 +206,8 @@ function releaseTitleKeysCte() {
  * Фаза 1: одна карточка на тайтл с реальным релизом (KodikEpisodeRelease).
  * Последняя серия ищется среди всех озвучек с тем же shikimoriId.
  */
-async function queryFreshReleasesPerTitle(
+/** Фаза 1 ленты — для материализации / head refresh. */
+export async function queryFreshReleasesPerTitle(
   limit: number,
   after?: { releasedAt: Date; id: string },
 ): Promise<ReleaseItem[]> {
@@ -323,8 +323,9 @@ async function queryFreshReleasesPerTitle(
 
 /**
  * Фаза 2: каталог по shikimoriId, без тайтлов из фазы релизов.
+ * Для материализации / фонового rebuild (не вызывать на request path скролла).
  */
-async function queryCatalogReleasesPerTitle(
+export async function queryCatalogReleasesPerTitle(
   limit: number,
   after?: { releasedAt: Date; id: string },
 ): Promise<ReleaseItem[]> {
@@ -558,7 +559,11 @@ async function countCatalogReleasesPerTitle(): Promise<number> {
   return Number(result[0]?.count ?? 0);
 }
 
-async function getRecentReleasesPageUncached(pageSize: number, cursor?: ReleasesCursor | null) {
+/** Live SQL (только для fallback / сборки кеша). Не использовать catalog на request path скролла. */
+export async function getRecentReleasesPageFromDb(
+  pageSize: number,
+  cursor?: ReleasesCursor | null,
+) {
   const phase = resolveFeedPhase(cursor);
   const after = parseCursorAfter(cursor);
 
@@ -595,26 +600,52 @@ async function getRecentReleasesPageUncached(pageSize: number, cursor?: Releases
   };
 }
 
+async function getRecentReleasesPageUncached(pageSize: number, cursor?: ReleasesCursor | null) {
+  const { readHomeFeedHeadLiveFallback, readHomeFeedPage } = await import(
+    "@/lib/home-feed-cache"
+  );
+
+  const cached = await readHomeFeedPage(pageSize, cursor ?? null);
+  if (cached) return cached;
+
+  // Кеш пуст/строится: только голова из live SQL, без catalog_candidates
+  return readHomeFeedHeadLiveFallback(pageSize, cursor ?? null);
+}
+
 export async function getRecentReleases(limit = 48): Promise<ReleaseItem[]> {
+  const { readHomeFeedPage } = await import("@/lib/home-feed-cache");
+  const cached = await readHomeFeedPage(limit, null);
+  if (cached && cached.items.length > 0) {
+    return cached.items.slice(0, limit);
+  }
+
   const fresh = await queryFreshReleasesPerTitle(limit);
   if (fresh.length >= limit) return fresh;
-  const catalog = await queryCatalogReleasesPerTitle(limit - fresh.length);
-  return [...fresh, ...catalog];
+  // Fallback без catalog на горячем пути главной — лучше короче, чем 40с SQL
+  return fresh;
 }
 
+/** Страница ленты из материализации HomeFeedItem (фильтры озвучек — на клиенте). */
 export async function getRecentReleasesPage(pageSize: number, cursor?: ReleasesCursor | null) {
-  const cacheKey = cursor ? JSON.stringify(cursor) : "initial";
-
-  return unstable_cache(
-    async () => getRecentReleasesPageUncached(pageSize, cursor ?? null),
-    ["recent-releases-page", String(pageSize), cacheKey],
-    { revalidate: RELEASES_FEED_CACHE_SECONDS, tags: ["releases"] },
-  )();
+  return getRecentReleasesPageUncached(pageSize, cursor ?? null);
 }
 
-/** Свежие данные для API и клиентского polling (без unstable_cache). */
+/** Polling головы: обновить phase=releases в материализации, затем отдать страницу. */
 export async function getRecentReleasesPageLive(pageSize: number, cursor?: ReleasesCursor | null) {
-  return getRecentReleasesPageUncached(pageSize, cursor);
+  const { readHomeFeedHeadLiveFallback, readHomeFeedPage, refreshHomeFeedHead } = await import(
+    "@/lib/home-feed-cache"
+  );
+
+  try {
+    await refreshHomeFeedHead();
+  } catch (error) {
+    console.error("[releases] head refresh failed:", error);
+  }
+
+  const cached = await readHomeFeedPage(pageSize, cursor ?? null);
+  if (cached) return cached;
+
+  return readHomeFeedHeadLiveFallback(pageSize, cursor ?? null);
 }
 
 export async function getReleaseStats() {

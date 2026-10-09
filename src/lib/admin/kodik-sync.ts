@@ -11,6 +11,7 @@ import {
   updateImportJobProgress,
 } from "@/lib/admin/import-job";
 import { markAutoSyncFinished } from "@/lib/admin/kodik-sync-settings";
+import { afterKodikSyncHomeFeedCache } from "@/lib/home-feed-cache";
 
 const withMaterialData = true;
 const STALE_RUNNING_MS = 5 * 60 * 1000;
@@ -192,6 +193,8 @@ export async function runKodikIncrementalSync(
     if (trigger === "auto") {
       await markAutoSyncFinished();
     }
+
+    await afterKodikSyncHomeFeedCache({ newReleases, updatedMaterials });
   } catch (error) {
     const message = error instanceof Error ? error.message : String(error);
     const finishedAt = new Date();

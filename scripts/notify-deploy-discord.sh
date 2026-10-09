@@ -1,6 +1,6 @@
 #!/bin/bash
-# Optional Discord webhook notify after deploy.
-# Env: DEPLOY_DISCORD_WEBHOOK_URL (or same key in APP_DIR/.env)
+# Optional Discord webhook notify for deploy (started / success / error / skipped).
+# Prefers APP_DIR/data/deploy-discord-notify.json (from admin), then DEPLOY_DISCORD_WEBHOOK_URL / .env.
 # Never fails the deploy (errors are logged and ignored).
 set -u
 
@@ -14,7 +14,42 @@ COMMIT="${5:-}"
 TRIGGER="${6:-}"
 SOURCE="${7:-}"
 
-resolve_webhook() {
+NOTIFY_FILE="${DEPLOY_DISCORD_NOTIFY_FILE:-$APP_DIR/data/deploy-discord-notify.json}"
+USERNAME="Track-Amine"
+AVATAR_URL=""
+NOTIFY_STARTED=1
+NOTIFY_FINISHED=1
+WEBHOOK=""
+
+read_notify_file() {
+  if [ ! -f "$NOTIFY_FILE" ]; then
+    return 1
+  fi
+  if ! command -v python3 >/dev/null 2>&1; then
+    return 1
+  fi
+  # shellcheck disable=SC2016
+  eval "$(
+    python3 - "$NOTIFY_FILE" <<'PY'
+import json, shlex, sys
+path = sys.argv[1]
+try:
+    with open(path, "r", encoding="utf-8") as f:
+        data = json.load(f)
+except Exception:
+    sys.exit(1)
+def emit(name, value):
+    print(f"{name}={shlex.quote('' if value is None else str(value))}")
+emit("WEBHOOK", (data.get("webhookUrl") or "").strip())
+emit("USERNAME", (data.get("username") or "Track-Amine").strip() or "Track-Amine")
+emit("AVATAR_URL", (data.get("avatarUrl") or "").strip())
+emit("NOTIFY_STARTED", "1" if data.get("notifyStarted", True) else "0")
+emit("NOTIFY_FINISHED", "1" if data.get("notifyFinished", True) else "0")
+PY
+  )"
+}
+
+resolve_webhook_env() {
   if [ -n "${DEPLOY_DISCORD_WEBHOOK_URL:-}" ]; then
     printf '%s' "$DEPLOY_DISCORD_WEBHOOK_URL"
     return
@@ -37,20 +72,55 @@ resolve_webhook() {
   printf ''
 }
 
-WEBHOOK="$(resolve_webhook)"
+if read_notify_file; then
+  :
+else
+  WEBHOOK="$(resolve_webhook_env)"
+  USERNAME="Track-Amine"
+  AVATAR_URL=""
+  NOTIFY_STARTED=1
+  NOTIFY_FINISHED=1
+fi
+
+# Env still overrides empty file URL (bootstrap before first admin save)
+if [ -z "$WEBHOOK" ]; then
+  WEBHOOK="$(resolve_webhook_env)"
+fi
+
 if [ -z "$WEBHOOK" ]; then
   exit 0
 fi
 
-if [ "$STATUS" = "skipped" ] && [ "${DEPLOY_DISCORD_NOTIFY_SKIPPED:-0}" != "1" ]; then
-  exit 0
+case "$STATUS" in
+  started)
+    if [ "$NOTIFY_STARTED" != "1" ]; then
+      echo "[deploy-discord] started notify disabled; skip"
+      exit 0
+    fi
+    ;;
+  success|error)
+    if [ "$NOTIFY_FINISHED" != "1" ]; then
+      echo "[deploy-discord] finished notify disabled; skip"
+      exit 0
+    fi
+    ;;
+  skipped)
+    if [ "${DEPLOY_DISCORD_NOTIFY_SKIPPED:-0}" != "1" ]; then
+      exit 0
+    fi
+    ;;
+esac
+
+if [ -z "$AVATAR_URL" ]; then
+  AVATAR_URL="${SITE_URL%/}/api/brand/favicon"
 fi
 
 case "$STATUS" in
   success) COLOR=5763719; TITLE="✅ Deploy OK" ;;
   error)   COLOR=15548997; TITLE="❌ Deploy failed" ;;
   skipped) COLOR=9807270; TITLE="⏭️ Deploy skipped" ;;
-  started) COLOR=3447003; TITLE="🚀 Deploy started" ;;
+  # After git/tar tree is on disk, before npm ci / next build
+  started) COLOR=3447003; TITLE="🚀 Deploy started (rebuild)" ;;
   *)       COLOR=9807270; TITLE="Deploy: $STATUS" ;;
 esac
 
@@ -67,12 +137,15 @@ SOURCE_JSON="$(json_escape "${SOURCE:-—}")"
 COMMIT_SHORT="$(printf '%s' "${COMMIT:-}" | cut -c1-10)"
 [ -n "$COMMIT_SHORT" ] || COMMIT_SHORT="—"
 COMMIT_JSON="$(json_escape "$COMMIT_SHORT")"
+USERNAME_JSON="$(json_escape "$USERNAME")"
+AVATAR_JSON="$(json_escape "$AVATAR_URL")"
 BUILD_LABEL="${BUILD_NUM:-—}"
 EXIT_LABEL="${EXIT_CODE:-—}"
 
 BODY=$(cat <<EOF
 {
-  "username": "Track Anime Deploy",
+  "username": $USERNAME_JSON,
+  "avatar_url": $AVATAR_JSON,
   "embeds": [
     {
       "title": "$TITLE",

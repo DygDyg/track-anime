@@ -20,16 +20,16 @@ Shikimori anime.id  ===  Kodik shikimori_id  ===  URL /anime/[shikimoriId]
 **Источник:** `KodikEpisodeRelease` — создаётся при sync/import когда обнаружена новая серия.
 
 **Flow:**
-1. `getRecentReleasesPage()` — cursor pagination, sort by `releasedAt DESC`; у онгоингов это дата серии (`KodikEpisodeRelease.releasedAt`) / `kodikUpdatedAt`, у `released` — `animeReleasedAt` (конец показа), чтобы доозвучка не поднимала тайтл; завершённые более 90 дней назад тайтлы со свежей озвучкой выводятся после актуальных релизов, в каталожной части ленты
+1. `getRecentReleasesPage()` читает материализованную общую ленту (`HomeFeedItem`, порядок `rank`); SQL-сборка (фаза `releases` из `KodikEpisodeRelease` + фаза `catalog`) выполняется фоном в `home-feed-cache.ts`, не на скролле пользователя. Сортировка как раньше: у онгоингов дата серии / `kodikUpdatedAt`, у `released` — `animeReleasedAt`; завершённые >90 дней уходят в каталожный хвост
 2. Для авторизованных: `getHistoryUpcomingSoon()` — блок «Скоро выйдут» (если count > 0)
 3. Для всех (гости и авторизованные): `getHomeNovelties()` — спойлер «Новинки» (всегда свёрнут при открытии): сезон 1, ≤5 серий (`episodes_aired` / fallback номер серии), последний `KodikEpisodeRelease.releasedAt` не старше 30 дней, старт показа `aired_on`/`aired_at` (materialData / anime_full) не старше 90 дней (без старых тайтлов с новой озвучкой; без даты старта — не показываем), без `movie`; один тайтл на `shikimoriId`; общий список, `unstable_cache` 24 ч, tag `home-novelties` (sync его не сбрасывает). Принудительный сброс: админка `/admin/import` → «Обновить кеш «Новинки»» → `POST /api/admin/home-novelties/revalidate`
 4. Для авторизованных: `getHistoryNewEpisodes()` — серии из тайтлов в watch history
 5. `ReleaseFeed` (client) — infinite scroll через `GET /api/releases`
 6. Перед уходом на `/anime/[id]` снимок ленты и scroll сохраняются в `sessionStorage` (`ta:feed:*`, `ta:nav-return`) для восстановления при возврате; description обрезается, при нехватке квоты снимок ужимается дальше и ошибка `QuotaExceeded` не пробрасывается — в крайнем случае восстанавливается только scroll
-7. Фильтр по озвучкам из site settings пользователя
+7. Фильтр по озвучкам из site settings пользователя (только клиент; серверный кеш ленты один на всех)
 8. Фильтр статуса на главной: «Всё» / «Онгоинги» (ongoing+anons) / «Вышедшие» (released); выбор сохраняется в localStorage
 9. По умолчанию скрываются тайтлы без рейтинга Shikimori (`hideZeroScoreOnHome`: пустой score или ≤0, клиентский фильтр); настройка в site settings
-10. Обычные страницы `/api/releases` и server feed cache живут 1 час с tag `releases`; polling `live=1` остаётся без кэша
+10. Актуальность ленты: head refresh после kodik sync и при polling `live=1`; полный rebuild — фон при пустом кеше / раз в ~6 ч / кнопка «Пересобрать кеш ленты» (`POST /api/admin/home-feed/rebuild`). Пока full не готов, API отдаёт только phase=releases (без тяжёлого catalog SQL)
 11. Карточки фильмов и спешлов показывают короткий бейдж `M`/`S` на постере, а hover-панель показывает тип тайтла с описанием.
 12. На мобильной карточке релиза всегда видны компактный ряд метаданных (рейтинг, серия, тип, статус; для ранних серий — бейдж `NEW` перед рейтингом) и до 4 жанров; верхняя цветная полоска `NEW` только на desktop. Долгое удержание карточки на touch открывает нижнюю шторку с содержимым desktop-превью (описание, «Смотреть», списки); закрытие — свайп вниз по ручке, тап по фону, крестик или Escape.
 

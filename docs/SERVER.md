@@ -101,7 +101,7 @@ NODE_ENV="production"
 | `GIT_DEPLOY_BRANCH` | нет | Ветка для pull (по умолчанию `main`) |
 | `GIT_DEPLOY_WEBHOOK_SECRET` | для webhook | Secret GitHub webhook → `POST /api/deploy/webhook` |
 | `GIT_DEPLOY_COMMAND` | нет | Команда запуска (по умолчанию `sudo -n /usr/local/sbin/ta-git-deploy-trigger`); к ней дописываются аргументы `trigger force` |
-| `DEPLOY_DISCORD_WEBHOOK_URL` | нет | Discord Incoming Webhook — сообщение об успехе/ошибке деплоя |
+| `DEPLOY_DISCORD_WEBHOOK_URL` | нет | Fallback Discord webhook (если в админке ещё не задан; основной путь — `/admin` → DeployDiscordSettings) |
 | `DEPLOY_DISCORD_NOTIFY_SKIPPED` | нет | `1` — также уведомлять, если git-деплой пропущен (уже актуальный commit) |
 | `NODE_ENV` | для prod | `production` при `npm run start` |
 
@@ -281,7 +281,7 @@ sudo systemctl start track-anime-watch-party
 `track-anime.dygdyg.ru` и `ta.dygdyg.ru` (80/443): для обычных браузеров (`Mozilla*`) — HTML 200 bounce (`error_page 418` / `@ta_legacy_bounce`, `Cache-Control: no-store`) с `location.replace` на `https://track-anime.win$uri?…&legacy_redirect=1` (не 301: браузеры навсегда кэшируют Location и иначе игнорируют новый query). Клиент (`LegacyDomainRedirectNotice` + early script в `layout.tsx`) показывает модалку про отключение legacy-доменов и ссылки на `https://track-anime.github.io` / `https://track-anime.win/`. Без bounce для Android WebView (`; wv)`), `TrackAnimeAndroid` / `TrackAnimeWindows` — иначе старая оболочка открывает `.win` во внешнем браузере и не видит in-app update.
 
 Сертификаты Let's Encrypt (certbot timer):
-- `track-anime.win` (+ `www.track-anime.win` + `mirror.track-anime.win`) — **отдельный** сертификат `/etc/letsencrypt/live/track-anime.win/`
+- `track-anime.win` (+ `www.track-anime.win` + `mirror.track-anime.win` + `777.track-anime.win`) — **отдельный** сертификат `/etc/letsencrypt/live/track-anime.win/`
 - `track-anime.dygdyg.ru` + `ta.dygdyg.ru` — **отдельный** `/etc/letsencrypt/live/track-anime-legacy.dygdyg.ru/` (не смешивать с `server.dygdyg.ru`: общий SAN-пакет ломает renew при NXDOMAIN/устаревших A-записях; Cloudflare Full Strict при expired origin → **526**). **Автопродление отключено** (домен legacy, оплата до конца месяца): renewal-конфиг убран с сервера (`/root/letsencrypt-renewal-disabled/`), live-сертификат оставлен до естественного истечения/отключения домена)
 - остальные домены сервера — общий `/etc/letsencrypt/live/server.dygdyg.ru/` (не расширять его под `.win`)
 
@@ -290,10 +290,10 @@ sudo systemctl start track-anime-watch-party
 ```bash
 bash scripts/server-tuning/setup-track-anime-win.sh
 # или вручную:
-certbot certonly --nginx -d track-anime.win -d www.track-anime.win -d mirror.track-anime.win --cert-name track-anime.win --expand
+certbot certonly --nginx -d track-anime.win -d www.track-anime.win -d mirror.track-anime.win -d 777.track-anime.win --cert-name track-anime.win --expand
 ```
 
-Перед certbot для `mirror`: A/AAAA (или Cloudflare proxy) на тот же origin, что у `track-anime.win`.
+Перед certbot для `mirror` / `777`: A/AAAA (или Cloudflare proxy) на тот же origin, что у `track-anime.win`.
 
 Пример для произвольного домена `track-anime.example.com`:
 
@@ -435,7 +435,7 @@ npm run kodik:sync:scheduled
 
 ```powershell
 cd E:\GitHub\ta_new
-npm run deploy:smart        # сам выбирает канал: SSH git / tar / Actions / webhook
+npm run deploy:smart        # сам выбирает канал: webhook → SSH git / tar / Actions
 npm run deploy              # авто: site / rpc / apk по git diff (нужен SSH)
 .\scripts\deploy.ps1        # только сайт
 npm run deploy:rpc          # только Discord RPC exe

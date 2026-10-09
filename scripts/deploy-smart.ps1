@@ -1,16 +1,17 @@
 # Smart production deploy: pick the best channel for current network.
 #
-# Order:
-#   1) SSH + git checkout on server  → server-deploy-git-bg.sh
-#   2) SSH without git               → classic deploy.ps1 (tar/scp)
-#   3) GitHub Actions workflow_dispatch (runner SSH from outside RU)
-#   4) git push only                 → rely on GitHub webhook (if configured)
+# Order (auto):
+#   1) git push → GitHub webhook (server pull+build; Discord start/finish)
+#   2) SSH + git checkout on server  → server-deploy-git-bg.sh
+#   3) SSH without git               → classic deploy.ps1 (tar/scp)
+#   4) GitHub Actions workflow_dispatch (runner SSH from outside RU)
 #
 # Usage:
 #   .\scripts\deploy-smart.ps1
 #   .\scripts\deploy-smart.ps1 -DryRun
 #   .\scripts\deploy-smart.ps1 -Channel actions
 #   .\scripts\deploy-smart.ps1 -NoPush
+#   .\scripts\deploy-smart.ps1 -NoCommit
 #   npm run deploy:smart
 #
 # See docs/DEPLOY.md § Smart deploy
@@ -18,7 +19,7 @@
 param(
     [ValidateSet("auto", "ssh-git", "ssh-tar", "actions", "webhook-push")]
     [string]$Channel = "auto",
-    [string]$Remote = "root@194.180.189.34",
+    [string]$Remote = "root@151.245.136.79",
     [string]$SshKey = "$env:USERPROFILE\.ssh\id_rsa",
     [string]$ServerAppDir = "/var/www/ta_new",
     [string]$SiteUrl = "https://track-anime.win/",
@@ -26,6 +27,7 @@ param(
     [switch]$Force,
     [switch]$NoForce,
     [switch]$NoPush,
+    [switch]$NoCommit,
     [switch]$DryRun
 )
 
@@ -33,7 +35,7 @@ $ErrorActionPreference = "Stop"
 
 . (Join-Path $PSScriptRoot "deploy-config.ps1")
 
-$DefaultRemote = "root@194.180.189.34"
+$DefaultRemote = "root@151.245.136.79"
 $DefaultSshKey = "$env:USERPROFILE\.ssh\id_rsa"
 $DefaultServerAppDir = "/var/www/ta_new"
 
@@ -57,6 +59,9 @@ function Write-Smart {
 
 function Invoke-Ssh {
     param([string]$Command, [int]$ConnectTimeout = 20)
+    # Windows here-strings are CRLF; remote bash treats `pipefail\r` as invalid → exit 2,
+    # which deploy-smart used to misread as "already running" and hang forever.
+    $Command = $Command -replace "`r`n", "`n" -replace "`r", "`n"
     $opts = @(Get-TaDeploySshOptions -Key $SshKey -ConnectTimeout $ConnectTimeout)
     $prev = $ErrorActionPreference
     $ErrorActionPreference = "SilentlyContinue"
@@ -114,10 +119,140 @@ function Wait-DeployExitViaSsh {
     throw "Timed out waiting for deploy exit on server"
 }
 
+function Test-DeploySmartCommitSkipPath {
+    param([string]$Path)
+    $normalized = ($Path -replace "\\", "/").Trim().Trim('"')
+    if (-not $normalized) { return $true }
+
+    $skipPrefixes = @(
+        ".obsidian/",
+        "test/results/",
+        "test/results_hermes_composer/",
+        "test/results_hermes_local/",
+        "test/etalon/",
+        "node_modules/"
+    )
+    foreach ($prefix in $skipPrefixes) {
+        if ($normalized.StartsWith($prefix, [System.StringComparison]::OrdinalIgnoreCase)) {
+            return $true
+        }
+    }
+
+    $skipExact = @(
+        "body.txt",
+        "test/RESULTS_SUMMARY.md",
+        "tsconfig.tsbuildinfo"
+    )
+    foreach ($exact in $skipExact) {
+        if ($normalized.Equals($exact, [System.StringComparison]::OrdinalIgnoreCase)) {
+            return $true
+        }
+    }
+
+    # Local companion scratch copies ("копия" / em dash folder suffix)
+    if ($normalized -like "public/companion/*") {
+        $leaf = $normalized.Substring("public/companion/".Length)
+        $folder = ($leaf -split "/")[0]
+        if ($folder -match "копия" -or $folder -match "\s[—–-]\s") {
+            return $true
+        }
+    }
+    if ($normalized -match "(?i)\.tsbuildinfo$") { return $true }
+
+    return $false
+}
+
+function Get-DeploySmartDirtyPaths {
+    Set-Location $ProjectRoot
+    # quotepath=false: keep UTF-8 names instead of octal escapes
+    $lines = @(git -c core.quotepath=false status --porcelain -u --untracked-files=all 2>$null)
+    if ($LASTEXITCODE -ne 0) {
+        throw "git status failed"
+    }
+
+    $paths = New-Object System.Collections.Generic.List[string]
+    foreach ($line in $lines) {
+        if ([string]::IsNullOrWhiteSpace($line) -or $line.Length -lt 4) { continue }
+        $raw = $line.Substring(3).Trim()
+        if ($raw -match " -> ") {
+            $raw = ($raw -split " -> ", 2)[1].Trim()
+        }
+        $raw = $raw.Trim('"')
+        if (Test-DeploySmartCommitSkipPath -Path $raw) { continue }
+        $paths.Add(($raw -replace "\\", "/"))
+    }
+
+    return @($paths | Select-Object -Unique)
+}
+
+function Ensure-GitCommitted {
+    # Returns $true if a commit was created (or would be in DryRun).
+    if ($NoCommit) {
+        Write-Smart "NoCommit: skip auto-commit of local changes" -Color Yellow
+        return $false
+    }
+    if ($NoPush) {
+        Write-Smart "NoPush: skip auto-commit (nothing would be pushed)" -Color Yellow
+        return $false
+    }
+
+    Set-Location $ProjectRoot
+    $dirty = @(Get-DeploySmartDirtyPaths)
+    if ($dirty.Count -eq 0) {
+        Write-Smart "git: working tree clean (for deploy commit set)" -Color Green
+        return $false
+    }
+
+    Write-Smart ("git: auto-commit before deploy ($($dirty.Count) path(s))") -Color Cyan
+    foreach ($path in ($dirty | Select-Object -First 25)) {
+        Write-Host "  + $path" -ForegroundColor DarkGray
+    }
+    if ($dirty.Count -gt 25) {
+        Write-Host ("  … and {0} more" -f ($dirty.Count - 25)) -ForegroundColor DarkGray
+    }
+
+    if ($DryRun) {
+        Write-Smart "DryRun: would commit these paths" -Color Yellow
+        return $true
+    }
+
+    # Reliable on Windows PowerShell: stage everything, then unstage junk.
+    # (Per-path `git add` + stderr pipe falsely looks like failure on CRLF warnings.)
+    & git -c core.quotepath=false add -A
+    if ($LASTEXITCODE -ne 0) { throw "git add -A failed" }
+
+    $stagedLines = @(git -c core.quotepath=false diff --cached --name-only 2>$null)
+    foreach ($staged in $stagedLines) {
+        $p = ($staged.Trim().Trim('"') -replace "\\", "/")
+        if (Test-DeploySmartCommitSkipPath -Path $p) {
+            & git reset -q HEAD -- $p 2>$null | Out-Null
+        }
+    }
+
+    & git diff --cached --quiet
+    if ($LASTEXITCODE -eq 0) {
+        Write-Smart "git: nothing staged after filters — skip commit" -Color Yellow
+        return $false
+    }
+
+    $stamp = Get-Date -Format "yyyy-MM-dd HH:mm"
+    $message = @"
+chore: commit local changes before deploy ($stamp)
+
+Auto-committed by deploy-smart so webhook/ssh-git get the working tree.
+"@
+    & git commit -m $message
+    if ($LASTEXITCODE -ne 0) { throw "git commit failed" }
+
+    Write-Smart "git: committed local changes" -Color Green
+    return $true
+}
+
 function Ensure-GitPushed {
+    # Returns $true if commits were pushed (or would be pushed in DryRun), else $false.
     if ($NoPush) {
         Write-Smart "NoPush: skip git push" -Color Yellow
-        return
+        return $false
     }
 
     Set-Location $ProjectRoot
@@ -129,22 +264,24 @@ function Ensure-GitPushed {
     git rev-parse --abbrev-ref --symbolic-full-name "@{u}" 2>$null | Out-Null
     if ($LASTEXITCODE -ne 0) {
         Write-Smart "no upstream for $branch — push -u origin $branch"
-        if ($DryRun) { return }
+        if ($DryRun) { return $true }
         git push -u origin $branch
         if ($LASTEXITCODE -ne 0) { throw "git push failed" }
-        return
+        return $true
     }
 
     git fetch origin 2>$null | Out-Null
     $ahead = [int](git rev-list --count "@{u}..HEAD").Trim()
     if ($ahead -gt 0) {
         Write-Smart "pushing $ahead commit(s) on $branch → origin"
-        if ($DryRun) { return }
+        if ($DryRun) { return $true }
         git push origin $branch
         if ($LASTEXITCODE -ne 0) { throw "git push failed" }
-    } else {
-        Write-Smart "git: already pushed ($branch)" -Color Green
+        return $true
     }
+
+    Write-Smart "git: already pushed ($branch)" -Color Green
+    return $false
 }
 
 function Choose-Channel {
@@ -152,10 +289,17 @@ function Choose-Channel {
 
     if ($Channel -ne "auto") { return $Channel }
 
+    # Prefer GitHub webhook (push → server pull+build). SSH/Actions are fallbacks.
+    return "webhook-push"
+}
+
+function Choose-FallbackChannel {
+    param([bool]$SshOk, [bool]$ServerHasGit, [bool]$GhOk)
+
     if ($SshOk -and $ServerHasGit) { return "ssh-git" }
     if ($SshOk) { return "ssh-tar" }
     if ($GhOk) { return "actions" }
-    return "webhook-push"
+    return $null
 }
 
 # --- main ---
@@ -165,7 +309,8 @@ Write-Smart "project: $ProjectRoot"
 Write-Smart "remote:  $Remote"
 Write-TaDeployConfigStatus -Prefix "[deploy-smart]"
 
-Ensure-GitPushed
+$null = Ensure-GitCommitted
+$didPush = [bool](Ensure-GitPushed)
 
 Write-Smart "probing SSH..."
 $sshOk = Test-TaDeploySshEcho -Remote $Remote -SshKey $SshKey -ConnectTimeout 15
@@ -190,20 +335,41 @@ if ($null -ne $buildBefore) {
 $chosen = Choose-Channel -SshOk $sshOk -ServerHasGit $serverHasGit -GhOk $ghOk
 Write-Smart "chosen channel: $chosen" -Color Magenta
 
-if ($DryRun) {
-    Write-Smart "DryRun: stop before execute" -Color Yellow
-    exit 0
-}
-
 # Default: force rebuild (user/agent explicitly asked to deploy). -NoForce keeps skip-if-same-commit.
 $forceRebuild = -not $NoForce
 if ($Force) { $forceRebuild = $true }
 $forceFlag = if ($forceRebuild) { "1" } else { "0" }
 Write-Smart "force rebuild: $forceRebuild"
+Write-Smart ("git push this run: " + ($(if ($didPush) { "yes" } else { "no" })))
 
-switch ($chosen) {
-    "ssh-git" {
-        $cmd = @"
+# Webhook only fires on a real push. If nothing new was pushed but force is on,
+# fall back to SSH/Actions so an explicit «задеплой» still rebuilds.
+if ($chosen -eq "webhook-push" -and -not $didPush) {
+    if ($forceRebuild) {
+        $fallback = Choose-FallbackChannel -SshOk $sshOk -ServerHasGit $serverHasGit -GhOk $ghOk
+        if ($fallback) {
+            Write-Smart "webhook: nothing new to push + force → fallback $fallback" -Color Yellow
+            $chosen = $fallback
+        } else {
+            throw "Nothing new to push (force rebuild) and no SSH/gh fallback. Push a commit or fix SSH/Actions."
+        }
+    } else {
+        Write-Smart "already pushed and -NoForce — nothing to deploy" -Color Green
+        if ($DryRun) {
+            Write-Smart "DryRun: stop before execute" -Color Yellow
+        }
+        Write-Smart "done via channel=noop" -Color Green
+        exit 0
+    }
+}
+
+if ($DryRun) {
+    Write-Smart "DryRun: stop before execute (would use $chosen)" -Color Yellow
+    exit 0
+}
+
+function Invoke-SmartSshGit {
+    $cmd = @"
 set -euo pipefail
 cd '$ServerAppDir'
 export GIT_DEPLOY_TRIGGER=cli
@@ -212,62 +378,91 @@ export APP_DIR='$ServerAppDir'
 sed -i 's/\r`$//' scripts/*.sh 2>/dev/null || true
 bash scripts/server-deploy-git-bg.sh '$ServerAppDir' /tmp/ta_deploy.log
 "@
-        $start = Invoke-Ssh -Command $cmd -ConnectTimeout 30
-        if (-not $start.Ok -and $start.Code -ne 2) {
-            throw "Failed to start ssh-git deploy (exit $($start.Code)): $($start.Output)"
-        }
-        if ($start.Code -eq 2 -or $start.Output -match "already running") {
-            Write-Smart "deploy already running — waiting..." -Color Yellow
-        } else {
-            Write-Smart "ssh-git deploy started" -Color Green
-        }
-        $code = Wait-DeployExitViaSsh
-        if ($code -ne 0) { throw "ssh-git deploy failed (exit $code)" }
-        Write-Smart "ssh-git deploy OK" -Color Green
+    $start = Invoke-Ssh -Command $cmd -ConnectTimeout 30
+    $alreadyRunning = ($start.Output -match "already running")
+    if (-not $start.Ok -and -not $alreadyRunning) {
+        throw "Failed to start ssh-git deploy (exit $($start.Code)): $($start.Output)"
     }
+    if ($alreadyRunning) {
+        Write-Smart "deploy already running — waiting..." -Color Yellow
+    } else {
+        Write-Smart "ssh-git deploy started" -Color Green
+    }
+    $code = Wait-DeployExitViaSsh
+    if ($code -ne 0) { throw "ssh-git deploy failed (exit $code)" }
+    Write-Smart "ssh-git deploy OK" -Color Green
+}
 
+function Invoke-SmartActions {
+    Write-Smart "starting GitHub Actions workflow $Workflow ..."
+    $forceInput = if ($forceRebuild) { "true" } else { "false" }
+    & gh workflow run $Workflow -f "force=$forceInput"
+    if ($LASTEXITCODE -ne 0) { throw "gh workflow run failed" }
+    Start-Sleep -Seconds 4
+    $runUrl = & gh run list --workflow $Workflow --limit 1 --json databaseId,url --jq ".[0].url"
+    $runId = & gh run list --workflow $Workflow --limit 1 --json databaseId --jq ".[0].databaseId"
+    if ($runId) {
+        Write-Smart "watching run $runId ..."
+        & gh run watch $runId --exit-status
+        if ($LASTEXITCODE -ne 0) { throw "GitHub Actions deploy failed" }
+        Write-Smart "Actions deploy OK ($runUrl)" -Color Green
+    } else {
+        Write-Smart "workflow started; could not resolve run id — check Actions UI" -Color Yellow
+    }
+}
+
+function Invoke-SmartWebhookWait {
+    Write-Smart "relying on GitHub webhook after push (Discord: start + finish)" -Color Cyan
+    Write-Smart "if webhook is configured, server should pull+build soon"
+    Write-Smart "fallback: open /admin → «Задеплоить master» or -Channel ssh-git"
+    $deadline = (Get-Date).AddMinutes(15)
+    $sawChange = $false
+    while ((Get-Date) -lt $deadline) {
+        $now = Get-SiteBuildNumber -Url $SiteUrl
+        if ($null -ne $buildBefore -and $null -ne $now -and $now -gt $buildBefore) {
+            Write-Smart "site build advanced: #$buildBefore → #$now (webhook OK)" -Color Green
+            $sawChange = $true
+            break
+        }
+        Start-Sleep -Seconds 20
+    }
+    if (-not $sawChange) {
+        $fallback = Choose-FallbackChannel -SshOk $sshOk -ServerHasGit $serverHasGit -GhOk $ghOk
+        if ($fallback) {
+            Write-Smart "webhook/build not confirmed in 15m → fallback $fallback" -Color Yellow
+            return $fallback
+        }
+        throw "Webhook/build not confirmed. Configure GIT_DEPLOY_WEBHOOK_SECRET or use /admin deploy button."
+    }
+    return $null
+}
+
+$retryChannel = $null
+switch ($chosen) {
+    "ssh-git" { Invoke-SmartSshGit }
     "ssh-tar" {
         Write-Smart "falling back to classic tar/scp deploy.ps1"
         & (Join-Path $PSScriptRoot "deploy.ps1") -Remote $Remote -SshKey $SshKey -ServerAppDir $ServerAppDir
         if ($LASTEXITCODE -ne 0) { throw "deploy.ps1 failed (exit $LASTEXITCODE)" }
     }
-
-    "actions" {
-        Write-Smart "starting GitHub Actions workflow $Workflow ..."
-        $forceInput = if ($forceRebuild) { "true" } else { "false" }
-        & gh workflow run $Workflow -f "force=$forceInput"
-        if ($LASTEXITCODE -ne 0) { throw "gh workflow run failed" }
-        Start-Sleep -Seconds 4
-        $runUrl = & gh run list --workflow $Workflow --limit 1 --json databaseId,url --jq ".[0].url"
-        $runId = & gh run list --workflow $Workflow --limit 1 --json databaseId --jq ".[0].databaseId"
-        if ($runId) {
-            Write-Smart "watching run $runId ..."
-            & gh run watch $runId --exit-status
-            if ($LASTEXITCODE -ne 0) { throw "GitHub Actions deploy failed" }
-            Write-Smart "Actions deploy OK ($runUrl)" -Color Green
-        } else {
-            Write-Smart "workflow started; could not resolve run id — check Actions UI" -Color Yellow
-        }
-    }
-
+    "actions" { Invoke-SmartActions }
     "webhook-push" {
-        Write-Smart "no SSH/gh — relying on GitHub webhook after push" -Color Yellow
-        Write-Smart "if webhook is configured, server should pull+build soon"
-        Write-Smart "fallback: open /admin → «Задеплоить main» or fix Actions secrets"
-        $deadline = (Get-Date).AddMinutes(15)
-        $sawChange = $false
-        while ((Get-Date) -lt $deadline) {
-            $now = Get-SiteBuildNumber -Url $SiteUrl
-            if ($null -ne $buildBefore -and $null -ne $now -and $now -gt $buildBefore) {
-                Write-Smart "site build advanced: #$buildBefore → #$now (webhook likely OK)" -Color Green
-                $sawChange = $true
-                break
-            }
-            Start-Sleep -Seconds 20
+        $retryChannel = Invoke-SmartWebhookWait
+    }
+}
+
+if ($retryChannel) {
+    $chosen = $retryChannel
+    Write-Smart "retry via channel=$chosen" -Color Magenta
+    switch ($chosen) {
+        "ssh-git" { Invoke-SmartSshGit }
+        "ssh-tar" {
+            Write-Smart "falling back to classic tar/scp deploy.ps1"
+            & (Join-Path $PSScriptRoot "deploy.ps1") -Remote $Remote -SshKey $SshKey -ServerAppDir $ServerAppDir
+            if ($LASTEXITCODE -ne 0) { throw "deploy.ps1 failed (exit $LASTEXITCODE)" }
         }
-        if (-not $sawChange) {
-            throw "Webhook/build not confirmed. Configure Actions secrets or use /admin deploy button."
-        }
+        "actions" { Invoke-SmartActions }
+        default { throw "Unexpected fallback channel: $chosen" }
     }
 }
 
