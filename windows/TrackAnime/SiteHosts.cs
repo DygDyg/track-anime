@@ -18,7 +18,7 @@ internal static class SiteHosts
     public static readonly string[] FallbackHosts =
     [
         "track-anime.win",
-        "www.track-anime.win",
+        "mirror.track-anime.win",
         "mirror.track-anime.win",
         "track-anime.dygdyg.ru",
         "track-anime.duckdns.org",

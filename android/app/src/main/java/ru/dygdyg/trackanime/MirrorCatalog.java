@@ -27,7 +27,7 @@ final class MirrorCatalog {
     /** Совпадает с FALLBACK в track-anime.github.io/mirrors.js */
     static final String[] FALLBACK_HOSTS = {
             "track-anime.win",
-            "www.track-anime.win",
+            "mirror.track-anime.win",
             "mirror.track-anime.win",
             "track-anime.dygdyg.ru",
             "track-anime.duckdns.org",

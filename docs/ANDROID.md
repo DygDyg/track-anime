@@ -6,7 +6,7 @@
 
 - Android Studio (с Android SDK Platform 35);
 - JDK 17, используемая Android Studio;
-- подключение к `https://track-anime.win/` (список зеркал грузится с `https://track-anime.github.io/mirrors.json`, fallback: win → www → mirror → dygdyg → duckdns → ta).
+- подключение к `https://track-anime.win/` (список зеркал грузится с `https://track-anime.github.io/mirrors.json`, fallback: win → mirror → dygdyg → duckdns → ta).
   Роутер зеркал в браузере: https://track-anime.github.io/
 
 ## Сборка
