@@ -35,6 +35,7 @@ function parseOriginHost(origin: string): string | null {
 const DEFAULT_ALLOWED_ORIGIN_HOSTS = [
   "track-anime.win",
   "www.track-anime.win",
+  "mirror.track-anime.win",
   "ta.dygdyg.ru",
   "track-anime.dygdyg.ru",
   "track-anime.duckdns.org",

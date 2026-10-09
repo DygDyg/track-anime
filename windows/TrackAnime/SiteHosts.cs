@@ -19,6 +19,7 @@ internal static class SiteHosts
     [
         "track-anime.win",
         "www.track-anime.win",
+        "mirror.track-anime.win",
         "track-anime.dygdyg.ru",
         "track-anime.duckdns.org",
         "ta.dygdyg.ru",

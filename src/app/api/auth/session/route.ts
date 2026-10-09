@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
+import { getRequestHostname } from "@/lib/auth/request-origin";
 import { needsShikimoriFriendsReconnect, isFriendsScopeConfigured } from "@/lib/auth/shikimori-scope";
 import {
   isSecureRequest,
@@ -33,7 +34,12 @@ export async function GET(request: NextRequest) {
   });
 
   if (renewed) {
-    response.cookies.set(sessionCookieOptions(looked.token, isSecureRequest(request)));
+    response.cookies.set(
+      sessionCookieOptions(looked.token, {
+        secure: isSecureRequest(request),
+        hostname: getRequestHostname(request),
+      }),
+    );
   }
 
   return response;

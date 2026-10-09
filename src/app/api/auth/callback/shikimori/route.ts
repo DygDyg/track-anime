@@ -2,7 +2,7 @@ import { cookies } from "next/headers";
 import { NextRequest, NextResponse } from "next/server";
 import { authConfig, getShikimoriScope, isAuthConfigured } from "@/lib/auth/config";
 import { hasShikimoriScope, isFriendsScopeConfigured } from "@/lib/auth/shikimori-scope";
-import { getRequestOrigin } from "@/lib/auth/request-origin";
+import { getRequestHostname, getRequestOrigin } from "@/lib/auth/request-origin";
 import { consumeOAuthState } from "@/lib/auth/oauth-state-store";
 import {
   exchangeShikimoriCode,
@@ -14,6 +14,7 @@ import {
   clearOAuthReturnCookieOptions,
   clearOAuthStateCookieOptions,
   createSession,
+  isSecureRequest,
   sessionCookieOptions,
   upsertShikimoriUser,
 } from "@/lib/auth/session";
@@ -116,7 +117,12 @@ export async function GET(request: NextRequest) {
     const redirectTarget = returnPath?.startsWith("/") ? returnPath : "/";
 
     const response = NextResponse.redirect(new URL(redirectTarget, baseUrl));
-    response.cookies.set(sessionCookieOptions(sessionToken));
+    response.cookies.set(
+      sessionCookieOptions(sessionToken, {
+        secure: isSecureRequest(request),
+        hostname: getRequestHostname(request),
+      }),
+    );
     clearOAuthCookies(response);
     return response;
   } catch (err) {

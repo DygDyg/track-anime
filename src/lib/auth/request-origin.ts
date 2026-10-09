@@ -29,11 +29,17 @@ export function getRequestOrigin(request: NextRequest): string {
   return resolveAuthOrigin(request.nextUrl.origin);
 }
 
-export function isPublicHostRequest(request: NextRequest): boolean {
-  const host = firstHeaderValue(request.headers.get("x-forwarded-host")) ??
+/** Hostname запроса (без порта), с учётом X-Forwarded-Host. */
+export function getRequestHostname(request: NextRequest): string | null {
+  const host =
+    firstHeaderValue(request.headers.get("x-forwarded-host")) ??
     firstHeaderValue(request.headers.get("host"));
-  if (!host) return false;
+  if (!host) return null;
+  return host.split(":")[0]?.toLowerCase() || null;
+}
 
-  const hostname = host.split(":")[0]?.toLowerCase() ?? "";
+export function isPublicHostRequest(request: NextRequest): boolean {
+  const hostname = getRequestHostname(request);
+  if (!hostname) return false;
   return !isLocalHostname(hostname);
 }

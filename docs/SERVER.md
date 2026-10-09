@@ -228,6 +228,16 @@ sudo -u www-data sudo -n /sbin/shutdown -r +60
 sudo -u www-data sudo -n /sbin/shutdown -c
 ```
 
+### Ежедневный ребут хоста (cron)
+
+На prod: каждый день в **05:00 Europe/Moscow** (`/etc/cron.d/track-anime-reboot`, `CRON_TZ` — не зависит от TZ сервера).
+
+```bash
+bash /var/www/ta_new/scripts/server-tuning/install-daily-reboot-cron.sh
+# отключить:
+bash /var/www/ta_new/scripts/server-tuning/disable-daily-reboot-cron.sh
+```
+
 ### systemd-сервис WebSocket-комнат
 
 Совместный просмотр TA-плеера работает через отдельный in-memory WebSocket-процесс.
@@ -266,20 +276,24 @@ sudo systemctl start track-anime-watch-party
 
 ## 6. Nginx + HTTPS
 
-Прод: зеркала `track-anime.win` (+ `www`), `track-anime.duckdns.org` → Next.js `:3001`. Конфиг в `scripts/server-tuning/nginx.conf` + `track-anime-proxy.conf`, применение: `bash scripts/server-tuning/apply-track-anime-nginx.sh`. В `track-anime-proxy.conf` обязателен `location /watch-party-ws` → `:3002` (иначе `wss` уходит в Next.js и совместный просмотр «висит»).
+Прод: зеркала `track-anime.win` (+ `www` + `mirror`), `track-anime.duckdns.org` → Next.js `:3001`. Конфиг в `scripts/server-tuning/nginx.conf` + `track-anime-proxy.conf`, применение: `bash scripts/server-tuning/apply-track-anime-nginx.sh`. В `track-anime-proxy.conf` обязателен `location /watch-party-ws` → `:3002` (иначе `wss` уходит в Next.js и совместный просмотр «висит»).
 
 `track-anime.dygdyg.ru` и `ta.dygdyg.ru` (80/443): для обычных браузеров (`Mozilla*`) — HTML 200 bounce (`error_page 418` / `@ta_legacy_bounce`, `Cache-Control: no-store`) с `location.replace` на `https://track-anime.win$uri?…&legacy_redirect=1` (не 301: браузеры навсегда кэшируют Location и иначе игнорируют новый query). Клиент (`LegacyDomainRedirectNotice` + early script в `layout.tsx`) показывает модалку про отключение legacy-доменов и ссылки на `https://track-anime.github.io` / `https://track-anime.win/`. Без bounce для Android WebView (`; wv)`), `TrackAnimeAndroid` / `TrackAnimeWindows` — иначе старая оболочка открывает `.win` во внешнем браузере и не видит in-app update.
 
 Сертификаты Let's Encrypt (certbot timer):
-- `track-anime.win` (+ `www.track-anime.win`) — **отдельный** сертификат `/etc/letsencrypt/live/track-anime.win/`
-- `track-anime.dygdyg.ru` + `ta.dygdyg.ru` — **отдельный** `/etc/letsencrypt/live/track-anime-legacy.dygdyg.ru/` (не смешивать с `server.dygdyg.ru`: общий SAN-пакет ломает renew при NXDOMAIN/устаревших A-записях; Cloudflare Full Strict при expired origin → **526**)
+- `track-anime.win` (+ `www.track-anime.win` + `mirror.track-anime.win`) — **отдельный** сертификат `/etc/letsencrypt/live/track-anime.win/`
+- `track-anime.dygdyg.ru` + `ta.dygdyg.ru` — **отдельный** `/etc/letsencrypt/live/track-anime-legacy.dygdyg.ru/` (не смешивать с `server.dygdyg.ru`: общий SAN-пакет ломает renew при NXDOMAIN/устаревших A-записях; Cloudflare Full Strict при expired origin → **526**). **Автопродление отключено** (домен legacy, оплата до конца месяца): renewal-конфиг убран с сервера (`/root/letsencrypt-renewal-disabled/`), live-сертификат оставлен до естественного истечения/отключения домена)
 - остальные домены сервера — общий `/etc/letsencrypt/live/server.dygdyg.ru/` (не расширять его под `.win`)
 
-Выпуск только для нового домена без затрагивания старого:
+Выпуск / расширение SAN без затрагивания `server.dygdyg.ru`:
 
 ```bash
-certbot certonly --nginx -d track-anime.win -d www.track-anime.win --cert-name track-anime.win
+bash scripts/server-tuning/setup-track-anime-win.sh
+# или вручную:
+certbot certonly --nginx -d track-anime.win -d www.track-anime.win -d mirror.track-anime.win --cert-name track-anime.win --expand
 ```
+
+Перед certbot для `mirror`: A/AAAA (или Cloudflare proxy) на тот же origin, что у `track-anime.win`.
 
 Пример для произвольного домена `track-anime.example.com`:
 

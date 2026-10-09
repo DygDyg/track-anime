@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { claimQrLogin } from "@/lib/auth/qr-login";
+import { getRequestHostname } from "@/lib/auth/request-origin";
 import { isSecureRequest, sessionCookieOptions } from "@/lib/auth/session";
 
 export const runtime = "nodejs";
@@ -11,6 +12,11 @@ export async function POST(request: NextRequest) {
   const sessionToken = await claimQrLogin(code, requesterSecret);
   if (!sessionToken) return NextResponse.json({ error: "QR-вход ещё не подтверждён или уже использован." }, { status: 409 });
   const response = NextResponse.json({ ok: true });
-  response.cookies.set(sessionCookieOptions(sessionToken, isSecureRequest(request)));
+  response.cookies.set(
+    sessionCookieOptions(sessionToken, {
+      secure: isSecureRequest(request),
+      hostname: getRequestHostname(request),
+    }),
+  );
   return response;
 }

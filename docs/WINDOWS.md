@@ -55,7 +55,7 @@ npm run deploy:windows -- -SkipPublish
 
 ## Поведение
 
-- Зеркала: список с `https://track-anime.github.io/mirrors.json` (порядок = приоритет; fallback: win → www → dygdyg → duckdns → ta; таймаут 12 с / сетевая ошибка).
+- Зеркала: список с `https://track-anime.github.io/mirrors.json` (порядок = приоритет; fallback: win → www → mirror → dygdyg → duckdns → ta; таймаут 12 с / сетевая ошибка).
   Веб-роутер: https://track-anime.github.io/.
 - Если прямые зеркала недоступны — HTTP-прокси из настроек / `windows/TrackAnime/local.properties` (те же ключи, что у Android: `trackAnimeProxy*`).
 - Deep link `trackanime://settings` — нативные настройки оболочки; `taproxy://…` — как на Android.

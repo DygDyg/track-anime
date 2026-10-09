@@ -115,7 +115,31 @@ export function isSecureRequest(request: Request): boolean {
   return new URL(request.url).protocol === "https:";
 }
 
-export function sessionCookieOptions(token: string, secure = process.env.NODE_ENV === "production") {
+/** Общая сессия для apex / www / mirror на track-anime.win. */
+export const SHARED_AUTH_COOKIE_DOMAIN = ".track-anime.win";
+
+/** Domain для cookie только на *.track-anime.win (duckdns/legacy остаются host-only). */
+export function sharedAuthCookieDomainForHost(hostname: string | null | undefined): string | undefined {
+  if (!hostname) return undefined;
+  const host = hostname.split(":")[0]?.toLowerCase() ?? "";
+  if (host === "track-anime.win" || host.endsWith(".track-anime.win")) {
+    return SHARED_AUTH_COOKIE_DOMAIN;
+  }
+  return undefined;
+}
+
+export type SessionCookieOpts = {
+  secure?: boolean;
+  hostname?: string | null;
+};
+
+export function sessionCookieOptions(
+  token: string,
+  opts: boolean | SessionCookieOpts = process.env.NODE_ENV === "production",
+) {
+  const secure = typeof opts === "boolean" ? opts : (opts.secure ?? process.env.NODE_ENV === "production");
+  const hostname = typeof opts === "boolean" ? undefined : opts.hostname;
+  const domain = sharedAuthCookieDomainForHost(hostname);
   return {
     name: authConfig.sessionCookie,
     value: token,
@@ -124,10 +148,12 @@ export function sessionCookieOptions(token: string, secure = process.env.NODE_EN
     secure,
     path: "/",
     maxAge: authConfig.sessionMaxAgeSec,
+    ...(domain ? { domain } : {}),
   };
 }
 
-export function clearSessionCookieOptions() {
+export function clearSessionCookieOptions(hostname?: string | null) {
+  const domain = sharedAuthCookieDomainForHost(hostname);
   return {
     name: authConfig.sessionCookie,
     value: "",
@@ -136,7 +162,26 @@ export function clearSessionCookieOptions() {
     secure: process.env.NODE_ENV === "production",
     path: "/",
     maxAge: 0,
+    ...(domain ? { domain } : {}),
   };
+}
+
+/** Logout: Domain cookie + leftover host-only на *.track-anime.win. */
+export function clearSessionCookieOptionsList(hostname?: string | null) {
+  const shared = clearSessionCookieOptions(hostname);
+  if (!sharedAuthCookieDomainForHost(hostname)) return [shared];
+  return [
+    shared,
+    {
+      name: authConfig.sessionCookie,
+      value: "",
+      httpOnly: true,
+      sameSite: "lax" as const,
+      secure: process.env.NODE_ENV === "production",
+      path: "/",
+      maxAge: 0,
+    },
+  ];
 }
 
 export function oauthStateCookieOptions(state: string) {

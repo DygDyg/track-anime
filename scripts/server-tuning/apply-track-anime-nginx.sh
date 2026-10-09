@@ -30,7 +30,7 @@ else
 import sys
 src, dst = sys.argv[1], sys.argv[2]
 text = open(src, encoding="utf-8").read()
-marker = "server {\n\t\tlisten 443 ssl;\n\t\tserver_name track-anime.win;"
+marker = "server {\n\t\tlisten 443 ssl;\n\t\tserver_name track-anime.win"
 start = text.find(marker)
 if start < 0:
     open(dst, "w", encoding="utf-8").write(text)

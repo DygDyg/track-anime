@@ -5,7 +5,7 @@
 **Сервер:** `root@151.245.136.79`  
 **Каталог на сервере:** `/var/www/ta_new`  
 **Сайт:** https://track-anime.win/
-**Зеркала:** https://track-anime.win/, https://www.track-anime.win/ и https://track-anime.duckdns.org/
+**Зеркала:** https://track-anime.win/, https://www.track-anime.win/, https://mirror.track-anime.win/ и https://track-anime.duckdns.org/
 
 **Миграция (окт 2026):** приложение и БД на `151.245.136.79`. Cloudflare origin для `track-anime.win` указывает на новый IP. На старом `194.180.189.34` в nginx `stream` ещё может быть запасной `upstream web_new` → новый:443 (rollback); через несколько дней можно убрать. Старый VPS не гасить сразу.
 **Редирект:** `track-anime.dygdyg.ru` и `ta.dygdyg.ru` → HTML-bounce (200, без кэшируемого 301) → `https://track-anime.win/*?legacy_redirect=1` только для обычных браузеров; сайт показывает модалку с актуальными ссылками (`track-anime.github.io`, `track-anime.win`). Android WebView (`; wv)`) и UA `TrackAnimeAndroid` / `TrackAnimeWindows` остаются на legacy-хосте (in-app update). Если модалка не появляется — скорее всего в браузере закэширован старый 301: инкогнито или очистка кэша для этих доменов.
@@ -462,9 +462,14 @@ ssh -i $env:USERPROFILE\.ssh\id_rsa root@151.245.136.79 "systemctl status track-
 ssh root@151.245.136.79 "cd /var/www/ta_new && npm run build"
 ```
 
-### `set: pipefail: invalid option name`
+### `set: pipefail: invalid option name` / `deploy already running` зависает
 
-CRLF в bash-скриптах (Windows). Скрипт `deploy.ps1` исправляет это автоматически перед запуском. Локально держите `scripts/*.sh` с LF-окончаниями.
+Две разные CRLF-ловушки:
+
+1. **CRLF в `scripts/*.sh` на сервере** — `deploy.ps1` / `server-deploy-*-bg.sh` делают `sed` перед запуском. Локально держите `.sh` с LF.
+2. **CRLF в multiline SSH-команде из PowerShell** (`deploy-smart.ps1`) — Windows here-string шлёт `set -euo pipefail\r`, bash отвечает `invalid option name` и **exit 2**. Раньше `deploy-smart` принимал любой exit 2 за «already running» и ждал `/tmp/ta_deploy.exit` вечно. Сейчас `Invoke-Ssh` нормализует команду в LF, а «already running» определяется только по тексту вывода.
+
+Если локальный `deploy:smart` уже завис на waiting — `Ctrl+C`, на сервере проверьте `screen -ls` / `tail /tmp/ta_deploy.log`; при пустом screen можно сразу перезапустить `npm run deploy:smart`.
 
 ### TypeScript падает на `scripts/*.ts`
 

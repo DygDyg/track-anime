@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { findUserByLocalCredential } from "@/lib/auth/local-credentials";
+import { getRequestHostname } from "@/lib/auth/request-origin";
 import { createSession, isSecureRequest, sessionCookieOptions } from "@/lib/auth/session";
 
 export const runtime = "nodejs";
@@ -12,6 +13,11 @@ export async function POST(request: NextRequest) {
   if (!user) return NextResponse.json({ error: "Неверный логин или пароль." }, { status: 401 });
 
   const response = NextResponse.json({ ok: true });
-  response.cookies.set(sessionCookieOptions(await createSession(user.id), isSecureRequest(request)));
+  response.cookies.set(
+    sessionCookieOptions(await createSession(user.id), {
+      secure: isSecureRequest(request),
+      hostname: getRequestHostname(request),
+    }),
+  );
   return response;
 }
