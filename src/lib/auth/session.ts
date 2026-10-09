@@ -2,6 +2,10 @@ import { cookies } from "next/headers";
 import { prisma } from "@/lib/prisma";
 import { authConfig, isBootstrapAdmin } from "@/lib/auth/config";
 import { shikimoriAvatarUrl } from "@/lib/auth/shikimori-avatar";
+import {
+  SHARED_SITE_COOKIE_DOMAIN,
+  sharedSiteCookieDomainForHost,
+} from "@/lib/shared-site-cookie-domain";
 
 export type AuthUser = {
   id: string;
@@ -115,18 +119,11 @@ export function isSecureRequest(request: Request): boolean {
   return new URL(request.url).protocol === "https:";
 }
 
-/** Общая сессия для apex / www / mirror на track-anime.win. */
-export const SHARED_AUTH_COOKIE_DOMAIN = ".track-anime.win";
+/** @deprecated Используйте SHARED_SITE_COOKIE_DOMAIN */
+export const SHARED_AUTH_COOKIE_DOMAIN = SHARED_SITE_COOKIE_DOMAIN;
 
-/** Domain для cookie только на *.track-anime.win (duckdns/legacy остаются host-only). */
-export function sharedAuthCookieDomainForHost(hostname: string | null | undefined): string | undefined {
-  if (!hostname) return undefined;
-  const host = hostname.split(":")[0]?.toLowerCase() ?? "";
-  if (host === "track-anime.win" || host.endsWith(".track-anime.win")) {
-    return SHARED_AUTH_COOKIE_DOMAIN;
-  }
-  return undefined;
-}
+/** @deprecated Используйте sharedSiteCookieDomainForHost */
+export const sharedAuthCookieDomainForHost = sharedSiteCookieDomainForHost;
 
 export type SessionCookieOpts = {
   secure?: boolean;
@@ -139,7 +136,7 @@ export function sessionCookieOptions(
 ) {
   const secure = typeof opts === "boolean" ? opts : (opts.secure ?? process.env.NODE_ENV === "production");
   const hostname = typeof opts === "boolean" ? undefined : opts.hostname;
-  const domain = sharedAuthCookieDomainForHost(hostname);
+  const domain = sharedSiteCookieDomainForHost(hostname);
   return {
     name: authConfig.sessionCookie,
     value: token,
@@ -153,7 +150,7 @@ export function sessionCookieOptions(
 }
 
 export function clearSessionCookieOptions(hostname?: string | null) {
-  const domain = sharedAuthCookieDomainForHost(hostname);
+  const domain = sharedSiteCookieDomainForHost(hostname);
   return {
     name: authConfig.sessionCookie,
     value: "",
@@ -169,7 +166,7 @@ export function clearSessionCookieOptions(hostname?: string | null) {
 /** Logout: Domain cookie + leftover host-only на *.track-anime.win. */
 export function clearSessionCookieOptionsList(hostname?: string | null) {
   const shared = clearSessionCookieOptions(hostname);
-  if (!sharedAuthCookieDomainForHost(hostname)) return [shared];
+  if (!sharedSiteCookieDomainForHost(hostname)) return [shared];
   return [
     shared,
     {

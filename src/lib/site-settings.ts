@@ -4,6 +4,7 @@ import {
   parsePatternBackgroundId,
   patternBackgroundLabel,
 } from "@/lib/pattern-backgrounds";
+import { sharedSiteCookieDomainForHost } from "@/lib/shared-site-cookie-domain";
 import { filterPopularTranslationNames } from "@/lib/translation-colors";
 import {
   parseTranslationIntroOffsets,
@@ -204,12 +205,64 @@ export function mergeRemoteWithLocalSiteSettings(
 }
 
 export const SITE_SETTINGS_STORAGE_KEY = "track-anime-site-settings";
+/** Local-only flags shared across *.track-anime.win (not httpOnly — read in init script). */
+export const LOCAL_SETTINGS_COOKIE = "ta.localSettings";
+const LOCAL_SETTINGS_COOKIE_MAX_AGE_SEC = 60 * 60 * 24 * 365;
 /** One-time client reset: force TA player after removing anime-page Kodik toggle. */
 export const USE_LEGACY_KODIK_PLAYER_RESET_STORAGE_KEY =
   "ta.siteSettings.reset.useLegacyKodikPlayer.v1";
 export const HOME_HISTORY_COLLAPSED_STORAGE_KEY = "track-anime-home-history-collapsed";
 export const HOME_UPCOMING_SOON_COLLAPSED_STORAGE_KEY = "track-anime-home-upcoming-soon-collapsed";
 export const HOME_STATUS_FILTER_STORAGE_KEY = "track-anime-home-status-filter";
+
+function readBrowserCookie(name: string): string | null {
+  if (typeof document === "undefined") return null;
+  const prefix = `${name}=`;
+  for (const part of document.cookie.split(";")) {
+    const trimmed = part.trim();
+    if (trimmed.startsWith(prefix)) {
+      return decodeURIComponent(trimmed.slice(prefix.length));
+    }
+  }
+  return null;
+}
+
+function writeBrowserCookie(name: string, value: string, maxAgeSec: number): void {
+  if (typeof document === "undefined") return;
+  const secure = window.location.protocol === "https:" ? "; Secure" : "";
+  const domain = sharedSiteCookieDomainForHost(window.location.hostname);
+  const domainPart = domain ? `; Domain=${domain}` : "";
+  document.cookie =
+    `${name}=${encodeURIComponent(value)}; Path=/; Max-Age=${maxAgeSec}; SameSite=Lax` +
+    secure +
+    domainPart;
+}
+
+function parseLocalOnlyFromCookieRaw(
+  raw: string | null | undefined,
+): Pick<SiteSettings, LocalOnlySiteSettingKey> | null {
+  if (!raw?.trim()) return null;
+  try {
+    const parsed = JSON.parse(raw) as unknown;
+    if (!parsed || typeof parsed !== "object" || Array.isArray(parsed)) return null;
+    const normalized = normalizeSiteSettings({
+      ...DEFAULT_SITE_SETTINGS,
+      ...(parsed as Record<string, unknown>),
+    });
+    return pickLocalOnlySiteSettings(normalized);
+  } catch {
+    return null;
+  }
+}
+
+export function readLocalOnlySettingsCookie(): Pick<SiteSettings, LocalOnlySiteSettingKey> | null {
+  return parseLocalOnlyFromCookieRaw(readBrowserCookie(LOCAL_SETTINGS_COOKIE));
+}
+
+export function writeLocalOnlySettingsCookie(settings: SiteSettings): void {
+  const payload = JSON.stringify(pickLocalOnlySiteSettings(settings));
+  writeBrowserCookie(LOCAL_SETTINGS_COOKIE, payload, LOCAL_SETTINGS_COOKIE_MAX_AGE_SEC);
+}
 
 export const DEFAULT_SITE_SETTINGS: SiteSettings = {
   fontFamily: "inter",
@@ -468,12 +521,19 @@ export function readStoredSiteSettings(fallback: SiteSettings = DEFAULT_SITE_SET
   if (typeof window === "undefined") return { ...fallback };
   try {
     const raw = localStorage.getItem(SITE_SETTINGS_STORAGE_KEY);
-    if (!raw) return { ...fallback };
-    const parsed = JSON.parse(raw);
-    if (parsed.fontFamily && !SITE_FONT_IDS.includes(parsed.fontFamily)) {
-      parsed.fontFamily = "inter";
+    let base: SiteSettings = { ...fallback };
+    if (raw) {
+      const parsed = JSON.parse(raw);
+      if (parsed.fontFamily && !SITE_FONT_IDS.includes(parsed.fontFamily)) {
+        parsed.fontFamily = "inter";
+      }
+      base = normalizeSiteSettings(parsed);
     }
-    return normalizeSiteSettings(parsed);
+    const fromCookie = readLocalOnlySettingsCookie();
+    if (fromCookie) {
+      return { ...base, ...fromCookie };
+    }
+    return base;
   } catch {
     return { ...fallback };
   }
@@ -521,12 +581,17 @@ export function consumeUseLegacyKodikPlayerDefaultReset(settings: SiteSettings):
 
 export function hasStoredSiteSettings(): boolean {
   if (typeof window === "undefined") return false;
-  return localStorage.getItem(SITE_SETTINGS_STORAGE_KEY) !== null;
+  return (
+    localStorage.getItem(SITE_SETTINGS_STORAGE_KEY) !== null ||
+    readLocalOnlySettingsCookie() !== null
+  );
 }
 
 export function buildSiteSettingsInitScript(defaults: SiteSettings): string {
   const fallback = JSON.stringify(defaults);
-  return `(function(){try{var k="${SITE_SETTINGS_STORAGE_KEY}";var raw=localStorage.getItem(k);var d=raw?JSON.parse(raw):${fallback};var el=document.documentElement;var f=d.fontFamily||"inter";var c=d.cursorStyle||"default";var s=d.cardSize||"normal";var a=d.accentPreset||"blue";var b=d.backgroundDim||"medium";var bg=typeof d.backgroundImageUrl==="string"&&d.backgroundImageUrl.length>0;var allowed=${JSON.stringify(SITE_FONT_IDS)};var cursors=${JSON.stringify(SITE_CURSOR_OPTIONS.map((item) => item.id))};if(allowed.indexOf(f)===-1)f="inter";if(cursors.indexOf(c)===-1)c="default";el.setAttribute("data-font",f);el.setAttribute("data-cursor",c);el.setAttribute("data-card-size",s);el.setAttribute("data-accent",a);el.setAttribute("data-bg-dim",b);el.setAttribute("data-site-bg",bg?"true":"false");el.setAttribute("data-tv-nav-enabled",d.tvNavigationEnabled===false?"false":"true");if(d.tvNavigationEnabled===false)el.removeAttribute("data-tv-nav");if(d.playerLargeUi===true)el.setAttribute("data-player-large-ui","true");else el.removeAttribute("data-player-large-ui");if(d.reduceMotion===true)el.setAttribute("data-reduce-motion","true");else el.removeAttribute("data-reduce-motion");}catch(e){}})();`;
+  const cookieName = LOCAL_SETTINGS_COOKIE;
+  const localKeys = JSON.stringify([...LOCAL_ONLY_SITE_SETTING_KEYS]);
+  return `(function(){try{var k="${SITE_SETTINGS_STORAGE_KEY}";var raw=localStorage.getItem(k);var d=raw?JSON.parse(raw):${fallback};try{var ck=document.cookie.split(";");var prefix="${cookieName}=";for(var i=0;i<ck.length;i++){var p=ck[i].trim();if(p.indexOf(prefix)===0){var local=JSON.parse(decodeURIComponent(p.slice(prefix.length)));var keys=${localKeys};for(var j=0;j<keys.length;j++){var key=keys[j];if(Object.prototype.hasOwnProperty.call(local,key))d[key]=local[key];}break;}}}catch(e){}var el=document.documentElement;var f=d.fontFamily||"inter";var c=d.cursorStyle||"default";var s=d.cardSize||"normal";var a=d.accentPreset||"blue";var b=d.backgroundDim||"medium";var bg=typeof d.backgroundImageUrl==="string"&&d.backgroundImageUrl.length>0;var allowed=${JSON.stringify(SITE_FONT_IDS)};var cursors=${JSON.stringify(SITE_CURSOR_OPTIONS.map((item) => item.id))};if(allowed.indexOf(f)===-1)f="inter";if(cursors.indexOf(c)===-1)c="default";el.setAttribute("data-font",f);el.setAttribute("data-cursor",c);el.setAttribute("data-card-size",s);el.setAttribute("data-accent",a);el.setAttribute("data-bg-dim",b);el.setAttribute("data-site-bg",bg?"true":"false");el.setAttribute("data-tv-nav-enabled",d.tvNavigationEnabled===false?"false":"true");if(d.tvNavigationEnabled===false)el.removeAttribute("data-tv-nav");if(d.playerLargeUi===true)el.setAttribute("data-player-large-ui","true");else el.removeAttribute("data-player-large-ui");if(d.reduceMotion===true)el.setAttribute("data-reduce-motion","true");else el.removeAttribute("data-reduce-motion");}catch(e){}})();`;
 }
 
 export const siteSettingsInitScript = buildSiteSettingsInitScript(DEFAULT_SITE_SETTINGS);
@@ -557,6 +622,11 @@ export function applySiteSettings(settings: SiteSettings): void {
     root.removeAttribute("data-player-large-ui");
   }
   localStorage.setItem(SITE_SETTINGS_STORAGE_KEY, JSON.stringify(settings));
+  try {
+    writeLocalOnlySettingsCookie(settings);
+  } catch {
+    /* ignore cookie quota / privacy mode */
+  }
 }
 
 export function isHomeTranslationVisible(
