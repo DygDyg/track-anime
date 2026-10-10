@@ -49,6 +49,14 @@ const SEARCH_PANEL_MOBILE_MAX_WIDTH = 639;
 /** Было 28rem (448px), +50% для десктопа */
 const SEARCH_PANEL_DESKTOP_MAX_WIDTH = 672;
 
+/** UI-only стадии скелетона (не влияют на fetch) */
+const SEARCH_STATUS_TITLE = "Ищем по названию…";
+const SEARCH_STATUS_REFINING = "Уточняем запрос…";
+const SEARCH_STATUS_ALMOST = "Почти готово…";
+const SEARCH_STATUS_LAYOUT = "Пробуем другую раскладку…";
+const SEARCH_STATUS_REFINE_MS = 1600;
+const SEARCH_STATUS_ALMOST_MS = 3200;
+
 type SearchResponse = {
   total: number;
   items: SearchResultDto[];
@@ -126,6 +134,7 @@ export function HeaderSearch({
   const abortRef = useRef<AbortController | null>(null);
   const resultsScrollRef = useRef<HTMLDivElement>(null);
   const tvEditingRef = useRef(false);
+  const statusTimersRef = useRef<number[]>([]);
 
   const isBottomSheet = variant === "bottom";
 
@@ -137,6 +146,7 @@ export function HeaderSearch({
   const [total, setTotal] = useState(0);
   const [loading, setLoading] = useState(false);
   const [expandingSearch, setExpandingSearch] = useState(false);
+  const [searchStatus, setSearchStatus] = useState<string | null>(null);
   const [searchDebounceMs, setSearchDebounceMs] = useState(DEFAULT_HEADER_SEARCH_DEBOUNCE_MS);
   const [open, setOpen] = useState(false);
   const [tvNavActive, setTvNavActive] = useState(false);
@@ -251,6 +261,33 @@ export function HeaderSearch({
     });
   }, []);
 
+  const clearSearchStatusTimers = useCallback(() => {
+    for (const id of statusTimersRef.current) window.clearTimeout(id);
+    statusTimersRef.current = [];
+  }, []);
+
+  const clearSearchStatus = useCallback(() => {
+    clearSearchStatusTimers();
+    setSearchStatus(null);
+  }, [clearSearchStatusTimers]);
+
+  const beginTitleSearchStatus = useCallback(
+    (requestId: number) => {
+      clearSearchStatusTimers();
+      setSearchStatus(SEARCH_STATUS_TITLE);
+      const refineTimer = window.setTimeout(() => {
+        if (requestId !== requestIdRef.current) return;
+        setSearchStatus(SEARCH_STATUS_REFINING);
+      }, SEARCH_STATUS_REFINE_MS);
+      const almostTimer = window.setTimeout(() => {
+        if (requestId !== requestIdRef.current) return;
+        setSearchStatus(SEARCH_STATUS_ALMOST);
+      }, SEARCH_STATUS_ALMOST_MS);
+      statusTimersRef.current = [refineTimer, almostTimer];
+    },
+    [clearSearchStatusTimers],
+  );
+
   const reset = useCallback(() => {
     setQuery("");
     setLayoutCorrectedQuery(null);
@@ -259,7 +296,14 @@ export function HeaderSearch({
     setOpen(false);
     setLoading(false);
     setExpandingSearch(false);
-  }, []);
+    clearSearchStatus();
+  }, [clearSearchStatus]);
+
+  useEffect(() => {
+    return () => {
+      clearSearchStatusTimers();
+    };
+  }, [clearSearchStatusTimers]);
 
   const fetchSearch = useCallback(async (params: URLSearchParams, signal: AbortSignal) => {
     const response = await fetch(`/api/search?${params.toString()}`, { signal });
@@ -275,6 +319,7 @@ export function HeaderSearch({
       setLayoutCorrectedQuery(null);
       setLoading(false);
       setExpandingSearch(false);
+      clearSearchStatus();
       return;
     }
 
@@ -286,6 +331,7 @@ export function HeaderSearch({
     emitCompanionReaction("searching");
     setExpandingSearch(false);
     setLayoutCorrectedQuery(null);
+    beginTitleSearchStatus(requestId);
 
     const runSearch = async (searchValue: string) => {
       const titleParams = new URLSearchParams({
@@ -304,6 +350,7 @@ export function HeaderSearch({
       if (titleData.items.length < HEADER_DESCRIPTION_SUPPLEMENT_THRESHOLD) {
         const needed = HEADER_SEARCH_LIMIT - titleData.items.length;
         if (needed > 0) {
+          clearSearchStatus();
           setExpandingSearch(true);
 
           const descriptionParams = new URLSearchParams({
@@ -345,6 +392,7 @@ export function HeaderSearch({
         setItems(primary.items);
         setTotal(primary.total);
         setLoading(false);
+        clearSearchStatus();
         return;
       }
 
@@ -353,8 +401,12 @@ export function HeaderSearch({
         setItems([]);
         setTotal(0);
         setLoading(false);
+        clearSearchStatus();
         return;
       }
+
+      clearSearchStatusTimers();
+      setSearchStatus(SEARCH_STATUS_LAYOUT);
 
       const corrected = await runSearch(alternateQuery);
       if (requestId !== requestIdRef.current || corrected === null) return;
@@ -363,6 +415,7 @@ export function HeaderSearch({
       setTotal(corrected.total);
       setLayoutCorrectedQuery(corrected.items.length > 0 ? alternateQuery : null);
       setLoading(false);
+      clearSearchStatus();
     } catch (error) {
       if (error instanceof DOMException && error.name === "AbortError") return;
       if (requestId !== requestIdRef.current) return;
@@ -371,8 +424,9 @@ export function HeaderSearch({
       setLayoutCorrectedQuery(null);
       setLoading(false);
       setExpandingSearch(false);
+      clearSearchStatus();
     }
-  }, [fetchSearch]);
+  }, [beginTitleSearchStatus, clearSearchStatus, clearSearchStatusTimers, fetchSearch]);
 
   useEffect(() => {
     reset();
@@ -465,6 +519,7 @@ export function HeaderSearch({
       setLayoutCorrectedQuery(null);
       setLoading(false);
       setExpandingSearch(false);
+      clearSearchStatus();
       return;
     }
 
@@ -475,7 +530,7 @@ export function HeaderSearch({
     return () => {
       if (debounceRef.current) window.clearTimeout(debounceRef.current);
     };
-  }, [query, fetchResults, searchDebounceMs]);
+  }, [query, fetchResults, searchDebounceMs, clearSearchStatus]);
 
   useEffect(() => {
     if (isBottomSheet) return;
@@ -675,7 +730,7 @@ export function HeaderSearch({
         </p>
       ) : null}
 
-      {loading && items.length === 0 ? (
+      {loading && items.length === 0 && !expandingSearch ? (
         <div
           ref={isBottomSheet ? resultsScrollRef : undefined}
           className={[
@@ -683,6 +738,11 @@ export function HeaderSearch({
             isBottomSheet ? "mobile-top-search-results overflow-y-auto" : "flex-1",
           ].join(" ")}
         >
+          {searchStatus ? (
+            <p key={searchStatus} className="px-2.5 pb-1 pt-1 text-sm text-muted">
+              {searchStatus}
+            </p>
+          ) : null}
           {Array.from({ length: 4 }, (_, index) => (
             <div key={index} className="flex items-center gap-4 px-2.5 py-2.5">
               <div className="h-24 w-16 animate-pulse rounded-lg bg-surface-dim" />
