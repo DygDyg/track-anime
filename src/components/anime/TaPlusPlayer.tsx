@@ -542,8 +542,8 @@ export const TaPlusPlayer = forwardRef<TaPlusPlayerHandle, Props>(function TaPlu
   return (
     <div
       className={[
-        "relative bg-black",
-        ambientGlowActive ? "overflow-visible" : "overflow-hidden",
+        /* Keep overflow clipped: glow scale must not widen the FS scrollport (thin black strip). */
+        "relative overflow-hidden bg-black",
         fillViewport ? "anime-player-shell-viewport h-full w-full max-w-none" : "",
         className ?? "",
       ].join(" ")}

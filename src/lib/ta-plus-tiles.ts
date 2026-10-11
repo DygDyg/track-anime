@@ -17,8 +17,18 @@ export type TaPlusTilePreview = {
   cellHeight: number;
 };
 
+/**
+ * Kodik `tiles.pattern` placeholder `{index}` is 1-based and always 4 digits
+ * (`0001`, `0002`, …) — same as player JS `String(n).padStart(4, "0")`.
+ * Callers pass a 0-based sheet index from `floor(frame / (x*y))`.
+ */
+export function formatTaPlusTileSheetIndex(sheetIndex: number): string {
+  const oneBased = Math.max(1, Math.floor(sheetIndex) + 1);
+  return String(oneBased).padStart(4, "0");
+}
+
 export function taPlusTileSheetUrl(tiles: TaPlusTiles, sheetIndex: number): string {
-  return tiles.pattern.replace("{index}", String(Math.max(0, Math.floor(sheetIndex))));
+  return tiles.pattern.replace("{index}", formatTaPlusTileSheetIndex(sheetIndex));
 }
 
 export function taPlusTileSheetDisplayUrl(

@@ -44,6 +44,13 @@ html {
   -webkit-text-size-adjust: 100%;
 }
 
+/* Fullscreen: drop stable scrollbar gutter — it leaves a thin black strip on the right. */
+html:has(:fullscreen),
+html:has(:-webkit-full-screen) {
+  scrollbar-gutter: auto;
+  overflow: hidden;
+}
+
 html,
 body {
   min-height: 100%;
@@ -2160,9 +2167,15 @@ html[data-player-theater="height"][data-player-theater-chrome="hidden"] .site-he
   display: flex;
   flex-direction: column;
   position: relative;
+  box-sizing: border-box;
+  width: 100%;
+  height: 100%;
+  max-width: none;
+  max-height: none;
   overflow: hidden;
   scroll-behavior: smooth;
   scrollbar-width: none;
+  -ms-overflow-style: none;
   --kodik-beta-translations-peek: min(32dvh, 16rem);
   --kodik-beta-translations-shift: 0px;
   background: #000;
@@ -2172,11 +2185,16 @@ html[data-player-theater="height"][data-player-theater-chrome="hidden"] .site-he
 
 .kodik-player-beta-stage:fullscreen::-webkit-scrollbar {
   display: none;
+  width: 0;
+  height: 0;
 }
 
 .kodik-player-beta-stage:fullscreen .kodik-player-beta-player-host {
-  flex: 0 0 100dvh;
-  min-height: 100dvh;
+  flex: 1 1 auto;
+  width: 100%;
+  min-width: 0;
+  height: 100%;
+  min-height: 0;
 }
 
 .kodik-player-beta-stage:fullscreen .kodik-player-beta-ui-bottom {
@@ -2199,10 +2217,11 @@ html[data-player-theater="height"][data-player-theater-chrome="hidden"] .site-he
 .kodik-player-beta-stage:fullscreen .kodik-player-beta-viewport,
 .kodik-player-beta-stage:fullscreen .anime-player-shell-viewport,
 .kodik-player-beta-stage:fullscreen .anime-player-viewport-frame {
-  height: 100dvh;
-  max-height: 100dvh;
-  width: 100dvw;
-  max-width: 100dvw;
+  /* Prefer % over dvw/dvh — 100dvw can exceed the FS box when a scrollbar gutter exists. */
+  height: 100%;
+  max-height: 100%;
+  width: 100%;
+  max-width: 100%;
 }
 
 /* TA Plus: keep chrome overlays inside the fullscreen frame (no aspect-video overflow clip). */
