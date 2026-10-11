@@ -113,7 +113,8 @@ export function ReleaseCardMobileSheet({
   };
 
   return createPortal(
-    <div className="fixed inset-0 z-[100] flex items-end justify-center md:hidden">
+    // No md:hidden — tablets use desktop card layout but still open this via long-press.
+    <div className="fixed inset-0 z-[100] flex items-end justify-center p-0 sm:items-center sm:p-6">
       <button
         type="button"
         aria-label="Закрыть превью"
@@ -126,7 +127,7 @@ export function ReleaseCardMobileSheet({
         role="dialog"
         aria-modal="true"
         aria-label={release.animeTitle}
-        className="relative flex max-h-[min(88dvh,720px)] w-full max-w-lg flex-col overflow-hidden rounded-t-2xl border border-border bg-card shadow-2xl shadow-black/50"
+        className="relative flex max-h-[min(88dvh,720px)] w-full max-w-lg flex-col overflow-hidden rounded-t-2xl border border-border bg-card shadow-2xl shadow-black/50 sm:max-h-[min(85dvh,640px)] sm:rounded-2xl"
         style={
           dragOffset > 0
             ? { transform: `translateY(${dragOffset}px)`, transition: "none" }

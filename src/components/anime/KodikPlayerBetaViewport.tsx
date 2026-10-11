@@ -31,10 +31,12 @@ import { SiteClock } from "@/components/SiteClock";
 import { TA_PLUS_QUALITY_AUTO } from "@/lib/ta-plus-master-playlist";
 import { toTaPlusDisplayPreviewUrl } from "@/lib/ta-plus-previews";
 import {
+  listTaPlusTileSheetDisplayUrls,
   resolveTaPlusTilePreview,
   taPlusTilePreviewStyle,
   type TaPlusTiles,
 } from "@/lib/ta-plus-tiles";
+import { preloadTaPlusTileSheets } from "@/lib/ta-plus-tiles-preload";
 import { coverCacheUrl } from "@/lib/poster";
 import { formatWatchPosition } from "@/lib/watch-history";
 import { useSiteSettings } from "@/components/SiteSettingsProvider";
@@ -67,6 +69,8 @@ import {
 } from "@/lib/player-stream-volume";
 
 const SINGLE_CLICK_DELAY_MS = 220;
+/** Touch: wait longer so a slow double-tap doesn’t fire play/pause before dblclick. */
+const TOUCH_SINGLE_CLICK_DELAY_MS = 350;
 const CLICK_LAYER_APPEAR_DELAY_MS = 2_000;
 /** Kodik iframe steals focus; reclaim on interaction/keydown so Space/arrows reach TA (no polling). */
 const SEEK_FEEDBACK_MS = 900;
@@ -294,6 +298,8 @@ export function KodikPlayerBetaViewport({
     backward: null,
     forward: null,
   });
+  const seekFeedbackRef = useRef(seekFeedback);
+  seekFeedbackRef.current = seekFeedback;
   /** TA Plus touch double-tap: net ±seconds waiting for idle commit. */
   const pendingMobileSeekDeltaRef = useRef(0);
   const pendingMobileSeekBaseRef = useRef(0);
@@ -835,6 +841,35 @@ export function KodikPlayerBetaViewport({
     }
     return TA_PLUS_IDLE_DURATION_FALLBACK_SECONDS;
   }, [episodeDurationHint, tiles, viewPlayback.durationSeconds]);
+
+  // Warm all storyboard sheets in the background (scrub / ±seek preview).
+  // Starts when tiles arrive; expands when HLS reports a longer duration.
+  useEffect(() => {
+    if (!isTaPlus || !tiles) return;
+    const duration =
+      viewPlayback.durationSeconds > 1
+        ? viewPlayback.durationSeconds
+        : resolveTaPlusIdleDuration();
+    const urls = listTaPlusTileSheetDisplayUrls(tiles, duration);
+    if (urls.length === 0) return;
+
+    const controller = new AbortController();
+    void preloadTaPlusTileSheets(urls, {
+      concurrency: taPlusStarted ? 2 : 3,
+      signal: controller.signal,
+    });
+    return () => controller.abort();
+  }, [
+    isTaPlus,
+    tiles,
+    taPlusStarted,
+    viewPlayback.durationSeconds,
+    episodeDurationHint,
+    resolveTaPlusIdleDuration,
+    kodikId,
+    seasonNumber,
+    currentEpisode,
+  ]);
 
   const startTaPlusMedia = useCallback(() => {
     if (!isTaPlus) {
@@ -1667,40 +1702,78 @@ export function KodikPlayerBetaViewport({
     reclaimFocusFromKodikIframe,
   ]);
 
-  const handleViewportClick = useCallback(() => {
-    if (suppressClickAfterGestureRef.current) {
-      suppressClickAfterGestureRef.current = false;
-      clearClickTimer();
-      return;
-    }
-    if (controlsDisabled || kodikUiAccess) return;
-    clearClickTimer();
-    clickTimerRef.current = window.setTimeout(() => {
-      // Hidden chrome: first tap only reveals UI. Play/pause needs UI already visible.
-      if (!uiVisible) {
-        revealUi();
-        clickTimerRef.current = null;
+  const resolveTouchSeekDelta = useCallback((clientX: number) => {
+    const rect = videoShellRef.current?.getBoundingClientRect();
+    if (!rect || rect.width <= 0) return null;
+    const ratio = (clientX - rect.left) / rect.width;
+    return ratio < 0.5 ? -MOBILE_DOUBLE_TAP_SEEK_SECONDS : MOBILE_DOUBLE_TAP_SEEK_SECONDS;
+  }, []);
+
+  const applyTouchSeekDelta = useCallback(
+    (delta: number) => {
+      if (isTaPlus) queueMobileTapSeek(delta);
+      else handleSeekSkip(delta);
+    },
+    [handleSeekSkip, isTaPlus, queueMobileTapSeek],
+  );
+
+  const handleViewportClick = useCallback(
+    (event: ReactMouseEvent<HTMLDivElement>) => {
+      if (suppressClickAfterGestureRef.current) {
+        suppressClickAfterGestureRef.current = false;
+        clearClickTimer();
         return;
       }
-      // TA Plus: idle → start HLS; after start → play/pause. Kodik → play/pause.
-      if (isTaPlus) {
-        startTaPlusMedia();
-      } else {
-        onPlayPause();
+      if (controlsDisabled || kodikUiAccess) return;
+
+      // Touch seek burst: more taps add ±10 — never toggle play/pause while badge is up.
+      if (touchLikeUi) {
+        const feedback = seekFeedbackRef.current;
+        const seekBurstActive =
+          pendingMobileSeekDeltaRef.current !== 0 ||
+          feedback.backward > 0 ||
+          feedback.forward > 0;
+        if (seekBurstActive) {
+          const delta = resolveTouchSeekDelta(event.clientX);
+          clearClickTimer();
+          if (delta != null) applyTouchSeekDelta(delta);
+          return;
+        }
       }
-      revealUi();
-      clickTimerRef.current = null;
-    }, SINGLE_CLICK_DELAY_MS);
-  }, [
-    clearClickTimer,
-    controlsDisabled,
-    isTaPlus,
-    kodikUiAccess,
-    onPlayPause,
-    revealUi,
-    startTaPlusMedia,
-    uiVisible,
-  ]);
+
+      clearClickTimer();
+      const clickDelay = touchLikeUi ? TOUCH_SINGLE_CLICK_DELAY_MS : SINGLE_CLICK_DELAY_MS;
+      clickTimerRef.current = window.setTimeout(() => {
+        // Hidden chrome: first tap only reveals UI. Play/pause needs UI already visible.
+        if (!uiVisible) {
+          revealUi();
+          clickTimerRef.current = null;
+          return;
+        }
+        // TA Plus: idle → start HLS; after start → play/pause. Kodik → play/pause.
+        if (isTaPlus) {
+          startTaPlusMedia();
+        } else {
+          onPlayPause();
+        }
+        revealUi();
+        clickTimerRef.current = null;
+      }, clickDelay);
+    },
+    [
+      applyTouchSeekDelta,
+      clearClickTimer,
+      controlsDisabled,
+      isTaPlus,
+      kodikUiAccess,
+      onPlayPause,
+      resolveTouchSeekDelta,
+      revealUi,
+      startTaPlusMedia,
+      touchLikeUi,
+      uiVisible,
+    ],
+  );
 
   const handleViewportDoubleClick = useCallback(
     (event: ReactMouseEvent<HTMLDivElement>) => {
@@ -1710,27 +1783,23 @@ export function KodikPlayerBetaViewport({
 
       // Phone / touch: double-tap left/right seeks; desktop keeps fullscreen toggle.
       if (touchLikeUi) {
-        const rect = videoShellRef.current?.getBoundingClientRect();
-        if (!rect || rect.width <= 0) return;
-        const ratio = (event.clientX - rect.left) / rect.width;
-        const delta =
-          ratio < 0.5 ? -MOBILE_DOUBLE_TAP_SEEK_SECONDS : MOBILE_DOUBLE_TAP_SEEK_SECONDS;
-        // TA Plus: accumulate ±10 on the badge, seek once after idle. TA Old: immediate.
-        if (isTaPlus) queueMobileTapSeek(delta);
-        else handleSeekSkip(delta);
+        const delta = resolveTouchSeekDelta(event.clientX);
+        if (delta == null) return;
+        // Swallow the trailing click after dblclick so play/pause doesn’t fire.
+        suppressClickAfterGestureRef.current = true;
+        applyTouchSeekDelta(delta);
         return;
       }
 
       onFullscreenToggle();
     },
     [
+      applyTouchSeekDelta,
       clearClickTimer,
       controlsDisabled,
-      handleSeekSkip,
-      isTaPlus,
       kodikUiAccess,
       onFullscreenToggle,
-      queueMobileTapSeek,
+      resolveTouchSeekDelta,
       touchLikeUi,
     ],
   );

@@ -22,7 +22,7 @@ Next.js anime streaming site with Shikimori OAuth + Kodik player. Data lives in 
 | Fix player | `src/components/anime/KodikPlayer.tsx`, `KodikPlayerBetaViewport.tsx`, `TaPlusPlayer.tsx`, `VideoAmbientGlow.tsx`, `src/lib/player-ambient-glow.ts`, `src/lib/kodik-player-api.ts`, `src/lib/kodik-ftor.ts`, `src/hooks/useTaPlusStream.ts`, `CvhWatchSection.tsx`, `src/lib/cvh-player.ts`, `src/lib/anime-watch-share.ts` |
 | Fix watch party | `src/hooks/useWatchParty.ts`, `scripts/watch-party-server.mjs`, `scripts/watch-party-history.mjs`, `src/components/anime/AnimeWatchPanel.tsx`, `src/lib/admin/watch-party-history.ts` |
 | Fix home feed | `src/lib/releases.ts`, `src/lib/home-feed-cache.ts`, `src/components/ReleaseFeed.tsx`, `src/lib/home-novelties.ts`, `HomeNoveltiesSection.tsx` |
-| Fix release card / hover / mobile sheet | `ReleaseCard.tsx`, `AnimeCardHoverShell.tsx`, `ReleaseCardHoverPanel.tsx`, `ReleaseCardMobileSheet.tsx`, `ReleaseCardPreviewMeta.tsx`, `ReleaseCardQuickActions.tsx` |
+| Fix release card / hover / mobile sheet | `ReleaseCard.tsx`, `AnimeCardHoverShell.tsx`, `ReleaseCardHoverPanel.tsx`, `ReleaseCardMobileSheet.tsx`, `ReleaseCardPreviewMeta.tsx`, `ReleaseCardQuickActions.tsx` — long-press sheet on any touch (incl. tablet desktop cards); no `md:hidden` on sheet |
 | Fix calendar | `src/lib/calendar.ts`, `src/components/calendar/CalendarView.tsx`, `src/lib/shikimori/calendar-api.ts` |
 | Fix history cards | `src/components/history/HistoryWatchCard.tsx`, `src/lib/history-watch-card.ts`, `HistoryView.tsx` — единый UI для /history и «Новое в вашей истории»; на `/history` вкладки «Актуальные» / «Просмотрено» / «Отложено» / «Брошено» (по умолчанию без completed/on_hold/dropped) |
 | Fix history upcoming | `src/lib/history-upcoming-soon.ts`, `HistoryUpcomingSoonPanel.tsx` — блок «Скоро выйдут» на `/history` и на главной над «Новое в вашей истории» (если count > 0; озвучка: last ep + 7д, окно 12ч) |
@@ -146,8 +146,10 @@ Calendar: `/calendar` → calendar.ts → local Kodik DB or Shikimori `/api/cale
 | TA Plus no OP/ED skip button | Skip-times used to clear when HLS duration briefly hits 0; fetch uses last-good/1440 fallback (`skipTimesEpisodeLength`) |
 | TA Plus prefer parser skips | If `/ftor` returns `skip_timings`/`skip_raw`, TA Plus uses them instead of AniSkip (`kodik-parser-skip.ts`) |
 | TA Plus scrub tiles 404 / black | Kodik `{index}` is 1-based 4-digit (`0001`); bare `0`/`1` is wrong — see `formatTaPlusTileSheetIndex` in `ta-plus-tiles.ts` |
+| TA Plus scrub/seek preview slow | Sheets should warm via `preloadTaPlusTileSheets` when `tiles` arrive (`KodikPlayerBetaViewport`); check `/api/taplus-tile` |
 | Viewport click pauses while chrome hidden | `handleViewportClick`: hidden UI → `revealUi` only; play/pause only when `uiVisible` |
 | TA Plus white stub on episode switch | Empty `<video>` after `load()` — set `poster` + cover overlay until first frame (`TaPlusPlayer`) |
+| Tablet cards look desktop, no preview popup | Hover panel needs mouse; sheet used to be `md:hidden`. Long-press opens sheet on touch even at `md+` (`AnimeCardHoverShell` + `ReleaseCardMobileSheet`) |
 
 ## Debugging Notes
 

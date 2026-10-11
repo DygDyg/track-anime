@@ -101,6 +101,35 @@ export function pickTaPlusSlideshowPositions(
  * Idle slideshow frames: 5 evenly spaced cells from early sheets (no duration probe).
  * Uses proxied sheet URLs so the browser is not blocked by CDN hotlink rules.
  */
+/** Soft cap — ~2h @ 5s × 5×5 sheets ≈ 58; blocks runaway duration/pattern bugs. */
+const MAX_TA_PLUS_TILE_SHEETS = 96;
+
+/** How many storyboard sheets cover `[0, durationSeconds)`. */
+export function countTaPlusTileSheets(
+  tiles: TaPlusTiles,
+  durationSeconds: number,
+): number {
+  if (!Number.isFinite(durationSeconds) || durationSeconds <= 0) return 0;
+  const interval = Math.max(1, tiles.interval);
+  const framesPerSheet = Math.max(1, tiles.x) * Math.max(1, tiles.y);
+  const lastFrame = Math.floor(Math.max(0, durationSeconds - 0.001) / interval);
+  const sheetCount = Math.floor(lastFrame / framesPerSheet) + 1;
+  return Math.min(MAX_TA_PLUS_TILE_SHEETS, Math.max(0, sheetCount));
+}
+
+/** Proxied sheet URLs for scrub / tap-seek preview (order = sheet index). */
+export function listTaPlusTileSheetDisplayUrls(
+  tiles: TaPlusTiles,
+  durationSeconds: number,
+): string[] {
+  const n = countTaPlusTileSheets(tiles, durationSeconds);
+  const urls: string[] = [];
+  for (let i = 0; i < n; i += 1) {
+    urls.push(taPlusTileSheetDisplayUrl(tiles, i, true));
+  }
+  return urls;
+}
+
 export function pickTaPlusIdleSlideshowFrames(
   tiles: TaPlusTiles,
   count = 5,

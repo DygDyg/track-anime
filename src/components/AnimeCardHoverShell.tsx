@@ -33,9 +33,10 @@ type Props = {
   readOnly?: boolean;
 };
 
-function isCoarsePointer(): boolean {
+/** Phone + tablet touch (incl. iPad “desktop” width). OR — not AND. */
+function isTouchLikeUi(): boolean {
   if (typeof window === "undefined") return false;
-  return window.matchMedia("(hover: none) and (pointer: coarse)").matches;
+  return window.matchMedia("(hover: none), (pointer: coarse)").matches;
 }
 
 export function AnimeCardHoverShell({
@@ -104,7 +105,11 @@ export function AnimeCardHoverShell({
   };
 
   const handlePointerDown = (event: PointerEvent<HTMLDivElement>) => {
-    if (event.pointerType !== "touch" && !isCoarsePointer()) return;
+    const touchLike =
+      event.pointerType === "touch" ||
+      event.pointerType === "pen" ||
+      isTouchLikeUi();
+    if (!touchLike) return;
     if (sheetOpen) return;
 
     clearLongPressTimer();
@@ -137,7 +142,7 @@ export function AnimeCardHoverShell({
 
   const handleContextMenu = (event: MouseEvent<HTMLDivElement>) => {
     // Avoid native callout while long-press opens the sheet.
-    if (sheetOpen || suppressClickRef.current || isCoarsePointer()) {
+    if (sheetOpen || suppressClickRef.current || isTouchLikeUi()) {
       event.preventDefault();
     }
   };
