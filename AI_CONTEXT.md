@@ -117,6 +117,7 @@ Calendar: `/calendar` → calendar.ts → local Kodik DB or Shikimori `/api/cale
 | Problem | Likely cause |
 |---------|--------------|
 | Banner «Сайт обновился» mid-deploy / reload → down | `/api/site-build` must use process-cached fingerprint; deploy writes `.build-number` only after `systemctl stop`; ClientUpdateGuard confirms + waits before reload |
+| Cloudflare 502 during deploy / outage | `maintenance.on` → **503** + `maintenance.html` (updating); Next down without flag → **502** + `unavailable.html` (contacts). Wired in `track-anime-proxy.conf` + `server-deploy.sh` |
 | Empty home feed | No sync run — `npm run kodik:sync` |
 | «Новинки» без 2-го сезона / пусто | Не путать с бейджем NEW (эпизоды 1–3). Блок: ≤5 серий (`GREATEST(episodes_aired, № серии)`) + `releasedAt`≤30д + `aired_on`≤90д, любой `seasonNumber`; кеш 24ч — сброс в `/admin/import` |
 | Тайтл с 6+ сериями в «Новинках» | У озвучки устаревший `episodes_aired`; порог обязан учитывать номер серии в релизе (`home-novelties.ts`) |

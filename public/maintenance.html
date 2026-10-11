@@ -1,0 +1,117 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="robots" content="noindex">
+  <meta http-equiv="refresh" content="20">
+  <title>Track Anime — обновление</title>
+  <style>
+    :root {
+      color-scheme: dark;
+      --bg: #0c0e14;
+      --fg: #eef0f4;
+      --muted: #a3abbd;
+      --accent: #6c8cff;
+      --accent-hover: #7d96ff;
+      --card: #141824;
+      --border: #252b3b;
+      --glow: #1a2240;
+    }
+    * { box-sizing: border-box; }
+    html, body { height: 100%; margin: 0; }
+    body {
+      min-height: 100%;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      padding: 1.5rem;
+      font-family: "Segoe UI", system-ui, -apple-system, sans-serif;
+      color: var(--fg);
+      background:
+        radial-gradient(ellipse 120% 80% at 50% -20%, var(--glow) 0%, var(--bg) 55%);
+    }
+    main {
+      width: min(28rem, 100%);
+      padding: 2rem 1.75rem;
+      border: 1px solid var(--border);
+      border-radius: 1rem;
+      background: color-mix(in srgb, var(--card) 92%, transparent);
+      text-align: center;
+    }
+    .brand {
+      margin: 0 0 1.25rem;
+      font-size: 1.35rem;
+      font-weight: 700;
+      letter-spacing: 0.02em;
+    }
+    .brand span { color: var(--accent); }
+    h1 {
+      margin: 0 0 0.75rem;
+      font-size: 1.15rem;
+      font-weight: 600;
+      line-height: 1.35;
+    }
+    p {
+      margin: 0;
+      color: var(--muted);
+      font-size: 0.95rem;
+      line-height: 1.5;
+    }
+    .spinner {
+      width: 2.25rem;
+      height: 2.25rem;
+      margin: 0 auto 1.25rem;
+      border: 3px solid var(--border);
+      border-top-color: var(--accent);
+      border-radius: 50%;
+      animation: spin 0.9s linear infinite;
+    }
+    @keyframes spin { to { transform: rotate(360deg); } }
+    .actions {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 0.65rem;
+      justify-content: center;
+      margin-top: 1.35rem;
+    }
+    .btn {
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      min-height: 2.5rem;
+      padding: 0.55rem 1.1rem;
+      border-radius: 0.65rem;
+      border: 1px solid transparent;
+      font: inherit;
+      font-size: 0.92rem;
+      font-weight: 600;
+      text-decoration: none;
+      cursor: pointer;
+      color: #fff;
+      background: var(--accent);
+    }
+    .btn:hover { background: var(--accent-hover); }
+    .hint {
+      margin-top: 1rem;
+      font-size: 0.8rem;
+      color: color-mix(in srgb, var(--muted) 80%, transparent);
+    }
+  </style>
+</head>
+<body>
+  <main>
+    <div class="spinner" aria-hidden="true"></div>
+    <p class="brand">Track <span>Anime</span></p>
+    <h1>Сайт обновляется</h1>
+    <p>Идёт выкладка новой версии. Подождите немного — обычно это занимает несколько минут. Страница обновится сама.</p>
+    <div class="actions">
+      <a class="btn" href="/">Обновить</a>
+    </div>
+    <p class="hint">Если долго не открывается — попробуйте ещё раз чуть позже.</p>
+  </main>
+  <script>
+    setTimeout(function () { location.reload(); }, 20000);
+  </script>
+</body>
+</html>

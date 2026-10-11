@@ -1,0 +1,188 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="robots" content="noindex">
+  <meta http-equiv="refresh" content="60">
+  <title>Track Anime — недоступен</title>
+  <style>
+    :root {
+      color-scheme: dark;
+      --bg: #0c0e14;
+      --fg: #eef0f4;
+      --muted: #a3abbd;
+      --accent: #6c8cff;
+      --accent-hover: #7d96ff;
+      --warn: #f0b429;
+      --card: #141824;
+      --border: #252b3b;
+      --glow: #2a1c14;
+    }
+    * { box-sizing: border-box; }
+    html, body { height: 100%; margin: 0; }
+    body {
+      min-height: 100%;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      padding: 1.5rem;
+      font-family: "Segoe UI", system-ui, -apple-system, sans-serif;
+      color: var(--fg);
+      background:
+        radial-gradient(ellipse 120% 80% at 50% -20%, var(--glow) 0%, var(--bg) 55%);
+    }
+    main {
+      width: min(28rem, 100%);
+      padding: 2rem 1.75rem;
+      border: 1px solid var(--border);
+      border-radius: 1rem;
+      background: color-mix(in srgb, var(--card) 92%, transparent);
+      text-align: center;
+    }
+    .brand {
+      margin: 0 0 1.25rem;
+      font-size: 1.35rem;
+      font-weight: 700;
+      letter-spacing: 0.02em;
+    }
+    .brand span { color: var(--accent); }
+    .icon {
+      width: 2.5rem;
+      height: 2.5rem;
+      margin: 0 auto 1.1rem;
+      border-radius: 999px;
+      display: grid;
+      place-items: center;
+      color: var(--warn);
+      background: color-mix(in srgb, var(--warn) 14%, transparent);
+      border: 1px solid color-mix(in srgb, var(--warn) 35%, var(--border));
+      font-size: 1.25rem;
+      font-weight: 700;
+      line-height: 1;
+    }
+    h1 {
+      margin: 0 0 0.75rem;
+      font-size: 1.15rem;
+      font-weight: 600;
+      line-height: 1.35;
+    }
+    p {
+      margin: 0;
+      color: var(--muted);
+      font-size: 0.95rem;
+      line-height: 1.5;
+    }
+    .actions {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 0.65rem;
+      justify-content: center;
+      margin-top: 1.35rem;
+    }
+    .btn {
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      min-height: 2.5rem;
+      padding: 0.55rem 1.1rem;
+      border-radius: 0.65rem;
+      border: 1px solid transparent;
+      font: inherit;
+      font-size: 0.92rem;
+      font-weight: 600;
+      text-decoration: none;
+      cursor: pointer;
+      color: #fff;
+      background: var(--accent);
+    }
+    .btn:hover { background: var(--accent-hover); }
+    .btn-secondary {
+      color: var(--fg);
+      background: transparent;
+      border-color: var(--border);
+    }
+    .btn-secondary:hover {
+      background: color-mix(in srgb, var(--fg) 6%, transparent);
+    }
+    .contacts {
+      margin-top: 1.35rem;
+      padding-top: 1.15rem;
+      border-top: 1px solid var(--border);
+      text-align: left;
+    }
+    .contacts h2 {
+      margin: 0 0 0.65rem;
+      font-size: 0.85rem;
+      font-weight: 600;
+      color: var(--fg);
+    }
+    .contacts ul {
+      margin: 0;
+      padding: 0;
+      list-style: none;
+      display: grid;
+      gap: 0.45rem;
+    }
+    .contacts a {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 0.75rem;
+      padding: 0.65rem 0.8rem;
+      border: 1px solid var(--border);
+      border-radius: 0.65rem;
+      color: var(--fg);
+      text-decoration: none;
+      background: color-mix(in srgb, var(--fg) 3%, transparent);
+    }
+    .contacts a:hover {
+      border-color: color-mix(in srgb, var(--accent) 45%, var(--border));
+    }
+    .contacts .label { font-weight: 600; font-size: 0.92rem; }
+    .contacts .value {
+      color: var(--muted);
+      font-size: 0.82rem;
+      word-break: break-all;
+    }
+    .hint {
+      margin-top: 1rem;
+      font-size: 0.8rem;
+      color: color-mix(in srgb, var(--muted) 80%, transparent);
+      text-align: center;
+    }
+  </style>
+</head>
+<body>
+  <main>
+    <div class="icon" aria-hidden="true">!</div>
+    <p class="brand">Track <span>Anime</span></p>
+    <h1>Сайт временно недоступен</h1>
+    <p>Похоже, сервис упал или не отвечает. Это не плановое обновление — свяжитесь с администраторами, если проблема не исчезнет.</p>
+    <div class="actions">
+      <a class="btn" href="/">Обновить</a>
+    </div>
+    <section class="contacts" aria-label="Контакты">
+      <h2>Связаться с админами</h2>
+      <ul>
+        <li>
+          <a href="https://discord.gg/aSM8VKfUxw" rel="noopener noreferrer" target="_blank">
+            <span class="label">Discord</span>
+            <span class="value">discord.gg/aSM8VKfUxw</span>
+          </a>
+        </li>
+        <li>
+          <a href="https://vk.com/club239966362" rel="noopener noreferrer" target="_blank">
+            <span class="label">VK</span>
+            <span class="value">vk.com/club239966362</span>
+          </a>
+        </li>
+      </ul>
+    </section>
+    <p class="hint">Страница иногда проверяет доступность сама. Можно нажать «Обновить».</p>
+  </main>
+  <script>
+    setTimeout(function () { location.reload(); }, 60000);
+  </script>
+</body>
+</html>

@@ -26,6 +26,14 @@ fi
 
 chown -R www-data:www-data /var/www/ta_new/.next
 
+MAINTENANCE_FLAG="/var/www/ta_new/maintenance.on"
+cleanup_maintenance() {
+  rm -f "$MAINTENANCE_FLAG"
+}
+trap cleanup_maintenance EXIT
+
+touch "$MAINTENANCE_FLAG"
+echo "[server-deploy-fast] maintenance mode ON"
 systemctl restart track-anime
 sleep 3
 
@@ -36,6 +44,9 @@ else
   systemctl status track-anime --no-pager -l || true
   exit 1
 fi
+
+cleanup_maintenance
+trap - EXIT
 
 HTTP_CODE="$(curl -s -o /dev/null -w '%{http_code}' https://ta.dygdyg.ru/)"
 echo "site:${HTTP_CODE}"

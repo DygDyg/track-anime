@@ -102,8 +102,9 @@ npm run deploy:windows -- -SkipPublish
 1. Опционально публикует APK (`-ApkPath`), Windows exe (`-PublishWindowsApp`) и Discord RPC exe в `public/downloads/`
 2. Упаковывает исходники в `tar.gz` (без `node_modules`, `.next`, `.env`, `android/`, `windows/`, `scripts/discord-rpc-tray`, `data/cover-cache`, локальных handoff/`aqua-coder-web`/embeddings и т.п.)
 3. Режет архив на чанки и загружает их на сервер через `scp` с retry и проверкой размера каждой части
-4. На сервере в **screen** (`ta_deploy`): `npm ci` → Prisma → `npm run build` → restart `track-anime`
-5. Проверяет HTTP 200 на https://track-anime.win/
+4. На сервере в **screen** (`ta_deploy`): `npm ci` → Prisma → stop + `npm run build` → restart `track-anime`
+5. Во время stop/build nginx отдаёт **503** + `public/maintenance.html` (флаг `maintenance.on`, «Сайт обновляется»). Если сайт упал без флага — **502** + `public/unavailable.html` с контактами
+6. Проверяет HTTP 200 на https://track-anime.win/
 
 Локальный архив и временные чанки создаются в `temp/deploy/`; папка исключена из git и чистится через `clean-turbopack-cache.bat`.
 
@@ -483,9 +484,11 @@ ssh -i $env:USERPROFILE\.ssh\id_rsa root@151.245.136.79 "journalctl -u track-ani
 ssh -i $env:USERPROFILE\.ssh\id_rsa root@151.245.136.79 "systemctl status track-anime"
 ```
 
-### Сайт 502 после деплоя
+### Сайт 502 / «Сайт обновляется» после деплоя
 
-Сборка не завершилась — смотрите вывод `npm run build` в логе деплоя или:
+Во время `next build` ожидаема заглушка **503** (`maintenance.html` — «обновляется»), не страница Cloudflare. Без флага при мёртвом Next — **502** + `unavailable.html` («недоступен» + контакты). Если после деплоя залипла «обновляется» — `rm -f /var/www/ta_new/maintenance.on` и `systemctl status track-anime`.
+
+Если сборка не завершилась — смотрите вывод `npm run build` в логе деплоя или:
 
 ```bash
 ssh root@151.245.136.79 "cd /var/www/ta_new && npm run build"

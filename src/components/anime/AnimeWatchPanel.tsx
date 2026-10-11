@@ -888,7 +888,8 @@ export function AnimeWatchPanel({
         }
       } else if (
         progress &&
-        progress.positionSeconds >= MIN_SAVE_POSITION_SECONDS &&
+        !isWatchHistoryBookmark(progress) &&
+        progress.episodeNumber >= 1 &&
         savedTranslationOk &&
         savedKodikId &&
         savedKodikId === selectedKodikId
@@ -896,9 +897,14 @@ export function AnimeWatchPanel({
         const resume = compensatePlayerReloadResume(
           applyPositionOffset(
             {
-              seasonNumber: progress.seasonNumber,
+              seasonNumber: progress.seasonNumber > 0 ? progress.seasonNumber : 1,
               episodeNumber: progress.episodeNumber,
-              positionSeconds: progress.positionSeconds,
+              // Ниже порога сохранения — только серия, без seek (Kodik serial иначе
+              // открывает last_episode).
+              positionSeconds:
+                progress.positionSeconds >= MIN_SAVE_POSITION_SECONDS
+                  ? progress.positionSeconds
+                  : 0,
             },
             savedKodikId,
           ),
@@ -906,6 +912,14 @@ export function AnimeWatchPanel({
         // UI сразу на сохранённой серии; мягкий seek без continue-flow —
         // полный pause-continue на холодном iframe зависает с оверлеем «Переход…».
         await applyEpisodeBoot(savedKodikId, resume);
+      } else if (selectedKodikId) {
+        // Нет сохранённой серии: Kodik /serial/ по умолчанию даёт last_episode —
+        // явно стартуем с 1 серии.
+        await applyEpisodeBoot(selectedKodikId, {
+          seasonNumber: 1,
+          episodeNumber: 1,
+          positionSeconds: 0,
+        });
       } else {
         clearEpisodeBoot();
       }
@@ -1183,12 +1197,44 @@ export function AnimeWatchPanel({
       latestProgressRef.current = null;
       lastSavedFingerprintRef.current = "";
 
+      const seasonNumber = resume.seasonNumber > 0 ? resume.seasonNumber : 1;
+      const episodeNumber = resume.episodeNumber >= 1 ? resume.episodeNumber : 1;
+
       if (resume.positionSeconds < 1) {
+        // Без таймкода всё равно держим ту же серию: иначе /serial/ новой озвучки
+        // откроет last_episode Kodik.
         pendingContinueRef.current = null;
         pendingContinueOptionsRef.current = undefined;
         setContinueLoading(false);
         setContinueTarget(null);
+        setPlayerEpisode({ seasonNumber, episodeNumber });
+        liveProgressRef.current = {
+          seasonNumber,
+          episodeNumber,
+          positionSeconds: 0,
+        };
+        setBootResume({ seasonNumber, episodeNumber, positionSeconds: 0 });
         setSelectedId(kodikId);
+
+        void (async () => {
+          const link = await loadEpisodePlayerLink(
+            shikimoriId,
+            kodikId,
+            seasonNumber,
+            episodeNumber,
+          );
+          if (selectedIdRef.current !== kodikId) return;
+          const seria = resolveContinueSeriaEmbedLink(link);
+          if (!seria) return;
+          episodeSeriaLinksRef.current.set(
+            episodeSeriaCacheKey(kodikId, seasonNumber, episodeNumber),
+            seria,
+          );
+          if (useLegacyKodikPlayerRef.current) return;
+          pendingPlayerSrcRef.current = withKodikPlayerCacheBust(seria, Date.now());
+          setPlayerSrc(pendingPlayerSrcRef.current);
+          setPlayerResetNonce((nonce) => nonce + 1);
+        })();
         return;
       }
 

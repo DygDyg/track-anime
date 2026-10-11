@@ -74,6 +74,8 @@ const TOUCH_SINGLE_CLICK_DELAY_MS = 350;
 const CLICK_LAYER_APPEAR_DELAY_MS = 2_000;
 /** Kodik iframe steals focus; reclaim on interaction/keydown so Space/arrows reach TA (no polling). */
 const SEEK_FEEDBACK_MS = 900;
+/** Center play/pause flash after isPlaying flips (click / Space / controls). */
+const PLAY_PAUSE_FLASH_MS = 550;
 const MOBILE_DOUBLE_TAP_SEEK_SECONDS = 10;
 /** TA Plus mobile double-tap: accumulate ±10, apply once after idle (matches feedback fade). */
 const MOBILE_TAP_SEEK_COMMIT_MS = SEEK_FEEDBACK_MS;
@@ -276,6 +278,9 @@ export function KodikPlayerBetaViewport({
   const [tvChromePinned, setTvChromePinned] = useState(false);
   const primaryFocusDoneRef = useRef(false);
   const [seekFeedback, setSeekFeedback] = useState({ backward: 0, forward: 0 });
+  /** Brief center icon when playback starts/pauses (`key` restarts CSS animation). */
+  const [playPauseFlash, setPlayPauseFlash] = useState<"play" | "pause" | null>(null);
+  const [playPauseFlashKey, setPlayPauseFlashKey] = useState(0);
   /** Storyboard target while ±seek feedback is visible (TA Plus). */
   const [seekPreview, setSeekPreview] = useState<{
     seconds: number;
@@ -300,6 +305,8 @@ export function KodikPlayerBetaViewport({
   });
   const seekFeedbackRef = useRef(seekFeedback);
   seekFeedbackRef.current = seekFeedback;
+  const playPauseFlashTimerRef = useRef<number | null>(null);
+  const prevPlayingForFlashRef = useRef<boolean | null>(null);
   /** TA Plus touch double-tap: net ±seconds waiting for idle commit. */
   const pendingMobileSeekDeltaRef = useRef(0);
   const pendingMobileSeekBaseRef = useRef(0);
@@ -1031,6 +1038,46 @@ export function KodikPlayerBetaViewport({
     }
   }, []);
 
+  const clearPlayPauseFlashTimer = useCallback(() => {
+    if (playPauseFlashTimerRef.current != null) {
+      window.clearTimeout(playPauseFlashTimerRef.current);
+      playPauseFlashTimerRef.current = null;
+    }
+  }, []);
+
+  // Episode / source remount: re-baseline without flashing (auto-next, continue, etc.).
+  useEffect(() => {
+    prevPlayingForFlashRef.current = null;
+    clearPlayPauseFlashTimer();
+    setPlayPauseFlash(null);
+  }, [src, kodikId, seasonNumber, currentEpisode, clearPlayPauseFlashTimer]);
+
+  useEffect(() => {
+    if (controlsDisabled || kodikUiAccess) {
+      prevPlayingForFlashRef.current = viewPlayback.isPlaying;
+      return;
+    }
+    if (prevPlayingForFlashRef.current === null) {
+      prevPlayingForFlashRef.current = viewPlayback.isPlaying;
+      return;
+    }
+    if (prevPlayingForFlashRef.current === viewPlayback.isPlaying) return;
+    prevPlayingForFlashRef.current = viewPlayback.isPlaying;
+
+    setPlayPauseFlash(viewPlayback.isPlaying ? "play" : "pause");
+    setPlayPauseFlashKey((key) => key + 1);
+    clearPlayPauseFlashTimer();
+    playPauseFlashTimerRef.current = window.setTimeout(() => {
+      setPlayPauseFlash(null);
+      playPauseFlashTimerRef.current = null;
+    }, PLAY_PAUSE_FLASH_MS);
+  }, [
+    clearPlayPauseFlashTimer,
+    controlsDisabled,
+    kodikUiAccess,
+    viewPlayback.isPlaying,
+  ]);
+
   const showSeekFeedback = useCallback(
     (deltaSeconds: number) => {
       if (deltaSeconds === 0) return;
@@ -1425,11 +1472,18 @@ export function KodikPlayerBetaViewport({
       clearClickTimer();
       clearSeekFeedbackTimer("backward");
       clearSeekFeedbackTimer("forward");
+      clearPlayPauseFlashTimer();
       clearPendingMobileSeekTimer();
       pendingMobileSeekDeltaRef.current = 0;
       setSeekPreview(null);
     };
-  }, [clearClickTimer, clearHideTimer, clearPendingMobileSeekTimer, clearSeekFeedbackTimer]);
+  }, [
+    clearClickTimer,
+    clearHideTimer,
+    clearPendingMobileSeekTimer,
+    clearPlayPauseFlashTimer,
+    clearSeekFeedbackTimer,
+  ]);
 
   useEffect(() => {
     const focusPlayerChrome = (kind: "episodes" | "bar") => {
@@ -2353,6 +2407,25 @@ export function KodikPlayerBetaViewport({
             {seekPreview?.side === "forward" ? seekTapPreviewChrome : null}
             <div className="flex h-20 min-w-20 items-center justify-center rounded-full border border-white/20 bg-black/60 px-4 text-xl font-bold tabular-nums text-white shadow-2xl shadow-black/40 backdrop-blur-sm sm:h-24 sm:min-w-24 sm:text-2xl">
               +{seekFeedback.forward}
+            </div>
+          </div>
+        ) : null}
+        {playPauseFlash ? (
+          <div
+            key={playPauseFlashKey}
+            className="kodik-player-beta-play-pause-flash pointer-events-none absolute left-1/2 top-1/2 z-30 -translate-x-1/2 -translate-y-1/2"
+            aria-hidden
+          >
+            <div className="flex h-20 w-20 items-center justify-center rounded-full border border-white/20 bg-black/60 text-white shadow-2xl shadow-black/40 backdrop-blur-sm sm:h-24 sm:w-24">
+              {playPauseFlash === "play" ? (
+                <svg viewBox="0 0 24 24" className="ml-1 h-10 w-10 fill-current sm:h-12 sm:w-12" aria-hidden>
+                  <path d="M8 5v14l11-7z" />
+                </svg>
+              ) : (
+                <svg viewBox="0 0 24 24" className="h-10 w-10 fill-current sm:h-12 sm:w-12" aria-hidden>
+                  <path d="M6 5h4v14H6V5zm8 0h4v14h-4V5z" />
+                </svg>
+              )}
             </div>
           </div>
         ) : null}

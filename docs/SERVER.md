@@ -279,6 +279,11 @@ sudo systemctl start track-anime-watch-party
 
 Прод: зеркала `track-anime.win` (+ `www` + `mirror`), `track-anime.duckdns.org` → Next.js `:3001`. Конфиг в `scripts/server-tuning/nginx.conf` + `track-anime-proxy.conf`, применение: `bash scripts/server-tuning/apply-track-anime-nginx.sh`. В `track-anime-proxy.conf` обязателен `location /watch-party-ws` → `:3002` (иначе `wss` уходит в Next.js и совместный просмотр «висит»).
 
+**Заглушки вместо Cloudflare 502:**
+- есть флаг `/var/www/ta_new/maintenance.on` (ставит `server-deploy.sh` на время stop/build) → **503** + `public/maintenance.html` («Сайт обновляется», кнопка «Обновить»);
+- Next.js упал без флага → **502** + `public/unavailable.html` («Сайт недоступен» + Discord/VK).
+Сниппет прокси синхронизируется при деплое, если изменился.
+
 `track-anime.dygdyg.ru` и `ta.dygdyg.ru` (80/443): для обычных браузеров (`Mozilla*`) — HTML 200 bounce (`error_page 418` / `@ta_legacy_bounce`, `Cache-Control: no-store`) с `location.replace` на `https://track-anime.win$uri?…` (не 301: браузеры навсегда кэшируют Location). Query `legacy_redirect=1` nginx может ещё добавлять — сайт его больше не обрабатывает (модалка убрана). Без bounce для Android WebView (`; wv)`), `TrackAnimeAndroid` / `TrackAnimeWindows` — иначе старая оболочка открывает `.win` во внешнем браузере и не видит in-app update.
 
 Сертификаты Let's Encrypt (certbot timer):

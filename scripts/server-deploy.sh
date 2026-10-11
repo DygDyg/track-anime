@@ -14,6 +14,7 @@ DEPLOY_SOURCE="${DEPLOY_SOURCE:-tar}"
 DEPLOY_PROGRESS_TOTAL=10
 DEPLOY_NOTIFY_COMMIT="${DEPLOY_NOTIFY_COMMIT:-}"
 DEPLOY_NOTIFY_TRIGGER="${DEPLOY_NOTIFY_TRIGGER:-${GIT_DEPLOY_TRIGGER:-cli}}"
+MAINTENANCE_FLAG="${APP_DIR}/maintenance.on"
 
 # Discord webhook (optional): success/error via EXIT trap
 _ta_deploy_ec=0
@@ -39,7 +40,42 @@ _ta_notify_deploy() {
     "$DEPLOY_SOURCE" \
     >/dev/null 2>&1 || true
 }
-trap '_ta_deploy_ec=$?; _ta_notify_deploy; exit $_ta_deploy_ec' EXIT
+enable_maintenance() {
+  touch "$MAINTENANCE_FLAG"
+  echo "[deploy] maintenance mode ON ($MAINTENANCE_FLAG)"
+}
+disable_maintenance() {
+  if [ -f "$MAINTENANCE_FLAG" ]; then
+    rm -f "$MAINTENANCE_FLAG"
+    echo "[deploy] maintenance mode OFF"
+  fi
+}
+sync_nginx_proxy_snippet() {
+  local src="$APP_DIR/scripts/server-tuning/track-anime-proxy.conf"
+  local dst="/etc/nginx/snippets/track-anime-proxy.conf"
+  if [ ! -f "$src" ]; then
+    echo "[deploy] WARN: missing $src — skip nginx snippet sync" >&2
+    return 0
+  fi
+  if [ ! -d /etc/nginx/snippets ]; then
+    echo "[deploy] WARN: /etc/nginx/snippets missing — skip nginx snippet sync" >&2
+    return 0
+  fi
+  if cmp -s "$src" "$dst" 2>/dev/null; then
+    echo "[deploy] nginx proxy snippet unchanged"
+    return 0
+  fi
+  echo "[deploy] updating nginx proxy snippet (maintenance page)"
+  cp "$src" "$dst"
+  if nginx -t 2>&1; then
+    systemctl reload nginx
+    echo "[deploy] nginx reloaded"
+  else
+    echo "[deploy] ERROR: nginx -t failed after snippet update" >&2
+    return 1
+  fi
+}
+trap '_ta_deploy_ec=$?; disable_maintenance; _ta_notify_deploy; exit $_ta_deploy_ec' EXIT
 
 deploy_progress() {
   local step="$1"
@@ -99,6 +135,9 @@ fi
 for f in scripts/*.sh; do
   [ -f "$f" ] && sed -i 's/\r$//' "$f"
 done
+if [ -f scripts/server-tuning/track-anime-proxy.conf ]; then
+  sed -i 's/\r$//' scripts/server-tuning/track-anime-proxy.conf
+fi
 
 # Удаляем устаревшие файлы, которые tar/git не всегда зачищают
 rm -f server.ts
@@ -106,6 +145,9 @@ rm -rf src/components/watch-party src/app/api/watch-party
 rm -f src/server/watch-party-ws.ts src/lib/kodik-player-control.ts
 rm -f scripts/ws-create-test.mjs scripts/test-ws.mjs scripts/fix-nginx-ws.sh
 rm -f src/middleware.ts src/src/middleware.ts src/src/proxy.ts
+
+# Подтянуть nginx-заглушку «сайт обновляется» (идемпотентно)
+sync_nginx_proxy_snippet
 
 # Discord: старт пересборки (финиш — EXIT trap ниже)
 if [ -z "${DEPLOY_NOTIFY_COMMIT:-}" ] && [ -d "$APP_DIR/.git" ]; then
@@ -142,6 +184,8 @@ deploy_progress 6 "next build"
 # Останавливаем до удаления .next — иначе rm/build падают на занятом fetch-cache.
 # .build-number пишем только после stop: иначе живой процесс отдаёт новый
 # fingerprint в /api/site-build и ClientUpdateGuard зовёт reload в downtime.
+# Флаг maintenance.on → nginx отдаёт 503 + public/maintenance.html вместо CF 502.
+enable_maintenance
 if systemctl is-active --quiet "$SERVICE_NAME"; then
   systemctl stop "$SERVICE_NAME"
 fi
@@ -186,6 +230,9 @@ if systemctl cat "$WATCH_PARTY_SERVICE_NAME" >/dev/null 2>&1; then
     exit 1
   fi
 fi
+
+# Снять заглушку до HTTP-проверки (иначе curl получит 503).
+disable_maintenance
 
 deploy_progress 10 "site check"
 HTTP_CODE=$(curl -s -o /dev/null -w '%{http_code}' "$SITE_URL")

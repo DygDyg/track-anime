@@ -1757,6 +1757,37 @@ html[data-card-size="compact"] .release-card-title {
   }
 }
 
+@keyframes kodik-player-play-pause-flash {
+  0% {
+    opacity: 0;
+    transform: translate(-50%, -50%) scale(0.72);
+  }
+  18% {
+    opacity: 1;
+    transform: translate(-50%, -50%) scale(1);
+  }
+  65% {
+    opacity: 1;
+    transform: translate(-50%, -50%) scale(1.04);
+  }
+  100% {
+    opacity: 0;
+    transform: translate(-50%, -50%) scale(1.12);
+  }
+}
+
+.kodik-player-beta-play-pause-flash {
+  animation: kodik-player-play-pause-flash 0.55s ease-out forwards;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .kodik-player-beta-play-pause-flash {
+    animation: none;
+    opacity: 0.92;
+    transform: translate(-50%, -50%);
+  }
+}
+
 /* TA-плеер: iframe занимает ровно внешний кадр, без выхода за окно. */
 .kodik-player-beta-frame {
   --kodik-beta-inner-aspect: 16 / 9;

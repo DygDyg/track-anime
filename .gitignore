@@ -4,6 +4,7 @@ dist/
 .env
 deploy.local.json
 .build-number
+maintenance.on
 *.log
 .telegram-bot.lock
 data/cover-cache/*
