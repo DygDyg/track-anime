@@ -1,12 +1,15 @@
 "use client";
 
 import { useMemo, useState } from "react";
+import { useAuth } from "@/components/auth/AuthProvider";
+import { useUserListStatusMap } from "@/components/favorites/UserListStatusProvider";
 import { ReleaseCard } from "@/components/ReleaseCard";
 import { headerControl } from "@/components/header/header-styles";
 import { useSiteSettings } from "@/components/SiteSettingsProvider";
 import { homeFeedGridClassName, homeHistoryInnerPadX, homeHistoryOuterGutterX } from "@/lib/home-feed-layout";
 import { isHomeTranslationVisible } from "@/lib/site-settings";
 import type { ReleaseItemDto } from "@/lib/releases";
+import { shouldShowListBadge } from "@/lib/user-anime-list-status";
 
 function NoveltiesIcon() {
   return (
@@ -47,10 +50,14 @@ function formatCountLabel(count: number): string {
 }
 
 export function HomeNoveltiesSection({ items }: { items: ReleaseItemDto[] }) {
+  const { user } = useAuth();
   const { settings } = useSiteSettings();
+  const { getStatus } = useUserListStatusMap();
   const [collapsed, setCollapsed] = useState(true);
+  /** Только на текущую сессию страницы — не пишем в localStorage/settings. */
+  const [hideInLists, setHideInLists] = useState(false);
 
-  const visibleItems = useMemo(
+  const filteredByTranslation = useMemo(
     () =>
       items.filter((item) =>
         isHomeTranslationVisible(item.translationName, settings.homeTranslationFilter),
@@ -58,9 +65,18 @@ export function HomeNoveltiesSection({ items }: { items: ReleaseItemDto[] }) {
     [items, settings.homeTranslationFilter],
   );
 
-  if (visibleItems.length === 0) return null;
+  const visibleItems = useMemo(() => {
+    if (!hideInLists || !user) return filteredByTranslation;
+    return filteredByTranslation.filter((item) => {
+      if (item.shikimoriId == null) return true;
+      return !shouldShowListBadge(getStatus(item.shikimoriId));
+    });
+  }, [filteredByTranslation, getStatus, hideInLists, user]);
+
+  if (filteredByTranslation.length === 0) return null;
 
   const bodyId = "home-novelties-panel-body";
+  const showHideInListsToggle = Boolean(user);
 
   return (
     <div className={`${homeHistoryOuterGutterX} mb-6 sm:mb-8`}>
@@ -102,6 +118,24 @@ export function HomeNoveltiesSection({ items }: { items: ReleaseItemDto[] }) {
               ({formatCountLabel(visibleItems.length)})
             </span>
           </button>
+
+          {showHideInListsToggle ? (
+            <button
+              type="button"
+              aria-pressed={hideInLists}
+              title="Временно скрыть тайтлы, которые уже есть в ваших списках"
+              onClick={() => setHideInLists((current) => !current)}
+              className={[
+                "shrink-0 rounded-lg border px-2 py-1.5 text-[11px] font-medium transition sm:px-2.5 sm:text-xs",
+                hideInLists
+                  ? "border-accent bg-accent/15 text-accent"
+                  : "border-border bg-card/60 text-muted hover:border-accent/40 hover:text-foreground",
+              ].join(" ")}
+            >
+              <span className="sm:hidden">Без списков</span>
+              <span className="hidden sm:inline">Скрыть из списков</span>
+            </button>
+          ) : null}
         </div>
 
         {!collapsed ? (
@@ -109,11 +143,17 @@ export function HomeNoveltiesSection({ items }: { items: ReleaseItemDto[] }) {
             id={bodyId}
             className={`site-header-text relative bg-card/95 py-3 backdrop-blur-lg backdrop-saturate-150 sm:py-4 ${homeHistoryInnerPadX}`}
           >
-            <div className={homeFeedGridClassName}>
-              {visibleItems.map((item) => (
-                <ReleaseCard key={item.id} release={item} hoverPanelPortal />
-              ))}
-            </div>
+            {visibleItems.length === 0 ? (
+              <p className="rounded-lg border border-dashed border-border bg-card/50 px-3 py-4 text-center text-sm text-muted">
+                Все новинки уже есть в ваших списках.
+              </p>
+            ) : (
+              <div className={homeFeedGridClassName}>
+                {visibleItems.map((item) => (
+                  <ReleaseCard key={item.id} release={item} hoverPanelPortal />
+                ))}
+              </div>
+            )}
           </div>
         ) : null}
       </section>

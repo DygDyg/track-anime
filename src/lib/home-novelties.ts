@@ -73,8 +73,8 @@ function mapNoveltyRow(row: RawNoveltyRow): ReleaseItem {
 
 /**
  * Ранние тайтлы для блока «Новинки» на главной:
- * сезон 1, ≤5 серий, последний релиз не старше 30 дней,
- * старт показа (`aired_on`) не старше 90 дней — без старых доозвучек.
+ * любой номер сезона Kodik (в т.ч. 2+), ≤5 серий, последний релиз не старше 30 дней,
+ * старт показа (`aired_on`) не старше 90 дней — без продолжений прошлого сезона и старых доозвучек.
  */
 async function queryHomeNoveltiesUncached(limit: number): Promise<ReleaseItem[]> {
   const releaseCutoff = new Date(Date.now() - HOME_NOVELTIES_MAX_AGE_DAYS * 24 * 60 * 60 * 1000);
@@ -182,7 +182,6 @@ async function queryHomeNoveltiesUncached(limit: number): Promise<ReleaseItem[]>
         LEFT JOIN "KodikEpisode" e ON e."materialId" = r."materialId"
           AND e."seasonNumber" = r."seasonNumber"
           AND e."episodeNumber" = r."episodeNumber"
-        WHERE r."seasonNumber" <= 1
       ) release_rows
       ORDER BY
         title_key,

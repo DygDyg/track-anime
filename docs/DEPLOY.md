@@ -151,6 +151,19 @@ npm run deploy:smart
 
 Для агента Cursor: при просьбе «задеплой» запускать `deploy:smart`, не спрашивая канал (см. `.cursor/rules/deploy-smart.mdc`).
 
+### Site changelog (для пользователей)
+
+Перед деплоем агент/разработчик при необходимости дополняет **пользовательский** лог:
+
+- файл: `data/site-changelog.json` (в git; `entries` — новые сверху)
+- читалка: `src/lib/site-changelog.ts` (для будущего UI «Что нового»)
+- превью в админке: `/admin/changelog` (`SiteChangelogPanel`)
+- правило: `.cursor/rules/deploy-changelog.mdc`, кратко в `AI_RULES.md`
+
+Писать нововведения и заметные изменения по-русски (`feature` / `improvement` / `change` / заметный `fix`). Не писать рефакторинг, CI, docs-only и дамп commit messages. Если для пользователей нечего показать — запись не создавать.
+
+`deploy-smart.ps1` мягко напоминает, если top-запись не совпадает с `HEAD` и файл не изменён в рабочей копии (деплой не блокирует).
+
 ---
 
 ## Git-деплой (без SSH с вашего ПК)

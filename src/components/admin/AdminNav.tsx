@@ -43,6 +43,7 @@ const sections = [
   {
     title: "Система",
     items: [
+      { href: "/admin/changelog", label: "Changelog" },
       { href: "/admin/db", label: "База" },
       { href: "/admin/users", label: "Пользователи" },
       { href: "/admin/audience", label: "Аналитика" },

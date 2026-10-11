@@ -345,6 +345,54 @@ function Get-DeploySmartDirtyPaths {
     return @($paths | Select-Object -Unique)
 }
 
+function Write-SiteChangelogHint {
+    # Soft reminder: user-facing changelog should be curated before deploy (not a git dump).
+    $rel = "data/site-changelog.json"
+    $path = Join-Path $ProjectRoot $rel
+    if (-not (Test-Path -LiteralPath $path)) {
+        Write-Smart "changelog: missing $rel — add user-facing deploy notes when this release has them" -Color Yellow
+        return
+    }
+
+    $dirty = @(Get-DeploySmartDirtyPaths)
+    if ($dirty -contains "data/site-changelog.json") {
+        Write-Smart "changelog: updated in working tree (will auto-commit)" -Color Green
+        return
+    }
+
+    Set-Location $ProjectRoot
+    $short = (git rev-parse --short HEAD 2>$null)
+    if (-not $short) { return }
+    $short = $short.Trim()
+
+    try {
+        $json = Get-Content -LiteralPath $path -Raw -Encoding UTF8 | ConvertFrom-Json
+    } catch {
+        Write-Smart "changelog: failed to parse $rel" -Color Yellow
+        return
+    }
+
+    $entries = @($json.entries)
+    if ($entries.Count -eq 0) {
+        Write-Smart "changelog: empty — prepend user-facing items before deploy if users would notice changes" -Color Yellow
+        return
+    }
+
+    $topSha = [string]$entries[0].gitSha
+    if (
+        $topSha -and (
+            $topSha -eq $short -or
+            $short.StartsWith($topSha) -or
+            $topSha.StartsWith($short)
+        )
+    ) {
+        Write-Smart "changelog: top entry matches HEAD ($short)" -Color Green
+        return
+    }
+
+    Write-Smart "changelog: top gitSha='$topSha' != HEAD $short — update $rel for user-facing changes (skip if none)" -Color Yellow
+}
+
 function Ensure-GitCommitted {
     # Returns $true if a commit was created (or would be in DryRun).
     if ($NoCommit) {
@@ -472,6 +520,7 @@ Write-Smart "project: $ProjectRoot"
 Write-Smart "remote:  $Remote"
 Write-TaDeployConfigStatus -Prefix "[deploy-smart]"
 
+Write-SiteChangelogHint
 $null = Ensure-GitCommitted
 $didPush = [bool](Ensure-GitPushed)
 

@@ -106,6 +106,10 @@ Update only affected sections. Keep docs factual and synced to real code. If no 
 - If a claim is not verified: `НЕ ПОДТВЕРЖДЕНО`
 - For reviews and debugging, cite real files and lines where possible
 
+## Deploy changelog
+
+Before every production deploy: update `data/site-changelog.json` with **user-facing** changes/new features when there are any (Russian, not a bugfix dump). Rule: `.cursor/rules/deploy-changelog.mdc`. Then deploy via `deploy:smart`. Skip the entry if nothing is user-visible.
+
 ## Multi-topic requests
 
 Use `.cursor/rules/multi-task-dispatcher.mdc` and skill `ta-dispatcher`. Deploy last.

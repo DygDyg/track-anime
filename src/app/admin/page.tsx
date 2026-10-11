@@ -22,6 +22,12 @@ export default async function AdminDashboardPage() {
 
       <AdminSiteVersionPanel build={stats.build} />
 
+      <p className="text-sm">
+        <Link href="/admin/changelog" className={adminClass.textLink}>
+          Changelog для пользователей (превью) →
+        </Link>
+      </p>
+
       <section>
         <h2 className="mb-4 text-lg font-semibold text-foreground">Каталог</h2>
         <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-3">
