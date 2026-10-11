@@ -266,7 +266,8 @@ export async function trackAnimePlay(input: TrackAnimePlayInput): Promise<TrackP
     return { visitorKey: input.visitorKey?.trim() || randomUUID(), tracked: false, throttled: false };
   }
 
-  const player: AnalyticsPlayerKind = input.player === "cvh" ? "cvh" : "kodik";
+  const player: AnalyticsPlayerKind =
+    input.player === "cvh" ? "cvh" : input.player === "taplus" ? "taplus" : "kodik";
   const visitorKey = (input.visitorKey?.trim() || randomUUID()).slice(0, 64);
   const userId = input.userId?.trim() || null;
   if (!userId && isAnalyticsBotUserAgent(input.userAgent)) {

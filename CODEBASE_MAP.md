@@ -82,6 +82,8 @@ ta_new/
 | `characters/[characterId]/hover-preview` | Character hover preview |
 | `anime/[shikimoriId]/comments` | Shikimori comments proxy |
 | `anime/[shikimoriId]/episodes` | Episode metadata |
+| `anime/[shikimoriId]/taplus` | TA Plus: decode Kodik `/ftor` → HLS qualities |
+| `anime/[shikimoriId]/cvh` | VideoHUB playlist resolve |
 | `anime/[shikimoriId]/hover-preview` | Anime hover preview |
 | `anime/[shikimoriId]/trailer` | YouTube trailer |
 | `anime/[shikimoriId]/skip-times` | Server-side AniSkip OP/ED timings |
@@ -207,6 +209,7 @@ Git deploy webhook (HMAC, no session): `api/deploy/webhook` (POST)
 |------|----------------|
 | `anime-page.ts` | Anime page data loader |
 | `cvh-player.ts` | CDN VideoHub pub/aggr (в т.ч. `shikimori`→MAL fallback), playlist helpers, URL для запасного `/cdn-iframe` |
+| `kodik-ftor.ts` | Серверный вызов PHP-парсера `/ftor` + ROT18/base64 decode HLS `src` для TA Plus |
 | `kodik-ensure-materials.ts` | On-demand Kodik materials by shikimoriId when page has none |
 | `releases.ts` | Home feed queries (SQL builders + page API) |
 | `home-feed-cache.ts` | Materialized home feed (`HomeFeedItem` / meta, head+full rebuild) |
@@ -254,7 +257,7 @@ Git deploy webhook (HMAC, no session): `api/deploy/webhook` (POST)
 
 | Folder | Key components |
 |--------|----------------|
-| `anime/` | `AnimePageView`, `AnimeWatchPanel`, `KodikPlayer`, `CvhWatchSection` / `CvhPlayerFrame`, `MoveToCompletedBanner`, `AddToWatchingBanner`, `AnimeListActions`, `AnimeShikimoriRating` + `AnimeUserScoreVote` |
+| `anime/` | `AnimePageView`, `AnimeWatchPanel`, `KodikPlayer`, `TaPlusWatchSection` / `TaPlusPlayer`, `CvhWatchSection` / `CvhPlayerFrame`, `MoveToCompletedBanner`, `AddToWatchingBanner`, `AnimeListActions`, `AnimeShikimoriRating` + `AnimeUserScoreVote` |
 | `admin/` | `AdminAnimeDebugButton` — защищённое окно данных тайтла/серии; `AdminForceCoverButton` — force-перекачка обложки на странице тайтла |
 | `auth/` | `AuthProvider` |
 | `header/` | `Header`, `HeaderSearch` |

@@ -29,7 +29,12 @@ export async function recordAnimeWatchShareEvent(
       avatar: input.avatar?.slice(0, 500) ?? null,
       shikimoriId: input.shikimoriId,
       animeTitle: input.animeTitle.slice(0, 300) || `Shikimori ${input.shikimoriId}`,
-      player: input.player === "cvh" ? "cvh" : "kodik",
+      player:
+        input.player === "cvh"
+          ? "cvh"
+          : input.player === "taplus"
+            ? "taplus"
+            : "kodik",
       seasonNumber: Math.trunc(input.seasonNumber),
       episodeNumber: Math.trunc(input.episodeNumber),
       translationId: input.translationId,

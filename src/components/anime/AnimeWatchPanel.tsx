@@ -52,6 +52,7 @@ import {
 } from "@/lib/anime-watch-share";
 import { playCopySound } from "@/lib/copy-feedback";
 import { CvhWatchSection } from "@/components/anime/CvhWatchSection";
+import { TaPlusWatchSection } from "@/components/anime/TaPlusWatchSection";
 import { AddToWatchingBanner } from "@/components/anime/AddToWatchingBanner";
 import { MoveToCompletedBanner } from "@/components/anime/MoveToCompletedBanner";
 import { matchKodikTranslationForCvhVoice } from "@/lib/cvh-player";
@@ -80,12 +81,14 @@ function PlayerBalancerSwitch({
 }) {
   const trackRef = useRef<HTMLDivElement>(null);
   const taRef = useRef<HTMLButtonElement>(null);
+  const taPlusRef = useRef<HTMLButtonElement>(null);
   const cvhRef = useRef<HTMLButtonElement>(null);
   const [thumb, setThumb] = useState({ left: 2, width: 0 });
 
   const syncThumb = useCallback(() => {
     const track = trackRef.current;
-    const active = value === "cvh" ? cvhRef.current : taRef.current;
+    const active =
+      value === "cvh" ? cvhRef.current : value === "taplus" ? taPlusRef.current : taRef.current;
     if (!track || !active) return;
     const trackBox = track.getBoundingClientRect();
     const activeBox = active.getBoundingClientRect();
@@ -103,6 +106,7 @@ function PlayerBalancerSwitch({
     const observer = new ResizeObserver(() => syncThumb());
     observer.observe(track);
     if (taRef.current) observer.observe(taRef.current);
+    if (taPlusRef.current) observer.observe(taPlusRef.current);
     if (cvhRef.current) observer.observe(cvhRef.current);
     window.addEventListener("resize", syncThumb);
     return () => {
@@ -141,6 +145,18 @@ function PlayerBalancerSwitch({
         ].join(" ")}
       >
         TA
+      </button>
+      <button
+        ref={taPlusRef}
+        type="button"
+        aria-pressed={value === "taplus"}
+        onClick={() => onChange("taplus")}
+        className={[
+          "relative z-10 shrink-0 rounded px-3 py-1.5 font-medium transition-colors duration-200",
+          value === "taplus" ? "text-foreground" : "text-muted hover:text-foreground",
+        ].join(" ")}
+      >
+        TA Plus
       </button>
       <button
         ref={cvhRef}
@@ -549,6 +565,7 @@ export function AnimeWatchPanel({
   const { loading: listsLoading } = useUserListStatusActions();
   const { settings, updateSettings } = useSiteSettings();
   const [playerBalancer, setPlayerBalancer] = useState<PlayerBalancer>("kodik");
+  const [taPlusSeekSeconds, setTaPlusSeekSeconds] = useState<number | null>(null);
   const [shareLinkCopied, setShareLinkCopied] = useState(false);
   const [deepLinkInvite, setDeepLinkInvite] = useState<DeepLinkInvite | null>(null);
   const forcedIntroOffsets = useForcedTranslationIntroOffsets();
@@ -1234,6 +1251,26 @@ export function AnimeWatchPanel({
     [playable, saveTranslation],
   );
 
+  const handleTaPlusTranslationChange = useCallback(
+    (kodikId: string) => {
+      setSelectedId(kodikId);
+      saveTranslation(kodikId);
+      setTaPlusSeekSeconds(null);
+    },
+    [saveTranslation],
+  );
+
+  const handleTaPlusEpisodeChange = useCallback(
+    (payload: { seasonNumber: number; episodeNumber: number }) => {
+      setPlayerEpisode({
+        seasonNumber: payload.seasonNumber,
+        episodeNumber: payload.episodeNumber,
+      });
+      setTaPlusSeekSeconds(null);
+    },
+    [],
+  );
+
   const handlePause = useCallback(
     (payload: ProgressPayload) => {
       liveProgressRef.current = payload;
@@ -1493,6 +1530,30 @@ export function AnimeWatchPanel({
       );
 
       lastContinueResumeRef.current = resume;
+
+      if (playerBalancer === "taplus" && !switchingFromCvh) {
+        setContinueLoading(true);
+        setContinueTarget({ episodeNumber: resume.episodeNumber });
+        pendingContinueModeRef.current = "play";
+        isPausedRef.current = false;
+        if (target.kodikId !== selectedIdRef.current) {
+          setSelectedId(target.kodikId);
+          saveTranslation(target.kodikId);
+        }
+        setPlayerEpisode({
+          seasonNumber: resume.seasonNumber,
+          episodeNumber: resume.episodeNumber,
+        });
+        setTaPlusSeekSeconds(resume.positionSeconds);
+        const el = document.getElementById("player");
+        el?.scrollIntoView({ behavior: "auto", block: "start" });
+        window.setTimeout(() => {
+          setContinueLoading(false);
+          setContinueTarget(null);
+        }, 400);
+        return;
+      }
+
       setContinueLoading(true);
       setContinueTarget({ episodeNumber: resume.episodeNumber });
       pendingContinueModeRef.current = "play";
@@ -1569,6 +1630,7 @@ export function AnimeWatchPanel({
       playerBalancer,
       rememberSeriaLink,
       remountToEpisodeEmbed,
+      saveTranslation,
       shikimoriId,
     ],
   );
@@ -3323,7 +3385,12 @@ export function AnimeWatchPanel({
 
   const renderDeepLinkInviteOverlay = () => {
     if (!deepLinkInvite || continueLoading) return null;
-    const playerLabel = deepLinkInvite.player === "cvh" ? "VideoHUB" : "TA";
+    const playerLabel =
+      deepLinkInvite.player === "cvh"
+        ? "VideoHUB"
+        : deepLinkInvite.player === "taplus"
+          ? "TA Plus"
+          : "TA";
     const seasonLabel = formatKodikSeasonLabel(deepLinkInvite.seasonNumber);
     const episodeLabel = formatEpisodeOfTotal(deepLinkInvite.episodeNumber, episodesTotal ?? null);
     const timeLabel =
@@ -3368,7 +3435,7 @@ export function AnimeWatchPanel({
   };
 
   const renderWatchPartyPanel = () => {
-    if (playerBalancer === "cvh") return null;
+    if (playerBalancer === "cvh" || playerBalancer === "taplus") return null;
     if (!betaChromeless || !ready || !selected?.playerLink) return null;
     if (watchParty.settingsLoading) return null;
     if (!watchParty.settings.enabled) return null;
@@ -3956,6 +4023,28 @@ export function AnimeWatchPanel({
               onVoiceStudioChange={handleCvhVoiceStudioChange}
             />
           </div>
+        ) : playerBalancer === "taplus" ? (
+          <div className="relative min-w-0">
+            {renderDeepLinkInviteOverlay()}
+            <TaPlusWatchSection
+              shikimoriId={shikimoriId}
+              animeTitle={animeTitle}
+              translations={playable}
+              preferredKodikId={selectedId || null}
+              preferredSeason={playerEpisode.seasonNumber}
+              preferredEpisode={playerEpisode.episodeNumber}
+              initialPositionSeconds={taPlusSeekSeconds}
+              onProgress={(payload) => {
+                if (payload.durationSeconds > 0) {
+                  durationSecondsRef.current = payload.durationSeconds;
+                }
+                trackProgress(payload);
+              }}
+              onPause={handlePause}
+              onTranslationChange={handleTaPlusTranslationChange}
+              onEpisodeChange={handleTaPlusEpisodeChange}
+            />
+          </div>
         ) : !ready ? (
           <div className="aspect-video animate-pulse rounded-lg bg-surface-dim" />
         ) : selected?.playerLink ? (
@@ -4104,7 +4193,7 @@ export function AnimeWatchPanel({
           )
         ) : (
           <div className="rounded-lg border border-border bg-card px-4 py-6 text-sm text-muted">
-            Нет ссылки Kodik для этого тайтла. Можно попробовать VideoHUB.
+            Нет ссылки Kodik для этого тайтла. Можно попробовать VideoHUB или TA Plus.
           </div>
         )}
 

@@ -56,9 +56,9 @@ export default async function AdminAudiencePage() {
       <section>
         <h2 className="mb-2 text-lg font-semibold text-foreground">Плееры</h2>
         <p className="mb-4 text-sm text-muted">
-          Уникальные зрители и запуски за 30 дней по балансеру на странице тайтла (Kodik/TA vs
-          VideoHUB). Учёт с момента деплоя этой метрики; старые play без поля player считаются как
-          Kodik/TA.
+          Уникальные зрители и запуски за 30 дней по балансеру на странице тайтла (Kodik/TA,
+          VideoHUB, TA Plus). Учёт с момента деплоя этой метрики; старые play без поля player
+          считаются как Kodik/TA.
         </p>
         <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
           <StatCard
@@ -70,6 +70,11 @@ export default async function AdminAudiencePage() {
             label="VideoHUB — люди"
             value={stats.playerCvh.people}
             hint={`запусков: ${stats.playerCvh.hits.toLocaleString("ru-RU")}`}
+          />
+          <StatCard
+            label="TA Plus — люди"
+            value={stats.playerTaPlus.people}
+            hint={`запусков: ${stats.playerTaPlus.hits.toLocaleString("ru-RU")}`}
           />
         </div>
       </section>

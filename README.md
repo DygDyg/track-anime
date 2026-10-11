@@ -170,6 +170,7 @@ http://localhost:3000/api/auth/callback/shikimori
 |------------|------------|
 | `DATABASE_URL` | PostgreSQL connection string |
 | `KODIK_API_TOKEN` | Токен Kodik API |
+| `KODIK_PARSER_BASE` | PHP-парсер для TA Plus (по умолчанию figame `/kodik_parser/`) |
 | `SHIKIMORI_CLIENT_ID` | OAuth client ID |
 | `SHIKIMORI_CLIENT_SECRET` | OAuth client secret |
 | `AUTH_URL` | Базовый URL сайта (для OAuth redirect) |

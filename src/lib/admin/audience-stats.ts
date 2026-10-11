@@ -53,6 +53,7 @@ export type AudienceStats = {
   /** Уникальные зрители и запуски по балансеру плеера (30 дней). */
   playerKodik: AudiencePlayerStats;
   playerCvh: AudiencePlayerStats;
+  playerTaPlus: AudiencePlayerStats;
   topSections: AudienceSectionRow[];
   topTitles: AudienceTitleRow[];
   topPlayTitles: AudienceTitleRow[];
@@ -64,6 +65,7 @@ const SECTION_LABELS: Record<ContentSection | string, string> = {
   anime_play: "Воспроизведение",
   anime_play_kodik: "Плеер Kodik / TA",
   anime_play_cvh: "Плеер VideoHUB",
+  anime_play_taplus: "Плеер TA Plus",
   favorites: "Избранное",
   history: "История",
   search: "Поиск",
@@ -73,7 +75,7 @@ const SECTION_LABELS: Record<ContentSection | string, string> = {
   other: "Прочее",
 };
 
-const PLAYER_SECTIONS = ["anime_play_kodik", "anime_play_cvh"] as const;
+const PLAYER_SECTIONS = ["anime_play_kodik", "anime_play_cvh", "anime_play_taplus"] as const;
 
 const CLIENT_KIND_LABELS: Record<string, string> = {
   web: "Браузер",
@@ -328,15 +330,27 @@ export async function getAudienceStats(options?: { chartDays?: number }): Promis
     deviceRows.push({ key: label, count: 1 });
   }
 
-  const playerPeople = { anime_play_kodik: new Set<string>(), anime_play_cvh: new Set<string>() };
+  const playerPeople = {
+    anime_play_kodik: new Set<string>(),
+    anime_play_cvh: new Set<string>(),
+    anime_play_taplus: new Set<string>(),
+  };
   for (const row of playerIdentityRows) {
-    if (row.section === "anime_play_kodik" || row.section === "anime_play_cvh") {
+    if (
+      row.section === "anime_play_kodik" ||
+      row.section === "anime_play_cvh" ||
+      row.section === "anime_play_taplus"
+    ) {
       playerPeople[row.section].add(row.identityKey);
     }
   }
-  const playerHits = { anime_play_kodik: 0, anime_play_cvh: 0 };
+  const playerHits = { anime_play_kodik: 0, anime_play_cvh: 0, anime_play_taplus: 0 };
   for (const row of playerHitRows) {
-    if (row.section === "anime_play_kodik" || row.section === "anime_play_cvh") {
+    if (
+      row.section === "anime_play_kodik" ||
+      row.section === "anime_play_cvh" ||
+      row.section === "anime_play_taplus"
+    ) {
       playerHits[row.section] += row.hitCount;
     }
   }
@@ -372,8 +386,17 @@ export async function getAudienceStats(options?: { chartDays?: number }): Promis
       people: playerPeople.anime_play_cvh.size,
       hits: playerHits.anime_play_cvh,
     },
+    playerTaPlus: {
+      people: playerPeople.anime_play_taplus.size,
+      hits: playerHits.anime_play_taplus,
+    },
     topSections: [...sectionMap.entries()]
-      .filter(([section]) => section !== "anime_play_kodik" && section !== "anime_play_cvh")
+      .filter(
+        ([section]) =>
+          section !== "anime_play_kodik" &&
+          section !== "anime_play_cvh" &&
+          section !== "anime_play_taplus",
+      )
       .map(([section, v]) => ({
         section,
         label: SECTION_LABELS[section] ?? section,

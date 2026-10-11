@@ -42,7 +42,8 @@ export function reportAnimePlay(
   if (!Number.isInteger(shikimoriId) || shikimoriId <= 0) return;
   if (typeof window === "undefined") return;
 
-  const kind: AnalyticsPlayerKind = player === "cvh" ? "cvh" : "kodik";
+  const kind: AnalyticsPlayerKind =
+    player === "cvh" ? "cvh" : player === "taplus" ? "taplus" : "kodik";
   const key = playThrottleKey(shikimoriId, kind);
   const now = Date.now();
   const prev = Math.max(lastPlayByKey.get(key) ?? 0, readStoredPlayAt(shikimoriId, kind));
@@ -69,7 +70,7 @@ export function reportAnimePlay(
 export type ReportAnimeWatchShareInput = {
   shikimoriId: number;
   animeTitle: string;
-  player: AnalyticsPlayerKind | "kodik" | "cvh";
+  player: AnalyticsPlayerKind | "kodik" | "cvh" | "taplus";
   seasonNumber: number;
   episodeNumber: number;
   translationId?: number | null;
@@ -84,7 +85,8 @@ export function reportAnimeWatchShare(input: ReportAnimeWatchShareInput): void {
   if (!Number.isInteger(input.shikimoriId) || input.shikimoriId <= 0) return;
   if (typeof window === "undefined") return;
 
-  const player = input.player === "cvh" ? "cvh" : "kodik";
+  const player =
+    input.player === "cvh" ? "cvh" : input.player === "taplus" ? "taplus" : "kodik";
   void fetch("/api/analytics/watch-share", {
     method: "POST",
     headers: { "Content-Type": "application/json" },

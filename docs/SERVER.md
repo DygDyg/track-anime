@@ -89,6 +89,7 @@ NODE_ENV="production"
 | `KODIK_API_URL` | нет | По умолчанию `https://kodik-api.com` |
 | `KODIK_SYNC_PAGES` | нет | Сколько страниц `/list` обрабатывать за один sync (по умолчанию 3) |
 | `KODIK_USER_AGENT` | нет | User-Agent для запросов к Kodik |
+| `KODIK_PARSER_BASE` | нет | База PHP-парсера `/ftor` для плеера TA Plus (по умолчанию `https://figame.dygdyg.win/kodik_parser/`) |
 | `SHIKIMORI_REQUEST_TIMEOUT_MS` | нет | Таймаут одной публичной попытки Shikimori API (по умолчанию 8000 мс) |
 | `SHIKIMORI_TOTAL_TIMEOUT_MS` | нет | Общий бюджет публичного Shikimori API-запроса с retry (по умолчанию 15000 мс) |
 | `WATCH_PARTY_PORT` | нет | Порт отдельного WebSocket-сервера совместного просмотра (по умолчанию 3001). На текущем prod: Next.js `PORT=3001`, watch-party `WATCH_PARTY_PORT=3002` |

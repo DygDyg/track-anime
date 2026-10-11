@@ -53,9 +53,12 @@ const SEARCH_PANEL_DESKTOP_MAX_WIDTH = 672;
 const SEARCH_STATUS_TITLE = "Ищем по названию…";
 const SEARCH_STATUS_REFINING = "Уточняем запрос…";
 const SEARCH_STATUS_ALMOST = "Почти готово…";
+const SEARCH_STATUS_SLOW = "Поиск идёт дольше обычного…";
 const SEARCH_STATUS_LAYOUT = "Пробуем другую раскладку…";
-const SEARCH_STATUS_REFINE_MS = 1600;
-const SEARCH_STATUS_ALMOST_MS = 3200;
+const SEARCH_STATUS_STEP_MS = 15_000;
+const SEARCH_STATUS_REFINE_MS = SEARCH_STATUS_STEP_MS;
+const SEARCH_STATUS_ALMOST_MS = SEARCH_STATUS_STEP_MS * 2;
+const SEARCH_STATUS_SLOW_MS = SEARCH_STATUS_STEP_MS * 3;
 
 type SearchResponse = {
   total: number;
@@ -283,7 +286,11 @@ export function HeaderSearch({
         if (requestId !== requestIdRef.current) return;
         setSearchStatus(SEARCH_STATUS_ALMOST);
       }, SEARCH_STATUS_ALMOST_MS);
-      statusTimersRef.current = [refineTimer, almostTimer];
+      const slowTimer = window.setTimeout(() => {
+        if (requestId !== requestIdRef.current) return;
+        setSearchStatus(SEARCH_STATUS_SLOW);
+      }, SEARCH_STATUS_SLOW_MS);
+      statusTimersRef.current = [refineTimer, almostTimer, slowTimer];
     },
     [clearSearchStatusTimers],
   );

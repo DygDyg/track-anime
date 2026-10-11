@@ -10,7 +10,7 @@ export const ANIME_WATCH_QUERY = {
   nosave: "nosave",
 } as const;
 
-export type AnimeWatchPlayerParam = "kodik" | "cvh";
+export type AnimeWatchPlayerParam = "kodik" | "cvh" | "taplus";
 
 export type AnimeWatchDeepLink = {
   player: AnimeWatchPlayerParam | null;
@@ -50,6 +50,9 @@ export function parseAnimeWatchPlayerParam(raw: string | null | undefined): Anim
   const value = raw.trim().toLowerCase();
   if (value === "kodik" || value === "ta") return "kodik";
   if (value === "cvh" || value === "videohub" || value === "cdn") return "cvh";
+  if (value === "taplus" || value === "ta-plus" || value === "ta_plus" || value === "plus") {
+    return "taplus";
+  }
   return null;
 }
 
@@ -188,6 +191,7 @@ export function buildAnimeWatchShareMetaLine(input: {
 }): string | null {
   const parts: string[] = [];
   if (input.player === "cvh") parts.push("VideoHUB");
+  else if (input.player === "taplus") parts.push("TA Plus");
   else if (input.player === "kodik") parts.push("TA");
 
   if (input.season != null) parts.push(formatWatchShareSeasonLabel(input.season));

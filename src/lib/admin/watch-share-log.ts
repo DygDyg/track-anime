@@ -11,7 +11,7 @@ export type AnimeWatchShareLogItemDto = {
   avatar: string | null;
   shikimoriId: number;
   animeTitle: string;
-  player: "kodik" | "cvh";
+  player: "kodik" | "cvh" | "taplus";
   playerLabel: string;
   seasonNumber: number;
   episodeNumber: number;
@@ -43,8 +43,10 @@ export async function getAnimeWatchShareLogDto(limit = 50): Promise<AnimeWatchSh
       avatar: row.avatar,
       shikimoriId: row.shikimoriId,
       animeTitle: row.animeTitle,
-      player: row.player === "cvh" ? "cvh" : "kodik",
-      playerLabel: row.player === "cvh" ? "VideoHUB" : "TA",
+      player:
+        row.player === "cvh" ? "cvh" : row.player === "taplus" ? "taplus" : "kodik",
+      playerLabel:
+        row.player === "cvh" ? "VideoHUB" : row.player === "taplus" ? "TA Plus" : "TA",
       seasonNumber: row.seasonNumber,
       episodeNumber: row.episodeNumber,
       translationId: row.translationId,

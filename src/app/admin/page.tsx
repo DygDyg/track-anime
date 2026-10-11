@@ -52,6 +52,11 @@ export default async function AdminDashboardPage() {
             value={audience.playerCvh.people}
             hint={`запусков: ${audience.playerCvh.hits.toLocaleString("ru-RU")}`}
           />
+          <StatCard
+            label="Плеер TA Plus (30 дн.)"
+            value={audience.playerTaPlus.people}
+            hint={`запусков: ${audience.playerTaPlus.hits.toLocaleString("ru-RU")}`}
+          />
         </div>
         <p className="mt-3 text-sm">
           <Link href="/admin/audience" className={adminClass.textLink}>

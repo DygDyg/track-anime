@@ -262,6 +262,7 @@ export type ContentSection =
   | "anime_play"
   | "anime_play_kodik"
   | "anime_play_cvh"
+  | "anime_play_taplus"
   | "favorites"
   | "history"
   | "search"
@@ -271,14 +272,16 @@ export type ContentSection =
   | "other";
 
 /** Плеер при реальном старте воспроизведения (аналитика). */
-export type AnalyticsPlayerKind = "kodik" | "cvh";
+export type AnalyticsPlayerKind = "kodik" | "cvh" | "taplus";
 
 export function analyticsPlaySectionForPlayer(player: AnalyticsPlayerKind): ContentSection {
-  return player === "cvh" ? "anime_play_cvh" : "anime_play_kodik";
+  if (player === "cvh") return "anime_play_cvh";
+  if (player === "taplus") return "anime_play_taplus";
+  return "anime_play_kodik";
 }
 
 export function parseAnalyticsPlayerKind(raw: unknown): AnalyticsPlayerKind | null {
-  if (raw === "kodik" || raw === "cvh") return raw;
+  if (raw === "kodik" || raw === "cvh" || raw === "taplus") return raw;
   return null;
 }
 

@@ -94,6 +94,7 @@ export function formatAudienceStatsMarkdown(input: AudienceStatsMarkdownInput): 
       [
         ["Kodik / TA", fmt(stats.playerKodik.people), fmt(stats.playerKodik.hits)],
         ["VideoHUB", fmt(stats.playerCvh.people), fmt(stats.playerCvh.hits)],
+        ["TA Plus", fmt(stats.playerTaPlus.people), fmt(stats.playerTaPlus.hits)],
       ],
     ),
     ``,
