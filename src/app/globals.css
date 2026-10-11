@@ -1841,6 +1841,118 @@ html[data-tv-nav="true"] .kodik-player-beta-theater-button {
   backdrop-filter: blur(12px);
 }
 
+/* TA Plus idle screenshot slideshow — cinematic crossfade + soft Ken Burns */
+.ta-plus-idle-slide {
+  position: absolute;
+  inset: 0;
+  overflow: hidden;
+  will-change: opacity, filter;
+  transition:
+    opacity 1.15s cubic-bezier(0.22, 1, 0.36, 1),
+    filter 1.15s cubic-bezier(0.22, 1, 0.36, 1);
+}
+
+.ta-plus-idle-slide__media {
+  position: absolute;
+  inset: -3%;
+  width: 106%;
+  height: 106%;
+  transform-origin: center center;
+  will-change: transform;
+}
+
+.ta-plus-idle-slide--out {
+  z-index: 0;
+  opacity: 0;
+  filter: blur(12px) saturate(0.8) brightness(0.7);
+}
+
+.ta-plus-idle-slide--out .ta-plus-idle-slide__media {
+  animation: none;
+  transform: scale(1.08) translate3d(0, 1.5%, 0);
+  transition: transform 1.15s cubic-bezier(0.22, 1, 0.36, 1);
+}
+
+.ta-plus-idle-slide--in {
+  z-index: 1;
+  opacity: 1;
+  filter: blur(0) saturate(1) brightness(1);
+}
+
+.ta-plus-idle-slide--in .ta-plus-idle-slide__media {
+  animation: ta-plus-idle-drift 5.2s cubic-bezier(0.22, 1, 0.36, 1) forwards;
+}
+
+.ta-plus-idle-slide--in-alt .ta-plus-idle-slide__media {
+  animation-name: ta-plus-idle-drift-alt;
+}
+
+.ta-plus-idle-veil {
+  pointer-events: none;
+  position: absolute;
+  inset: 0;
+  z-index: 2;
+  opacity: 0;
+  background:
+    radial-gradient(ellipse 80% 70% at 50% 45%, transparent 35%, rgba(0, 0, 0, 0.45) 100%),
+    linear-gradient(115deg, rgba(255, 255, 255, 0.08), transparent 42%, rgba(0, 0, 0, 0.2) 100%);
+  transition: opacity 0.55s cubic-bezier(0.22, 1, 0.36, 1);
+}
+
+.ta-plus-idle-veil--on {
+  opacity: 1;
+}
+
+@keyframes ta-plus-idle-drift {
+  0% {
+    transform: scale(1.07) translate3d(0, 1.2%, 0);
+  }
+  22% {
+    transform: scale(1) translate3d(0, 0, 0);
+  }
+  100% {
+    transform: scale(1.055) translate3d(-1.3%, -0.7%, 0);
+  }
+}
+
+@keyframes ta-plus-idle-drift-alt {
+  0% {
+    transform: scale(1.08) translate3d(1%, -0.4%, 0);
+  }
+  22% {
+    transform: scale(1.01) translate3d(0.2%, 0, 0);
+  }
+  100% {
+    transform: scale(1.06) translate3d(-0.5%, 1.1%, 0);
+  }
+}
+
+html[data-reduce-motion="true"] .ta-plus-idle-slide {
+  transition: opacity 0.25s ease;
+  filter: none !important;
+}
+
+html[data-reduce-motion="true"] .ta-plus-idle-slide__media {
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  transition: none;
+  animation: none !important;
+  transform: none !important;
+}
+
+html[data-reduce-motion="true"] .ta-plus-idle-slide--out {
+  opacity: 0;
+}
+
+html[data-reduce-motion="true"] .ta-plus-idle-slide--in {
+  opacity: 1;
+}
+
+html[data-reduce-motion="true"] .ta-plus-idle-veil {
+  display: none;
+}
+
 .kodik-player-beta-episodes {
   overscroll-behavior: contain;
   scrollbar-width: none;

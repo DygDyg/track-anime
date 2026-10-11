@@ -1,13 +1,18 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { toTaPlusDisplayPreviewUrl } from "@/lib/ta-plus-previews";
 import {
   pickTaPlusIdleSlideshowFrames,
   type TaPlusTiles,
 } from "@/lib/ta-plus-tiles";
 
-const SLIDE_MS = 4_500;
+const SLIDE_MS = 5_200;
+const VEIL_MS = 520;
+
+type FullSlide = { kind: "full"; url: string };
+type TileSlide = { kind: "tile"; url: string; col: number; row: number };
+type Slide = FullSlide | TileSlide;
 
 type Props = {
   /** Full-frame preview URLs (episode screenshots / CDN thumbs). */
@@ -19,6 +24,64 @@ type Props = {
   className?: string;
 };
 
+function cssUrl(url: string): string {
+  return `"${url.replace(/\\/g, "\\\\").replace(/"/g, '\\"')}"`;
+}
+
+function slideKey(slide: Slide): string {
+  return slide.kind === "full" ? `full:${slide.url}` : `tile:${slide.url}:${slide.col}:${slide.row}`;
+}
+
+function SlideLayer({
+  slide,
+  tiles,
+  visible,
+  alternateDrift,
+}: {
+  slide: Slide;
+  tiles: TaPlusTiles | null;
+  visible: boolean;
+  alternateDrift: boolean;
+}) {
+  const cols = Math.max(1, tiles?.x ?? 1);
+  const rows = Math.max(1, tiles?.y ?? 1);
+  const tileStyle =
+    slide.kind === "tile"
+      ? {
+          backgroundRepeat: "no-repeat" as const,
+          backgroundSize: `${cols * 100}% ${rows * 100}%`,
+          backgroundPosition: `${cols <= 1 ? 0 : (slide.col / (cols - 1)) * 100}% ${
+            rows <= 1 ? 0 : (slide.row / (rows - 1)) * 100
+          }%`,
+        }
+      : {
+          backgroundSize: "cover" as const,
+          backgroundPosition: "center" as const,
+        };
+
+  return (
+    <div
+      className={[
+        "ta-plus-idle-slide",
+        visible ? "ta-plus-idle-slide--in" : "ta-plus-idle-slide--out",
+        visible && alternateDrift ? "ta-plus-idle-slide--in-alt" : "",
+      ].join(" ")}
+      aria-hidden
+    >
+      <div
+        className={[
+          "ta-plus-idle-slide__media bg-center",
+          slide.kind === "full" ? "bg-cover" : "",
+        ].join(" ")}
+        style={{
+          backgroundImage: `url(${cssUrl(slide.url)})`,
+          ...tileStyle,
+        }}
+      />
+    </div>
+  );
+}
+
 export function TaPlusIdleBackdrop({
   previews = null,
   tiles,
@@ -27,44 +90,162 @@ export function TaPlusIdleBackdrop({
   onPlay,
   className,
 }: Props) {
-  const [slideIndex, setSlideIndex] = useState(0);
+  const [readyUrls, setReadyUrls] = useState<Set<string>>(() => new Set());
   const [failedUrls, setFailedUrls] = useState<Set<string>>(() => new Set());
+  const [activeKey, setActiveKey] = useState<string | null>(null);
+  const [frontSlide, setFrontSlide] = useState<Slide | null>(null);
+  const [backSlide, setBackSlide] = useState<Slide | null>(null);
+  const [frontVisible, setFrontVisible] = useState(true);
+  const [driftAlt, setDriftAlt] = useState(false);
+  const [veilOn, setVeilOn] = useState(false);
+  const readySlidesRef = useRef<Slide[]>([]);
+  const veilTimerRef = useRef<number | null>(null);
 
-  const fullFrameSlides = useMemo(() => {
-    const urls = (previews ?? [])
+  const allSlides = useMemo((): Slide[] => {
+    const full = (previews ?? [])
       .map((url) => url.trim())
       .filter(Boolean)
       .map(toTaPlusDisplayPreviewUrl)
-      .filter((url) => !failedUrls.has(url));
-    return urls;
-  }, [failedUrls, previews]);
+      .filter((url) => !failedUrls.has(url))
+      .map((url): FullSlide => ({ kind: "full", url }));
+    if (full.length > 0) return full;
+    if (!tiles) return [];
+    return pickTaPlusIdleSlideshowFrames(tiles, 5)
+      .filter((slide) => !failedUrls.has(slide.url))
+      .map(
+        (slide): TileSlide => ({
+          kind: "tile",
+          url: slide.url,
+          col: slide.col,
+          row: slide.row,
+        }),
+      );
+  }, [failedUrls, previews, tiles]);
 
-  const tileSlides = useMemo(() => {
-    if (fullFrameSlides.length > 0 || !tiles) return [];
-    return pickTaPlusIdleSlideshowFrames(tiles, 5).filter((slide) => !failedUrls.has(slide.url));
-  }, [failedUrls, fullFrameSlides.length, tiles]);
+  const preloadUrls = useMemo(() => {
+    const unique = new Set<string>();
+    for (const slide of allSlides) unique.add(slide.url);
+    return [...unique];
+  }, [allSlides]);
 
-  const useFullFrame = fullFrameSlides.length > 0;
-  const slideCount = useFullFrame ? fullFrameSlides.length : tileSlides.length;
+  const preloadKey = preloadUrls.join("\n");
 
   useEffect(() => {
+    setReadyUrls(new Set());
     setFailedUrls(new Set());
-    setSlideIndex(0);
-  }, [previews, tiles?.pattern]);
+    setActiveKey(null);
+    setFrontSlide(null);
+    setBackSlide(null);
+    setFrontVisible(true);
+    setDriftAlt(false);
+    setVeilOn(false);
+    if (veilTimerRef.current != null) {
+      window.clearTimeout(veilTimerRef.current);
+      veilTimerRef.current = null;
+    }
+  }, [preloadKey]);
 
   useEffect(() => {
-    setSlideIndex(0);
-    if (slideCount <= 1) return;
-    const timer = window.setInterval(() => {
-      setSlideIndex((value) => (value + 1) % slideCount);
-    }, SLIDE_MS);
-    return () => window.clearInterval(timer);
-  }, [slideCount, useFullFrame, tiles?.pattern, previews]);
+    if (preloadUrls.length === 0) return;
+    let cancelled = false;
+    const images: HTMLImageElement[] = [];
 
-  const activeFull = useFullFrame ? (fullFrameSlides[slideIndex] ?? fullFrameSlides[0] ?? null) : null;
-  const activeTile = !useFullFrame ? (tileSlides[slideIndex] ?? tileSlides[0] ?? null) : null;
-  const cols = Math.max(1, tiles?.x ?? 1);
-  const rows = Math.max(1, tiles?.y ?? 1);
+    for (const url of preloadUrls) {
+      const img = new Image();
+      images.push(img);
+      img.decoding = "async";
+      img.onload = () => {
+        if (cancelled) return;
+        setReadyUrls((prev) => {
+          if (prev.has(url)) return prev;
+          const next = new Set(prev);
+          next.add(url);
+          return next;
+        });
+      };
+      img.onerror = () => {
+        if (cancelled) return;
+        setFailedUrls((prev) => {
+          if (prev.has(url)) return prev;
+          const next = new Set(prev);
+          next.add(url);
+          return next;
+        });
+      };
+      img.src = url;
+    }
+
+    return () => {
+      cancelled = true;
+      for (const img of images) {
+        img.onload = null;
+        img.onerror = null;
+        img.src = "";
+      }
+    };
+  }, [preloadKey, preloadUrls]);
+
+  useEffect(() => {
+    return () => {
+      if (veilTimerRef.current != null) {
+        window.clearTimeout(veilTimerRef.current);
+      }
+    };
+  }, []);
+
+  const readySlides = useMemo(
+    () => allSlides.filter((slide) => readyUrls.has(slide.url)),
+    [allSlides, readyUrls],
+  );
+  readySlidesRef.current = readySlides;
+
+  useEffect(() => {
+    if (frontSlide || backSlide || readySlides.length === 0) return;
+    const first = readySlides[0]!;
+    setFrontSlide(first);
+    setBackSlide(first);
+    setActiveKey(slideKey(first));
+    setFrontVisible(true);
+  }, [backSlide, frontSlide, readySlides]);
+
+  const canRotate = readySlides.length > 1;
+  useEffect(() => {
+    if (!canRotate) return;
+
+    const timer = window.setInterval(() => {
+      setActiveKey((current) => {
+        const ready = readySlidesRef.current;
+        if (ready.length <= 1) return current;
+        const currentIndex = Math.max(
+          0,
+          ready.findIndex((slide) => slideKey(slide) === current),
+        );
+        const next = ready[(currentIndex + 1) % ready.length]!;
+
+        setFrontVisible((frontIsVisible) => {
+          if (frontIsVisible) {
+            setBackSlide(next);
+          } else {
+            setFrontSlide(next);
+          }
+          return !frontIsVisible;
+        });
+        setDriftAlt((value) => !value);
+        setVeilOn(true);
+        if (veilTimerRef.current != null) window.clearTimeout(veilTimerRef.current);
+        veilTimerRef.current = window.setTimeout(() => {
+          setVeilOn(false);
+          veilTimerRef.current = null;
+        }, VEIL_MS);
+
+        return slideKey(next);
+      });
+    }, SLIDE_MS);
+
+    return () => window.clearInterval(timer);
+  }, [canRotate, preloadKey]);
+
+  const hasSlide = Boolean(frontSlide || backSlide);
 
   return (
     <div
@@ -80,49 +261,34 @@ export function TaPlusIdleBackdrop({
           fillViewport ? "anime-player-viewport-frame h-full max-h-full" : "aspect-video",
         ].join(" ")}
       >
-        {activeFull ? (
-          <div
-            key={`${activeFull}-${slideIndex}`}
-            className="absolute inset-0 bg-cover bg-center transition-opacity duration-700"
-            style={{
-              backgroundImage: `url("${activeFull.replace(/\\/g, "\\\\").replace(/"/g, '\\"')}")`,
-            }}
-            aria-hidden
-          />
-        ) : activeTile && tiles ? (
-          <div
-            key={`${activeTile.url}-${activeTile.col}-${activeTile.row}-${slideIndex}`}
-            className="absolute inset-0 transition-opacity duration-700"
-            style={{
-              backgroundImage: `url("${activeTile.url.replace(/\\/g, "\\\\").replace(/"/g, '\\"')}")`,
-              backgroundRepeat: "no-repeat",
-              backgroundSize: `${cols * 100}% ${rows * 100}%`,
-              backgroundPosition: `${cols <= 1 ? 0 : (activeTile.col / (cols - 1)) * 100}% ${
-                rows <= 1 ? 0 : (activeTile.row / (rows - 1)) * 100
-              }%`,
-            }}
-            aria-hidden
-          />
+        {hasSlide ? (
+          <>
+            {backSlide ? (
+              <SlideLayer
+                slide={backSlide}
+                tiles={tiles}
+                visible={!frontVisible}
+                alternateDrift={driftAlt}
+              />
+            ) : null}
+            {frontSlide ? (
+              <SlideLayer
+                slide={frontSlide}
+                tiles={tiles}
+                visible={frontVisible}
+                alternateDrift={driftAlt}
+              />
+            ) : null}
+            <div
+              className={["ta-plus-idle-veil", veilOn ? "ta-plus-idle-veil--on" : ""].join(" ")}
+              aria-hidden
+            />
+          </>
         ) : (
           <div className="absolute inset-0 animate-pulse bg-surface-dim" aria-hidden />
         )}
-        {activeFull || activeTile ? (
-          <img
-            src={activeFull ?? activeTile!.url}
-            alt=""
-            className="pointer-events-none absolute h-px w-px opacity-0"
-            onError={() => {
-              const failed = activeFull ?? activeTile!.url;
-              setFailedUrls((prev) => {
-                const next = new Set(prev);
-                next.add(failed);
-                return next;
-              });
-            }}
-          />
-        ) : null}
         <div
-          className="absolute inset-0 bg-gradient-to-t from-black/70 via-black/20 to-black/35"
+          className="absolute inset-0 z-[3] bg-gradient-to-t from-black/70 via-black/20 to-black/35"
           aria-hidden
         />
         <button
