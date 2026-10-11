@@ -10,6 +10,7 @@ import {
 } from "react";
 import { EpisodeSeasonPicker } from "@/components/anime/EpisodeSeasonPicker";
 import { CvhPlayerFrame } from "@/components/anime/CvhPlayerFrame";
+import { useHorizontalDragScroll } from "@/hooks/useHorizontalDragScroll";
 import {
   getCvhPub,
   listCvhEpisodesForVoice,
@@ -62,7 +63,7 @@ function CvhEpisodeStrip({
     () => current?.season ?? seasons[0] ?? 1,
   );
   const [scrollState, setScrollState] = useState({ left: 0, max: 0 });
-  const stripRef = useRef<HTMLDivElement>(null);
+  const { ref: stripRef, dragging, dragProps } = useHorizontalDragScroll();
 
   useEffect(() => {
     if (current?.season != null) {
@@ -90,7 +91,7 @@ function CvhEpisodeStrip({
       left: node.scrollLeft,
       max: Math.max(0, node.scrollWidth - node.clientWidth),
     });
-  }, []);
+  }, [stripRef]);
 
   useEffect(() => {
     syncScrollState();
@@ -99,7 +100,7 @@ function CvhEpisodeStrip({
     const resizeObserver = new ResizeObserver(syncScrollState);
     resizeObserver.observe(node);
     return () => resizeObserver.disconnect();
-  }, [seasonEpisodes.length, syncScrollState]);
+  }, [seasonEpisodes.length, stripRef, syncScrollState]);
 
   const handleWheel = (event: ReactWheelEvent<HTMLElement>) => {
     event.preventDefault();
@@ -163,8 +164,14 @@ function CvhEpisodeStrip({
         ) : null}
         <div
           ref={stripRef}
-          className="kodik-player-beta-episodes flex min-w-0 flex-1 select-none gap-1.5 overflow-x-auto"
+          className={[
+            "kodik-player-beta-episodes flex min-w-0 flex-1 select-none gap-1.5 overflow-x-auto",
+            scrollState.max > 0 ? (dragging ? "cursor-grabbing" : "cursor-grab") : "",
+          ]
+            .filter(Boolean)
+            .join(" ")}
           onScroll={syncScrollState}
+          {...dragProps}
         >
           {seasonEpisodes.map((item) => {
             const active =

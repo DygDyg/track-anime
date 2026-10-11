@@ -4,11 +4,11 @@ import {
   useCallback,
   useEffect,
   useMemo,
-  useRef,
   useState,
   type WheelEvent as ReactWheelEvent,
 } from "react";
 import { EpisodeSeasonPicker } from "@/components/anime/EpisodeSeasonPicker";
+import { useHorizontalDragScroll } from "@/hooks/useHorizontalDragScroll";
 
 type EpisodeItem = {
   episodeNumber: number;
@@ -51,7 +51,6 @@ export function KodikPlayerBetaEpisodeStrip({
   const [exactSeason, setExactSeason] = useState(false);
   const [loading, setLoading] = useState(true);
   const [scrollState, setScrollState] = useState({ left: 0, max: 0 });
-  const stripRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
     setSelectedSeason(seasonNumber);
@@ -107,6 +106,8 @@ export function KodikPlayerBetaEpisodeStrip({
     };
   }, [shikimoriId, kodikId, selectedSeason, exactSeason]);
 
+  const { ref: stripRef, dragging, dragProps } = useHorizontalDragScroll();
+
   const syncScrollState = useCallback(() => {
     const node = stripRef.current;
     if (!node) return;
@@ -115,7 +116,7 @@ export function KodikPlayerBetaEpisodeStrip({
       left: node.scrollLeft,
       max: Math.max(0, node.scrollWidth - node.clientWidth),
     });
-  }, []);
+  }, [stripRef]);
 
   useEffect(() => {
     syncScrollState();
@@ -127,7 +128,7 @@ export function KodikPlayerBetaEpisodeStrip({
     resizeObserver.observe(node);
 
     return () => resizeObserver.disconnect();
-  }, [episodes.length, syncScrollState]);
+  }, [episodes.length, stripRef, syncScrollState]);
 
   const handleWheel = (event: ReactWheelEvent<HTMLElement>) => {
     event.preventDefault();
@@ -156,8 +157,12 @@ export function KodikPlayerBetaEpisodeStrip({
   const rowClass = overlay
     ? "kodik-player-beta-episodes-row kodik-player-beta-episodes--overlay flex items-center gap-1.5 p-2 pt-1.5"
     : "kodik-player-beta-episodes-row flex items-center gap-1.5 border-b border-border bg-[#0f0f0f] p-2";
-  const stripClass =
-    "kodik-player-beta-episodes flex min-w-0 flex-1 select-none gap-1.5 overflow-x-auto";
+  const stripClass = [
+    "kodik-player-beta-episodes flex min-w-0 flex-1 select-none gap-1.5 overflow-x-auto",
+    scrollState.max > 0 ? (dragging ? "cursor-grabbing" : "cursor-grab") : "",
+  ]
+    .filter(Boolean)
+    .join(" ");
   const scrollBtnClass =
     "kodik-player-beta-episodes-scroll-btn inline-flex aspect-square h-9 w-9 shrink-0 items-center justify-center rounded-md border border-white/15 bg-white/5 text-base font-semibold leading-none text-white/85 transition hover:border-accent/50 hover:bg-white/10";
   const canScrollLeft = scrollState.left > 1;
@@ -231,7 +236,13 @@ export function KodikPlayerBetaEpisodeStrip({
           </button>
         ) : null}
         {seasonPicker}
-        <div ref={stripRef} className={stripClass} onScroll={syncScrollState} onWheel={handleWheel}>
+        <div
+          ref={stripRef}
+          className={stripClass}
+          onScroll={syncScrollState}
+          onWheel={handleWheel}
+          {...dragProps}
+        >
           {episodes.map((episode) => {
             const active =
               episode.seasonNumber === seasonNumber && episode.episodeNumber === currentEpisode;
