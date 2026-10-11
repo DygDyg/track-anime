@@ -12,6 +12,11 @@ import {
 import type { KodikPlayerPlaybackState } from "@/components/anime/KodikPlayer";
 import { formatWatchPosition } from "@/lib/watch-history";
 import { PLAYER_CONTROLS_IDLE_MS_DEFAULT } from "@/lib/site-settings";
+import {
+  resolveTaPlusTilePreview,
+  taPlusTilePreviewStyle,
+  type TaPlusTiles,
+} from "@/lib/ta-plus-tiles";
 
 export type KodikPlayerBetaTheaterMode = "normal" | "height";
 
@@ -55,12 +60,30 @@ type Props = {
   onQualityPanelActiveChange?: (active: boolean) => void;
   /** Mark bottom-bar play as TV primary focus when «Продолжить» is absent. */
   tvBarPlayPrimary?: boolean;
+  /** Label on the quality button (default «Авто»). */
+  qualityLabel?: string;
+  /**
+   * External quality menu (TA Plus HLS): button toggles without opening the Kodik click-gap.
+   * When set, `qualityPressed` controls aria-pressed.
+   */
+  onQualityClick?: () => void;
+  qualityPressed?: boolean;
+  /** Buffered end ratio 0–1 for scrubber (TA Plus). */
+  bufferedRatio?: number | null;
+  /** Storyboard tiles for scrub preview (TA Plus). */
+  tiles?: TaPlusTiles | null;
+  playbackRates?: number[];
+  playbackRate?: number;
+  onPlaybackRateChange?: (rate: number) => void;
 };
 
 type RangeStyle = CSSProperties & {
   "--range-fill"?: string;
+  "--range-buffer"?: string;
   "--range-skip-segments"?: string;
 };
+
+const DEFAULT_PLAYBACK_RATES = [0.75, 1, 1.25, 1.5, 2];
 
 function IconPlay() {
   return (
@@ -287,47 +310,82 @@ export function KodikPlayerBetaControls({
   qualityPanelIdleMs = PLAYER_CONTROLS_IDLE_MS_DEFAULT,
   onQualityPanelActiveChange,
   tvBarPlayPrimary = false,
+  qualityLabel = "Авто",
+  onQualityClick,
+  qualityPressed = false,
+  bufferedRatio = null,
+  tiles = null,
+  playbackRates = DEFAULT_PLAYBACK_RATES,
+  playbackRate = 1,
+  onPlaybackRateChange,
 }: Props) {
   const duration = Math.max(playback.durationSeconds, 0);
   const position = Math.min(Math.max(playback.positionSeconds, 0), duration || playback.positionSeconds);
   const [qualityTapOpen, setQualityTapOpen] = useState(false);
-  const qualitySplit = !controlsDocked && playback.mediaUnlocked && qualityTapOpen;
+  const [rateMenuOpen, setRateMenuOpen] = useState(false);
+  const externalQuality = typeof onQualityClick === "function";
+  const qualityOpen = externalQuality ? qualityPressed : qualityTapOpen;
+  const qualitySplit = !externalQuality && !controlsDocked && playback.mediaUnlocked && qualityTapOpen;
 
   useEffect(() => {
     // Click-through to Kodik only while «Авто» keeps the quality gap open.
-    const passthrough = !controlsDocked && playback.mediaUnlocked && qualityTapOpen;
+    const passthrough =
+      !externalQuality && !controlsDocked && playback.mediaUnlocked && qualityTapOpen;
     onQualityPanelActiveChange?.(passthrough);
-  }, [controlsDocked, playback.mediaUnlocked, qualityTapOpen, onQualityPanelActiveChange]);
+  }, [
+    controlsDocked,
+    externalQuality,
+    playback.mediaUnlocked,
+    qualityTapOpen,
+    onQualityPanelActiveChange,
+  ]);
 
   // While playing, chrome auto-hide collapses the gap via `interactive`.
   useEffect(() => {
     if (!interactive && qualityTapOpen) {
       setQualityTapOpen(false);
     }
-  }, [interactive, qualityTapOpen]);
+    if (!interactive && rateMenuOpen) {
+      setRateMenuOpen(false);
+    }
+  }, [interactive, qualityTapOpen, rateMenuOpen]);
 
   // While paused, chrome stays visible — collapse the gap after the same idle delay.
   useEffect(() => {
-    if (!qualityTapOpen || playback.isPlaying) return;
+    if (!qualityTapOpen || playback.isPlaying || externalQuality) return;
     const timer = window.setTimeout(() => setQualityTapOpen(false), qualityPanelIdleMs);
     return () => window.clearTimeout(timer);
-  }, [qualityTapOpen, playback.isPlaying, qualityPanelIdleMs]);
+  }, [qualityTapOpen, playback.isPlaying, qualityPanelIdleMs, externalQuality]);
+
+  useEffect(() => {
+    if (!rateMenuOpen || playback.isPlaying) return;
+    const timer = window.setTimeout(() => setRateMenuOpen(false), qualityPanelIdleMs);
+    return () => window.clearTimeout(timer);
+  }, [rateMenuOpen, playback.isPlaying, qualityPanelIdleMs]);
 
   const handleQualityTap = useCallback(() => {
     if (!playback.mediaUnlocked) return;
+    if (externalQuality) {
+      onQualityClick?.();
+      return;
+    }
     setQualityTapOpen((prev) => !prev);
-  }, [playback.mediaUnlocked]);
+  }, [externalQuality, onQualityClick, playback.mediaUnlocked]);
 
   const qualityButton = !controlsDocked ? (
       <button
         type="button"
         disabled={disabled || !playback.mediaUnlocked}
-        aria-label={qualityTapOpen ? "Закрыть выбор качества" : "Качество видео"}
-        aria-pressed={qualityTapOpen}
+        aria-label={qualityOpen ? "Закрыть выбор качества" : "Качество видео"}
+        aria-pressed={qualityOpen}
         title={
-          qualityTapOpen
-            ? "Закрыть выбор качества Kodik"
-            : "Качество видео — нажмите, чтобы открыть меню Kodik"
+          externalQuality
+            ? qualityOpen
+              ? "Закрыть выбор качества"
+              : "Выбрать качество видео"
+            : qualityOpen
+              ? "Закрыть выбор качества Kodik"
+              : "Качество видео — нажмите, чтобы открыть меню Kodik"
         }
         onClick={handleQualityTap}
         onMouseDown={(e) => e.preventDefault()}
@@ -336,23 +394,27 @@ export function KodikPlayerBetaControls({
           playback.mediaUnlocked
             ? [
                 "cursor-pointer hover:bg-white/15 active:scale-95",
-                qualityTapOpen ? "bg-white/15 text-white" : "text-white/80",
+                qualityOpen ? "bg-white/15 text-white" : "text-white/80",
               ].join(" ")
             : "cursor-default text-white/40",
         ].join(" ")}
         style={{ width: "clamp(2.5rem, 6vw, 5rem)" }}
       >
-        Авто
+        {qualityLabel}
       </button>
     ) : null;
 
   const [dragPosition, setDragPosition] = useState<number | null>(null);
+  const [hoverPosition, setHoverPosition] = useState<number | null>(null);
+  const [volumeSliderActive, setVolumeSliderActive] = useState(false);
   const progressDraggingRef = useRef(false);
   const dragStartPositionRef = useRef(position);
   const dragLatestPositionRef = useRef(position);
   const displayedPosition = dragPosition ?? position;
+  const previewPosition = dragPosition ?? hoverPosition;
   const progressReady = duration > 0;
-  const volumeDisabled = disabled || !progressReady;
+  /** Volume needs a live media element; don't unlock just because scrub has a duration hint. */
+  const volumeDisabled = disabled || !playback.mediaUnlocked;
   const progressMax = duration > 0 ? duration : Math.max(position, 1);
   const volumeLow = !playback.muted && playback.volume < 0.5;
   const progressPercent = (displayedPosition / progressMax) * 100;
@@ -360,12 +422,27 @@ export function KodikPlayerBetaControls({
   const volumeValue = playback.muted ? 0 : playback.volume;
   const volumeFill = `${volumeValue * 100}%`;
   const timelineSegmentBackground = buildTimelineSegmentBackground(timelineSegments, duration);
-  const progressRangeStyle: RangeStyle = timelineSegmentBackground
-    ? {
-        "--range-fill": progressFill,
-        "--range-skip-segments": timelineSegmentBackground,
-      }
-    : { "--range-fill": progressFill };
+  const bufferFill =
+    bufferedRatio != null && Number.isFinite(bufferedRatio)
+      ? `${Math.min(100, Math.max(0, bufferedRatio * 100))}%`
+      : undefined;
+  const progressRangeStyle: RangeStyle = {
+    "--range-fill": progressFill,
+    ...(bufferFill ? { "--range-buffer": bufferFill } : {}),
+    ...(timelineSegmentBackground ? { "--range-skip-segments": timelineSegmentBackground } : {}),
+  };
+  const tilePreview =
+    previewPosition != null && tiles
+      ? resolveTaPlusTilePreview(tiles, previewPosition)
+      : null;
+  const previewFill =
+    previewPosition != null && progressMax > 0
+      ? `${Math.min(100, Math.max(0, (previewPosition / progressMax) * 100))}%`
+      : progressFill;
+  const previewTimeLabel =
+    previewPosition != null
+      ? formatWatchPosition(previewPosition)
+      : formatWatchPosition(displayedPosition);
   const theaterLabel =
     theaterMode === "normal"
       ? "По высоте экрана"
@@ -437,17 +514,46 @@ export function KodikPlayerBetaControls({
     ? "rounded-[0.75rem] border border-white/[0.12] bg-black/50 backdrop-blur-[12px]"
     : "bg-[#0f0f0f]";
 
+  const formatPlaybackRate = (rate: number) =>
+    Number.isInteger(rate) ? `${rate}×` : `${rate.toLocaleString("ru-RU")}×`;
+
+  const progressValueFromClientX = (clientX: number, target: HTMLElement) => {
+    const rect = target.getBoundingClientRect();
+    if (rect.width <= 0) return 0;
+    const ratio = Math.min(1, Math.max(0, (clientX - rect.left) / rect.width));
+    return ratio * progressMax;
+  };
+
   const progressBar = (
     <>
       <div className="mb-1 flex h-1.5 items-center gap-2">
         <div className="relative min-w-0 flex-1">
-          {dragPosition != null ? (
-            <span
-              className="pointer-events-none absolute bottom-full z-10 mb-1 -translate-x-1/2 rounded-md border border-white/10 bg-black/70 px-1.5 py-0.5 text-[10px] font-semibold tabular-nums text-white/90 shadow-lg backdrop-blur-sm"
-              style={{ left: progressFill }}
+          {previewPosition != null && (tilePreview || dragPosition != null) ? (
+            <div
+              className="pointer-events-none absolute bottom-full z-10 mb-1.5 flex -translate-x-1/2 flex-col items-center gap-1"
+              style={{ left: previewFill }}
             >
-              {dragPositionLabel}
-            </span>
+              {tilePreview && tiles ? (
+                <div
+                  className="overflow-hidden rounded-md border border-white/25 bg-black/85 shadow-xl"
+                  style={{
+                    ...taPlusTilePreviewStyle(
+                      {
+                        ...tilePreview,
+                        cellWidth: Math.max(160, tilePreview.cellWidth),
+                        cellHeight: Math.max(90, tilePreview.cellHeight),
+                      },
+                      tiles,
+                    ),
+                    width: Math.max(160, tilePreview.cellWidth),
+                    height: Math.max(90, tilePreview.cellHeight),
+                  }}
+                />
+              ) : null}
+              <span className="rounded-md border border-white/10 bg-black/70 px-1.5 py-0.5 text-[10px] font-semibold tabular-nums text-white/90 shadow-lg backdrop-blur-sm">
+                {previewTimeLabel}
+              </span>
+            </div>
           ) : null}
           <input
             type="range"
@@ -467,6 +573,14 @@ export function KodikPlayerBetaControls({
             onKeyUp={commitProgressDrag}
             onChange={(event) => handleProgressChange(Number(event.target.value))}
             onWheel={handleProgressWheel}
+            onPointerMove={(event) => {
+              if (!tiles || !progressReady || disabled) return;
+              if (progressDraggingRef.current) return;
+              setHoverPosition(progressValueFromClientX(event.clientX, event.currentTarget));
+            }}
+            onPointerLeave={() => {
+              if (!progressDraggingRef.current) setHoverPosition(null);
+            }}
             style={progressRangeStyle}
             className="kodik-player-beta-range kodik-player-beta-progress site-range h-1.5 w-full cursor-pointer disabled:cursor-not-allowed disabled:opacity-45"
           />
@@ -549,6 +663,7 @@ export function KodikPlayerBetaControls({
       <div className="kodik-player-beta-controls-actions ml-auto flex items-center gap-1 sm:gap-2">
         <div
           className="kodik-player-beta-volume-group flex items-center gap-1 sm:gap-2"
+          data-volume-expanded={volumeSliderActive ? "true" : undefined}
           onWheel={handleVolumeGroupWheel}
         >
           <ControlButton
@@ -558,20 +673,85 @@ export function KodikPlayerBetaControls({
           >
             <IconVolume muted={playback.muted} low={volumeLow} />
           </ControlButton>
-          <input
-            type="range"
-            min={0}
-            max={1}
-            step={0.05}
-            value={volumeValue}
-            disabled={volumeDisabled}
-            aria-label="Громкость"
-            onChange={(event) => onVolumeChange(Number(event.target.value))}
-            onWheel={handleVolumeWheel}
-            style={{ "--range-fill": volumeFill } as CSSProperties}
-            className="kodik-player-beta-range kodik-player-beta-volume site-range hidden w-20 cursor-pointer sm:block"
-          />
+          <span className="kodik-player-beta-volume-slider-wrap">
+            <input
+              type="range"
+              min={0}
+              max={1}
+              step={0.05}
+              value={volumeValue}
+              disabled={volumeDisabled}
+              aria-label="Громкость"
+              onPointerDown={(event) => {
+                event.currentTarget.setPointerCapture(event.pointerId);
+                setVolumeSliderActive(true);
+              }}
+              onPointerUp={() => setVolumeSliderActive(false)}
+              onPointerCancel={() => setVolumeSliderActive(false)}
+              onBlur={() => setVolumeSliderActive(false)}
+              onChange={(event) => onVolumeChange(Number(event.target.value))}
+              onWheel={handleVolumeWheel}
+              style={{ "--range-fill": volumeFill } as CSSProperties}
+              className="kodik-player-beta-range kodik-player-beta-volume site-range cursor-pointer"
+            />
+          </span>
         </div>
+
+        {onPlaybackRateChange ? (
+          <div className="relative shrink-0">
+            <ControlButton
+              label={
+                rateMenuOpen
+                  ? "Закрыть выбор скорости"
+                  : `Скорость ${formatPlaybackRate(playbackRate)}`
+              }
+              disabled={disabled || !playback.mediaUnlocked}
+              pressed={rateMenuOpen}
+              onClick={() => setRateMenuOpen((open) => !open)}
+              className="kodik-player-beta-rate-button text-[11px] font-semibold tabular-nums sm:text-xs"
+            >
+              {formatPlaybackRate(playbackRate)}
+            </ControlButton>
+            {rateMenuOpen ? (
+              <div
+                className="absolute bottom-full right-0 z-50 mb-2 min-w-[6.5rem] rounded-lg border border-white/15 bg-black/80 p-1.5 shadow-xl backdrop-blur-md"
+                role="listbox"
+                aria-label="Скорость воспроизведения"
+              >
+                <p className="px-2 py-1 text-[10px] font-semibold uppercase tracking-wide text-white/45">
+                  Скорость
+                </p>
+                <ul className="flex flex-col gap-0.5">
+                  {playbackRates.map((rate) => {
+                    const active = Math.abs(rate - playbackRate) < 0.001;
+                    return (
+                      <li key={rate}>
+                        <button
+                          type="button"
+                          role="option"
+                          aria-selected={active}
+                          onMouseDown={(event) => event.preventDefault()}
+                          onClick={() => {
+                            onPlaybackRateChange(rate);
+                            setRateMenuOpen(false);
+                          }}
+                          className={[
+                            "w-full rounded-md px-2.5 py-1.5 text-left text-xs font-medium tabular-nums transition",
+                            active
+                              ? "bg-white/15 text-white"
+                              : "text-white/75 hover:bg-white/10 hover:text-white",
+                          ].join(" ")}
+                        >
+                          {formatPlaybackRate(rate)}
+                        </button>
+                      </li>
+                    );
+                  })}
+                </ul>
+              </div>
+            ) : null}
+          </div>
+        ) : null}
 
         {pipAvailable && onPictureInPicture ? (
           <ControlButton

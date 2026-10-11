@@ -63,7 +63,7 @@ const SECTION_LABELS: Record<ContentSection | string, string> = {
   home: "Главная",
   anime: "Страницы аниме",
   anime_play: "Воспроизведение",
-  anime_play_kodik: "Плеер Kodik / TA",
+  anime_play_kodik: "Плеер TA Old",
   anime_play_cvh: "Плеер VideoHUB",
   anime_play_taplus: "Плеер TA Plus",
   favorites: "Избранное",

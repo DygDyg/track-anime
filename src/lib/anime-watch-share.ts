@@ -192,7 +192,7 @@ export function buildAnimeWatchShareMetaLine(input: {
   const parts: string[] = [];
   if (input.player === "cvh") parts.push("VideoHUB");
   else if (input.player === "taplus") parts.push("TA Plus");
-  else if (input.player === "kodik") parts.push("TA");
+  else if (input.player === "kodik") parts.push("TA Old");
 
   if (input.season != null) parts.push(formatWatchShareSeasonLabel(input.season));
   if (input.episode != null) parts.push(`серия ${input.episode}`);

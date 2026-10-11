@@ -1,5 +1,9 @@
 import "server-only";
 
+import {
+  parseKodikParserSkipTimes,
+  type KodikParserSkipTimes,
+} from "@/lib/kodik-parser-skip";
 import { toKodikPlayerEmbedUrl } from "@/lib/player-url";
 
 export const KODIK_PARSER_BASE_DEFAULT = "https://figame.dygdyg.win/kodik_parser/";
@@ -20,6 +24,8 @@ export type KodikFtorStreamResult = {
   qualities: Record<string, string>;
   tiles: KodikFtorTiles | null;
   ip: string | null;
+  /** OP/ED from parser HTML (`skip_timings` / `skip_raw`), when present. */
+  skips: KodikParserSkipTimes | null;
 };
 
 type RawFtorLinkItem = {
@@ -33,6 +39,14 @@ type RawFtorResponse = {
   links?: unknown;
   tiles?: unknown;
   ip?: unknown;
+  skip_timings?: unknown;
+  skipTimings?: unknown;
+  skip_raw?: unknown;
+  skipRaw?: unknown;
+  skip_genre?: unknown;
+  skipGenre?: unknown;
+  skip_source?: unknown;
+  skipSource?: unknown;
 };
 
 export function getKodikParserBase(): string {
@@ -109,6 +123,7 @@ export function parseKodikFtorResponse(raw: unknown): KodikFtorStreamResult {
     qualities,
     tiles: parseTiles(data.tiles),
     ip: typeof data.ip === "string" ? data.ip : null,
+    skips: parseKodikParserSkipTimes(data),
   };
 }
 

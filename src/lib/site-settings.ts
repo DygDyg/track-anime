@@ -141,7 +141,10 @@ export type SiteSettings = {
   playerControlsIdleMs: number;
   /** Локально для браузера: навигация стрелками по карточкам сайта */
   tvNavigationEnabled: boolean;
-  /** Локально для браузера: крупные кнопки UI TA-плеера (телефон / ультраширокий) */
+  /**
+   * Локально для браузера: крупные кнопки UI TA-плеера (по умолчанию вкл.).
+   * В настройках — инверсия «Компактный интерфейс».
+   */
   playerLargeUi: boolean;
   /** Локально для браузера: показывать companion Aqua Coder в правом нижнем углу */
   companionEnabled: boolean;
@@ -211,6 +214,9 @@ const LOCAL_SETTINGS_COOKIE_MAX_AGE_SEC = 60 * 60 * 24 * 365;
 /** One-time client reset: force TA player after removing anime-page Kodik toggle. */
 export const USE_LEGACY_KODIK_PLAYER_RESET_STORAGE_KEY =
   "ta.siteSettings.reset.useLegacyKodikPlayer.v1";
+/** One-time: switch default player UI from compact to large for existing browsers. */
+export const PLAYER_LARGE_UI_DEFAULT_V2_STORAGE_KEY =
+  "ta.siteSettings.reset.playerLargeUiDefault.v2";
 export const HOME_HISTORY_COLLAPSED_STORAGE_KEY = "track-anime-home-history-collapsed";
 export const HOME_UPCOMING_SOON_COLLAPSED_STORAGE_KEY = "track-anime-home-upcoming-soon-collapsed";
 export const HOME_STATUS_FILTER_STORAGE_KEY = "track-anime-home-status-filter";
@@ -294,7 +300,7 @@ export const DEFAULT_SITE_SETTINGS: SiteSettings = {
   betaHiddenProgressThickness: BETA_HIDDEN_PROGRESS_THICKNESS_DEFAULT,
   playerControlsIdleMs: PLAYER_CONTROLS_IDLE_MS_DEFAULT,
   tvNavigationEnabled: true,
-  playerLargeUi: false,
+  playerLargeUi: true,
   companionEnabled: true,
   companionScale: COMPANION_SCALE_DEFAULT,
   companionStaticAnimations: false,
@@ -510,7 +516,7 @@ export function normalizeSiteSettings(raw: unknown): SiteSettings {
     ),
     playerControlsIdleMs: normalizePlayerControlsIdleMs(raw.playerControlsIdleMs),
     tvNavigationEnabled: raw.tvNavigationEnabled !== false,
-    playerLargeUi: raw.playerLargeUi === true,
+    playerLargeUi: raw.playerLargeUi !== false,
     companionEnabled: raw.companionEnabled !== false,
     companionScale: normalizeCompanionScale(raw.companionScale),
     companionStaticAnimations: raw.companionStaticAnimations === true,
@@ -579,6 +585,35 @@ export function consumeUseLegacyKodikPlayerDefaultReset(settings: SiteSettings):
   }
 }
 
+/** One-time: enable large player UI for browsers that still have the old compact default. */
+export function consumePlayerLargeUiDefaultLarge(settings: SiteSettings): {
+  settings: SiteSettings;
+  didReset: boolean;
+} {
+  if (typeof window === "undefined") {
+    return { settings, didReset: false };
+  }
+
+  try {
+    if (localStorage.getItem(PLAYER_LARGE_UI_DEFAULT_V2_STORAGE_KEY) === "1") {
+      return { settings, didReset: false };
+    }
+    localStorage.setItem(PLAYER_LARGE_UI_DEFAULT_V2_STORAGE_KEY, "1");
+    if (settings.playerLargeUi) {
+      return { settings, didReset: false };
+    }
+    return {
+      settings: { ...settings, playerLargeUi: true },
+      didReset: true,
+    };
+  } catch {
+    return {
+      settings: { ...settings, playerLargeUi: true },
+      didReset: !settings.playerLargeUi,
+    };
+  }
+}
+
 export function hasStoredSiteSettings(): boolean {
   if (typeof window === "undefined") return false;
   return (
@@ -591,7 +626,8 @@ export function buildSiteSettingsInitScript(defaults: SiteSettings): string {
   const fallback = JSON.stringify(defaults);
   const cookieName = LOCAL_SETTINGS_COOKIE;
   const localKeys = JSON.stringify([...LOCAL_ONLY_SITE_SETTING_KEYS]);
-  return `(function(){try{var k="${SITE_SETTINGS_STORAGE_KEY}";var raw=localStorage.getItem(k);var d=raw?JSON.parse(raw):${fallback};try{var ck=document.cookie.split(";");var prefix="${cookieName}=";for(var i=0;i<ck.length;i++){var p=ck[i].trim();if(p.indexOf(prefix)===0){var local=JSON.parse(decodeURIComponent(p.slice(prefix.length)));var keys=${localKeys};for(var j=0;j<keys.length;j++){var key=keys[j];if(Object.prototype.hasOwnProperty.call(local,key))d[key]=local[key];}break;}}}catch(e){}var el=document.documentElement;var f=d.fontFamily||"inter";var c=d.cursorStyle||"default";var s=d.cardSize||"normal";var a=d.accentPreset||"blue";var b=d.backgroundDim||"medium";var bg=typeof d.backgroundImageUrl==="string"&&d.backgroundImageUrl.length>0;var allowed=${JSON.stringify(SITE_FONT_IDS)};var cursors=${JSON.stringify(SITE_CURSOR_OPTIONS.map((item) => item.id))};if(allowed.indexOf(f)===-1)f="inter";if(cursors.indexOf(c)===-1)c="default";el.setAttribute("data-font",f);el.setAttribute("data-cursor",c);el.setAttribute("data-card-size",s);el.setAttribute("data-accent",a);el.setAttribute("data-bg-dim",b);el.setAttribute("data-site-bg",bg?"true":"false");el.setAttribute("data-tv-nav-enabled",d.tvNavigationEnabled===false?"false":"true");if(d.tvNavigationEnabled===false)el.removeAttribute("data-tv-nav");if(d.playerLargeUi===true)el.setAttribute("data-player-large-ui","true");else el.removeAttribute("data-player-large-ui");if(d.reduceMotion===true)el.setAttribute("data-reduce-motion","true");else el.removeAttribute("data-reduce-motion");}catch(e){}})();`;
+  const largeUiMigKey = PLAYER_LARGE_UI_DEFAULT_V2_STORAGE_KEY;
+  return `(function(){try{var k="${SITE_SETTINGS_STORAGE_KEY}";var raw=localStorage.getItem(k);var d=raw?JSON.parse(raw):${fallback};try{var ck=document.cookie.split(";");var prefix="${cookieName}=";for(var i=0;i<ck.length;i++){var p=ck[i].trim();if(p.indexOf(prefix)===0){var local=JSON.parse(decodeURIComponent(p.slice(prefix.length)));var keys=${localKeys};for(var j=0;j<keys.length;j++){var key=keys[j];if(Object.prototype.hasOwnProperty.call(local,key))d[key]=local[key];}break;}}}catch(e){}try{var mk="${largeUiMigKey}";if(localStorage.getItem(mk)!=="1"){d.playerLargeUi=true;localStorage.setItem(mk,"1");try{localStorage.setItem(k,JSON.stringify(d));}catch(e3){}}}catch(e2){d.playerLargeUi=true;}var el=document.documentElement;var f=d.fontFamily||"inter";var c=d.cursorStyle||"default";var s=d.cardSize||"normal";var a=d.accentPreset||"blue";var b=d.backgroundDim||"medium";var bg=typeof d.backgroundImageUrl==="string"&&d.backgroundImageUrl.length>0;var allowed=${JSON.stringify(SITE_FONT_IDS)};var cursors=${JSON.stringify(SITE_CURSOR_OPTIONS.map((item) => item.id))};if(allowed.indexOf(f)===-1)f="inter";if(cursors.indexOf(c)===-1)c="default";el.setAttribute("data-font",f);el.setAttribute("data-cursor",c);el.setAttribute("data-card-size",s);el.setAttribute("data-accent",a);el.setAttribute("data-bg-dim",b);el.setAttribute("data-site-bg",bg?"true":"false");el.setAttribute("data-tv-nav-enabled",d.tvNavigationEnabled===false?"false":"true");if(d.tvNavigationEnabled===false)el.removeAttribute("data-tv-nav");if(d.playerLargeUi!==false)el.setAttribute("data-player-large-ui","true");else el.removeAttribute("data-player-large-ui");if(d.reduceMotion===true)el.setAttribute("data-reduce-motion","true");else el.removeAttribute("data-reduce-motion");}catch(e){}})();`;
 }
 
 export const siteSettingsInitScript = buildSiteSettingsInitScript(DEFAULT_SITE_SETTINGS);

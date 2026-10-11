@@ -46,7 +46,7 @@ export async function getAnimeWatchShareLogDto(limit = 50): Promise<AnimeWatchSh
       player:
         row.player === "cvh" ? "cvh" : row.player === "taplus" ? "taplus" : "kodik",
       playerLabel:
-        row.player === "cvh" ? "VideoHUB" : row.player === "taplus" ? "TA Plus" : "TA",
+        row.player === "cvh" ? "VideoHUB" : row.player === "taplus" ? "TA Plus" : "TA Old",
       seasonNumber: row.seasonNumber,
       episodeNumber: row.episodeNumber,
       translationId: row.translationId,

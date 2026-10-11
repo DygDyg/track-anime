@@ -52,10 +52,10 @@ import {
 } from "@/lib/anime-watch-share";
 import { playCopySound } from "@/lib/copy-feedback";
 import { CvhWatchSection } from "@/components/anime/CvhWatchSection";
-import { TaPlusWatchSection } from "@/components/anime/TaPlusWatchSection";
 import { AddToWatchingBanner } from "@/components/anime/AddToWatchingBanner";
 import { MoveToCompletedBanner } from "@/components/anime/MoveToCompletedBanner";
 import { matchKodikTranslationForCvhVoice } from "@/lib/cvh-player";
+import { useTaPlusStream } from "@/hooks/useTaPlusStream";
 import {
   useUserListStatus,
   useUserListStatusActions,
@@ -135,18 +135,6 @@ function PlayerBalancerSwitch({
         }}
       />
       <button
-        ref={taRef}
-        type="button"
-        aria-pressed={value === "kodik"}
-        onClick={() => onChange("kodik")}
-        className={[
-          "relative z-10 shrink-0 rounded px-3 py-1.5 font-medium transition-colors duration-200",
-          value === "kodik" ? "text-foreground" : "text-muted hover:text-foreground",
-        ].join(" ")}
-      >
-        TA
-      </button>
-      <button
         ref={taPlusRef}
         type="button"
         aria-pressed={value === "taplus"}
@@ -157,6 +145,18 @@ function PlayerBalancerSwitch({
         ].join(" ")}
       >
         TA Plus
+      </button>
+      <button
+        ref={taRef}
+        type="button"
+        aria-pressed={value === "kodik"}
+        onClick={() => onChange("kodik")}
+        className={[
+          "relative z-10 shrink-0 rounded px-3 py-1.5 font-medium transition-colors duration-200",
+          value === "kodik" ? "text-foreground" : "text-muted hover:text-foreground",
+        ].join(" ")}
+      >
+        TA Old
       </button>
       <button
         ref={cvhRef}
@@ -212,6 +212,8 @@ const PLAYER_SEEK_SKIP_SECONDS = PLAYER_SEEK_SKIP_LABEL_SECONDS;
 const MOBILE_TRANSLATIONS_SWIPE_THRESHOLD_PX = 56;
 const CONTINUE_LOADING_TIMEOUT_MS = 22_000;
 const AUTO_SKIP_CANCEL_SECONDS = 5;
+/** AniSkip needs episode length; TA Plus may report 0 until HLS metadata — use fallback. */
+const SKIP_TIMES_FALLBACK_EPISODE_LENGTH = 1440;
 const WATCH_PARTY_SYNC_TIMEOUT_MS = 4_000;
 const WATCH_PARTY_SYNC_DRIFT_SECONDS = 1;
 const WATCH_PARTY_TRANSLATION_SYNC_STORAGE_KEY = "ta.watchParty.translationSync";
@@ -450,7 +452,7 @@ type PendingAutoSkip = {
 
 type SkipTimesDto = {
   found: boolean;
-  source: "cache" | "aniskip" | "missing-mal-id";
+  source: "cache" | "aniskip" | "missing-mal-id" | "parser";
   malId: number | null;
   seasonNumber: number;
   episodeNumber: number;
@@ -504,6 +506,8 @@ function skipTimeSourceLabel(source: SkipTimesDto["source"]): string {
       return "кэш";
     case "aniskip":
       return "AniSkip";
+    case "parser":
+      return "парсер Kodik";
     case "missing-mal-id":
       return "нет MAL ID";
   }
@@ -564,9 +568,12 @@ export function AnimeWatchPanel({
   const listInfo = useUserListStatus(shikimoriId);
   const { loading: listsLoading } = useUserListStatusActions();
   const { settings, updateSettings } = useSiteSettings();
-  const [playerBalancer, setPlayerBalancer] = useState<PlayerBalancer>("kodik");
+  const [playerBalancer, setPlayerBalancer] = useState<PlayerBalancer>("taplus");
   const [taPlusSeekSeconds, setTaPlusSeekSeconds] = useState<number | null>(null);
   const [shareLinkCopied, setShareLinkCopied] = useState(false);
+  const isTaPlus = playerBalancer === "taplus";
+  const playerBalancerRef = useRef<PlayerBalancer>(playerBalancer);
+  playerBalancerRef.current = playerBalancer;
   const [deepLinkInvite, setDeepLinkInvite] = useState<DeepLinkInvite | null>(null);
   const forcedIntroOffsets = useForcedTranslationIntroOffsets();
   const { applicationId, largeImageKey, configured: discordConfigured } = useDiscordConfig();
@@ -610,6 +617,13 @@ export function AnimeWatchPanel({
   const [betaTheaterMode, setBetaTheaterMode] =
     useState<KodikPlayerBetaTheaterMode>("normal");
   const [playerEpisode, setPlayerEpisode] = useState({ seasonNumber: 1, episodeNumber: 1 });
+  const taPlusStream = useTaPlusStream({
+    enabled: playerBalancer === "taplus",
+    shikimoriId,
+    kodikId: selectedId || null,
+    seasonNumber: playerEpisode.seasonNumber,
+    episodeNumber: playerEpisode.episodeNumber,
+  });
   const [skipTimes, setSkipTimes] = useState<SkipTimeDto[]>([]);
   const [skipTimesInfo, setSkipTimesInfo] = useState<SkipTimesDto | null>(null);
   const [skipTimesLoading, setSkipTimesLoading] = useState(false);
@@ -673,6 +687,8 @@ export function AnimeWatchPanel({
   /** Watch party + presence: always current, even when React skips position-only updates. */
   const isPlayingRef = useRef(false);
   const durationSecondsRef = useRef(0);
+  /** Last known duration ≥300s — survives TA Plus HLS remount (duration briefly 0). */
+  const lastGoodEpisodeLengthRef = useRef(0);
   const suppressNextPlaybackBroadcastRef = useRef(false);
   const watchPartyTranslationSyncActiveRef = useRef(true);
   const waitingForHostEpisodeRef = useRef<Pick<ProgressPayload, "seasonNumber" | "episodeNumber"> | null>(
@@ -726,7 +742,7 @@ export function AnimeWatchPanel({
 
   useEffect(() => {
     const deepLink = parseAnimeWatchDeepLinkFromLocation();
-    setPlayerBalancer(deepLink.player ?? "kodik");
+    setPlayerBalancer(deepLink.player ?? "taplus");
     disableWatchHistorySaveRef.current = deepLink.disableHistorySave;
   }, [shikimoriId]);
 
@@ -867,7 +883,7 @@ export function AnimeWatchPanel({
             seasonNumber: resume.seasonNumber,
             episodeNumber: resume.episodeNumber,
             positionSeconds: resume.positionSeconds,
-            player: deepLink.player ?? "kodik",
+            player: deepLink.player ?? "taplus",
           });
         }
       } else if (
@@ -1251,26 +1267,6 @@ export function AnimeWatchPanel({
     [playable, saveTranslation],
   );
 
-  const handleTaPlusTranslationChange = useCallback(
-    (kodikId: string) => {
-      setSelectedId(kodikId);
-      saveTranslation(kodikId);
-      setTaPlusSeekSeconds(null);
-    },
-    [saveTranslation],
-  );
-
-  const handleTaPlusEpisodeChange = useCallback(
-    (payload: { seasonNumber: number; episodeNumber: number }) => {
-      setPlayerEpisode({
-        seasonNumber: payload.seasonNumber,
-        episodeNumber: payload.episodeNumber,
-      });
-      setTaPlusSeekSeconds(null);
-    },
-    [],
-  );
-
   const handlePause = useCallback(
     (payload: ProgressPayload) => {
       liveProgressRef.current = payload;
@@ -1345,6 +1341,11 @@ export function AnimeWatchPanel({
   }, [selectedId, ready]);
 
   const handlePlayerReady = useCallback(() => {
+    if (playerBalancerRef.current === "taplus") {
+      setContinueLoading(false);
+      setContinueTarget(null);
+      setTaPlusSeekSeconds(null);
+    }
     if (!pendingContinueRef.current) return;
     const resume = pendingContinueRef.current;
     const mode = pendingContinueModeRef.current;
@@ -1394,7 +1395,12 @@ export function AnimeWatchPanel({
       pendingContinueRef.current = null;
       pendingContinueOptionsRef.current = undefined;
       if (resume && resume.positionSeconds >= 1) {
-        setBootResume(compensatePlayerReloadResume(resume));
+        const compensated = compensatePlayerReloadResume(resume);
+        setBootResume(compensated);
+        // TA Plus ignores bootResume for initialResume — keep seek on timeout remount.
+        if (playerBalancerRef.current === "taplus") {
+          setTaPlusSeekSeconds(compensated.positionSeconds);
+        }
       }
       const seriaLink =
         resume && !useLegacyKodikPlayerRef.current
@@ -1517,7 +1523,7 @@ export function AnimeWatchPanel({
       // CVH Partners API has no seek — always resume in TA player.
       const switchingFromCvh = playerBalancer === "cvh";
       if (switchingFromCvh) {
-        setPlayerBalancer("kodik");
+        setPlayerBalancer("taplus");
       }
 
       const resume = applyPositionOffset(
@@ -1531,27 +1537,8 @@ export function AnimeWatchPanel({
 
       lastContinueResumeRef.current = resume;
 
-      if (playerBalancer === "taplus" && !switchingFromCvh) {
-        setContinueLoading(true);
-        setContinueTarget({ episodeNumber: resume.episodeNumber });
-        pendingContinueModeRef.current = "play";
-        isPausedRef.current = false;
-        if (target.kodikId !== selectedIdRef.current) {
-          setSelectedId(target.kodikId);
-          saveTranslation(target.kodikId);
-        }
-        setPlayerEpisode({
-          seasonNumber: resume.seasonNumber,
-          episodeNumber: resume.episodeNumber,
-        });
+      if (playerBalancer === "taplus" || playerBalancerRef.current === "taplus") {
         setTaPlusSeekSeconds(resume.positionSeconds);
-        const el = document.getElementById("player");
-        el?.scrollIntoView({ behavior: "auto", block: "start" });
-        window.setTimeout(() => {
-          setContinueLoading(false);
-          setContinueTarget(null);
-        }, 400);
-        return;
       }
 
       setContinueLoading(true);
@@ -1630,7 +1617,6 @@ export function AnimeWatchPanel({
       playerBalancer,
       rememberSeriaLink,
       remountToEpisodeEmbed,
-      saveTranslation,
       shikimoriId,
     ],
   );
@@ -1691,6 +1677,18 @@ export function AnimeWatchPanel({
   const betaTheaterExpanded = betaTheaterMode !== "normal";
   const betaTranslationsHoverEnabled = isNativeFullscreen;
   const roundedEpisodeLength = Math.round(playback.durationSeconds);
+  const skipTimesEpisodeLength =
+    roundedEpisodeLength >= 300
+      ? roundedEpisodeLength
+      : lastGoodEpisodeLengthRef.current >= 300
+        ? lastGoodEpisodeLengthRef.current
+        : SKIP_TIMES_FALLBACK_EPISODE_LENGTH;
+
+  useEffect(() => {
+    if (roundedEpisodeLength >= 300) {
+      lastGoodEpisodeLengthRef.current = roundedEpisodeLength;
+    }
+  }, [roundedEpisodeLength]);
   const selected = playable.find((tr) => tr.kodikId === selectedId) ?? playable[0];
   const previousEpisodeDisabled = playerEpisode.episodeNumber <= 1;
   const nextEpisodeDisabled = isEpisodeBeyondAvailability(
@@ -1727,8 +1725,19 @@ export function AnimeWatchPanel({
       suppressContinueOverlayRef.current = true;
       setWatchPartySyncing(true);
 
+      // TA Plus render prefers taPlusSeekSeconds over bootResume — keep party position
+      // so remount/episode switch does not boot from a stale scrub offset.
+      const syncTaPlusSeekFromParty = () => {
+        if (playerBalancerRef.current !== "taplus") return;
+        const seconds = resume.positionSeconds;
+        setTaPlusSeekSeconds(
+          seconds != null && Number.isFinite(seconds) ? Math.max(0, seconds) : 0,
+        );
+      };
+
       const applyEpisodeSwitch = (embedLink: string | null, switchToKodikId?: string) => {
         if (embedLink) {
+          syncTaPlusSeekFromParty();
           remountToEpisodeEmbed({
             resume,
             embedLink,
@@ -1739,6 +1748,7 @@ export function AnimeWatchPanel({
           return;
         }
         if (switchToKodikId && switchToKodikId !== selectedIdRef.current) {
+          syncTaPlusSeekFromParty();
           pendingContinueRef.current = resume;
           pendingContinueOptionsRef.current = { uiEpisodeAlreadyTargeted: true };
           pendingContinueModeRef.current = mode;
@@ -1746,6 +1756,7 @@ export function AnimeWatchPanel({
           setSelectedId(switchToKodikId);
           return;
         }
+        syncTaPlusSeekFromParty();
         playerRef.current?.seekTo(resume, mode, { uiEpisodeAlreadyTargeted: true });
       };
 
@@ -1780,6 +1791,7 @@ export function AnimeWatchPanel({
       };
 
       if (!playerRef.current) {
+        syncTaPlusSeekFromParty();
         pendingContinueRef.current = resume;
         pendingContinueModeRef.current = mode;
       } else if (syncTranslation && state.kodikId !== selectedIdRef.current) {
@@ -1796,6 +1808,7 @@ export function AnimeWatchPanel({
           liveProgressRef.current.episodeNumber === resume.episodeNumber;
 
         if (sameEpisode) {
+          syncTaPlusSeekFromParty();
           playerRef.current.syncToPosition(resume.positionSeconds, mode);
           window.setTimeout(() => {
             suppressContinueOverlayRef.current = false;
@@ -2036,17 +2049,17 @@ export function AnimeWatchPanel({
         forcedIntroOffsets,
       )
     : 0;
-  const displaySkipTimes = useMemo<DisplaySkipTimeDto[]>(
-    () =>
-      skipTimes.map((skipTime) => ({
-        ...skipTime,
-        originalStartTime: skipTime.startTime,
-        originalEndTime: skipTime.endTime,
-        startTime: skipTime.startTime + selectedIntroOffsetSeconds,
-        endTime: skipTime.endTime + selectedIntroOffsetSeconds,
-      })),
-    [selectedIntroOffsetSeconds, skipTimes],
-  );
+  const displaySkipTimes = useMemo<DisplaySkipTimeDto[]>(() => {
+    // Parser timings are already for this Kodik translation/page — no intro-offset.
+    const offset = skipTimesInfo?.source === "parser" ? 0 : selectedIntroOffsetSeconds;
+    return skipTimes.map((skipTime) => ({
+      ...skipTime,
+      originalStartTime: skipTime.startTime,
+      originalEndTime: skipTime.endTime,
+      startTime: skipTime.startTime + offset,
+      endTime: skipTime.endTime + offset,
+    }));
+  }, [selectedIntroOffsetSeconds, skipTimes, skipTimesInfo?.source]);
   const actionableSkipTimes = useMemo(
     () =>
       displaySkipTimes.filter((skipTime) =>
@@ -2175,7 +2188,10 @@ export function AnimeWatchPanel({
       playbackStateInitializedRef.current = true;
 
       if (!previous.isPlaying && state.isPlaying) {
-        reportAnimePlay(shikimoriId, "kodik");
+        reportAnimePlay(
+          shikimoriId,
+          playerBalancerRef.current === "taplus" ? "taplus" : "kodik",
+        );
       }
 
       if (playingChanged && !applyingWatchPartyCommandRef.current) {
@@ -2315,11 +2331,56 @@ export function AnimeWatchPanel({
     });
   }, []);
 
+  // TA Plus: prefer OP/ED from /ftor parser (`skip_timings` / `skip_raw`) over AniSkip.
   useEffect(() => {
-    if (!ready || !selectedId || roundedEpisodeLength < 300) {
+    if (!isTaPlus) return;
+    const parserSkips = taPlusStream.skips;
+    if (!parserSkips?.found || parserSkips.results.length === 0) return;
+    setSkipTimes(
+      parserSkips.results.map((row) => ({
+        skipType: row.skipType,
+        startTime: row.startTime,
+        endTime: row.endTime,
+      })),
+    );
+    setSkipTimesInfo({
+      found: true,
+      source: "parser",
+      malId: null,
+      seasonNumber: playerEpisode.seasonNumber,
+      episodeNumber: playerEpisode.episodeNumber,
+      episodeLength: skipTimesEpisodeLength,
+      results: parserSkips.results.map((row) => ({
+        skipType: row.skipType,
+        startTime: row.startTime,
+        endTime: row.endTime,
+      })),
+    });
+    setSkipTimesLoading(false);
+  }, [
+    isTaPlus,
+    playerEpisode.episodeNumber,
+    playerEpisode.seasonNumber,
+    skipTimesEpisodeLength,
+    taPlusStream.skips,
+  ]);
+
+  useEffect(() => {
+    if (!ready || !selectedId) {
       setSkipTimes([]);
       setSkipTimesInfo(null);
       setSkipTimesLoading(false);
+      return;
+    }
+
+    // Parser skips already applied for TA Plus — do not overwrite with AniSkip.
+    if (isTaPlus && taPlusStream.skips?.found && taPlusStream.skips.results.length > 0) {
+      return;
+    }
+
+    // While TA Plus stream is still loading, wait — parser may return skips.
+    if (isTaPlus && taPlusStream.loading) {
+      setSkipTimesLoading(true);
       return;
     }
 
@@ -2327,7 +2388,7 @@ export function AnimeWatchPanel({
     const params = new URLSearchParams({
       season: String(playerEpisode.seasonNumber),
       episode: String(playerEpisode.episodeNumber),
-      episodeLength: String(roundedEpisodeLength),
+      episodeLength: String(skipTimesEpisodeLength),
     });
 
     setSkipTimesLoading(true);
@@ -2362,16 +2423,19 @@ export function AnimeWatchPanel({
 
     return () => controller.abort();
   }, [
+    isTaPlus,
     playerEpisode.episodeNumber,
     playerEpisode.seasonNumber,
     ready,
-    roundedEpisodeLength,
     selectedId,
     shikimoriId,
+    skipTimesEpisodeLength,
+    taPlusStream.loading,
+    taPlusStream.skips,
   ]);
 
   useEffect(() => {
-    if (!user?.isAdmin || !ready || !selectedId || roundedEpisodeLength < 300) {
+    if (!user?.isAdmin || !ready || !selectedId) {
       setAdminSkipPrefetch(null);
       setAdminSkipPrefetchLoading(false);
       return;
@@ -2381,7 +2445,7 @@ export function AnimeWatchPanel({
     const params = new URLSearchParams({
       season: String(playerEpisode.seasonNumber),
       episode: String(playerEpisode.episodeNumber),
-      episodeLength: String(roundedEpisodeLength),
+      episodeLength: String(skipTimesEpisodeLength),
       radius: "50",
       limit: "100",
     });
@@ -2416,9 +2480,9 @@ export function AnimeWatchPanel({
     playerEpisode.episodeNumber,
     playerEpisode.seasonNumber,
     ready,
-    roundedEpisodeLength,
     selectedId,
     shikimoriId,
+    skipTimesEpisodeLength,
     user?.isAdmin,
   ]);
 
@@ -2762,10 +2826,27 @@ export function AnimeWatchPanel({
     setPlayerResetNonce((nonce) => nonce + 1);
   }, [allowSeriaPlayerRemount, getCachedSeriaLink, selectedPlayerLink]);
 
+  const taPlusStreamFailedAtRef = useRef(0);
+
   const handlePlayerRefresh = useCallback(() => {
     if (!ready || continueLoading) return;
+    if (playerBalancerRef.current === "taplus") {
+      setTaPlusSeekSeconds(liveProgressRef.current.positionSeconds);
+      taPlusStream.reload();
+      setPlayerResetNonce((nonce) => nonce + 1);
+      return;
+    }
     restartPlayerAtCurrentPosition();
-  }, [continueLoading, ready, restartPlayerAtCurrentPosition]);
+  }, [continueLoading, ready, restartPlayerAtCurrentPosition, taPlusStream]);
+
+  const handleTaPlusStreamFailed = useCallback(() => {
+    if (playerBalancerRef.current !== "taplus") return;
+    const now = Date.now();
+    if (now - taPlusStreamFailedAtRef.current < 4_000) return;
+    taPlusStreamFailedAtRef.current = now;
+    setTaPlusSeekSeconds(liveProgressRef.current.positionSeconds);
+    taPlusStream.reload();
+  }, [taPlusStream]);
 
   const handleEpisodeSelect = useCallback(
     (seasonNumber: number, episodeNumber: number, scopedPlayerLink?: string | null) => {
@@ -2783,6 +2864,19 @@ export function AnimeWatchPanel({
       };
       isPausedRef.current = false;
       lastContinueResumeRef.current = resume;
+
+      if (playerBalancerRef.current === "taplus") {
+        setPlayerEpisode({ seasonNumber, episodeNumber });
+        liveProgressRef.current = resume;
+        setTaPlusSeekSeconds(0);
+        setBootResume(resume);
+        pendingContinueRef.current = resume;
+        pendingContinueModeRef.current = "play";
+        setContinueLoading(true);
+        setContinueTarget({ episodeNumber });
+        setPlayerResetNonce((nonce) => nonce + 1);
+        return;
+      }
 
       const materialLink = playableByKodikId.get(selectedIdRef.current)?.playerLink;
       if (!materialLink) return;
@@ -2928,9 +3022,17 @@ export function AnimeWatchPanel({
     (seconds: number) => {
       if (watchParty.isConnected && !watchParty.canSeek) return;
       setWatchPartyPlaybackUnlocked(true);
-      playerRef.current?.seekToPosition(seconds);
+      const next = Math.max(0, seconds);
+      liveProgressRef.current = {
+        ...liveProgressRef.current,
+        positionSeconds: next,
+      };
+      if (playerBalancerRef.current === "taplus") {
+        setTaPlusSeekSeconds(next);
+      }
+      playerRef.current?.seekToPosition(next);
       if (!applyingWatchPartyCommandRef.current) {
-        watchParty.sendCommand("seek", makeWatchPartyState({ positionSeconds: seconds }));
+        watchParty.sendCommand("seek", makeWatchPartyState({ positionSeconds: next }));
       }
     },
     [makeWatchPartyState, watchParty],
@@ -2943,6 +3045,13 @@ export function AnimeWatchPanel({
       const duration = durationSecondsRef.current;
       const nextRaw = liveProgressRef.current.positionSeconds + deltaSeconds;
       const next = duration > 0 ? Math.min(duration, Math.max(0, nextRaw)) : Math.max(0, nextRaw);
+      liveProgressRef.current = {
+        ...liveProgressRef.current,
+        positionSeconds: next,
+      };
+      if (playerBalancerRef.current === "taplus") {
+        setTaPlusSeekSeconds(next);
+      }
       playerRef.current?.seekBy(deltaSeconds);
       if (!applyingWatchPartyCommandRef.current) {
         watchParty.sendCommand("seek", makeWatchPartyState({ positionSeconds: next }));
@@ -3390,7 +3499,7 @@ export function AnimeWatchPanel({
         ? "VideoHUB"
         : deepLinkInvite.player === "taplus"
           ? "TA Plus"
-          : "TA";
+          : "TA Old";
     const seasonLabel = formatKodikSeasonLabel(deepLinkInvite.seasonNumber);
     const episodeLabel = formatEpisodeOfTotal(deepLinkInvite.episodeNumber, episodesTotal ?? null);
     const timeLabel =
@@ -3435,8 +3544,9 @@ export function AnimeWatchPanel({
   };
 
   const renderWatchPartyPanel = () => {
-    if (playerBalancer === "cvh" || playerBalancer === "taplus") return null;
-    if (!betaChromeless || !ready || !selected?.playerLink) return null;
+    if (playerBalancer === "cvh") return null;
+    if (!isTaPlus && !betaChromeless) return null;
+    if (!ready || !selected?.playerLink) return null;
     if (watchParty.settingsLoading) return null;
     if (!watchParty.settings.enabled) return null;
 
@@ -3876,15 +3986,15 @@ export function AnimeWatchPanel({
                   "inline-flex items-center gap-1.5 rounded-md border px-2.5 py-1.5 text-xs font-medium transition",
                   skipTimesInfo?.found && skipTimesInfo.results.length > 0
                     ? "border-emerald-400/40 bg-emerald-500/10 text-emerald-300 hover:border-emerald-300 hover:bg-emerald-500/15"
-                    : skipTimesLoading || roundedEpisodeLength < 300
+                    : skipTimesLoading || (!isTaPlus && roundedEpisodeLength < 300)
                       ? "border-amber-400/40 bg-amber-500/10 text-amber-300 hover:border-amber-300 hover:bg-amber-500/15"
                       : "border-border bg-background text-muted hover:border-accent/40 hover:bg-surface-dim",
                 ].join(" ")}
-                aria-label="Диагностика AniSkip"
+                aria-label="Диагностика OP/ED таймингов"
               >
                 <IconSkipTimesFound />
                 <span>
-                  {skipTimesLoading || roundedEpisodeLength < 300
+                  {skipTimesLoading || (!isTaPlus && roundedEpisodeLength < 300)
                     ? "…"
                     : skipTimesInfo?.results.length ?? 0}
                 </span>
@@ -3900,17 +4010,29 @@ export function AnimeWatchPanel({
                 <div className="mb-2 flex items-start justify-between gap-3">
                   <div>
                     <p className="font-semibold text-foreground">
-                      {skipTimesInfo?.found
-                        ? "AniSkip тайминги найдены"
-                        : skipTimesLoading
-                          ? "AniSkip ищет тайминги"
-                          : roundedEpisodeLength < 300
-                            ? "AniSkip ждёт длительность"
-                            : "AniSkip тайминги не найдены"}
+                      {skipTimesInfo?.source === "parser"
+                        ? skipTimesInfo.found
+                          ? "Kodik skip тайминги найдены"
+                          : "Kodik skip тайминги не найдены"
+                        : skipTimesInfo?.found
+                          ? "AniSkip тайминги найдены"
+                          : skipTimesLoading
+                            ? isTaPlus
+                              ? "Ждём skip из парсера / AniSkip"
+                              : "AniSkip ищет тайминги"
+                            : !isTaPlus && roundedEpisodeLength < 300
+                              ? "AniSkip ждёт длительность"
+                              : "Тайминги OP/ED не найдены"}
                     </p>
                     <p className="mt-0.5 text-muted">
                       {skipTimesInfo
-                        ? `${skipTimeSourceLabel(skipTimesInfo.source)} · MAL ${skipTimesInfo.malId ?? "—"}`
+                        ? skipTimesInfo.source === "parser"
+                          ? `${skipTimeSourceLabel(skipTimesInfo.source)}${
+                              taPlusStream.skips?.parserSource
+                                ? ` · ${taPlusStream.skips.parserSource}`
+                                : ""
+                            }`
+                          : `${skipTimeSourceLabel(skipTimesInfo.source)} · MAL ${skipTimesInfo.malId ?? "—"}`
                         : `S${playerEpisode.seasonNumber} · E${playerEpisode.episodeNumber}`}
                     </p>
                   </div>
@@ -3922,7 +4044,7 @@ export function AnimeWatchPanel({
                       <button
                         type="button"
                         onClick={() => setSkipTimesPopupPinned(false)}
-                        aria-label="Закрыть окно AniSkip"
+                        aria-label="Закрыть окно таймингов OP/ED"
                         className="inline-flex h-6 w-6 items-center justify-center rounded-md border border-border bg-background text-sm leading-none text-muted transition hover:border-accent/40 hover:text-foreground"
                       >
                         ×
@@ -3940,15 +4062,52 @@ export function AnimeWatchPanel({
                       <dd className="text-right text-foreground">
                         {roundedEpisodeLength >= 300
                           ? formatWatchPosition(skipTimesInfo?.episodeLength ?? roundedEpisodeLength)
-                          : "ожидание"}
+                          : isTaPlus
+                            ? formatWatchPosition(skipTimesEpisodeLength)
+                            : "ожидание"}
                       </dd>
                       <dt>Смещение озвучки</dt>
                       <dd className="text-right text-foreground">
-                        {selectedIntroOffsetSeconds > 0
-                          ? `+${formatWatchPosition(selectedIntroOffsetSeconds)}`
-                          : "нет"}
+                        {skipTimesInfo?.source === "parser"
+                          ? "не применяется"
+                          : selectedIntroOffsetSeconds > 0
+                            ? `+${formatWatchPosition(selectedIntroOffsetSeconds)}`
+                            : "нет"}
                       </dd>
+                      {isTaPlus ? (
+                        <>
+                          <dt>Парсер skip</dt>
+                          <dd className="text-right text-foreground">
+                            {taPlusStream.loading
+                              ? "загрузка…"
+                              : taPlusStream.skips?.found
+                                ? `${taPlusStream.skips.results.length} интерв.`
+                                : "нет в ответе"}
+                          </dd>
+                          {taPlusStream.skips?.genre ? (
+                            <>
+                              <dt>skip_genre</dt>
+                              <dd className="text-right text-foreground">
+                                {taPlusStream.skips.genre}
+                              </dd>
+                            </>
+                          ) : null}
+                          {taPlusStream.skips?.parserSource ? (
+                            <>
+                              <dt>skip_source</dt>
+                              <dd className="text-right text-foreground">
+                                {taPlusStream.skips.parserSource}
+                              </dd>
+                            </>
+                          ) : null}
+                        </>
+                      ) : null}
                     </dl>
+                    {isTaPlus && taPlusStream.skips?.raw ? (
+                      <p className="mt-2 break-all rounded-md border border-border bg-background px-2 py-1.5 font-mono text-[11px] text-muted">
+                        skip_raw: {taPlusStream.skips.raw}
+                      </p>
+                    ) : null}
                     {skipTimesInfo?.found && skipTimesInfo.results.length > 0 ? (
                       <div className="mt-2 space-y-1 border-t border-border pt-2">
                         {displaySkipTimes.map((skipTime) => (
@@ -3968,14 +4127,18 @@ export function AnimeWatchPanel({
                       </div>
                     ) : (
                       <p className="mt-2 border-t border-border pt-2 text-muted">
-                        {roundedEpisodeLength < 300
-                          ? "Kodik ещё не прислал длительность видео, запрос к AniSkip не запущен."
-                          : "Для текущей серии и длительности интервалов в AniSkip нет."}
+                        {isTaPlus
+                          ? taPlusStream.loading
+                            ? "Ждём ответ парсера Kodik (skip_timings / skip_raw)…"
+                            : "В ответе парсера skip нет — fallback AniSkip тоже пуст."
+                          : roundedEpisodeLength < 300
+                            ? "Kodik ещё не прислал длительность видео, запрос к AniSkip не запущен."
+                            : "Для текущей серии и длительности интервалов в AniSkip нет."}
                       </p>
                     )}
                     <div className="mt-2 border-t border-border pt-2">
                       <p className="font-medium text-foreground">
-                        Прогрев тайтла:{" "}
+                        Прогрев AniSkip:{" "}
                         {adminSkipPrefetchLoading
                           ? "идёт"
                           : adminSkipPrefetch
@@ -4023,32 +4186,10 @@ export function AnimeWatchPanel({
               onVoiceStudioChange={handleCvhVoiceStudioChange}
             />
           </div>
-        ) : playerBalancer === "taplus" ? (
-          <div className="relative min-w-0">
-            {renderDeepLinkInviteOverlay()}
-            <TaPlusWatchSection
-              shikimoriId={shikimoriId}
-              animeTitle={animeTitle}
-              translations={playable}
-              preferredKodikId={selectedId || null}
-              preferredSeason={playerEpisode.seasonNumber}
-              preferredEpisode={playerEpisode.episodeNumber}
-              initialPositionSeconds={taPlusSeekSeconds}
-              onProgress={(payload) => {
-                if (payload.durationSeconds > 0) {
-                  durationSecondsRef.current = payload.durationSeconds;
-                }
-                trackProgress(payload);
-              }}
-              onPause={handlePause}
-              onTranslationChange={handleTaPlusTranslationChange}
-              onEpisodeChange={handleTaPlusEpisodeChange}
-            />
-          </div>
         ) : !ready ? (
           <div className="aspect-video animate-pulse rounded-lg bg-surface-dim" />
         ) : selected?.playerLink ? (
-          betaChromeless ? (
+          isTaPlus || betaChromeless ? (
             <div
               ref={betaFullscreenRef}
               className={[
@@ -4061,62 +4202,106 @@ export function AnimeWatchPanel({
                 {renderWatchPartySyncIndicator()}
                 {renderWatchPartyStartOverlay()}
                 {renderDeepLinkInviteOverlay()}
-                <KodikPlayerBetaViewport
-                  playerRef={playerRef}
-                  playerKey={`${selected.kodikId}-${playerResetNonce}-beta-${playerSrc}`}
-                  src={playerSrc}
-                  title={`${animeTitle} — ${selected.translationTitle}`}
-                  sizeMode={isNativeFullscreen || betaTheaterExpanded ? "viewport" : "default"}
-                  initialResume={initialResume}
-                  shikimoriId={shikimoriId}
-                  kodikId={selected.kodikId}
-                  seasonNumber={playerEpisode.seasonNumber}
-                  currentEpisode={playerEpisode.episodeNumber}
-                  playback={playback}
-                  timelineSegments={timelineSkipSegments}
-                  fullscreenActive={isNativeFullscreen}
-                  theaterMode={isNativeFullscreen ? "normal" : betaTheaterMode}
-                  seekSkipLabelSeconds={PLAYER_SEEK_SKIP_LABEL_SECONDS}
-                  controlsDisabled={seekSkipDisabled}
-                  keepUiVisible={betaTranslationsHoverEnabled && fullscreenTranslationsHovered}
-                  continueAction={betaContinueAction}
-                  skipAction={betaSkipAction}
-                  continueOverlay={
-                    continueLoading ? (
-                      <PlayerLoadingOverlay
-                        episodeNumber={continueTarget?.episodeNumber}
-                        fallbackEpisodeNumber={playerEpisode.episodeNumber}
-                      />
-                    ) : null
-                  }
-                  onReady={handlePlayerReady}
-                  onContinueStateChange={handleContinueStateChange}
-                  onProgress={trackProgress}
-                  onPause={handlePause}
-                  onTranslationChange={handlePlayerTranslationChange}
-                  onPlaybackStateChange={handlePlaybackStateChange}
-                  onEpisodeSelect={handleRoomEpisodeSelect}
-                  onPlayPause={handleRoomPlayPause}
-                  onPreviousEpisode={() => handleRoomAdjacentEpisode(-1)}
-                  onNextEpisode={() => handleRoomAdjacentEpisode(1)}
-                  previousEpisodeDisabled={previousEpisodeDisabled || roomEpisodeSelectionDisabled}
-                  nextEpisodeDisabled={nextEpisodeDisabled || roomEpisodeSelectionDisabled}
-                  onSeek={handleRoomSeek}
-                  onSeekSkip={handleRoomSeekSkip}
-                  onVolumeChange={(volume) => {
-                    playerRef.current?.setVolume(volume);
-                    if (volume > 0 && playback.muted) playerRef.current?.unmute();
-                  }}
-                  onMuteToggle={() => {
-                    if (playback.muted) playerRef.current?.unmute();
-                    else playerRef.current?.mute();
-                  }}
-                  onTheaterToggle={cycleBetaTheaterMode}
-                  onFullscreenToggle={() => void toggleBetaFullscreen()}
-                  onFullscreenTranslationsIntent={setFullscreenTranslationsOpen}
-                  fullscreenTranslationsOpen={fullscreenTranslationsOpen}
-                  onEnded={handleRoomPlayerEnded}
-                />
+                {isTaPlus && taPlusStream.error ? (
+                  <div className="flex aspect-video items-center justify-center bg-card px-4 text-center text-sm text-muted">
+                    {taPlusStream.error}
+                  </div>
+                ) : (
+                  <KodikPlayerBetaViewport
+                    playerRef={playerRef}
+                    playerKey={
+                      isTaPlus
+                        ? `${selected.kodikId}-${playerResetNonce}-taplus-${taPlusStream.quality ?? "q"}-${playerEpisode.seasonNumber}-${playerEpisode.episodeNumber}`
+                        : `${selected.kodikId}-${playerResetNonce}-beta-${playerSrc}`
+                    }
+                    src={isTaPlus ? (taPlusStream.streamUrl ?? "") : playerSrc}
+                    title={`${animeTitle} — ${selected.translationTitle}${isTaPlus ? " · TA Plus" : ""}`}
+                    sizeMode={isNativeFullscreen || betaTheaterExpanded ? "viewport" : "default"}
+                    initialResume={
+                      // TA Plus: only explicit seek (Continue / deep-link / party / quality /
+                      // refresh). Do NOT fall back to bootResume — soft page-load boot is for
+                      // Kodik Old; idle Play / «Смотреть» must start at 0.
+                      isTaPlus
+                        ? taPlusSeekSeconds != null && taPlusSeekSeconds >= 0
+                          ? {
+                              seasonNumber: playerEpisode.seasonNumber,
+                              episodeNumber: playerEpisode.episodeNumber,
+                              positionSeconds: taPlusSeekSeconds,
+                            }
+                          : null
+                        : initialResume
+                    }
+                    shikimoriId={shikimoriId}
+                    kodikId={selected.kodikId}
+                    seasonNumber={playerEpisode.seasonNumber}
+                    currentEpisode={playerEpisode.episodeNumber}
+                    playback={playback}
+                    timelineSegments={timelineSkipSegments}
+                    fullscreenActive={isNativeFullscreen}
+                    theaterMode={isNativeFullscreen ? "normal" : betaTheaterMode}
+                    seekSkipLabelSeconds={PLAYER_SEEK_SKIP_LABEL_SECONDS}
+                    controlsDisabled={seekSkipDisabled || (isTaPlus && taPlusStream.loading)}
+                    keepUiVisible={betaTranslationsHoverEnabled && fullscreenTranslationsHovered}
+                    continueAction={betaContinueAction}
+                    skipAction={betaSkipAction}
+                    backend={isTaPlus ? "taplus" : "kodik"}
+                    qualities={isTaPlus ? taPlusStream.qualities : undefined}
+                    quality={isTaPlus ? taPlusStream.quality : undefined}
+                    tiles={isTaPlus ? taPlusStream.tiles : undefined}
+                    previews={isTaPlus ? taPlusStream.previews : undefined}
+                    episodeDurationHint={
+                      isTaPlus
+                        ? (skipTimesInfo?.episodeLength ??
+                          (playback.durationSeconds > 1 ? playback.durationSeconds : null))
+                        : undefined
+                    }
+                    onStreamFailed={isTaPlus ? handleTaPlusStreamFailed : undefined}
+                    autoStart={isTaPlus && continueLoading}
+                    onQualityChange={
+                      isTaPlus
+                        ? (nextQuality) => {
+                            setTaPlusSeekSeconds(liveProgressRef.current.positionSeconds);
+                            taPlusStream.setQuality(nextQuality);
+                          }
+                        : undefined
+                    }
+                    continueOverlay={
+                      continueLoading || (isTaPlus && taPlusStream.loading) ? (
+                        <PlayerLoadingOverlay
+                          episodeNumber={continueTarget?.episodeNumber}
+                          fallbackEpisodeNumber={playerEpisode.episodeNumber}
+                        />
+                      ) : null
+                    }
+                    onReady={handlePlayerReady}
+                    onContinueStateChange={handleContinueStateChange}
+                    onProgress={trackProgress}
+                    onPause={handlePause}
+                    onTranslationChange={handlePlayerTranslationChange}
+                    onPlaybackStateChange={handlePlaybackStateChange}
+                    onEpisodeSelect={handleRoomEpisodeSelect}
+                    onPlayPause={handleRoomPlayPause}
+                    onPreviousEpisode={() => handleRoomAdjacentEpisode(-1)}
+                    onNextEpisode={() => handleRoomAdjacentEpisode(1)}
+                    previousEpisodeDisabled={previousEpisodeDisabled || roomEpisodeSelectionDisabled}
+                    nextEpisodeDisabled={nextEpisodeDisabled || roomEpisodeSelectionDisabled}
+                    onSeek={handleRoomSeek}
+                    onSeekSkip={handleRoomSeekSkip}
+                    onVolumeChange={(volume) => {
+                      playerRef.current?.setVolume(volume);
+                      if (volume > 0 && playback.muted) playerRef.current?.unmute();
+                    }}
+                    onMuteToggle={() => {
+                      if (playback.muted) playerRef.current?.unmute();
+                      else playerRef.current?.mute();
+                    }}
+                    onTheaterToggle={cycleBetaTheaterMode}
+                    onFullscreenToggle={() => void toggleBetaFullscreen()}
+                    onFullscreenTranslationsIntent={setFullscreenTranslationsOpen}
+                    fullscreenTranslationsOpen={fullscreenTranslationsOpen}
+                    onEnded={handleRoomPlayerEnded}
+                  />
+                )}
               </div>
               <div
                 ref={betaTranslationsRef}

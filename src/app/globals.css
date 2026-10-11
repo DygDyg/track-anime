@@ -1857,6 +1857,72 @@ html[data-tv-nav="true"] .kodik-player-beta-theater-button {
   min-width: 0;
 }
 
+/* YouTube-style volume: slider in a collapsing wrap (sm+; phone keeps mute-only). */
+.kodik-player-beta-volume-slider-wrap {
+  display: none;
+  flex: 0 0 auto;
+  width: 5rem;
+  min-width: 0;
+  overflow: hidden;
+  transition:
+    width 0.15s ease,
+    opacity 0.15s ease,
+    margin 0.15s ease;
+}
+
+@media (min-width: 640px) {
+  .kodik-player-beta-volume-slider-wrap {
+    display: block;
+  }
+}
+
+.kodik-player-beta-volume-slider-wrap .kodik-player-beta-volume.site-range {
+  display: block;
+  width: 5rem;
+  max-width: none;
+}
+
+/* Fine pointer + hover: collapsed until group hover / focus / drag. */
+@media (hover: hover) and (pointer: fine) and (min-width: 640px) {
+  .kodik-player-beta-volume-group:not(:hover):not(:focus-within):not(
+      [data-volume-expanded="true"]
+    )
+    .kodik-player-beta-volume-slider-wrap {
+    width: 0;
+    opacity: 0;
+    margin-inline: 0;
+    pointer-events: none;
+  }
+
+  .kodik-player-beta-volume-group:not(:hover):not(:focus-within):not(
+      [data-volume-expanded="true"]
+    ) {
+    gap: 0;
+  }
+}
+
+/* Touch / coarse: keep a short always-visible slider (sm+). */
+@media (hover: none) and (min-width: 640px), (pointer: coarse) and (min-width: 640px) {
+  .kodik-player-beta-volume-slider-wrap {
+    width: 4rem;
+    opacity: 1;
+  }
+
+  .kodik-player-beta-volume-slider-wrap .kodik-player-beta-volume.site-range {
+    width: 4rem;
+  }
+
+  html[data-player-large-ui="true"] .kodik-player-beta-volume-slider-wrap {
+    width: 5rem;
+  }
+
+  html[data-player-large-ui="true"]
+    .kodik-player-beta-volume-slider-wrap
+    .kodik-player-beta-volume.site-range {
+    width: 5rem;
+  }
+}
+
 .kodik-player-beta-episodes::-webkit-scrollbar {
   display: none;
 }
@@ -2065,6 +2131,12 @@ html[data-player-theater="height"][data-player-theater-chrome="hidden"] .site-he
   max-width: 100dvw;
 }
 
+/* TA Plus: keep chrome overlays inside the fullscreen frame (no aspect-video overflow clip). */
+.kodik-player-beta-stage:fullscreen .kodik-player-beta-video-shell {
+  height: 100%;
+  width: 100%;
+}
+
 .kodik-player-beta-stage:fullscreen .kodik-player-beta-translations {
   position: absolute;
   inset-inline: 0.5rem;
@@ -2091,6 +2163,7 @@ html[data-player-theater="height"][data-player-theater-chrome="hidden"] .site-he
 
 .kodik-player-beta-range.site-range {
   --range-track: rgba(255, 255, 255, 0.22);
+  --range-buffer: 0%;
   --range-skip-segments: linear-gradient(transparent, transparent);
   background:
     var(--range-skip-segments),
@@ -2099,6 +2172,13 @@ html[data-player-theater="height"][data-player-theater-chrome="hidden"] .site-he
       var(--accent) 0%,
       var(--accent) var(--range-fill, 0%),
       transparent var(--range-fill, 0%),
+      transparent 100%
+    ),
+    linear-gradient(
+      to right,
+      rgba(255, 255, 255, 0.38) 0%,
+      rgba(255, 255, 255, 0.38) var(--range-buffer, 0%),
+      transparent var(--range-buffer, 0%),
       transparent 100%
     ),
     linear-gradient(to right, var(--range-track), var(--range-track));
@@ -2267,12 +2347,28 @@ html[data-player-large-ui="true"] .kodik-player-beta-seek-button {
   font-weight: 600;
 }
 
+/* Text rate label — auto width (not icon-square / not time min-width). */
+.kodik-player-beta-rate-button {
+  width: auto;
+  min-width: 2.75rem;
+  padding-inline: 0.375rem;
+}
+
+html[data-player-large-ui="true"] .kodik-player-beta-rate-button {
+  min-width: 3rem;
+  width: auto;
+  padding-inline: 0.5rem;
+  font-size: 0.875rem;
+  font-weight: 600;
+}
+
 html[data-player-large-ui="true"] .kodik-player-beta-controls-row button svg {
   width: 1.5rem;
   height: 1.5rem;
 }
 
-html[data-player-large-ui="true"] .kodik-player-beta-controls-row .tabular-nums {
+/* Time readout only — do not match rate button (also uses tabular-nums). */
+html[data-player-large-ui="true"] .kodik-player-beta-controls-row > span.tabular-nums {
   font-size: 0.875rem;
   min-width: 8.5rem;
 }
@@ -2301,7 +2397,13 @@ html[data-player-large-ui="true"] .kodik-player-beta-controls .kodik-player-beta
   height: 0.5rem;
 }
 
-html[data-player-large-ui="true"] .kodik-player-beta-volume.site-range {
+html[data-player-large-ui="true"] .kodik-player-beta-volume-slider-wrap {
+  width: 6rem;
+}
+
+html[data-player-large-ui="true"]
+  .kodik-player-beta-volume-slider-wrap
+  .kodik-player-beta-volume.site-range {
   width: 6rem;
 }
 

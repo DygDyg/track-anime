@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { fetchKodikFtorStreams } from "@/lib/kodik-ftor";
 import { prisma } from "@/lib/prisma";
 import { toKodikPlayerEmbedUrl } from "@/lib/player-url";
+import { buildTaPlusPreviewUrls } from "@/lib/ta-plus-previews";
 
 export const dynamic = "force-dynamic";
 
@@ -26,17 +27,23 @@ function normalizePlayerLink(link: string | null | undefined): string | null {
   return toKodikPlayerEmbedUrl(link.trim());
 }
 
-async function resolveEpisodePlayerLink(input: {
+async function resolveEpisodeContext(input: {
   shikimoriId: number;
   kodikId: string;
   seasonNumber: number;
   episodeNumber: number;
-}): Promise<string | null> {
+}): Promise<{
+  playerLink: string | null;
+  episodeScreenshots: unknown;
+  materialData: unknown;
+}> {
   const material = await prisma.kodikMaterial.findFirst({
     where: { kodikId: input.kodikId, shikimoriId: input.shikimoriId },
-    select: { playerLink: true },
+    select: { playerLink: true, materialData: true },
   });
-  if (!material) return null;
+  if (!material) {
+    return { playerLink: null, episodeScreenshots: null, materialData: null };
+  }
 
   const episode = await prisma.kodikEpisode.findUnique({
     where: {
@@ -46,10 +53,16 @@ async function resolveEpisodePlayerLink(input: {
         episodeNumber: input.episodeNumber,
       },
     },
-    select: { playerLink: true },
+    select: { playerLink: true, screenshots: true },
   });
   const fromEpisode = normalizePlayerLink(episode?.playerLink);
-  if (fromEpisode) return fromEpisode;
+  if (fromEpisode) {
+    return {
+      playerLink: fromEpisode,
+      episodeScreenshots: episode?.screenshots ?? null,
+      materialData: material.materialData,
+    };
+  }
 
   const season = await prisma.kodikSeason.findUnique({
     where: {
@@ -60,7 +73,12 @@ async function resolveEpisodePlayerLink(input: {
     },
     select: { playerLink: true },
   });
-  return normalizePlayerLink(season?.playerLink) ?? normalizePlayerLink(material.playerLink);
+  return {
+    playerLink:
+      normalizePlayerLink(season?.playerLink) ?? normalizePlayerLink(material.playerLink),
+    episodeScreenshots: episode?.screenshots ?? null,
+    materialData: material.materialData,
+  };
 }
 
 export async function GET(request: NextRequest, { params }: RouteParams) {
@@ -76,16 +94,21 @@ export async function GET(request: NextRequest, { params }: RouteParams) {
   const episodeNumber = parsePositiveInt(request.nextUrl.searchParams.get("episode")) ?? 1;
 
   let playerLink = urlParam ? normalizePlayerLink(urlParam) : null;
-  if (!playerLink) {
-    if (!kodikId) {
-      return NextResponse.json({ error: "Нужен kodikId или url" }, { status: 400 });
-    }
-    playerLink = await resolveEpisodePlayerLink({
+  let episodeScreenshots: unknown = null;
+  let materialData: unknown = null;
+
+  if (kodikId) {
+    const ctx = await resolveEpisodeContext({
       shikimoriId,
       kodikId,
       seasonNumber,
       episodeNumber,
     });
+    episodeScreenshots = ctx.episodeScreenshots;
+    materialData = ctx.materialData;
+    if (!playerLink) playerLink = ctx.playerLink;
+  } else if (!playerLink) {
+    return NextResponse.json({ error: "Нужен kodikId или url" }, { status: 400 });
   }
 
   if (!playerLink) {
@@ -97,6 +120,12 @@ export async function GET(request: NextRequest, { params }: RouteParams) {
     const qualities = Object.fromEntries(
       Object.entries(streams.qualities).sort((a, b) => Number(b[0]) - Number(a[0])),
     );
+    const previews = buildTaPlusPreviewUrls({
+      tiles: streams.tiles,
+      qualities,
+      episodeScreenshots,
+      materialData,
+    });
     return NextResponse.json({
       ok: true,
       shikimoriId,
@@ -108,6 +137,8 @@ export async function GET(request: NextRequest, { params }: RouteParams) {
       default: streams.defaultQuality,
       qualities,
       tiles: streams.tiles,
+      previews,
+      skips: streams.skips,
     });
   } catch (error) {
     const message = error instanceof Error ? error.message : "Не удалось получить поток";

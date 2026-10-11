@@ -82,7 +82,8 @@ ta_new/
 | `characters/[characterId]/hover-preview` | Character hover preview |
 | `anime/[shikimoriId]/comments` | Shikimori comments proxy |
 | `anime/[shikimoriId]/episodes` | Episode metadata |
-| `anime/[shikimoriId]/taplus` | TA Plus: decode Kodik `/ftor` → HLS qualities |
+| `anime/[shikimoriId]/taplus` | TA Plus: decode Kodik `/ftor` → HLS qualities + idle `previews` + parser `skips` |
+| `taplus-tile` | Proxy Kodik storyboard/thumb JPEGs (idle/scrub preview; CDN hotlink bypass) |
 | `anime/[shikimoriId]/cvh` | VideoHUB playlist resolve |
 | `anime/[shikimoriId]/hover-preview` | Anime hover preview |
 | `anime/[shikimoriId]/trailer` | YouTube trailer |
@@ -189,7 +190,7 @@ Git deploy webhook (HMAC, no session): `api/deploy/webhook` (POST)
 | `stats.ts`, `storage-stats.ts`, `server-load.ts`, `server-load-types.ts`, `host-reboot.ts`, `host-reboot-types.ts` | Dashboard metrics, host load, guarded host reboot for `/admin` |
 | `git-deploy.ts`, `git-deploy-types.ts` | Git pull deploy: admin trigger, GitHub webhook verify, status/log |
 | `deploy-discord-settings.ts`, `deploy-discord-settings-types.ts` | Discord deploy notify URL + start/finish flags → `data/deploy-discord-notify.json` |
-| `audience-stats.ts` | DAU/WAU/MAU, platforms, player Kodik/TA vs VideoHUB, section/title popularity |
+| `audience-stats.ts` | DAU/WAU/MAU, platforms, player TA Old / TA Plus / VideoHUB, section/title popularity |
 | `audience-stats-markdown.ts` | Markdown snapshot for `/admin/audience` export |
 | `watch-share-log.ts` | Admin DTO for anime watch deep-link copy log |
 | `notification-subscription-stats.ts` | Counts of notification subscribers by type/channel |
@@ -210,6 +211,9 @@ Git deploy webhook (HMAC, no session): `api/deploy/webhook` (POST)
 | `anime-page.ts` | Anime page data loader |
 | `cvh-player.ts` | CDN VideoHub pub/aggr (в т.ч. `shikimori`→MAL fallback), playlist helpers, URL для запасного `/cdn-iframe` |
 | `kodik-ftor.ts` | Серверный вызов PHP-парсера `/ftor` + ROT18/base64 decode HLS `src` для TA Plus |
+| `kodik-parser-skip.ts` | Разбор `skip_timings` / `skip_raw` из ответа парсера → OP/ED для TA Plus |
+| `ta-plus-tiles.ts` | Client-safe storyboard tiles (`{index}`) для scrub-preview TA Plus |
+| `ta-plus-previews.ts` | Idle `previews`: скриншоты серии + derived `thumb001…005` + display proxy |
 | `kodik-ensure-materials.ts` | On-demand Kodik materials by shikimoriId when page has none |
 | `releases.ts` | Home feed queries (SQL builders + page API) |
 | `home-feed-cache.ts` | Materialized home feed (`HomeFeedItem` / meta, head+full rebuild) |
@@ -257,7 +261,7 @@ Git deploy webhook (HMAC, no session): `api/deploy/webhook` (POST)
 
 | Folder | Key components |
 |--------|----------------|
-| `anime/` | `AnimePageView`, `AnimeWatchPanel`, `KodikPlayer`, `TaPlusWatchSection` / `TaPlusPlayer`, `CvhWatchSection` / `CvhPlayerFrame`, `MoveToCompletedBanner`, `AddToWatchingBanner`, `AnimeListActions`, `AnimeShikimoriRating` + `AnimeUserScoreVote` |
+| `anime/` | `AnimePageView`, `AnimeWatchPanel`, `KodikPlayer`, `TaPlusPlayer` (HLS backend для `KodikPlayerBetaViewport`), `CvhWatchSection` / `CvhPlayerFrame`, `MoveToCompletedBanner`, `AddToWatchingBanner`, `AnimeListActions`, `AnimeShikimoriRating` + `AnimeUserScoreVote` |
 | `admin/` | `AdminAnimeDebugButton` — защищённое окно данных тайтла/серии; `AdminForceCoverButton` — force-перекачка обложки на странице тайтла |
 | `auth/` | `AuthProvider` |
 | `header/` | `Header`, `HeaderSearch` |

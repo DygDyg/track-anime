@@ -25,7 +25,11 @@ import {
   type KodikPlayerTimelineSegment,
 } from "@/components/anime/KodikPlayerBetaControls";
 import { KodikPlayerBetaEpisodeStrip } from "@/components/anime/KodikPlayerBetaEpisodeStrip";
+import { TaPlusIdleBackdrop } from "@/components/anime/TaPlusIdleBackdrop";
+import { TaPlusPlayer, type TaPlusPlayerHandle } from "@/components/anime/TaPlusPlayer";
 import { SiteClock } from "@/components/SiteClock";
+import { TA_PLUS_QUALITY_AUTO } from "@/lib/ta-plus-master-playlist";
+import type { TaPlusTiles } from "@/lib/ta-plus-tiles";
 import { useSiteSettings } from "@/components/SiteSettingsProvider";
 import { isTrackAnimeAndroidApp } from "@/lib/android-app";
 import { toKodikPlayerEmbedUrl } from "@/lib/player-url";
@@ -53,6 +57,8 @@ const CLICK_LAYER_APPEAR_DELAY_MS = 2_000;
 /** Kodik iframe steals focus; reclaim on interaction/keydown so Space/arrows reach TA (no polling). */
 const SEEK_FEEDBACK_MS = 900;
 const MOBILE_DOUBLE_TAP_SEEK_SECONDS = 10;
+/** Fallback episode length for TA Plus scrub before HLS reports duration (~24 min). */
+const TA_PLUS_IDLE_DURATION_FALLBACK_SECONDS = 24 * 60;
 const MOBILE_DOCK_CONTROLS_MQ = "(max-width: 639px) and (orientation: portrait)";
 const TOUCH_LIKE_MQ = "(hover: none), (pointer: coarse)";
 const MOBILE_TRANSLATIONS_SWIPE_ZONE_PX = 96;
@@ -85,6 +91,8 @@ type WakeLockNavigator = Navigator & {
   };
 };
 
+export type KodikPlayerBetaBackend = "kodik" | "taplus";
+
 type Props = {
   playerRef: RefObject<KodikPlayerHandle | null>;
   playerKey: string;
@@ -106,6 +114,23 @@ type Props = {
   continueOverlay?: ReactNode;
   continueAction?: ReactNode;
   skipAction?: ReactNode;
+  /** Default Kodik iframe; `taplus` = HLS via TaPlusPlayer. */
+  backend?: KodikPlayerBetaBackend;
+  qualities?: Record<string, string>;
+  quality?: string | null;
+  onQualityChange?: (quality: string) => void;
+  tiles?: TaPlusTiles | null;
+  /** Full-frame idle previews for TA Plus (screenshots / CDN thumbs). */
+  previews?: string[] | null;
+  /** Optional known episode length (AniSkip / last play) for idle scrub before HLS. */
+  episodeDurationHint?: number | null;
+  /** HLS recovery exhausted — re-fetch /taplus (parent). */
+  onStreamFailed?: () => void;
+  /**
+   * Mount+play HLS immediately (Continue / deep-link «Воспроизвести»).
+   * Balancer switch alone must NOT set this — idle storyboard stays until user plays.
+   */
+  autoStart?: boolean;
   onReady?: () => void;
   onContinueStateChange?: (active: boolean) => void;
   onProgress?: (payload: KodikPlayerProgressPayload) => void;
@@ -130,7 +155,7 @@ type Props = {
   onFullscreenToggle: () => void;
   onFullscreenTranslationsIntent?: (open: boolean) => void;
   fullscreenTranslationsOpen?: boolean;
-  onEnded?: () => void;
+  onEnded?: (progress?: KodikPlayerProgressPayload | null) => void;
 };
 
 export function KodikPlayerBetaViewport({
@@ -154,6 +179,15 @@ export function KodikPlayerBetaViewport({
   continueOverlay,
   continueAction,
   skipAction,
+  backend = "kodik",
+  qualities = {},
+  quality = null,
+  onQualityChange,
+  tiles = null,
+  previews = null,
+  episodeDurationHint = null,
+  onStreamFailed,
+  autoStart = false,
   onReady,
   onContinueStateChange,
   onProgress,
@@ -177,9 +211,29 @@ export function KodikPlayerBetaViewport({
   onEnded,
 }: Props) {
   const { settings } = useSiteSettings();
+  const isTaPlus = backend === "taplus";
   const [uiVisible, setUiVisible] = useState(true);
   const [kodikUiAccess, setKodikUiAccess] = useState(false);
+  const [qualityMenuOpen, setQualityMenuOpen] = useState(false);
   const [castAvailable, setCastAvailable] = useState(false);
+  const [bufferedEndSeconds, setBufferedEndSeconds] = useState(0);
+  const [playbackRate, setPlaybackRate] = useState(1);
+  const [pipAvailable, setPipAvailable] = useState(false);
+  const [activeQualityHeight, setActiveQualityHeight] = useState<number | null>(null);
+  /** HLS not mounted until user hits play (idle storyboard backdrop). */
+  const [taPlusStarted, setTaPlusStarted] = useState(false);
+  /** Scrub position while HLS is not mounted yet. */
+  const [idleSeekSeconds, setIdleSeekSeconds] = useState(() => {
+    const fromResume = initialResume?.positionSeconds;
+    return fromResume != null && Number.isFinite(fromResume) && fromResume >= 0 ? fromResume : 0;
+  });
+  const lastKnownDurationRef = useRef(0);
+  const pendingPlayAfterStartRef = useRef(false);
+  /**
+   * After first play/Continue in this TA Plus session, keep HLS auto-starting on
+   * episode changes (auto-next). Reset when leaving TA Plus.
+   */
+  const taPlusSessionUnlockedRef = useRef(false);
   const [dockControlsBelow, setDockControlsBelow] = useState(() => {
     if (typeof window === "undefined") return false;
     return window.matchMedia(MOBILE_DOCK_CONTROLS_MQ).matches;
@@ -581,6 +635,40 @@ export function KodikPlayerBetaViewport({
   }, [kodikUiAccess, scheduleHide]);
 
   useEffect(() => {
+    if (!isTaPlus) {
+      setPipAvailable(false);
+      setBufferedEndSeconds(0);
+      return;
+    }
+    setPipAvailable(
+      typeof document !== "undefined" &&
+        "pictureInPictureEnabled" in document &&
+        Boolean(document.pictureInPictureEnabled),
+    );
+  }, [isTaPlus, playerKey]);
+
+  useEffect(() => {
+    if (!isTaPlus) return;
+    const handle = playerRef.current as TaPlusPlayerHandle | null;
+    handle?.setPlaybackRate(playbackRate);
+  }, [isTaPlus, playerKey, playbackRate, playerRef]);
+
+  const handlePictureInPicture = useCallback(() => {
+    const handle = playerRef.current as TaPlusPlayerHandle | null;
+    void handle?.requestPictureInPicture().catch(() => undefined);
+  }, [playerRef]);
+
+  const handlePlaybackRateChange = useCallback(
+    (rate: number) => {
+      setPlaybackRate(rate);
+      const handle = playerRef.current as TaPlusPlayerHandle | null;
+      handle?.setPlaybackRate(rate);
+      revealUi();
+    },
+    [playerRef, revealUi],
+  );
+
+  useEffect(() => {
     if (theaterMode !== "height") {
       document.documentElement.removeAttribute("data-player-theater-chrome");
       return;
@@ -633,7 +721,132 @@ export function KodikPlayerBetaViewport({
     scheduleHide();
   }, [hideUi, kodikUiAccess, scheduleHide, uiVisible]);
 
+  useEffect(() => {
+    if (isTaPlus) {
+      setKodikUiAccess(false);
+      setQualityMenuOpen(false);
+    }
+  }, [isTaPlus, src, seasonNumber, currentEpisode]);
+
+  useEffect(() => {
+    setActiveQualityHeight(null);
+    setBufferedEndSeconds(0);
+
+    if (!isTaPlus) {
+      taPlusSessionUnlockedRef.current = false;
+      pendingPlayAfterStartRef.current = false;
+      setTaPlusStarted(false);
+      return;
+    }
+
+    // Continue / deep-link / already unlocked session (auto-next episode) → mount+play HLS.
+    // Fresh balancer switch without Continue stays on idle until user hits play.
+    if (autoStart || taPlusSessionUnlockedRef.current) {
+      taPlusSessionUnlockedRef.current = true;
+      pendingPlayAfterStartRef.current = true;
+      setTaPlusStarted(true);
+      return;
+    }
+
+    pendingPlayAfterStartRef.current = false;
+    setTaPlusStarted(false);
+  }, [isTaPlus, autoStart, kodikId, seasonNumber, currentEpisode]);
+
+  useEffect(() => {
+    const fromResume = initialResume?.positionSeconds;
+    setIdleSeekSeconds(
+      fromResume != null && Number.isFinite(fromResume) && fromResume >= 0 ? fromResume : 0,
+    );
+  }, [kodikId, seasonNumber, currentEpisode, isTaPlus]);
+
+  useEffect(() => {
+    if (!isTaPlus || taPlusStarted) return;
+    const fromResume = initialResume?.positionSeconds;
+    if (fromResume != null && Number.isFinite(fromResume) && fromResume >= 0) {
+      setIdleSeekSeconds(fromResume);
+    }
+  }, [initialResume?.positionSeconds, isTaPlus, taPlusStarted]);
+
+  useEffect(() => {
+    if (viewPlayback.durationSeconds > 1) {
+      lastKnownDurationRef.current = viewPlayback.durationSeconds;
+    }
+  }, [viewPlayback.durationSeconds]);
+
+  const resolveTaPlusIdleDuration = useCallback(() => {
+    if (viewPlayback.durationSeconds > 1) return viewPlayback.durationSeconds;
+    if (episodeDurationHint != null && episodeDurationHint > 1) return episodeDurationHint;
+    if (lastKnownDurationRef.current > 1) return lastKnownDurationRef.current;
+    if (tiles) {
+      const cols = Math.max(1, tiles.x);
+      const rows = Math.max(1, tiles.y);
+      const interval = Math.max(1, tiles.interval);
+      return Math.max(
+        TA_PLUS_IDLE_DURATION_FALLBACK_SECONDS,
+        interval * cols * rows * 8,
+      );
+    }
+    return TA_PLUS_IDLE_DURATION_FALLBACK_SECONDS;
+  }, [episodeDurationHint, tiles, viewPlayback.durationSeconds]);
+
+  const startTaPlusMedia = useCallback(() => {
+    if (!isTaPlus) {
+      onPlayPause();
+      return;
+    }
+    if (taPlusStarted) {
+      onPlayPause();
+      return;
+    }
+    const duration = resolveTaPlusIdleDuration();
+    const position = Math.min(Math.max(0, idleSeekSeconds), duration);
+    // Only persist meaningful idle scrub — onSeek(0) flips taPlusSeekSeconds null→0 and
+    // used to reload HLS via initialResume before play could stick.
+    if (position >= 1) {
+      onSeek(position);
+    }
+    taPlusSessionUnlockedRef.current = true;
+    pendingPlayAfterStartRef.current = true;
+    setTaPlusStarted(true);
+    setUiVisible(true);
+    scheduleHide();
+  }, [
+    idleSeekSeconds,
+    isTaPlus,
+    onPlayPause,
+    onSeek,
+    resolveTaPlusIdleDuration,
+    scheduleHide,
+    taPlusStarted,
+  ]);
+
+  const handleTaPlusReady = useCallback(() => {
+    onReady?.();
+    // Session unlocked (auto-next / Continue) or explicit pending play after idle start.
+    // onReady may seekTo(..., "pause") for watch party — respect that instead of forcing play.
+    if (!pendingPlayAfterStartRef.current && !taPlusSessionUnlockedRef.current) return;
+    pendingPlayAfterStartRef.current = false;
+    const tryApplyStart = (attempt: number) => {
+      const handle = playerRef.current as TaPlusPlayerHandle | null;
+      if (!handle) {
+        if (attempt < 8) window.setTimeout(() => tryApplyStart(attempt + 1), 50);
+        return;
+      }
+      if (handle.getPendingResumeMode() === "pause") {
+        handle.pause();
+        return;
+      }
+      handle.play();
+      const video = handle.getVideoElement();
+      if (video?.paused && attempt < 8) {
+        window.setTimeout(() => tryApplyStart(attempt + 1), 80);
+      }
+    };
+    window.setTimeout(() => tryApplyStart(0), 0);
+  }, [onReady, playerRef]);
+
   const toggleKodikUiAccess = useCallback(() => {
+    if (isTaPlus) return;
     setKodikUiAccess((current) => {
       const next = !current;
       setUiVisible(!next);
@@ -641,7 +854,7 @@ export function KodikPlayerBetaViewport({
       if (!next) scheduleHide();
       return next;
     });
-  }, [onFullscreenTranslationsIntent, scheduleHide]);
+  }, [isTaPlus, onFullscreenTranslationsIntent, scheduleHide]);
 
   const clearClickTimer = useCallback(() => {
     if (clickTimerRef.current != null) {
@@ -753,12 +966,51 @@ export function KodikPlayerBetaViewport({
     [clearSeekFeedbackTimer],
   );
 
+  const applyTaPlusIdleSeek = useCallback(
+    (seconds: number) => {
+      const duration = resolveTaPlusIdleDuration();
+      const next = Math.min(Math.max(0, seconds), duration);
+      setIdleSeekSeconds(next);
+      setViewPlayback((previous) => ({
+        ...previous,
+        positionSeconds: next,
+        durationSeconds: duration,
+      }));
+      onSeek(next);
+      return next;
+    },
+    [onSeek, resolveTaPlusIdleDuration],
+  );
+
+  const handleControlsSeek = useCallback(
+    (seconds: number) => {
+      if (isTaPlus && !taPlusStarted) {
+        applyTaPlusIdleSeek(seconds);
+        return;
+      }
+      onSeek(seconds);
+    },
+    [applyTaPlusIdleSeek, isTaPlus, onSeek, taPlusStarted],
+  );
+
   const handleSeekSkip = useCallback(
     (deltaSeconds: number) => {
+      if (isTaPlus && !taPlusStarted) {
+        applyTaPlusIdleSeek(idleSeekSeconds + deltaSeconds);
+        showSeekFeedback(deltaSeconds);
+        return;
+      }
       onSeekSkip(deltaSeconds);
       showSeekFeedback(deltaSeconds);
     },
-    [onSeekSkip, showSeekFeedback],
+    [
+      applyTaPlusIdleSeek,
+      idleSeekSeconds,
+      isTaPlus,
+      onSeekSkip,
+      showSeekFeedback,
+      taPlusStarted,
+    ],
   );
 
   const handleMouseMove = useCallback(
@@ -1171,7 +1423,8 @@ export function KodikPlayerBetaViewport({
         if (event.code === "Space" || event.code === "KeyK") {
           event.preventDefault();
           if (event.repeat) return;
-          onPlayPause();
+          if (isTaPlus) startTaPlusMedia();
+          else onPlayPause();
           return;
         }
 
@@ -1240,7 +1493,7 @@ export function KodikPlayerBetaViewport({
         }
       }
 
-      if (event.key !== "Shift" || !keyboardActive || isEditable) return;
+      if (isTaPlus || event.key !== "Shift" || !keyboardActive || isEditable) return;
       event.preventDefault();
       if (event.repeat) return;
       toggleKodikUiAccess();
@@ -1281,9 +1534,11 @@ export function KodikPlayerBetaViewport({
     fullscreenActive,
     clearHideTimer,
     controlsDisabled,
+    isTaPlus,
     onFullscreenToggle,
     onMuteToggle,
     onPlayPause,
+    startTaPlusMedia,
     handleSeekSkip,
     onTheaterToggle,
     onVolumeChange,
@@ -1305,9 +1560,13 @@ export function KodikPlayerBetaViewport({
     if (controlsDisabled || kodikUiAccess) return;
     clearClickTimer();
     clickTimerRef.current = window.setTimeout(() => {
-      // YouTube-like mobile: tap toggles chrome; play/pause via Kodik center hole or bottom bar.
-      if (touchLikeUi) {
+      // Kodik iframe: mobile tap toggles chrome; play/pause via native center hole / bottom bar.
+      // TA Plus: idle → start HLS; after start → play/pause.
+      if (touchLikeUi && !isTaPlus) {
         toggleUi();
+      } else if (isTaPlus) {
+        revealUi();
+        startTaPlusMedia();
       } else {
         onPlayPause();
       }
@@ -1316,8 +1575,11 @@ export function KodikPlayerBetaViewport({
   }, [
     clearClickTimer,
     controlsDisabled,
+    isTaPlus,
     kodikUiAccess,
     onPlayPause,
+    revealUi,
+    startTaPlusMedia,
     toggleUi,
     touchLikeUi,
   ]);
@@ -1353,10 +1615,15 @@ export function KodikPlayerBetaViewport({
 
   const uiInteractive = uiVisible && !kodikUiAccess;
   const chromeHitTest = uiInteractive && !passThroughHits;
-  const duration = Math.max(viewPlayback.durationSeconds, 0);
+  const taPlusIdle = isTaPlus && !taPlusStarted;
+  const idleDurationSeconds = taPlusIdle ? resolveTaPlusIdleDuration() : 0;
+  const duration = Math.max(
+    taPlusIdle ? idleDurationSeconds : viewPlayback.durationSeconds,
+    0,
+  );
   const position = Math.min(
-    Math.max(viewPlayback.positionSeconds, 0),
-    duration || viewPlayback.positionSeconds,
+    Math.max(taPlusIdle ? idleSeekSeconds : viewPlayback.positionSeconds, 0),
+    duration || (taPlusIdle ? idleSeekSeconds : viewPlayback.positionSeconds),
   );
   const progressMax = duration > 0 ? duration : Math.max(position, 1);
   const progressFill = `${(position / progressMax) * 100}%`;
@@ -1383,7 +1650,15 @@ export function KodikPlayerBetaViewport({
     controlsDisabled ? "cursor-wait" : "",
   ].join(" ");
   const clickLayerStyle = hideCursor ? { cursor: "none" } : undefined;
-  const showClickLayer = !controlsDocked && clickLayerArmed;
+  /** Kodik-only: bands with holes for native iframe UI (center play, OP/ED skip). */
+  const showClickLayer = !isTaPlus && !controlsDocked && clickLayerArmed;
+  /**
+   * TA Plus: solid full-frame catcher — no Kodik passthrough holes.
+   * Sits under chrome (z-20) so controls stay clickable; center hits this layer.
+   * Also used when controls are docked below the frame.
+   */
+  const showTaPlusClickCatcher = isTaPlus && taPlusStarted && !kodikUiAccess;
+  const taPlusCatcherInteractive = !controlsDisabled && !passThroughHits;
   const skipPassthroughBottom = settings.playerLargeUi
     ? KODIK_NATIVE_SKIP_PASSTHROUGH_BOTTOM_LARGE
     : KODIK_NATIVE_SKIP_PASSTHROUGH_BOTTOM;
@@ -1391,30 +1666,55 @@ export function KodikPlayerBetaViewport({
   const centerHoleTop = `calc(50% - ${KODIK_CENTER_PLAY_HOLE_HALF})`;
   const centerHoleSideWidth = `calc(50% - ${KODIK_CENTER_PLAY_HOLE_HALF})`;
 
+  const qualityKeys = Object.keys(qualities).sort((a, b) => Number(b) - Number(a));
+  const qualityIsAuto = isTaPlus && (quality == null || quality === TA_PLUS_QUALITY_AUTO);
+  const qualityLabel = !isTaPlus
+    ? "Авто"
+    : qualityIsAuto
+      ? activeQualityHeight
+        ? `Авто ${activeQualityHeight}p`
+        : "Авто"
+      : quality
+        ? `${quality}p`
+        : "Авто";
+  const controlsPlayback = taPlusIdle
+    ? {
+        ...viewPlayback,
+        durationSeconds: idleDurationSeconds,
+        positionSeconds: Math.min(Math.max(0, idleSeekSeconds), idleDurationSeconds),
+      }
+    : viewPlayback;
+  const bufferedRatio =
+    isTaPlus && controlsPlayback.durationSeconds > 0 && !taPlusIdle
+      ? Math.min(1, Math.max(0, bufferedEndSeconds / controlsPlayback.durationSeconds))
+      : null;
+
   const controlsNode = (
     <KodikPlayerBetaControls
       disabled={controlsDisabled}
-      playback={viewPlayback}
+      playback={controlsPlayback}
       timelineSegments={timelineSegments}
       fullscreenActive={fullscreenActive}
       seekSkipLabelSeconds={seekSkipLabelSeconds}
       overlay={!controlsDocked}
-      onPlayPause={onPlayPause}
+      onPlayPause={isTaPlus ? startTaPlusMedia : onPlayPause}
       onPreviousEpisode={onPreviousEpisode}
       onNextEpisode={onNextEpisode}
       previousEpisodeDisabled={previousEpisodeDisabled}
       nextEpisodeDisabled={nextEpisodeDisabled}
-      onSeek={onSeek}
+      onSeek={handleControlsSeek}
       onSeekSkip={handleSeekSkip}
       onVolumeChange={onVolumeChange}
       onMuteToggle={onMuteToggle}
       theaterMode={theaterMode}
       onTheaterToggle={onTheaterToggle}
       onFullscreenToggle={onFullscreenToggle}
-      pipAvailable={false}
-      onPictureInPicture={undefined}
-      castAvailable={castAvailable}
-      onCast={handleCast}
+      pipAvailable={isTaPlus && taPlusStarted && pipAvailable}
+      onPictureInPicture={
+        isTaPlus && taPlusStarted && pipAvailable ? handlePictureInPicture : undefined
+      }
+      castAvailable={!isTaPlus && castAvailable}
+      onCast={isTaPlus ? undefined : handleCast}
       fullscreenTranslationsOpen={fullscreenTranslationsOpen}
       onFullscreenTranslationsToggle={() =>
         onFullscreenTranslationsIntent?.(!fullscreenTranslationsOpen)
@@ -1422,12 +1722,28 @@ export function KodikPlayerBetaViewport({
       interactive={controlsDocked ? !kodikUiAccess && !passThroughHits : chromeHitTest}
       controlsDocked={controlsDocked}
       qualityPanelIdleMs={settings.playerControlsIdleMs}
-      onQualityPanelActiveChange={handleQualityPanelActiveChange}
+      onQualityPanelActiveChange={isTaPlus ? undefined : handleQualityPanelActiveChange}
+      qualityLabel={qualityLabel}
+      onQualityClick={
+        isTaPlus
+          ? () => {
+              setQualityMenuOpen((open) => !open);
+              revealUi();
+            }
+          : undefined
+      }
+      qualityPressed={isTaPlus ? qualityMenuOpen : undefined}
+      bufferedRatio={bufferedRatio}
+      tiles={isTaPlus ? tiles : null}
+      playbackRate={playbackRate}
+      onPlaybackRateChange={
+        isTaPlus && taPlusStarted ? handlePlaybackRateChange : undefined
+      }
       tvBarPlayPrimary={!continueAction}
     />
   );
 
-  const bottomStackNode = (
+  const bottomStackNode = isTaPlus ? null : (
     <div className="kodik-player-beta-bottom-stack pointer-events-none space-y-1 px-2 pb-1 sm:space-y-2 sm:px-3">
       <div className="flex items-center justify-between gap-2">
         {!controlsDocked && (
@@ -1475,25 +1791,130 @@ export function KodikPlayerBetaViewport({
       }
       onFocusCapture={kodikUiAccess ? undefined : revealUi}
     >
-      <div ref={videoShellRef} className="kodik-player-beta-video-shell relative min-w-0">
+      <div
+        ref={videoShellRef}
+        className={[
+          "kodik-player-beta-video-shell relative min-w-0",
+          sizeMode === "viewport" || fullscreenActive ? "h-full" : "",
+        ].join(" ")}
+      >
         {continueOverlay}
-        <KodikPlayer
-          ref={playerRef}
-          key={playerKey}
-          src={src}
-          title={title}
-          sizeMode={sizeMode}
-          chromelessBeta
-          initialResume={initialResume}
-          activeEpisode={{ seasonNumber, episodeNumber: currentEpisode }}
-          onReady={onReady}
-          onContinueStateChange={onContinueStateChange}
-          onProgress={onProgress}
-          onPause={onPause}
-          onTranslationChange={onTranslationChange}
-          onPlaybackStateChange={handlePlaybackStateChange}
-          onEnded={onEnded}
-        />
+        {isTaPlus ? (
+          <div
+            className={[
+              "relative min-w-0",
+              sizeMode === "viewport" || fullscreenActive ? "h-full" : "",
+            ].join(" ")}
+          >
+            {taPlusStarted ? (
+              <TaPlusPlayer
+                ref={playerRef as RefObject<TaPlusPlayerHandle | null>}
+                key={playerKey}
+                src={src || null}
+                sizeMode={sizeMode}
+                qualities={qualities}
+                quality={quality}
+                title={title}
+                seasonNumber={seasonNumber}
+                episodeNumber={currentEpisode}
+                initialResume={initialResume}
+                onReady={handleTaPlusReady}
+                onProgress={onProgress}
+                onPause={onPause}
+                onPlaybackStateChange={handlePlaybackStateChange}
+                onEnded={onEnded}
+                onStreamFailed={onStreamFailed}
+                onBufferedEndChange={setBufferedEndSeconds}
+                onActiveQualityChange={setActiveQualityHeight}
+              />
+            ) : (
+              <TaPlusIdleBackdrop
+                previews={previews}
+                tiles={tiles}
+                loading={controlsDisabled || !src}
+                fillViewport={sizeMode === "viewport" || fullscreenActive}
+                onPlay={startTaPlusMedia}
+              />
+            )}
+          </div>
+        ) : (
+          <KodikPlayer
+            ref={playerRef}
+            key={playerKey}
+            src={src}
+            title={title}
+            sizeMode={sizeMode}
+            chromelessBeta
+            initialResume={initialResume}
+            activeEpisode={{ seasonNumber, episodeNumber: currentEpisode }}
+            onReady={onReady}
+            onContinueStateChange={onContinueStateChange}
+            onProgress={onProgress}
+            onPause={onPause}
+            onTranslationChange={onTranslationChange}
+            onPlaybackStateChange={handlePlaybackStateChange}
+            onEnded={onEnded}
+          />
+        )}
+        {isTaPlus && qualityMenuOpen && qualityKeys.length > 0 ? (
+          <div
+            className={[
+              "kodik-player-beta-ta-chrome absolute z-40 min-w-[6.5rem] rounded-lg border border-white/15 bg-black/80 p-1.5 shadow-xl backdrop-blur-md",
+              controlsDocked ? "bottom-2 right-2" : "bottom-14 right-3 sm:bottom-16",
+              chromeHitTest ? "pointer-events-auto" : "pointer-events-none",
+            ].join(" ")}
+          >
+            <p className="px-2 py-1 text-[10px] font-semibold uppercase tracking-wide text-white/45">
+              Качество
+            </p>
+            <ul className="flex flex-col gap-0.5">
+              <li>
+                <button
+                  type="button"
+                  aria-pressed={qualityIsAuto}
+                  onClick={() => {
+                    onQualityChange?.(TA_PLUS_QUALITY_AUTO);
+                    setQualityMenuOpen(false);
+                    revealUi();
+                  }}
+                  className={[
+                    "w-full rounded-md px-2.5 py-1.5 text-left text-xs font-medium transition",
+                    qualityIsAuto
+                      ? "bg-white/15 text-white"
+                      : "text-white/75 hover:bg-white/10 hover:text-white",
+                  ].join(" ")}
+                >
+                  Авто
+                  {qualityIsAuto && activeQualityHeight ? ` · ${activeQualityHeight}p` : ""}
+                </button>
+              </li>
+              {qualityKeys.map((key) => {
+                const active = !qualityIsAuto && key === quality;
+                return (
+                  <li key={key}>
+                    <button
+                      type="button"
+                      aria-pressed={active}
+                      onClick={() => {
+                        onQualityChange?.(key);
+                        setQualityMenuOpen(false);
+                        revealUi();
+                      }}
+                      className={[
+                        "w-full rounded-md px-2.5 py-1.5 text-left text-xs font-medium transition",
+                        active
+                          ? "bg-white/15 text-white"
+                          : "text-white/75 hover:bg-white/10 hover:text-white",
+                      ].join(" ")}
+                    >
+                      {key}p
+                    </button>
+                  </li>
+                );
+              })}
+            </ul>
+          </div>
+        ) : null}
         {brightnessOverlay > 0.01 ? (
           <div
             className="pointer-events-none absolute inset-0 z-[5] bg-black"
@@ -1528,6 +1949,22 @@ export function KodikPlayerBetaViewport({
             </div>
             <span className="text-sm font-semibold tabular-nums">{Math.round(volumeHud * 100)}%</span>
           </div>
+        ) : null}
+        {showTaPlusClickCatcher ? (
+          <div
+            onClick={handleViewportClick}
+            onDoubleClick={handleViewportDoubleClick}
+            className={[
+              "absolute inset-0 z-10 bg-transparent",
+              "touch-manipulation select-none [-webkit-tap-highlight-color:transparent]",
+              "outline-none focus:outline-none focus-visible:outline-none",
+              taPlusCatcherInteractive ? "pointer-events-auto" : "pointer-events-none",
+              hideCursor ? "" : "cursor-pointer",
+              controlsDisabled ? "cursor-wait" : "",
+            ].join(" ")}
+            style={hideCursor ? { cursor: "none" } : undefined}
+            aria-hidden="true"
+          />
         ) : null}
         {showClickLayer && !kodikUiAccess ? (
           <div
@@ -1639,7 +2076,7 @@ export function KodikPlayerBetaViewport({
         {skipAction && !kodikUiAccess ? (
           <div
             className={[
-              "kodik-player-beta-ta-chrome pointer-events-none absolute inset-x-2 z-30 flex justify-center",
+              "kodik-player-beta-ta-chrome pointer-events-none absolute inset-x-2 z-40 flex justify-center",
               controlsDocked
                 ? "bottom-2"
                 : settings.playerLargeUi
@@ -1647,7 +2084,12 @@ export function KodikPlayerBetaViewport({
                   : "bottom-14 sm:bottom-16",
             ].join(" ")}
           >
-            <div className={chromeHitTest || (controlsDocked && !passThroughHits) ? "pointer-events-auto" : "pointer-events-none"}>
+            {/* Keep skip clickable even when chrome auto-hides during playback. */}
+            <div
+              className={
+                !passThroughHits ? "pointer-events-auto" : "pointer-events-none"
+              }
+            >
               {skipAction}
             </div>
           </div>
@@ -1686,42 +2128,45 @@ export function KodikPlayerBetaViewport({
         {continueAction && !passThroughHits && !kodikUiAccess ? (
           <div
             className={[
-              "kodik-player-beta-ta-chrome pointer-events-auto absolute inset-x-0 z-40 flex justify-center px-2",
-              controlsDocked
-                ? "bottom-10"
-                : settings.playerLargeUi
-                  ? "bottom-24 sm:bottom-28"
-                  : "bottom-20 sm:bottom-24",
+              "kodik-player-beta-ta-chrome pointer-events-none absolute inset-x-0 z-40 flex justify-center px-2",
+              taPlusIdle
+                ? "bottom-6 sm:bottom-8"
+                : controlsDocked
+                  ? "bottom-10"
+                  : settings.playerLargeUi
+                    ? "bottom-24 sm:bottom-28"
+                    : "bottom-20 sm:bottom-24",
             ].join(" ")}
           >
-            {continueAction}
+            <div className="pointer-events-auto">{continueAction}</div>
           </div>
         ) : null}
         {!kodikUiAccess ? (
           <div
             className={[
               "kodik-player-beta-ta-chrome kodik-player-beta-ui pointer-events-none absolute inset-0 z-20 flex flex-col justify-between transition-opacity duration-300",
-              uiInteractive ? "opacity-100" : "opacity-0",
+              uiInteractive || taPlusIdle ? "opacity-100" : "opacity-0",
             ].join(" ")}
-            aria-hidden={!uiInteractive}
+            aria-hidden={!uiInteractive && !taPlusIdle}
           >
-            <div
-              className={[
-                "kodik-player-beta-ui-top",
-                chromeHitTest ? "pointer-events-auto" : "pointer-events-none",
-              ].join(" ")}
-            >
-              <KodikPlayerBetaEpisodeStrip
-                shikimoriId={shikimoriId}
-                kodikId={kodikId}
-                seasonNumber={seasonNumber}
-                currentEpisode={currentEpisode}
-                disabled={controlsDisabled}
-                onSelect={onEpisodeSelect}
-                overlay
-              />
+            <div className="kodik-player-beta-ui-top pointer-events-none">
+              <div
+                className={
+                  chromeHitTest || taPlusIdle ? "pointer-events-auto" : "pointer-events-none"
+                }
+              >
+                <KodikPlayerBetaEpisodeStrip
+                  shikimoriId={shikimoriId}
+                  kodikId={kodikId}
+                  seasonNumber={seasonNumber}
+                  currentEpisode={currentEpisode}
+                  disabled={controlsDisabled}
+                  onSelect={onEpisodeSelect}
+                  overlay
+                />
+              </div>
             </div>
-            {!controlsDocked ? (
+            {!controlsDocked && !taPlusIdle ? (
               <div className="kodik-player-beta-ui-bottom pointer-events-none">
                 {bottomStackNode}
                 {controlsNode}
@@ -1729,7 +2174,7 @@ export function KodikPlayerBetaViewport({
             ) : null}
           </div>
         ) : null}
-        {settings.betaHiddenProgressOpacity > 0 ? (
+        {settings.betaHiddenProgressOpacity > 0 && !taPlusIdle ? (
           <div
             className={[
               "pointer-events-none absolute inset-x-0 bottom-0 z-20 bg-white/20 transition-opacity duration-300",
@@ -1754,7 +2199,7 @@ export function KodikPlayerBetaViewport({
           </div>
         ) : null}
       </div>
-      {controlsDocked && !kodikUiAccess ? (
+      {controlsDocked && !kodikUiAccess && !taPlusIdle ? (
         <div className="kodik-player-beta-ta-chrome kodik-player-beta-docked-chrome">
           {bottomStackNode}
           {controlsNode}

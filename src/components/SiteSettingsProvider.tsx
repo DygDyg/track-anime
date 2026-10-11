@@ -21,6 +21,7 @@ import {
   readStoredSiteSettings,
   stripLocalOnlySiteSettings,
   consumeUseLegacyKodikPlayerDefaultReset,
+  consumePlayerLargeUiDefaultLarge,
   wasLegacyKodikPlayerDefaultResetApplied,
   type SiteSettings,
 } from "@/lib/site-settings";
@@ -161,7 +162,8 @@ export function SiteSettingsProvider({
     const stored = hasStoredSiteSettings()
       ? readStoredSiteSettings(defaultsRef.current)
       : { ...defaultsRef.current };
-    const { settings: initial } = consumeUseLegacyKodikPlayerDefaultReset(stored);
+    const afterLegacy = consumeUseLegacyKodikPlayerDefaultReset(stored).settings;
+    const { settings: initial } = consumePlayerLargeUiDefaultLarge(afterLegacy);
     settingsRef.current = initial;
     setSettings(initial);
     applySiteSettings(initial);
@@ -198,15 +200,17 @@ export function SiteSettingsProvider({
             commitSettings(next, remote.useLegacyKodikPlayer);
             return;
           }
-          const { settings: next, didReset } = consumeUseLegacyKodikPlayerDefaultReset(merged);
-          commitSettings(next, didReset);
+          const afterLegacy = consumeUseLegacyKodikPlayerDefaultReset(merged);
+          const { settings: next, didReset } = consumePlayerLargeUiDefaultLarge(afterLegacy.settings);
+          commitSettings(next, afterLegacy.didReset || didReset);
           return;
         }
 
         const local = hasStoredSiteSettings()
           ? readStoredSiteSettings(defaultsRef.current)
           : { ...defaultsRef.current };
-        const { settings: next } = consumeUseLegacyKodikPlayerDefaultReset(local);
+        const afterLegacy = consumeUseLegacyKodikPlayerDefaultReset(local).settings;
+        const { settings: next } = consumePlayerLargeUiDefaultLarge(afterLegacy);
         commitSettings(next, false);
         await saveRemoteSiteSettings(next);
       } catch {
