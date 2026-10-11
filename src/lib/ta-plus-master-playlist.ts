@@ -2,11 +2,16 @@
 
 export const TA_PLUS_QUALITY_AUTO = "auto";
 
+/**
+ * Approximate peak bitrates for Kodik anime HLS ladders.
+ * Slightly conservative vs “cinema” encodes so ABR does not over-demand
+ * relative to real throughput (which previously pinned Auto near 480p).
+ */
 function estimateBandwidth(height: number): number {
-  if (height >= 1080) return 5_000_000;
-  if (height >= 720) return 2_800_000;
-  if (height >= 480) return 1_400_000;
-  return 800_000;
+  if (height >= 1080) return 4_200_000;
+  if (height >= 720) return 2_200_000;
+  if (height >= 480) return 1_100_000;
+  return 650_000;
 }
 
 function estimateResolution(height: number): string {
@@ -17,6 +22,15 @@ function estimateResolution(height: number): string {
 /** Sort quality keys highest-first (1080, 720, …). */
 export function sortTaPlusQualityKeys(qualities: Record<string, string>): string[] {
   return Object.keys(qualities).sort((a, b) => Number(b) - Number(a));
+}
+
+export function getTaPlusMaxQualityUrl(
+  qualities: Record<string, string>,
+): string | null {
+  const keys = sortTaPlusQualityKeys(qualities);
+  const maxKey = keys[0];
+  if (!maxKey) return null;
+  return qualities[maxKey] ?? null;
 }
 
 export function buildTaPlusMasterPlaylist(qualities: Record<string, string>): string | null {

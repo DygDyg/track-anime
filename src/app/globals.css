@@ -1882,6 +1882,31 @@ html[data-tv-nav="true"] .kodik-player-beta-theater-button {
   }
 }
 
+/* TA Plus: center spinner while rebuffering / waiting for first frame. */
+.kodik-player-beta-buffering-spinner {
+  width: 2.75rem;
+  height: 2.75rem;
+  border: 3px solid rgba(255, 255, 255, 0.22);
+  border-top-color: rgba(255, 255, 255, 0.95);
+  border-radius: 50%;
+  box-shadow: 0 0 18px rgba(0, 0, 0, 0.45);
+  animation: kodik-player-buffering-spin 0.7s linear infinite;
+}
+
+@keyframes kodik-player-buffering-spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .kodik-player-beta-buffering-spinner {
+    animation: none;
+    opacity: 0.85;
+    border-top-color: rgba(255, 255, 255, 0.55);
+  }
+}
+
 .kodik-player-beta-ui-top {
   background: transparent;
 }

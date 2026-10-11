@@ -21,9 +21,15 @@ import {
   writeKodikPlayerVolumePreferences,
 } from "@/lib/kodik-player-volume-preferences";
 import {
+  createTaPlusMasterPlaylistUrl,
+  getTaPlusMaxQualityUrl,
   sortTaPlusQualityKeys,
   TA_PLUS_QUALITY_AUTO,
 } from "@/lib/ta-plus-master-playlist";
+import {
+  canUseTaPlusSafeMode,
+  toTaPlusSafeModeUrl,
+} from "@/lib/ta-plus-safe-mode";
 
 export type TaPlusPlayerProgressPayload = KodikPlayerProgressPayload & {
   durationSeconds: number;
@@ -96,6 +102,31 @@ const DEFAULT_PLAYBACK: KodikPlayerPlaybackState = {
 };
 
 const MAX_HLS_RECOVERIES = 2;
+/** Avoid flicker on tiny stalls; show spinner only if still waiting. */
+const STALL_SPINNER_DELAY_MS = 320;
+/** After spinner is visible this long, offer Kodik-style progressive MP4 fallback. */
+const SAFE_MODE_OFFER_AFTER_MS = 5000;
+/**
+ * Optimistic initial throughput so Auto does not immediately drop from startLevel
+ * (hls.js default ~500 kbps pinned near 480p on synthetic masters).
+ */
+const ABR_DEFAULT_ESTIMATE_BPS = 4_000_000;
+
+function heightFromHlsLevel(level: {
+  height?: number;
+  name?: string;
+} | undefined): number | null {
+  if (!level) return null;
+  if (level.height != null && Number.isFinite(level.height) && level.height > 0) {
+    return Math.round(level.height);
+  }
+  const nameMatch = level.name?.match(/(\d{3,4})\s*p?/i);
+  if (nameMatch) {
+    const n = Number(nameMatch[1]);
+    return Number.isFinite(n) && n > 0 ? n : null;
+  }
+  return null;
+}
 
 function canPlayNativeHls(video: HTMLVideoElement): boolean {
   return (
@@ -168,8 +199,65 @@ export const TaPlusPlayer = forwardRef<TaPlusPlayerHandle, Props>(function TaPlu
   const [error, setError] = useState<string | null>(null);
   /** Hide browser empty-video chrome until the first decoded frame. */
   const [awaitingFirstFrame, setAwaitingFirstFrame] = useState(true);
+  /** Mid-playback rebuffer / hang — center spinner after a short delay. */
+  const [stallSpinner, setStallSpinner] = useState(false);
+  const stallSpinnerTimerRef = useRef<number | null>(null);
+  /** Progressive MP4 fallback (URL cut at `.mp4`), like Kodik «безопасный режим». */
+  const [safeMode, setSafeMode] = useState(false);
+  const [safeModeOffer, setSafeModeOffer] = useState(false);
+  const safeModeRef = useRef(false);
+  safeModeRef.current = safeMode;
+  const safeModeOfferRef = useRef(false);
+  safeModeOfferRef.current = safeModeOffer;
+  const stallSpinnerRef = useRef(false);
+  stallSpinnerRef.current = stallSpinner;
+  const safeModeOfferTimerRef = useRef<number | null>(null);
+  const safeModeDismissedRef = useRef(false);
+  const safeModeResumeRef = useRef<number | null>(null);
+  const playUrlForOfferRef = useRef<string | null>(null);
+  const fatalSafeModePendingRef = useRef(false);
   const autoMode = quality === TA_PLUS_QUALITY_AUTO || quality == null;
   const posterUrl = poster?.trim() || undefined;
+
+  const clearStallSpinnerTimer = () => {
+    if (stallSpinnerTimerRef.current != null) {
+      window.clearTimeout(stallSpinnerTimerRef.current);
+      stallSpinnerTimerRef.current = null;
+    }
+  };
+
+  const clearSafeModeOfferTimer = () => {
+    if (safeModeOfferTimerRef.current != null) {
+      window.clearTimeout(safeModeOfferTimerRef.current);
+      safeModeOfferTimerRef.current = null;
+    }
+  };
+
+  const hideStallSpinner = () => {
+    clearStallSpinnerTimer();
+    setStallSpinner(false);
+  };
+
+  const scheduleSafeModeOffer = () => {
+    if (safeModeRef.current || safeModeDismissedRef.current) return;
+    if (!canUseTaPlusSafeMode(playUrlForOfferRef.current)) return;
+    if (safeModeOfferTimerRef.current != null) return;
+    safeModeOfferTimerRef.current = window.setTimeout(() => {
+      safeModeOfferTimerRef.current = null;
+      if (safeModeRef.current || safeModeDismissedRef.current) return;
+      if (!canUseTaPlusSafeMode(playUrlForOfferRef.current)) return;
+      setSafeModeOffer(true);
+    }, SAFE_MODE_OFFER_AFTER_MS);
+  };
+
+  const scheduleStallSpinner = () => {
+    if (stallSpinnerTimerRef.current != null) return;
+    stallSpinnerTimerRef.current = window.setTimeout(() => {
+      stallSpinnerTimerRef.current = null;
+      setStallSpinner(true);
+      scheduleSafeModeOffer();
+    }, STALL_SPINNER_DELAY_MS);
+  };
 
   const emitPlayback = (patch: Partial<KodikPlayerPlaybackState>) => {
     const next = { ...playbackRef.current, ...patch };
@@ -198,6 +286,34 @@ export const TaPlusPlayer = forwardRef<TaPlusPlayerHandle, Props>(function TaPlu
     if (streamFailedSentRef.current) return;
     streamFailedSentRef.current = true;
     onStreamFailedRef.current?.();
+  };
+
+  const enableSafeMode = () => {
+    const video = videoRef.current;
+    const pos = video?.currentTime ?? playbackRef.current.positionSeconds;
+    safeModeResumeRef.current =
+      pos != null && Number.isFinite(pos) && pos >= 1 ? pos : null;
+    if (video?.paused) {
+      pendingResumeModeRef.current = "pause";
+    } else if (pendingResumeModeRef.current !== "pause") {
+      pendingResumeModeRef.current = "play";
+    }
+    fatalSafeModePendingRef.current = false;
+    safeModeDismissedRef.current = false;
+    clearSafeModeOfferTimer();
+    setSafeModeOffer(false);
+    setSafeMode(true);
+  };
+
+  const dismissSafeModeOffer = () => {
+    safeModeDismissedRef.current = true;
+    clearSafeModeOfferTimer();
+    setSafeModeOffer(false);
+    if (fatalSafeModePendingRef.current) {
+      fatalSafeModePendingRef.current = false;
+      setError("Не удалось воспроизвести поток");
+      notifyStreamFailed();
+    }
   };
 
   useImperativeHandle(
@@ -308,22 +424,40 @@ export const TaPlusPlayer = forwardRef<TaPlusPlayerHandle, Props>(function TaPlu
   const bootSeekRef = useRef(bootSeekSeconds);
   bootSeekRef.current = bootSeekSeconds;
 
+  // New episode / quality / source → leave safe mode and re-offer on next hang.
+  const streamIdentity = `${src ?? ""}|${quality ?? ""}|${seasonNumber}|${episodeNumber}`;
+  const [trackedStreamIdentity, setTrackedStreamIdentity] = useState(streamIdentity);
+  if (streamIdentity !== trackedStreamIdentity) {
+    setTrackedStreamIdentity(streamIdentity);
+    if (safeMode) setSafeMode(false);
+    if (safeModeOffer) setSafeModeOffer(false);
+    safeModeDismissedRef.current = false;
+    fatalSafeModePendingRef.current = false;
+    clearSafeModeOfferTimer();
+  }
+
   useEffect(() => {
     const video = videoRef.current;
     const qualityKeys = sortTaPlusQualityKeys(qualities);
     const maxKey = qualityKeys[0] ?? null;
     const maxHeight = maxKey != null ? Number(maxKey) : null;
+    const maxQualityUrl = getTaPlusMaxQualityUrl(qualities) ?? src;
     let playUrl: string | null = null;
+    let masterObjectUrl: string | null = null;
 
-    if (autoMode && maxKey && qualities[maxKey]) {
-      // Auto = best available rendition (no ABR). hls.js ABR on synthetic masters
-      // was dropping to ~480p despite startLevel=max.
-      playUrl = qualities[maxKey]!;
+    if (autoMode && qualityKeys.length > 0) {
+      // Auto = synthetic multivariant master + hls.js ABR (start at max, adapt down/up).
+      const masterUrl = createTaPlusMasterPlaylistUrl(qualities);
+      playUrl = masterUrl;
+      if (masterUrl?.startsWith("blob:")) masterObjectUrl = masterUrl;
     } else if (!autoMode && quality && qualities[quality]) {
       playUrl = qualities[quality]!;
     } else {
       playUrl = src;
     }
+
+    // Safe-mode / offer need a real /ftor URL (blob master has no `.mp4`).
+    playUrlForOfferRef.current = maxQualityUrl;
 
     if (!video || !playUrl) {
       setError(null);
@@ -340,21 +474,32 @@ export const TaPlusPlayer = forwardRef<TaPlusPlayerHandle, Props>(function TaPlu
       return;
     }
 
-    const activeHeight =
-      autoMode
-        ? maxHeight != null && Number.isFinite(maxHeight) && maxHeight > 0
-          ? maxHeight
-          : null
-        : quality != null && Number.isFinite(Number(quality)) && Number(quality) > 0
-          ? Number(quality)
-          : null;
+    const lockedHeight =
+      !autoMode && quality != null && Number.isFinite(Number(quality)) && Number(quality) > 0
+        ? Number(quality)
+        : null;
+    const bootActiveHeight =
+      lockedHeight ??
+      (maxHeight != null && Number.isFinite(maxHeight) && maxHeight > 0 ? maxHeight : null);
 
-    const loadKey = `${autoMode ? TA_PLUS_QUALITY_AUTO : quality}:${playUrl}`;
+    const safeSourceUrl = maxQualityUrl ?? playUrl;
+    const safeUrl = safeMode ? toTaPlusSafeModeUrl(safeSourceUrl) : null;
+    if (safeMode && !safeUrl) {
+      setSafeMode(false);
+      if (masterObjectUrl) URL.revokeObjectURL(masterObjectUrl);
+      return;
+    }
+    const loadKey = `${safeMode ? "safe" : "hls"}:${autoMode ? "auto-abr" : quality}:${safeMode ? safeUrl : autoMode ? qualityKeys.join("-") : playUrl}`;
     // Capture once per load — parent may clear taPlusSeekSeconds on ready; that must NOT reload HLS.
     const bootSeekAtLoad = bootSeekRef.current;
+    const resumeOverride = safeModeResumeRef.current;
+    safeModeResumeRef.current = null;
     setError(null);
     streamFailedSentRef.current = false;
+    fatalSafeModePendingRef.current = false;
     seekAppliedForSrcRef.current = null;
+    clearSafeModeOfferTimer();
+    setSafeModeOffer(false);
     // Default play for auto-next / unlock. Keep pause if seekTo already requested it
     // before MANIFEST_PARSED (watch-party remount race).
     if (pendingResumeModeRef.current !== "pause") {
@@ -373,10 +518,15 @@ export const TaPlusPlayer = forwardRef<TaPlusPlayerHandle, Props>(function TaPlu
 
     destroyHls();
     setAwaitingFirstFrame(true);
+    if (stallSpinnerTimerRef.current != null) {
+      window.clearTimeout(stallSpinnerTimerRef.current);
+      stallSpinnerTimerRef.current = null;
+    }
+    setStallSpinner(false);
     video.removeAttribute("src");
     video.load();
     video.playbackRate = playbackRateRef.current;
-    onActiveQualityChangeRef.current?.(activeHeight);
+    onActiveQualityChangeRef.current?.(bootActiveHeight);
     emitPlayback({
       isPlaying: false,
       positionSeconds: 0,
@@ -394,7 +544,7 @@ export const TaPlusPlayer = forwardRef<TaPlusPlayerHandle, Props>(function TaPlu
 
     const applyInitialSeek = () => {
       if (seekAppliedForSrcRef.current === loadKey) return;
-      const target = bootSeekAtLoad;
+      const target = resumeOverride ?? bootSeekAtLoad;
       if (target == null || !Number.isFinite(target) || target < 1) {
         seekAppliedForSrcRef.current = loadKey;
         return;
@@ -408,6 +558,11 @@ export const TaPlusPlayer = forwardRef<TaPlusPlayerHandle, Props>(function TaPlu
       applyInitialSeek();
       markReady();
       emitBuffered();
+      // Quality / stream reload must resume without another user gesture (menu click
+      // may be gone by the time MANIFEST_PARSED fires after remount + setTimeout).
+      if (pendingResumeModeRef.current !== "pause") {
+        void video.play().catch(() => undefined);
+      }
     };
 
     const failHard = (message: string) => {
@@ -416,15 +571,76 @@ export const TaPlusPlayer = forwardRef<TaPlusPlayerHandle, Props>(function TaPlu
       notifyStreamFailed();
     };
 
+    const offerSafeModeOrFail = () => {
+      if (disposed) return;
+      if (
+        !safeMode &&
+        canUseTaPlusSafeMode(safeSourceUrl) &&
+        !safeModeDismissedRef.current
+      ) {
+        fatalSafeModePendingRef.current = true;
+        setStallSpinner(true);
+        setSafeModeOffer(true);
+        return;
+      }
+      failHard("Не удалось воспроизвести поток");
+    };
+
+    const reportLevelHeight = (levelIndex: number, hls: Hls) => {
+      const height = heightFromHlsLevel(hls.levels[levelIndex]);
+      if (height != null) onActiveQualityChangeRef.current?.(height);
+    };
+
+    // Progressive MP4 (Kodik-style safe mode) — no HLS.js.
+    if (safeMode && safeUrl) {
+      video.src = safeUrl;
+      video.addEventListener("loadedmetadata", preparePlayback, { once: true });
+      const onSafeError = () => {
+        if (disposed) return;
+        failHard("Не удалось воспроизвести поток");
+      };
+      video.addEventListener("error", onSafeError);
+      return () => {
+        disposed = true;
+        video.removeEventListener("error", onSafeError);
+        destroyHls();
+        if (masterObjectUrl) URL.revokeObjectURL(masterObjectUrl);
+      };
+    }
+
     if (Hls.isSupported()) {
       const hls = new Hls({
         enableWorker: true,
         lowLatencyMode: false,
+        capLevelToPlayerSize: false,
+        abrEwmaDefaultEstimate: ABR_DEFAULT_ESTIMATE_BPS,
+        abrMaxWithRealBitrate: true,
+        // Prefer staying up when estimates are noisy; still allow downshift on starvation.
+        abrBandWidthFactor: 0.95,
+        abrBandWidthUpFactor: 0.7,
       });
       hlsRef.current = hls;
       hls.loadSource(playUrl);
       hls.attachMedia(video);
-      hls.on(Hls.Events.MANIFEST_PARSED, preparePlayback);
+      hls.on(Hls.Events.MANIFEST_PARSED, (_event, data) => {
+        if (disposed) return;
+        const levelCount = data.levels?.length ?? hls.levels.length;
+        if (autoMode && levelCount > 0) {
+          const maxLevel = levelCount - 1;
+          hls.startLevel = maxLevel;
+          hls.nextLevel = maxLevel;
+          hls.loadLevel = maxLevel;
+          reportLevelHeight(maxLevel, hls);
+        } else if (!autoMode && lockedHeight != null && levelCount > 0) {
+          // Single-rendition load — keep label in sync if manifest exposes height.
+          reportLevelHeight(0, hls);
+        }
+        preparePlayback();
+      });
+      hls.on(Hls.Events.LEVEL_SWITCHED, (_event, data) => {
+        if (disposed || !autoMode) return;
+        reportLevelHeight(data.level, hls);
+      });
       hls.on(Hls.Events.ERROR, (_event, data) => {
         if (disposed || !data.fatal) return;
         if (data.type === Hls.ErrorTypes.NETWORK_ERROR && recoveries < MAX_HLS_RECOVERIES) {
@@ -437,20 +653,22 @@ export const TaPlusPlayer = forwardRef<TaPlusPlayerHandle, Props>(function TaPlu
           hls.recoverMediaError();
           return;
         }
-        failHard("Не удалось воспроизвести поток");
+        offerSafeModeOrFail();
       });
     } else if (canPlayNativeHls(video)) {
+      // Safari: native ABR on multivariant master when Auto; single URL when locked.
       video.src = playUrl;
       video.addEventListener("loadedmetadata", preparePlayback, { once: true });
       const onNativeError = () => {
         if (disposed) return;
-        failHard("Не удалось воспроизвести поток");
+        offerSafeModeOrFail();
       };
       video.addEventListener("error", onNativeError);
       return () => {
         disposed = true;
         video.removeEventListener("error", onNativeError);
         destroyHls();
+        if (masterObjectUrl) URL.revokeObjectURL(masterObjectUrl);
       };
     } else {
       setError("Браузер не поддерживает HLS");
@@ -459,9 +677,10 @@ export const TaPlusPlayer = forwardRef<TaPlusPlayerHandle, Props>(function TaPlu
     return () => {
       disposed = true;
       destroyHls();
+      if (masterObjectUrl) URL.revokeObjectURL(masterObjectUrl);
     };
     // Intentionally omit bootSeekSeconds: resume is applied once at load via bootSeekRef.
-  }, [autoMode, qualities, quality, src]);
+  }, [autoMode, qualities, quality, safeMode, src]);
 
   useEffect(() => {
     const video = videoRef.current;
@@ -499,10 +718,10 @@ export const TaPlusPlayer = forwardRef<TaPlusPlayerHandle, Props>(function TaPlu
     const onProgressEvent = () => emitBuffered();
     const onPlay = () => {
       syncState({ isPlaying: true, mediaUnlocked: true });
-      onPlaying?.();
       emitProgress("time");
     };
     const onPauseEvent = () => {
+      hideStallSpinner();
       const ep = episodeRef.current;
       syncState({ isPlaying: false });
       onPause?.({
@@ -529,25 +748,86 @@ export const TaPlusPlayer = forwardRef<TaPlusPlayerHandle, Props>(function TaPlu
       writeKodikPlayerVolumePreferences({ volume: video.volume, muted: video.muted });
     };
 
-    const onFirstFrame = () => setAwaitingFirstFrame(false);
+    const clearStallUiOnResume = () => {
+      hideStallSpinner();
+      clearSafeModeOfferTimer();
+      fatalSafeModePendingRef.current = false;
+      setSafeModeOffer(false);
+    };
+    /** Stall often resumes without a new `playing` — hide prompt when media advances again. */
+    const dismissStallUiIfUnstuck = () => {
+      if (video.paused || video.seeking) return;
+      if (video.readyState < HTMLMediaElement.HAVE_FUTURE_DATA) return;
+      if (
+        !safeModeOfferRef.current &&
+        !stallSpinnerRef.current &&
+        stallSpinnerTimerRef.current == null &&
+        safeModeOfferTimerRef.current == null
+      ) {
+        return;
+      }
+      clearStallUiOnResume();
+    };
+    const onFirstFrame = () => {
+      setAwaitingFirstFrame(false);
+      clearStallUiOnResume();
+    };
+    const onWaiting = () => {
+      // User pause — no spinner. Otherwise show after delay (rebuffer / hang).
+      if (video.paused && !video.seeking) return;
+      scheduleStallSpinner();
+    };
+    const onStalled = () => {
+      if (video.paused && !video.seeking) return;
+      scheduleStallSpinner();
+    };
+    const onSeeking = () => scheduleStallSpinner();
+    const onSeeked = () => {
+      dismissStallUiIfUnstuck();
+    };
+    const onPlayingClearStall = () => {
+      setAwaitingFirstFrame(false);
+      clearStallUiOnResume();
+      onPlaying?.();
+    };
+    const onCanPlay = () => {
+      dismissStallUiIfUnstuck();
+    };
 
-    video.addEventListener("timeupdate", onTimeUpdate);
+    const onTimeUpdateWithStallDismiss = () => {
+      onTimeUpdate();
+      dismissStallUiIfUnstuck();
+    };
+
+    video.addEventListener("timeupdate", onTimeUpdateWithStallDismiss);
     video.addEventListener("progress", onProgressEvent);
     video.addEventListener("play", onPlay);
     video.addEventListener("pause", onPauseEvent);
     video.addEventListener("loadedmetadata", onLoadedMetadata);
     video.addEventListener("loadeddata", onFirstFrame);
-    video.addEventListener("playing", onFirstFrame);
+    video.addEventListener("playing", onPlayingClearStall);
+    video.addEventListener("waiting", onWaiting);
+    video.addEventListener("stalled", onStalled);
+    video.addEventListener("seeking", onSeeking);
+    video.addEventListener("seeked", onSeeked);
+    video.addEventListener("canplay", onCanPlay);
     video.addEventListener("ended", onEndedEvent);
     video.addEventListener("volumechange", onVolumeChange);
     return () => {
-      video.removeEventListener("timeupdate", onTimeUpdate);
+      clearStallSpinnerTimer();
+      clearSafeModeOfferTimer();
+      video.removeEventListener("timeupdate", onTimeUpdateWithStallDismiss);
       video.removeEventListener("progress", onProgressEvent);
       video.removeEventListener("play", onPlay);
       video.removeEventListener("pause", onPauseEvent);
       video.removeEventListener("loadedmetadata", onLoadedMetadata);
       video.removeEventListener("loadeddata", onFirstFrame);
-      video.removeEventListener("playing", onFirstFrame);
+      video.removeEventListener("playing", onPlayingClearStall);
+      video.removeEventListener("waiting", onWaiting);
+      video.removeEventListener("stalled", onStalled);
+      video.removeEventListener("seeking", onSeeking);
+      video.removeEventListener("seeked", onSeeked);
+      video.removeEventListener("canplay", onCanPlay);
       video.removeEventListener("ended", onEndedEvent);
       video.removeEventListener("volumechange", onVolumeChange);
     };
@@ -593,6 +873,46 @@ export const TaPlusPlayer = forwardRef<TaPlusPlayerHandle, Props>(function TaPlu
             style={posterUrl ? { backgroundImage: `url(${JSON.stringify(posterUrl)})` } : undefined}
             aria-hidden
           />
+        ) : null}
+        {(stallSpinner || awaitingFirstFrame) && !error && !safeModeOffer ? (
+          <div
+            className="pointer-events-none absolute inset-0 z-[3] flex items-center justify-center"
+            aria-hidden
+          >
+            <div className="kodik-player-beta-buffering-spinner" />
+          </div>
+        ) : null}
+        {safeMode && !error ? (
+          <div className="pointer-events-none absolute left-3 top-3 z-[4] rounded-md bg-black/70 px-2 py-1 text-[11px] text-white/90 ring-1 ring-white/15">
+            Безопасный режим
+          </div>
+        ) : null}
+        {safeModeOffer && !error ? (
+          <div className="absolute inset-0 z-[5] flex items-center justify-center bg-black/55 px-4">
+            <div className="max-w-sm rounded-xl bg-black/90 px-4 py-3 text-center text-sm text-white shadow-lg ring-1 ring-white/15">
+              <p className="mb-1 font-medium">Видео зависло?</p>
+              <p className="mb-3 text-xs leading-relaxed text-white/70">
+                Можно перейти в безопасный режим — упрощённая загрузка без HLS, как в плеере
+                Kodik.
+              </p>
+              <div className="flex flex-wrap items-center justify-center gap-2">
+                <button
+                  type="button"
+                  className="rounded-lg bg-white px-3 py-1.5 text-xs font-medium text-black hover:bg-white/90"
+                  onClick={enableSafeMode}
+                >
+                  Безопасный режим
+                </button>
+                <button
+                  type="button"
+                  className="rounded-lg bg-white/10 px-3 py-1.5 text-xs font-medium text-white hover:bg-white/15"
+                  onClick={dismissSafeModeOffer}
+                >
+                  Не сейчас
+                </button>
+              </div>
+            </div>
+          </div>
         ) : null}
         {error ? (
           <div className="absolute inset-0 z-20 flex items-center justify-center bg-black/70 px-4 text-center text-sm text-white">

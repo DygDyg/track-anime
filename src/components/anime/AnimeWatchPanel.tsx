@@ -261,6 +261,51 @@ async function loadEpisodePlayerLink(
   }
 }
 
+/**
+ * First released episode for cold start (no watch history).
+ * Uses episodes API without exactSeason so season=1 can remap to the real Kodik season.
+ */
+async function resolveFirstPlayableEpisode(
+  shikimoriId: number,
+  kodikId: string,
+): Promise<{ seasonNumber: number; episodeNumber: number }> {
+  try {
+    const params = new URLSearchParams({
+      kodikId,
+      season: "1",
+    });
+    const res = await fetch(`/api/anime/${shikimoriId}/episodes?${params.toString()}`, {
+      cache: "no-store",
+    });
+    if (!res.ok) return { seasonNumber: 1, episodeNumber: 1 };
+    const data = (await res.json()) as {
+      seasonNumber?: number;
+      episodes?: Array<{ episodeNumber: number; seasonNumber: number }>;
+    };
+    const episodes = [...(data.episodes ?? [])].sort(
+      (a, b) => a.episodeNumber - b.episodeNumber || a.seasonNumber - b.seasonNumber,
+    );
+    const first = episodes[0];
+    if (first && first.episodeNumber >= 1) {
+      return {
+        seasonNumber:
+          first.seasonNumber >= 0
+            ? first.seasonNumber
+            : data.seasonNumber != null && data.seasonNumber >= 0
+              ? data.seasonNumber
+              : 1,
+        episodeNumber: first.episodeNumber,
+      };
+    }
+    if (data.seasonNumber != null && data.seasonNumber >= 0) {
+      return { seasonNumber: data.seasonNumber, episodeNumber: 1 };
+    }
+  } catch {
+    /* fall through */
+  }
+  return { seasonNumber: 1, episodeNumber: 1 };
+}
+
 async function loadSeasonSeriaLinks(
   shikimoriId: number,
   kodikId: string,
@@ -913,11 +958,13 @@ export function AnimeWatchPanel({
         // полный pause-continue на холодном iframe зависает с оверлеем «Переход…».
         await applyEpisodeBoot(savedKodikId, resume);
       } else if (selectedKodikId) {
-        // Нет сохранённой серии: Kodik /serial/ по умолчанию даёт last_episode —
-        // явно стартуем с 1 серии.
+        // Нет сохранённой серии: не hardcode S1E1 — берём первую доступную из списка
+        // (иначе serial/material link = Kodik last_episode, а полоска ничего не подсвечивает).
+        const first = await resolveFirstPlayableEpisode(shikimoriId, selectedKodikId);
+        if (cancelled) return;
         await applyEpisodeBoot(selectedKodikId, {
-          seasonNumber: 1,
-          episodeNumber: 1,
+          seasonNumber: first.seasonNumber,
+          episodeNumber: first.episodeNumber,
           positionSeconds: 0,
         });
       } else {
@@ -4306,7 +4353,10 @@ export function AnimeWatchPanel({
                     onQualityChange={
                       isTaPlus
                         ? (nextQuality) => {
-                            setTaPlusSeekSeconds(liveProgressRef.current.positionSeconds);
+                            // Preserve position; viewport + TaPlusPlayer resume play after reload.
+                            setTaPlusSeekSeconds(
+                              Math.max(0, liveProgressRef.current.positionSeconds),
+                            );
                             taPlusStream.setQuality(nextQuality);
                           }
                         : undefined

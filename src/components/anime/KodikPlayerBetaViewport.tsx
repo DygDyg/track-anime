@@ -1980,6 +1980,10 @@ export function KodikPlayerBetaViewport({
     isTaPlus && controlsPlayback.durationSeconds > 0 && !taPlusIdle
       ? Math.min(1, Math.max(0, bufferedEndSeconds / controlsPlayback.durationSeconds))
       : null;
+  const hiddenBufferFill =
+    bufferedRatio != null && Number.isFinite(bufferedRatio)
+      ? `${Math.min(100, Math.max(0, bufferedRatio * 100))}%`
+      : null;
 
   const controlsNode = (
     <KodikPlayerBetaControls
@@ -2188,6 +2192,9 @@ export function KodikPlayerBetaViewport({
                   type="button"
                   aria-pressed={qualityIsAuto}
                   onClick={() => {
+                    // Keep / force playback after HLS remount for the new rendition.
+                    taPlusSessionUnlockedRef.current = true;
+                    pendingPlayAfterStartRef.current = true;
                     onQualityChange?.(TA_PLUS_QUALITY_AUTO);
                     setQualityMenuOpen(false);
                     revealUi();
@@ -2211,6 +2218,8 @@ export function KodikPlayerBetaViewport({
                       type="button"
                       aria-pressed={active}
                       onClick={() => {
+                        taPlusSessionUnlockedRef.current = true;
+                        pendingPlayAfterStartRef.current = true;
                         onQualityChange?.(key);
                         setQualityMenuOpen(false);
                         revealUi();
@@ -2517,7 +2526,7 @@ export function KodikPlayerBetaViewport({
         {settings.betaHiddenProgressOpacity > 0 && !taPlusIdle ? (
           <div
             className={[
-              "pointer-events-none absolute inset-x-0 bottom-0 z-20 bg-white/20 transition-opacity duration-300",
+              "pointer-events-none absolute inset-x-0 bottom-0 z-20 overflow-hidden bg-white/20 transition-opacity duration-300",
               !uiInteractive && !kodikUiAccess && !controlsDocked ? "" : "opacity-0",
             ].join(" ")}
             style={{
@@ -2529,7 +2538,13 @@ export function KodikPlayerBetaViewport({
             }}
             aria-hidden
           >
-            <div className="h-full bg-accent" style={{ width: progressFill }} />
+            {hiddenBufferFill ? (
+              <div
+                className="absolute inset-y-0 left-0 bg-white/40"
+                style={{ width: hiddenBufferFill }}
+              />
+            ) : null}
+            <div className="absolute inset-y-0 left-0 bg-accent" style={{ width: progressFill }} />
             {timelineSegmentBackground ? (
               <div
                 className="pointer-events-none absolute inset-0"

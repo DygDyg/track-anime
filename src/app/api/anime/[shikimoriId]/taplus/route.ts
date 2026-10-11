@@ -1,7 +1,12 @@
 import { NextRequest, NextResponse } from "next/server";
+import type { KodikEpisodeValue } from "@/kodik/types";
+import { kodikSearch } from "@/kodik/client";
 import { fetchKodikFtorStreams } from "@/lib/kodik-ftor";
 import { prisma } from "@/lib/prisma";
-import { toKodikPlayerEmbedUrl } from "@/lib/player-url";
+import {
+  isSingleEpisodeKodikPlayerLink,
+  toKodikPlayerEmbedUrl,
+} from "@/lib/player-url";
 import { buildTaPlusPreviewUrls } from "@/lib/ta-plus-previews";
 
 export const dynamic = "force-dynamic";
@@ -25,6 +30,32 @@ function parseNonNegativeInt(value: string | null | undefined): number | null {
 function normalizePlayerLink(link: string | null | undefined): string | null {
   if (!link?.trim()) return null;
   return toKodikPlayerEmbedUrl(link.trim());
+}
+
+function playerLinkFromKodikEpisodeValue(value: KodikEpisodeValue | undefined): string | null {
+  if (value == null) return null;
+  if (typeof value === "string") return normalizePlayerLink(value);
+  return normalizePlayerLink(value.link);
+}
+
+/** Live Kodik `/seria/` for season+episode — avoids material `/serial/` (opens last_episode). */
+async function resolveLiveSeriaPlayerLink(
+  kodikId: string,
+  seasonNumber: number,
+  episodeNumber: number,
+): Promise<string | null> {
+  try {
+    const response = await kodikSearch({
+      id: kodikId,
+      with_episodes_data: true,
+    });
+    const season = response.results[0]?.seasons?.[String(seasonNumber)];
+    const link = playerLinkFromKodikEpisodeValue(season?.episodes?.[String(episodeNumber)]);
+    if (link && isSingleEpisodeKodikPlayerLink(link)) return link;
+    return link;
+  } catch {
+    return null;
+  }
 }
 
 async function resolveEpisodeContext(input: {
@@ -56,6 +87,27 @@ async function resolveEpisodeContext(input: {
     select: { playerLink: true, screenshots: true },
   });
   const fromEpisode = normalizePlayerLink(episode?.playerLink);
+  if (fromEpisode && isSingleEpisodeKodikPlayerLink(fromEpisode)) {
+    return {
+      playerLink: fromEpisode,
+      episodeScreenshots: episode?.screenshots ?? null,
+      materialData: material.materialData,
+    };
+  }
+
+  const liveSeria = await resolveLiveSeriaPlayerLink(
+    input.kodikId,
+    input.seasonNumber,
+    input.episodeNumber,
+  );
+  if (liveSeria) {
+    return {
+      playerLink: liveSeria,
+      episodeScreenshots: episode?.screenshots ?? null,
+      materialData: material.materialData,
+    };
+  }
+
   if (fromEpisode) {
     return {
       playerLink: fromEpisode,
@@ -73,9 +125,9 @@ async function resolveEpisodeContext(input: {
     },
     select: { playerLink: true },
   });
+  // Never fall back to material `/serial/` for a concrete episode — Kodik opens last_episode.
   return {
-    playerLink:
-      normalizePlayerLink(season?.playerLink) ?? normalizePlayerLink(material.playerLink),
+    playerLink: normalizePlayerLink(season?.playerLink),
     episodeScreenshots: episode?.screenshots ?? null,
     materialData: material.materialData,
   };

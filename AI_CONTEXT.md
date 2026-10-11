@@ -153,6 +153,9 @@ Calendar: `/calendar` → calendar.ts → local Kodik DB or Shikimori `/api/cale
 | TA Plus scrub/seek preview slow | Sheets should warm via `preloadTaPlusTileSheets` when `tiles` arrive (`KodikPlayerBetaViewport`); check `/api/taplus-tile` |
 | Viewport click pauses while chrome hidden | `handleViewportClick`: hidden UI → `revealUi` only; play/pause only when `uiVisible` |
 | TA Plus white stub on episode switch | Empty `<video>` after `load()` — set `poster` + cover overlay until first frame (`TaPlusPlayer`) |
+| TA Plus hang / safe mode | After ~5s stall (or fatal HLS) offer progressive MP4: cut URL at `.mp4` (`ta-plus-safe-mode.ts`, `TaPlusPlayer`) |
+| TA Plus Auto stuck at 480p | Use optimistic `abrEwmaDefaultEstimate` + `startLevel=max` on synthetic master; don't lock Auto to a single max URL |
+| Cold start plays last episode, strip unhighlighted | No history → `resolveFirstPlayableEpisode`; taplus must not use material `/serial/` (Kodik last_episode) |
 | Tablet cards look desktop, no preview popup | Hover panel needs mouse; sheet used to be `md:hidden`. Long-press opens sheet on touch even at `md+` (`AnimeCardHoverShell` + `ReleaseCardMobileSheet`) |
 
 ## Debugging Notes

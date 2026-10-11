@@ -1133,15 +1133,20 @@ export function SiteSettingsModal() {
       {tab === "player" ? (
         <div
           aria-hidden
-          className="pointer-events-none absolute inset-x-0 bottom-0 z-[200]"
+          className="pointer-events-none absolute inset-x-0 bottom-0 z-[200] overflow-hidden"
           style={{
             height: `${settings.betaHiddenProgressThickness ?? BETA_HIDDEN_PROGRESS_THICKNESS_DEFAULT}px`,
             opacity: settings.betaHiddenProgressOpacity,
             backgroundColor: "rgba(255, 255, 255, 0.25)",
           }}
         >
+          {/* Demo buffer ahead of playhead (matches TA Plus hidden strip). */}
           <div
-            className="h-full bg-accent"
+            className="absolute inset-y-0 left-0 bg-white/40"
+            style={{ width: `${Math.min(100, playerProgressPreviewFill + 22)}%` }}
+          />
+          <div
+            className="absolute inset-y-0 left-0 bg-accent"
             style={{ width: `${playerProgressPreviewFill}%` }}
           />
         </div>

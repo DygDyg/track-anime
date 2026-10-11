@@ -244,8 +244,14 @@ export function KodikPlayerBetaEpisodeStrip({
           {...dragProps}
         >
           {episodes.map((episode) => {
+            // Prefer exact season match; if parent still has season=1 after API remap
+            // to selectedSeason, still highlight the playing episode in the shown list.
             const active =
-              episode.seasonNumber === seasonNumber && episode.episodeNumber === currentEpisode;
+              episode.episodeNumber === currentEpisode &&
+              (episode.seasonNumber === seasonNumber ||
+                (seasonNumber === 1 &&
+                  episode.seasonNumber === selectedSeason &&
+                  selectedSeason !== 1));
             return (
               <button
                 key={`${episode.seasonNumber}-${episode.episodeNumber}`}
