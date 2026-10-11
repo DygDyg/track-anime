@@ -29,7 +29,9 @@ import { TaPlusIdleBackdrop } from "@/components/anime/TaPlusIdleBackdrop";
 import { TaPlusPlayer, type TaPlusPlayerHandle } from "@/components/anime/TaPlusPlayer";
 import { SiteClock } from "@/components/SiteClock";
 import { TA_PLUS_QUALITY_AUTO } from "@/lib/ta-plus-master-playlist";
+import { toTaPlusDisplayPreviewUrl } from "@/lib/ta-plus-previews";
 import type { TaPlusTiles } from "@/lib/ta-plus-tiles";
+import { coverCacheUrl } from "@/lib/poster";
 import { useSiteSettings } from "@/components/SiteSettingsProvider";
 import { isTrackAnimeAndroidApp } from "@/lib/android-app";
 import { toKodikPlayerEmbedUrl } from "@/lib/player-url";
@@ -747,25 +749,6 @@ export function KodikPlayerBetaViewport({
     },
     [revealUi],
   );
-
-  const hideUi = useCallback(() => {
-    clearHideTimer();
-    setUiVisible(false);
-    onFullscreenTranslationsIntent?.(false);
-    viewportRef.current
-      ?.closest(".kodik-player-beta-stage:fullscreen")
-      ?.scrollTo({ top: 0, behavior: "smooth" });
-  }, [clearHideTimer, onFullscreenTranslationsIntent]);
-
-  const toggleUi = useCallback(() => {
-    if (kodikUiAccess) return;
-    if (uiVisible) {
-      hideUi();
-      return;
-    }
-    setUiVisible(true);
-    scheduleHide();
-  }, [hideUi, kodikUiAccess, scheduleHide, uiVisible]);
 
   useEffect(() => {
     if (isTaPlus) {
@@ -1606,16 +1589,19 @@ export function KodikPlayerBetaViewport({
     if (controlsDisabled || kodikUiAccess) return;
     clearClickTimer();
     clickTimerRef.current = window.setTimeout(() => {
-      // Kodik iframe: mobile tap toggles chrome; play/pause via native center hole / bottom bar.
-      // TA Plus: idle → start HLS; after start → play/pause.
-      if (touchLikeUi && !isTaPlus) {
-        toggleUi();
-      } else if (isTaPlus) {
+      // Hidden chrome: first tap only reveals UI. Play/pause needs UI already visible.
+      if (!uiVisible) {
         revealUi();
+        clickTimerRef.current = null;
+        return;
+      }
+      // TA Plus: idle → start HLS; after start → play/pause. Kodik → play/pause.
+      if (isTaPlus) {
         startTaPlusMedia();
       } else {
         onPlayPause();
       }
+      revealUi();
       clickTimerRef.current = null;
     }, SINGLE_CLICK_DELAY_MS);
   }, [
@@ -1626,8 +1612,7 @@ export function KodikPlayerBetaViewport({
     onPlayPause,
     revealUi,
     startTaPlusMedia,
-    toggleUi,
-    touchLikeUi,
+    uiVisible,
   ]);
 
   const handleViewportDoubleClick = useCallback(
@@ -1662,6 +1647,10 @@ export function KodikPlayerBetaViewport({
   const uiInteractive = uiVisible && !kodikUiAccess;
   const chromeHitTest = uiInteractive && !passThroughHits;
   const taPlusIdle = isTaPlus && !taPlusStarted;
+  const firstPreview = previews?.find((url) => typeof url === "string" && url.trim()) ?? null;
+  const taPlusPoster = firstPreview
+    ? toTaPlusDisplayPreviewUrl(firstPreview)
+    : coverCacheUrl(shikimoriId);
   const idleDurationSeconds = taPlusIdle ? resolveTaPlusIdleDuration() : 0;
   const duration = Math.max(
     taPlusIdle ? idleDurationSeconds : viewPlayback.durationSeconds,
@@ -1868,6 +1857,7 @@ export function KodikPlayerBetaViewport({
                 qualities={qualities}
                 quality={quality}
                 title={title}
+                poster={taPlusPoster}
                 seasonNumber={seasonNumber}
                 episodeNumber={currentEpisode}
                 initialResume={initialResume}

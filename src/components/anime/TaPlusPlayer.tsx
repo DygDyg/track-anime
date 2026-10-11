@@ -47,6 +47,11 @@ type Props = {
   /** `"auto"` (max available) or locked height key. */
   quality?: string | null;
   title?: string;
+  /**
+   * Poster while HLS has no painted frame (episode switch / `video.load()`).
+   * Without it Chromium shows a white default stub with a play glyph.
+   */
+  poster?: string | null;
   seasonNumber: number;
   episodeNumber: number;
   initialResume?: KodikPlayerResume | null;
@@ -120,6 +125,7 @@ export const TaPlusPlayer = forwardRef<TaPlusPlayerHandle, Props>(function TaPlu
     qualities = {},
     quality = TA_PLUS_QUALITY_AUTO,
     title,
+    poster = null,
     seasonNumber,
     episodeNumber,
     initialResume = null,
@@ -160,7 +166,10 @@ export const TaPlusPlayer = forwardRef<TaPlusPlayerHandle, Props>(function TaPlu
   onActiveQualityChangeRef.current = onActiveQualityChange;
   const streamFailedSentRef = useRef(false);
   const [error, setError] = useState<string | null>(null);
+  /** Hide browser empty-video chrome until the first decoded frame. */
+  const [awaitingFirstFrame, setAwaitingFirstFrame] = useState(true);
   const autoMode = quality === TA_PLUS_QUALITY_AUTO || quality == null;
+  const posterUrl = poster?.trim() || undefined;
 
   const emitPlayback = (patch: Partial<KodikPlayerPlaybackState>) => {
     const next = { ...playbackRef.current, ...patch };
@@ -363,6 +372,7 @@ export const TaPlusPlayer = forwardRef<TaPlusPlayerHandle, Props>(function TaPlu
     };
 
     destroyHls();
+    setAwaitingFirstFrame(true);
     video.removeAttribute("src");
     video.load();
     video.playbackRate = playbackRateRef.current;
@@ -519,11 +529,15 @@ export const TaPlusPlayer = forwardRef<TaPlusPlayerHandle, Props>(function TaPlu
       writeKodikPlayerVolumePreferences({ volume: video.volume, muted: video.muted });
     };
 
+    const onFirstFrame = () => setAwaitingFirstFrame(false);
+
     video.addEventListener("timeupdate", onTimeUpdate);
     video.addEventListener("progress", onProgressEvent);
     video.addEventListener("play", onPlay);
     video.addEventListener("pause", onPauseEvent);
     video.addEventListener("loadedmetadata", onLoadedMetadata);
+    video.addEventListener("loadeddata", onFirstFrame);
+    video.addEventListener("playing", onFirstFrame);
     video.addEventListener("ended", onEndedEvent);
     video.addEventListener("volumechange", onVolumeChange);
     return () => {
@@ -532,6 +546,8 @@ export const TaPlusPlayer = forwardRef<TaPlusPlayerHandle, Props>(function TaPlu
       video.removeEventListener("play", onPlay);
       video.removeEventListener("pause", onPauseEvent);
       video.removeEventListener("loadedmetadata", onLoadedMetadata);
+      video.removeEventListener("loadeddata", onFirstFrame);
+      video.removeEventListener("playing", onFirstFrame);
       video.removeEventListener("ended", onEndedEvent);
       video.removeEventListener("volumechange", onVolumeChange);
     };
@@ -564,19 +580,27 @@ export const TaPlusPlayer = forwardRef<TaPlusPlayerHandle, Props>(function TaPlu
             videoRef.current = node;
             setVideoEl(node);
           }}
-          className="absolute inset-0 h-full w-full object-contain"
+          className="absolute inset-0 h-full w-full bg-black object-contain [color-scheme:dark]"
           controls={false}
           playsInline
           preload="metadata"
+          poster={posterUrl}
           title={title}
         />
+        {awaitingFirstFrame && !error ? (
+          <div
+            className="pointer-events-none absolute inset-0 z-[2] bg-black bg-center bg-cover"
+            style={posterUrl ? { backgroundImage: `url(${JSON.stringify(posterUrl)})` } : undefined}
+            aria-hidden
+          />
+        ) : null}
         {error ? (
           <div className="absolute inset-0 z-20 flex items-center justify-center bg-black/70 px-4 text-center text-sm text-white">
             {error}
           </div>
         ) : null}
         {!src && !error ? (
-          <div className="absolute inset-0 animate-pulse bg-surface-dim" />
+          <div className="absolute inset-0 z-[2] animate-pulse bg-black" />
         ) : null}
       </div>
     </div>

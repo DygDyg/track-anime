@@ -146,6 +146,8 @@ Calendar: `/calendar` → calendar.ts → local Kodik DB or Shikimori `/api/cale
 | TA Plus no OP/ED skip button | Skip-times used to clear when HLS duration briefly hits 0; fetch uses last-good/1440 fallback (`skipTimesEpisodeLength`) |
 | TA Plus prefer parser skips | If `/ftor` returns `skip_timings`/`skip_raw`, TA Plus uses them instead of AniSkip (`kodik-parser-skip.ts`) |
 | TA Plus scrub tiles 404 / black | Kodik `{index}` is 1-based 4-digit (`0001`); bare `0`/`1` is wrong — see `formatTaPlusTileSheetIndex` in `ta-plus-tiles.ts` |
+| Viewport click pauses while chrome hidden | `handleViewportClick`: hidden UI → `revealUi` only; play/pause only when `uiVisible` |
+| TA Plus white stub on episode switch | Empty `<video>` after `load()` — set `poster` + cover overlay until first frame (`TaPlusPlayer`) |
 
 ## Debugging Notes
 
