@@ -117,7 +117,8 @@ Calendar: `/calendar` → calendar.ts → local Kodik DB or Shikimori `/api/cale
 | Problem | Likely cause |
 |---------|--------------|
 | Empty home feed | No sync run — `npm run kodik:sync` |
-| «Новинки» без 2-го сезона / пусто | Не путать с бейджем NEW (эпизоды 1–3). Блок: ≤5 серий + `releasedAt`≤30д + `aired_on`≤90д, любой `seasonNumber`; кеш 24ч — сброс в `/admin/import` |
+| «Новинки» без 2-го сезона / пусто | Не путать с бейджем NEW (эпизоды 1–3). Блок: ≤5 серий (`GREATEST(episodes_aired, № серии)`) + `releasedAt`≤30д + `aired_on`≤90д, любой `seasonNumber`; кеш 24ч — сброс в `/admin/import` |
+| Тайтл с 6+ сериями в «Новинках» | У озвучки устаревший `episodes_aired`; порог обязан учитывать номер серии в релизе (`home-novelties.ts`) |
 | Admin stale-DB banner | Sync older than 2h — check cron / `kodik-sync.log`; preview `/?adminSyncBannerPreview=1` |
 | OAuth fails | Redirect URI mismatch, HTTP instead of HTTPS in prod |
 | 401 on list update | Expired Shikimori token — баннер «Связь с Shikimori истекла — переподключите» / `auth-client.ts` refresh |

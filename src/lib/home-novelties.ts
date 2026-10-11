@@ -73,8 +73,9 @@ function mapNoveltyRow(row: RawNoveltyRow): ReleaseItem {
 
 /**
  * Ранние тайтлы для блока «Новинки» на главной:
- * любой номер сезона Kodik (в т.ч. 2+), ≤5 серий, последний релиз не старше 30 дней,
- * старт показа (`aired_on`) не старше 90 дней — без продолжений прошлого сезона и старых доозвучек.
+ * любой номер сезона Kodik (в т.ч. 2+), ≤5 серий (GREATEST(episodes_aired, номер серии в релизе)),
+ * последний релиз не старше 30 дней, старт показа (`aired_on`) не старше 90 дней —
+ * без продолжений прошлого сезона и старых доозвучек.
  */
 async function queryHomeNoveltiesUncached(limit: number): Promise<ReleaseItem[]> {
   const releaseCutoff = new Date(Date.now() - HOME_NOVELTIES_MAX_AGE_DAYS * 24 * 60 * 60 * 1000);
@@ -149,17 +150,22 @@ async function queryHomeNoveltiesUncached(limit: number): Promise<ReleaseItem[]>
           )), '') AS kind,
           m."materialData"->'screenshots' AS "animeScreenshots",
           e."screenshots" AS "episodeScreenshots",
-          COALESCE(
-            CASE
-              WHEN (m."materialData"->>'episodes_aired') ~ '^[0-9]+$'
-                THEN NULLIF((m."materialData"->>'episodes_aired')::int, 0)
-              ELSE NULL
-            END,
-            CASE
-              WHEN (m."materialData"->'anime_full'->>'episodes_aired') ~ '^[0-9]+$'
-                THEN NULLIF((m."materialData"->'anime_full'->>'episodes_aired')::int, 0)
-              ELSE NULL
-            END,
+          -- Не доверяем одному устаревшему episodes_aired озвучки:
+          -- если в релизах уже серия N, порог «≤5» должен видеть хотя бы N.
+          GREATEST(
+            COALESCE(
+              CASE
+                WHEN (m."materialData"->>'episodes_aired') ~ '^[0-9]+$'
+                  THEN NULLIF((m."materialData"->>'episodes_aired')::int, 0)
+                ELSE NULL
+              END,
+              CASE
+                WHEN (m."materialData"->'anime_full'->>'episodes_aired') ~ '^[0-9]+$'
+                  THEN NULLIF((m."materialData"->'anime_full'->>'episodes_aired')::int, 0)
+                ELSE NULL
+              END,
+              0
+            ),
             r."episodeNumber"
           ) AS episodes_aired_proxy,
           CASE
