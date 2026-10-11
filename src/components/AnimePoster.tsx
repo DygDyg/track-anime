@@ -93,6 +93,7 @@ export function AnimePoster({
       alt={alt}
       loading={loading}
       decoding="async"
+      draggable={false}
       width={size === "thumb" ? 320 : undefined}
       height={size === "thumb" ? 427 : undefined}
       className={[className, size === "thumb" ? "anime-poster-thumb" : ""].filter(Boolean).join(" ")}

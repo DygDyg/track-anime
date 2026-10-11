@@ -1255,6 +1255,21 @@ textarea.site-input {
   image-rendering: auto;
 }
 
+/* Tablet/phone long-press sheet: no text/image selection or native callout on cards. */
+.anime-card-hover-shell {
+  -webkit-touch-callout: none;
+  -webkit-user-select: none;
+  user-select: none;
+  touch-action: manipulation;
+}
+
+.anime-card-hover-shell img,
+.anime-card-hover-shell a {
+  -webkit-touch-callout: none;
+  -webkit-user-drag: none;
+  user-select: none;
+}
+
 @keyframes favorites-tab-in {
   from {
     opacity: 0;
