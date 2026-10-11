@@ -878,15 +878,69 @@ export function KodikPlayerBetaViewport({
     currentEpisode,
   ]);
 
+  const clearPlayPauseFlashTimer = useCallback(() => {
+    if (playPauseFlashTimerRef.current != null) {
+      window.clearTimeout(playPauseFlashTimerRef.current);
+      playPauseFlashTimerRef.current = null;
+    }
+  }, []);
+
+  const flashPlayPauseIcon = useCallback(
+    (kind: "play" | "pause") => {
+      // Align baseline so the isPlaying-effect does not flash twice when TA Plus
+      // catches up after HLS start / toggle.
+      prevPlayingForFlashRef.current = kind === "play";
+      setPlayPauseFlash(kind);
+      setPlayPauseFlashKey((key) => key + 1);
+      clearPlayPauseFlashTimer();
+      playPauseFlashTimerRef.current = window.setTimeout(() => {
+        setPlayPauseFlash(null);
+        playPauseFlashTimerRef.current = null;
+      }, PLAY_PAUSE_FLASH_MS);
+    },
+    [clearPlayPauseFlashTimer],
+  );
+
+  // Episode remount: re-baseline without flashing (auto-next / continue).
+  // Do NOT depend on `src` — TA Plus stream URL / quality changes would wipe the flash.
+  useEffect(() => {
+    prevPlayingForFlashRef.current = null;
+    clearPlayPauseFlashTimer();
+    setPlayPauseFlash(null);
+  }, [kodikId, seasonNumber, currentEpisode, clearPlayPauseFlashTimer]);
+
+  // Fallback for remote play/pause (watch party, media session). User toggles flash
+  // eagerly via flashPlayPauseIcon in startTaPlusMedia / handlePlayPauseWithFlash.
+  useEffect(() => {
+    if (kodikUiAccess) {
+      prevPlayingForFlashRef.current = viewPlayback.isPlaying;
+      return;
+    }
+    if (prevPlayingForFlashRef.current === null) {
+      prevPlayingForFlashRef.current = viewPlayback.isPlaying;
+      return;
+    }
+    if (prevPlayingForFlashRef.current === viewPlayback.isPlaying) return;
+    prevPlayingForFlashRef.current = viewPlayback.isPlaying;
+    flashPlayPauseIcon(viewPlayback.isPlaying ? "play" : "pause");
+  }, [flashPlayPauseIcon, kodikUiAccess, viewPlayback.isPlaying]);
+
+  const handlePlayPauseWithFlash = useCallback(() => {
+    flashPlayPauseIcon(playbackRef.current.isPlaying ? "pause" : "play");
+    onPlayPause();
+  }, [flashPlayPauseIcon, onPlayPause]);
+
   const startTaPlusMedia = useCallback(() => {
     if (!isTaPlus) {
-      onPlayPause();
+      handlePlayPauseWithFlash();
       return;
     }
     if (taPlusStarted) {
-      onPlayPause();
+      handlePlayPauseWithFlash();
       return;
     }
+    // Idle → first HLS start: show play immediately (isPlaying flips later after mount).
+    flashPlayPauseIcon("play");
     const duration = resolveTaPlusIdleDuration();
     const position = Math.min(Math.max(0, idleSeekSeconds), duration);
     // Only persist meaningful idle scrub — onSeek(0) flips taPlusSeekSeconds null→0 and
@@ -900,9 +954,10 @@ export function KodikPlayerBetaViewport({
     setUiVisible(true);
     scheduleHide();
   }, [
+    flashPlayPauseIcon,
+    handlePlayPauseWithFlash,
     idleSeekSeconds,
     isTaPlus,
-    onPlayPause,
     onSeek,
     resolveTaPlusIdleDuration,
     scheduleHide,
@@ -1037,46 +1092,6 @@ export function KodikPlayerBetaViewport({
       seekFeedbackTimersRef.current[direction] = null;
     }
   }, []);
-
-  const clearPlayPauseFlashTimer = useCallback(() => {
-    if (playPauseFlashTimerRef.current != null) {
-      window.clearTimeout(playPauseFlashTimerRef.current);
-      playPauseFlashTimerRef.current = null;
-    }
-  }, []);
-
-  // Episode / source remount: re-baseline without flashing (auto-next, continue, etc.).
-  useEffect(() => {
-    prevPlayingForFlashRef.current = null;
-    clearPlayPauseFlashTimer();
-    setPlayPauseFlash(null);
-  }, [src, kodikId, seasonNumber, currentEpisode, clearPlayPauseFlashTimer]);
-
-  useEffect(() => {
-    if (controlsDisabled || kodikUiAccess) {
-      prevPlayingForFlashRef.current = viewPlayback.isPlaying;
-      return;
-    }
-    if (prevPlayingForFlashRef.current === null) {
-      prevPlayingForFlashRef.current = viewPlayback.isPlaying;
-      return;
-    }
-    if (prevPlayingForFlashRef.current === viewPlayback.isPlaying) return;
-    prevPlayingForFlashRef.current = viewPlayback.isPlaying;
-
-    setPlayPauseFlash(viewPlayback.isPlaying ? "play" : "pause");
-    setPlayPauseFlashKey((key) => key + 1);
-    clearPlayPauseFlashTimer();
-    playPauseFlashTimerRef.current = window.setTimeout(() => {
-      setPlayPauseFlash(null);
-      playPauseFlashTimerRef.current = null;
-    }, PLAY_PAUSE_FLASH_MS);
-  }, [
-    clearPlayPauseFlashTimer,
-    controlsDisabled,
-    kodikUiAccess,
-    viewPlayback.isPlaying,
-  ]);
 
   const showSeekFeedback = useCallback(
     (deltaSeconds: number) => {
@@ -1629,7 +1644,7 @@ export function KodikPlayerBetaViewport({
           event.preventDefault();
           if (event.repeat) return;
           if (isTaPlus) startTaPlusMedia();
-          else onPlayPause();
+          else handlePlayPauseWithFlash();
           return;
         }
 
@@ -1739,10 +1754,10 @@ export function KodikPlayerBetaViewport({
     fullscreenActive,
     clearHideTimer,
     controlsDisabled,
+    handlePlayPauseWithFlash,
     isTaPlus,
     onFullscreenToggle,
     onMuteToggle,
-    onPlayPause,
     startTaPlusMedia,
     handleSeekSkip,
     onTheaterToggle,
@@ -1808,7 +1823,7 @@ export function KodikPlayerBetaViewport({
         if (isTaPlus) {
           startTaPlusMedia();
         } else {
-          onPlayPause();
+          handlePlayPauseWithFlash();
         }
         revealUi();
         clickTimerRef.current = null;
@@ -1818,9 +1833,9 @@ export function KodikPlayerBetaViewport({
       applyTouchSeekDelta,
       clearClickTimer,
       controlsDisabled,
+      handlePlayPauseWithFlash,
       isTaPlus,
       kodikUiAccess,
-      onPlayPause,
       resolveTouchSeekDelta,
       revealUi,
       startTaPlusMedia,
@@ -1974,7 +1989,7 @@ export function KodikPlayerBetaViewport({
       fullscreenActive={fullscreenActive}
       seekSkipLabelSeconds={seekSkipLabelSeconds}
       overlay={!controlsDocked}
-      onPlayPause={isTaPlus ? startTaPlusMedia : onPlayPause}
+      onPlayPause={isTaPlus ? startTaPlusMedia : handlePlayPauseWithFlash}
       onPreviousEpisode={onPreviousEpisode}
       onNextEpisode={onNextEpisode}
       previousEpisodeDisabled={previousEpisodeDisabled}

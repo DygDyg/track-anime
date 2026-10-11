@@ -92,7 +92,9 @@ function ChangelogEntryCard({ entry }: { entry: SiteChangelogEntry }) {
       <ul className="space-y-2">
         {entry.items.map((item, index) => (
           <li key={`${entry.id}-${index}`} className="flex gap-2 text-sm text-foreground">
-            <span className={`${KIND_BADGE[item.kind]} shrink-0 self-start`}>
+            <span
+              className={`${KIND_BADGE[item.kind]} w-[7.25rem] shrink-0 justify-center self-start text-center`}
+            >
               {KIND_LABEL[item.kind]}
             </span>
             <span>{item.text}</span>
