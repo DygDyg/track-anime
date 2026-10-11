@@ -3,6 +3,7 @@
 import { useCallback, useEffect, useState } from "react";
 import { NotificationToastBody } from "@/components/NotificationToastBody";
 import { useSiteSettings } from "@/components/SiteSettingsProvider";
+import { isCompanionEnabledInSettings } from "@/lib/site-settings";
 import {
   activateBrowserPushFromPermission,
   hasActivePushSubscription,
@@ -60,7 +61,7 @@ export function NotificationUiLayer() {
   const [requesting, setRequesting] = useState(false);
   const [desktop, setDesktop] = useState(false);
 
-  const companionBubbleMode = settings.companionEnabled && desktop;
+  const companionBubbleMode = isCompanionEnabledInSettings(settings) && desktop;
 
   const COMPANION_PERMISSION_EVENT = "ta:companion-permission-prompt";
   const COMPANION_PERMISSION_ACTION_EVENT = "ta:companion-permission-prompt-action";

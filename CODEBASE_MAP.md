@@ -261,7 +261,7 @@ Git deploy webhook (HMAC, no session): `api/deploy/webhook` (POST)
 
 | Folder | Key components |
 |--------|----------------|
-| `anime/` | `AnimePageView`, `AnimeWatchPanel`, `KodikPlayer`, `TaPlusPlayer` (HLS backend для `KodikPlayerBetaViewport`), `CvhWatchSection` / `CvhPlayerFrame`, `MoveToCompletedBanner`, `AddToWatchingBanner`, `AnimeListActions`, `AnimeShikimoriRating` + `AnimeUserScoreVote` |
+| `anime/` | `AnimePageView`, `AnimeWatchPanel`, `KodikPlayer`, `TaPlusPlayer` (HLS backend для `KodikPlayerBetaViewport`), `VideoAmbientGlow` (лёгкая подсветка краёв TA Plus), `CvhWatchSection` / `CvhPlayerFrame`, `MoveToCompletedBanner`, `AddToWatchingBanner`, `AnimeListActions`, `AnimeShikimoriRating` + `AnimeUserScoreVote` |
 | `admin/` | `AdminAnimeDebugButton` — защищённое окно данных тайтла/серии; `AdminForceCoverButton` — force-перекачка обложки на странице тайтла |
 | `auth/` | `AuthProvider` |
 | `header/` | `Header`, `HeaderSearch` |

@@ -1,18 +1,28 @@
 "use client";
 
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState, type CSSProperties } from "react";
 import { toTaPlusDisplayPreviewUrl } from "@/lib/ta-plus-previews";
 import {
   pickTaPlusIdleSlideshowFrames,
   type TaPlusTiles,
 } from "@/lib/ta-plus-tiles";
 
-const SLIDE_MS = 5_200;
+const SLIDE_MS = 28_000;
 const VEIL_MS = 520;
 
 type FullSlide = { kind: "full"; url: string };
 type TileSlide = { kind: "tile"; url: string; col: number; row: number };
 type Slide = FullSlide | TileSlide;
+
+/** Zoomed diagonal pan: both axes move at once in a random direction. */
+type Drift = {
+  seed: number;
+  fromX: number;
+  fromY: number;
+  toX: number;
+  toY: number;
+  scale: number;
+};
 
 type Props = {
   /** Full-frame preview URLs (episode screenshots / CDN thumbs). */
@@ -32,16 +42,43 @@ function slideKey(slide: Slide): string {
   return slide.kind === "full" ? `full:${slide.url}` : `tile:${slide.url}:${slide.col}:${slide.row}`;
 }
 
+function randomDrift(): Drift {
+  const scale = 1.28 + Math.random() * 0.1; // 1.28–1.38
+  const ampX = 5.5 + Math.random() * 4.5; // 5.5–10%
+  const ampY = 5.5 + Math.random() * 4.5;
+  const sx = Math.random() < 0.5 ? -1 : 1;
+  const sy = Math.random() < 0.5 ? -1 : 1;
+  return {
+    seed: Math.random(),
+    fromX: -sx * ampX,
+    fromY: -sy * ampY,
+    toX: sx * ampX,
+    toY: sy * ampY,
+    scale,
+  };
+}
+
+function driftStyle(drift: Drift): CSSProperties {
+  return {
+    ["--idle-from-x" as string]: `${drift.fromX}%`,
+    ["--idle-from-y" as string]: `${drift.fromY}%`,
+    ["--idle-to-x" as string]: `${drift.toX}%`,
+    ["--idle-to-y" as string]: `${drift.toY}%`,
+    ["--idle-scale" as string]: String(drift.scale),
+    ["--idle-pan-ms" as string]: `${SLIDE_MS}ms`,
+  };
+}
+
 function SlideLayer({
   slide,
   tiles,
   visible,
-  alternateDrift,
+  drift,
 }: {
   slide: Slide;
   tiles: TaPlusTiles | null;
   visible: boolean;
-  alternateDrift: boolean;
+  drift: Drift | null;
 }) {
   const cols = Math.max(1, tiles?.x ?? 1);
   const rows = Math.max(1, tiles?.y ?? 1);
@@ -64,11 +101,11 @@ function SlideLayer({
       className={[
         "ta-plus-idle-slide",
         visible ? "ta-plus-idle-slide--in" : "ta-plus-idle-slide--out",
-        visible && alternateDrift ? "ta-plus-idle-slide--in-alt" : "",
       ].join(" ")}
       aria-hidden
     >
       <div
+        key={drift ? `${slideKey(slide)}-${drift.seed}` : slideKey(slide)}
         className={[
           "ta-plus-idle-slide__media bg-center",
           slide.kind === "full" ? "bg-cover" : "",
@@ -76,6 +113,7 @@ function SlideLayer({
         style={{
           backgroundImage: `url(${cssUrl(slide.url)})`,
           ...tileStyle,
+          ...(drift ? driftStyle(drift) : null),
         }}
       />
     </div>
@@ -96,7 +134,8 @@ export function TaPlusIdleBackdrop({
   const [frontSlide, setFrontSlide] = useState<Slide | null>(null);
   const [backSlide, setBackSlide] = useState<Slide | null>(null);
   const [frontVisible, setFrontVisible] = useState(true);
-  const [driftAlt, setDriftAlt] = useState(false);
+  const [frontDrift, setFrontDrift] = useState<Drift | null>(null);
+  const [backDrift, setBackDrift] = useState<Drift | null>(null);
   const [veilOn, setVeilOn] = useState(false);
   const readySlidesRef = useRef<Slide[]>([]);
   const veilTimerRef = useRef<number | null>(null);
@@ -137,7 +176,8 @@ export function TaPlusIdleBackdrop({
     setFrontSlide(null);
     setBackSlide(null);
     setFrontVisible(true);
-    setDriftAlt(false);
+    setFrontDrift(null);
+    setBackDrift(null);
     setVeilOn(false);
     if (veilTimerRef.current != null) {
       window.clearTimeout(veilTimerRef.current);
@@ -202,8 +242,11 @@ export function TaPlusIdleBackdrop({
   useEffect(() => {
     if (frontSlide || backSlide || readySlides.length === 0) return;
     const first = readySlides[0]!;
+    const drift = randomDrift();
     setFrontSlide(first);
     setBackSlide(first);
+    setFrontDrift(drift);
+    setBackDrift(drift);
     setActiveKey(slideKey(first));
     setFrontVisible(true);
   }, [backSlide, frontSlide, readySlides]);
@@ -221,16 +264,18 @@ export function TaPlusIdleBackdrop({
           ready.findIndex((slide) => slideKey(slide) === current),
         );
         const next = ready[(currentIndex + 1) % ready.length]!;
+        const nextDrift = randomDrift();
 
         setFrontVisible((frontIsVisible) => {
           if (frontIsVisible) {
             setBackSlide(next);
+            setBackDrift(nextDrift);
           } else {
             setFrontSlide(next);
+            setFrontDrift(nextDrift);
           }
           return !frontIsVisible;
         });
-        setDriftAlt((value) => !value);
         setVeilOn(true);
         if (veilTimerRef.current != null) window.clearTimeout(veilTimerRef.current);
         veilTimerRef.current = window.setTimeout(() => {
@@ -268,7 +313,7 @@ export function TaPlusIdleBackdrop({
                 slide={backSlide}
                 tiles={tiles}
                 visible={!frontVisible}
-                alternateDrift={driftAlt}
+                drift={backDrift}
               />
             ) : null}
             {frontSlide ? (
@@ -276,7 +321,7 @@ export function TaPlusIdleBackdrop({
                 slide={frontSlide}
                 tiles={tiles}
                 visible={frontVisible}
-                alternateDrift={driftAlt}
+                drift={frontDrift}
               />
             ) : null}
             <div

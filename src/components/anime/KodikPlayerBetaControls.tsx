@@ -11,6 +11,41 @@ import {
 } from "react";
 import type { KodikPlayerPlaybackState } from "@/components/anime/KodikPlayer";
 import { formatWatchPosition } from "@/lib/watch-history";
+import {
+  DEFAULT_PLAYER_AMBIENT_GLOW_SETTINGS,
+  PLAYER_AMBIENT_GLOW_BLUR_DEFAULT,
+  PLAYER_AMBIENT_GLOW_BLUR_MAX,
+  PLAYER_AMBIENT_GLOW_BLUR_MIN,
+  PLAYER_AMBIENT_GLOW_BLUR_STEP,
+  PLAYER_AMBIENT_GLOW_BRIGHTNESS_DEFAULT,
+  PLAYER_AMBIENT_GLOW_BRIGHTNESS_MAX,
+  PLAYER_AMBIENT_GLOW_BRIGHTNESS_MIN,
+  PLAYER_AMBIENT_GLOW_BRIGHTNESS_STEP,
+  PLAYER_AMBIENT_GLOW_DOWNSCALE_DEFAULT,
+  PLAYER_AMBIENT_GLOW_DOWNSCALE_MAX,
+  PLAYER_AMBIENT_GLOW_DOWNSCALE_MIN,
+  PLAYER_AMBIENT_GLOW_DOWNSCALE_STEP,
+  PLAYER_AMBIENT_GLOW_OPACITY_DEFAULT,
+  PLAYER_AMBIENT_GLOW_OPACITY_MAX,
+  PLAYER_AMBIENT_GLOW_OPACITY_MIN,
+  PLAYER_AMBIENT_GLOW_OPACITY_STEP,
+  PLAYER_AMBIENT_GLOW_PRESETS,
+  PLAYER_AMBIENT_GLOW_SATURATE_DEFAULT,
+  PLAYER_AMBIENT_GLOW_SATURATE_MAX,
+  PLAYER_AMBIENT_GLOW_SATURATE_MIN,
+  PLAYER_AMBIENT_GLOW_SATURATE_STEP,
+  PLAYER_AMBIENT_GLOW_SCALE_DEFAULT,
+  PLAYER_AMBIENT_GLOW_SCALE_MAX,
+  PLAYER_AMBIENT_GLOW_SCALE_MIN,
+  PLAYER_AMBIENT_GLOW_SCALE_STEP,
+  PLAYER_AMBIENT_GLOW_UPDATE_MS_DEFAULT,
+  PLAYER_AMBIENT_GLOW_UPDATE_MS_MAX,
+  PLAYER_AMBIENT_GLOW_UPDATE_MS_MIN,
+  PLAYER_AMBIENT_GLOW_UPDATE_MS_STEP,
+  applyAmbientGlowPreset,
+  type PlayerAmbientGlowPresetId,
+  type PlayerAmbientGlowSettings,
+} from "@/lib/player-ambient-glow";
 import { PLAYER_CONTROLS_IDLE_MS_DEFAULT } from "@/lib/site-settings";
 import {
   resolveTaPlusTilePreview,
@@ -75,6 +110,10 @@ type Props = {
   playbackRates?: number[];
   playbackRate?: number;
   onPlaybackRateChange?: (rate: number) => void;
+  /** TA Plus ambient glow — only when display AR > 16:9. */
+  ambientGlowAvailable?: boolean;
+  ambientGlowSettings?: PlayerAmbientGlowSettings;
+  onAmbientGlowSettingsChange?: (patch: Partial<PlayerAmbientGlowSettings>) => void;
 };
 
 type RangeStyle = CSSProperties & {
@@ -171,6 +210,83 @@ function IconPictureInPicture() {
     <svg viewBox="0 0 24 24" className="h-5 w-5 fill-current" aria-hidden>
       <path d="M4 5h16v14H4V5zm2 2v10h12V7H6zm6 5h5v4h-5v-4z" />
     </svg>
+  );
+}
+
+function IconAmbientGlow() {
+  return (
+    <svg viewBox="0 0 24 24" className="h-5 w-5 fill-current" aria-hidden>
+      <path d="M12 7a5 5 0 100 10 5 5 0 000-10zm0 8a3 3 0 110-6 3 3 0 010 6z" />
+      <path d="M11 1h2v3h-2V1zm0 19h2v3h-2v-3zM1 11h3v2H1v-2zm19 0h3v2h-3v-2zM4.22 3.81l1.42-1.41 2.12 2.12-1.41 1.42-2.13-2.13zm12.02 12.02 2.12 2.12-1.41 1.42-2.12-2.12 1.41-1.42zM3.81 19.78l2.12-2.12 1.42 1.41-2.13 2.13-1.41-1.42zm12.02-12.02 1.41-1.42 2.13 2.13-1.42 1.41-2.12-2.12z" />
+    </svg>
+  );
+}
+
+function IconAmbientGlowReset() {
+  return (
+    <svg viewBox="0 0 24 24" className="h-3.5 w-3.5 fill-current" aria-hidden>
+      <path d="M12 5V1L7 6l5 5V7c3.31 0 6 2.69 6 6s-2.69 6-6 6-6-2.69-6-6H4c0 4.42 3.58 8 8 8s8-3.58 8-8-3.58-8-8-8z" />
+    </svg>
+  );
+}
+
+function AmbientGlowRange({
+  label,
+  valueLabel,
+  min,
+  max,
+  step,
+  value,
+  defaultValue,
+  disabled,
+  ariaLabel,
+  onChange,
+}: {
+  label: string;
+  valueLabel: string;
+  min: number;
+  max: number;
+  step: number;
+  value: number;
+  defaultValue: number;
+  disabled?: boolean;
+  ariaLabel: string;
+  onChange: (value: number) => void;
+}) {
+  const fill = ((value - min) / (max - min)) * 100;
+  const isDefault = Math.abs(value - defaultValue) < step * 0.5 + 1e-6;
+  return (
+    <div className="flex items-center gap-1.5 px-1 py-0.5">
+      <span className="w-[4.75rem] shrink-0 truncate text-[11px] text-white/65" title={label}>
+        {label}
+      </span>
+      <input
+        type="range"
+        min={min}
+        max={max}
+        step={step}
+        value={value}
+        disabled={disabled}
+        aria-label={ariaLabel}
+        onChange={(event) => onChange(Number(event.target.value))}
+        className="kodik-player-beta-range site-range min-w-0 flex-1 cursor-pointer disabled:opacity-40"
+        style={{ "--range-fill": `${fill}%` } as CSSProperties}
+      />
+      <span className="w-[2.75rem] shrink-0 text-right text-[10px] tabular-nums text-white/55">
+        {valueLabel}
+      </span>
+      <button
+        type="button"
+        disabled={disabled || isDefault}
+        title="Сбросить на значение по умолчанию"
+        aria-label={`Сбросить «${label}» на значение по умолчанию`}
+        onMouseDown={(event) => event.preventDefault()}
+        onClick={() => onChange(defaultValue)}
+        className="inline-flex h-6 w-6 shrink-0 items-center justify-center rounded text-white/55 transition hover:bg-white/10 hover:text-white/90 disabled:cursor-default disabled:opacity-25 disabled:hover:bg-transparent"
+      >
+        <IconAmbientGlowReset />
+      </button>
+    </div>
   );
 }
 
@@ -318,14 +434,19 @@ export function KodikPlayerBetaControls({
   playbackRates = DEFAULT_PLAYBACK_RATES,
   playbackRate = 1,
   onPlaybackRateChange,
+  ambientGlowAvailable = false,
+  ambientGlowSettings,
+  onAmbientGlowSettingsChange,
 }: Props) {
   const duration = Math.max(playback.durationSeconds, 0);
   const position = Math.min(Math.max(playback.positionSeconds, 0), duration || playback.positionSeconds);
   const [qualityTapOpen, setQualityTapOpen] = useState(false);
   const [rateMenuOpen, setRateMenuOpen] = useState(false);
+  const [ambientMenuOpen, setAmbientMenuOpen] = useState(false);
   const externalQuality = typeof onQualityClick === "function";
   const qualityOpen = externalQuality ? qualityPressed : qualityTapOpen;
   const qualitySplit = !externalQuality && !controlsDocked && playback.mediaUnlocked && qualityTapOpen;
+  const ambientEnabled = ambientGlowSettings?.enabled === true;
 
   useEffect(() => {
     // Click-through to Kodik only while «Авто» keeps the quality gap open.
@@ -348,7 +469,10 @@ export function KodikPlayerBetaControls({
     if (!interactive && rateMenuOpen) {
       setRateMenuOpen(false);
     }
-  }, [interactive, qualityTapOpen, rateMenuOpen]);
+    if (!interactive && ambientMenuOpen) {
+      setAmbientMenuOpen(false);
+    }
+  }, [interactive, qualityTapOpen, rateMenuOpen, ambientMenuOpen]);
 
   // While paused, chrome stays visible — collapse the gap after the same idle delay.
   useEffect(() => {
@@ -362,6 +486,23 @@ export function KodikPlayerBetaControls({
     const timer = window.setTimeout(() => setRateMenuOpen(false), qualityPanelIdleMs);
     return () => window.clearTimeout(timer);
   }, [rateMenuOpen, playback.isPlaying, qualityPanelIdleMs]);
+
+  useEffect(() => {
+    if (!ambientMenuOpen || playback.isPlaying) return;
+    const timer = window.setTimeout(() => setAmbientMenuOpen(false), qualityPanelIdleMs);
+    return () => window.clearTimeout(timer);
+  }, [ambientMenuOpen, playback.isPlaying, qualityPanelIdleMs]);
+
+  const openAmbientGlowSettings = useCallback(() => {
+    setRateMenuOpen(false);
+    setAmbientMenuOpen((open) => {
+      const next = !open;
+      if (next && !ambientEnabled) {
+        onAmbientGlowSettingsChange?.({ enabled: true });
+      }
+      return next;
+    });
+  }, [ambientEnabled, onAmbientGlowSettingsChange]);
 
   const handleQualityTap = useCallback(() => {
     if (!playback.mediaUnlocked) return;
@@ -707,7 +848,10 @@ export function KodikPlayerBetaControls({
               }
               disabled={disabled || !playback.mediaUnlocked}
               pressed={rateMenuOpen}
-              onClick={() => setRateMenuOpen((open) => !open)}
+              onClick={() => {
+                setAmbientMenuOpen(false);
+                setRateMenuOpen((open) => !open);
+              }}
               className="kodik-player-beta-rate-button text-[11px] font-semibold tabular-nums sm:text-xs"
             >
               {formatPlaybackRate(playbackRate)}
@@ -767,6 +911,187 @@ export function KodikPlayerBetaControls({
           <ControlButton label="Транслировать на ТВ" disabled={disabled} onClick={onCast}>
             <IconCast />
           </ControlButton>
+        ) : null}
+
+        {ambientGlowAvailable && ambientGlowSettings && onAmbientGlowSettingsChange ? (
+          <div className="relative shrink-0">
+            <ControlButton
+              label={
+                ambientMenuOpen
+                  ? "Закрыть настройки подсветки"
+                  : ambientEnabled
+                    ? "Настройки подсветки по краям"
+                    : "Подсветка по краям"
+              }
+              disabled={disabled}
+              pressed={ambientMenuOpen || ambientEnabled}
+              onClick={openAmbientGlowSettings}
+              className="kodik-player-beta-ambient-glow-button"
+            >
+              <IconAmbientGlow />
+            </ControlButton>
+            {ambientMenuOpen ? (
+              <div
+                className="absolute bottom-full right-0 z-50 mb-2 max-h-[min(70vh,22rem)] w-[17.5rem] overflow-y-auto rounded-lg border border-white/15 bg-black/85 p-2 shadow-xl backdrop-blur-md"
+                role="dialog"
+                aria-label="Настройки подсветки"
+                onPointerDown={(event) => event.stopPropagation()}
+              >
+                <p className="px-0.5 pb-1.5 text-[10px] font-semibold uppercase tracking-wide text-white/45">
+                  Подсветка
+                </p>
+                <label className="mb-2 flex cursor-pointer items-center justify-between gap-2 rounded-md px-1 py-1.5 text-xs text-white/90 hover:bg-white/5">
+                  <span>Включена</span>
+                  <input
+                    type="checkbox"
+                    checked={ambientEnabled}
+                    onChange={(event) =>
+                      onAmbientGlowSettingsChange({ enabled: event.target.checked })
+                    }
+                    className="h-4 w-4 accent-white"
+                  />
+                </label>
+
+                <label className="mb-2 block px-1">
+                  <span className="mb-1 block text-[11px] text-white/65">Пресет</span>
+                  <select
+                    value=""
+                    disabled={!ambientEnabled}
+                    aria-label="Пресет подсветки"
+                    onChange={(event) => {
+                      const id = event.target.value as PlayerAmbientGlowPresetId;
+                      if (!id) return;
+                      onAmbientGlowSettingsChange(
+                        applyAmbientGlowPreset(ambientGlowSettings, id),
+                      );
+                      event.currentTarget.value = "";
+                    }}
+                    className="w-full rounded-md border border-white/15 bg-black/60 px-2 py-1.5 text-xs text-white disabled:opacity-40"
+                  >
+                    <option value="" disabled>
+                      Выбрать…
+                    </option>
+                    {PLAYER_AMBIENT_GLOW_PRESETS.map((preset) => (
+                      <option key={preset.id} value={preset.id}>
+                        {preset.label}
+                      </option>
+                    ))}
+                  </select>
+                </label>
+
+                <p className="px-0.5 pb-1 pt-0.5 text-[10px] font-semibold uppercase tracking-wide text-white/35">
+                  Внешний вид
+                </p>
+                <AmbientGlowRange
+                  label="Размытие"
+                  valueLabel={`${Math.round(ambientGlowSettings.blur)}px`}
+                  min={PLAYER_AMBIENT_GLOW_BLUR_MIN}
+                  max={PLAYER_AMBIENT_GLOW_BLUR_MAX}
+                  step={PLAYER_AMBIENT_GLOW_BLUR_STEP}
+                  value={ambientGlowSettings.blur}
+                  defaultValue={PLAYER_AMBIENT_GLOW_BLUR_DEFAULT}
+                  disabled={!ambientEnabled}
+                  ariaLabel="Размытие подсветки"
+                  onChange={(blur) => onAmbientGlowSettingsChange({ blur })}
+                />
+                <AmbientGlowRange
+                  label="Непрозрачность"
+                  valueLabel={`${Math.round(ambientGlowSettings.opacity * 100)}%`}
+                  min={PLAYER_AMBIENT_GLOW_OPACITY_MIN}
+                  max={PLAYER_AMBIENT_GLOW_OPACITY_MAX}
+                  step={PLAYER_AMBIENT_GLOW_OPACITY_STEP}
+                  value={ambientGlowSettings.opacity}
+                  defaultValue={PLAYER_AMBIENT_GLOW_OPACITY_DEFAULT}
+                  disabled={!ambientEnabled}
+                  ariaLabel="Непрозрачность подсветки"
+                  onChange={(opacity) => onAmbientGlowSettingsChange({ opacity })}
+                />
+                <AmbientGlowRange
+                  label="Яркость"
+                  valueLabel={`${ambientGlowSettings.brightness.toFixed(2)}×`}
+                  min={PLAYER_AMBIENT_GLOW_BRIGHTNESS_MIN}
+                  max={PLAYER_AMBIENT_GLOW_BRIGHTNESS_MAX}
+                  step={PLAYER_AMBIENT_GLOW_BRIGHTNESS_STEP}
+                  value={ambientGlowSettings.brightness}
+                  defaultValue={PLAYER_AMBIENT_GLOW_BRIGHTNESS_DEFAULT}
+                  disabled={!ambientEnabled}
+                  ariaLabel="Яркость подсветки"
+                  onChange={(brightness) => onAmbientGlowSettingsChange({ brightness })}
+                />
+                <AmbientGlowRange
+                  label="Насыщенность"
+                  valueLabel={`${ambientGlowSettings.saturate.toFixed(1)}×`}
+                  min={PLAYER_AMBIENT_GLOW_SATURATE_MIN}
+                  max={PLAYER_AMBIENT_GLOW_SATURATE_MAX}
+                  step={PLAYER_AMBIENT_GLOW_SATURATE_STEP}
+                  value={ambientGlowSettings.saturate}
+                  defaultValue={PLAYER_AMBIENT_GLOW_SATURATE_DEFAULT}
+                  disabled={!ambientEnabled}
+                  ariaLabel="Насыщенность подсветки"
+                  onChange={(saturate) => onAmbientGlowSettingsChange({ saturate })}
+                />
+                <AmbientGlowRange
+                  label="Масштаб"
+                  valueLabel={`${ambientGlowSettings.scale.toFixed(2)}×`}
+                  min={PLAYER_AMBIENT_GLOW_SCALE_MIN}
+                  max={PLAYER_AMBIENT_GLOW_SCALE_MAX}
+                  step={PLAYER_AMBIENT_GLOW_SCALE_STEP}
+                  value={ambientGlowSettings.scale}
+                  defaultValue={PLAYER_AMBIENT_GLOW_SCALE_DEFAULT}
+                  disabled={!ambientEnabled}
+                  ariaLabel="Масштаб подсветки"
+                  onChange={(scale) => onAmbientGlowSettingsChange({ scale })}
+                />
+
+                <p className="px-0.5 pb-1 pt-1.5 text-[10px] font-semibold uppercase tracking-wide text-white/35">
+                  Производительность
+                </p>
+                <AmbientGlowRange
+                  label="Качество"
+                  valueLabel={`${ambientGlowSettings.downscale.toFixed(2)}×`}
+                  min={PLAYER_AMBIENT_GLOW_DOWNSCALE_MIN}
+                  max={PLAYER_AMBIENT_GLOW_DOWNSCALE_MAX}
+                  step={PLAYER_AMBIENT_GLOW_DOWNSCALE_STEP}
+                  value={ambientGlowSettings.downscale}
+                  defaultValue={PLAYER_AMBIENT_GLOW_DOWNSCALE_DEFAULT}
+                  disabled={!ambientEnabled}
+                  ariaLabel="Качество сэмпла подсветки"
+                  onChange={(downscale) => onAmbientGlowSettingsChange({ downscale })}
+                />
+                <AmbientGlowRange
+                  label="Интервал"
+                  valueLabel={`${Math.round(ambientGlowSettings.updateIntervalMs)}мс`}
+                  min={PLAYER_AMBIENT_GLOW_UPDATE_MS_MIN}
+                  max={PLAYER_AMBIENT_GLOW_UPDATE_MS_MAX}
+                  step={PLAYER_AMBIENT_GLOW_UPDATE_MS_STEP}
+                  value={ambientGlowSettings.updateIntervalMs}
+                  defaultValue={PLAYER_AMBIENT_GLOW_UPDATE_MS_DEFAULT}
+                  disabled={!ambientEnabled}
+                  ariaLabel="Интервал обновления подсветки"
+                  onChange={(updateIntervalMs) =>
+                    onAmbientGlowSettingsChange({ updateIntervalMs })
+                  }
+                />
+                <button
+                  type="button"
+                  disabled={!ambientEnabled}
+                  title="Сбросить все параметры"
+                  aria-label="Сбросить все параметры подсветки"
+                  onMouseDown={(event) => event.preventDefault()}
+                  onClick={() =>
+                    onAmbientGlowSettingsChange({
+                      ...DEFAULT_PLAYER_AMBIENT_GLOW_SETTINGS,
+                      enabled: ambientGlowSettings.enabled,
+                    })
+                  }
+                  className="mt-1 flex w-full items-center justify-center gap-1.5 rounded-md px-2 py-1.5 text-[11px] font-medium text-white/70 transition hover:bg-white/10 hover:text-white disabled:cursor-not-allowed disabled:opacity-40"
+                >
+                  <IconAmbientGlowReset />
+                  <span>Сбросить всё</span>
+                </button>
+              </div>
+            ) : null}
+          </div>
         ) : null}
 
         <ControlButton

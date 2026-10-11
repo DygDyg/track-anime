@@ -46,6 +46,13 @@ import {
   readStoredPlayerBrightness,
 } from "@/lib/player-screen-brightness";
 import {
+  DEFAULT_PLAYER_AMBIENT_GLOW_SETTINGS,
+  isDisplayWiderThan16x9,
+  readPlayerAmbientGlowSettings,
+  writePlayerAmbientGlowSettings,
+  type PlayerAmbientGlowSettings,
+} from "@/lib/player-ambient-glow";
+import {
   applyPlayerStreamVolume,
   clampPlayerStreamVolume,
   hasNativePlayerStreamVolume,
@@ -222,6 +229,12 @@ export function KodikPlayerBetaViewport({
   const [activeQualityHeight, setActiveQualityHeight] = useState<number | null>(null);
   /** HLS not mounted until user hits play (idle storyboard backdrop). */
   const [taPlusStarted, setTaPlusStarted] = useState(false);
+  /** Logical settings — kept even when display AR ≤ 16:9 (runtime glow stays off). */
+  const [ambientGlowSettings, setAmbientGlowSettings] = useState<PlayerAmbientGlowSettings>(
+    () => ({ ...DEFAULT_PLAYER_AMBIENT_GLOW_SETTINGS }),
+  );
+  const [displayWiderThan16x9, setDisplayWiderThan16x9] = useState(false);
+  const [prefersReducedMotion, setPrefersReducedMotion] = useState(false);
   /** Scrub position while HLS is not mounted yet. */
   const [idleSeekSeconds, setIdleSeekSeconds] = useState(() => {
     const fromResume = initialResume?.positionSeconds;
@@ -345,6 +358,27 @@ export function KodikPlayerBetaViewport({
       const native = readNativePlayerStreamVolume();
       if (native != null) volumeValueRef.current = native;
     }
+  }, []);
+
+  useEffect(() => {
+    setAmbientGlowSettings(readPlayerAmbientGlowSettings());
+    const syncWide = () => setDisplayWiderThan16x9(isDisplayWiderThan16x9());
+    syncWide();
+    window.addEventListener("resize", syncWide);
+    window.addEventListener("orientationchange", syncWide);
+    return () => {
+      window.removeEventListener("resize", syncWide);
+      window.removeEventListener("orientationchange", syncWide);
+    };
+  }, []);
+
+  useEffect(() => {
+    if (typeof window === "undefined" || typeof window.matchMedia !== "function") return;
+    const mq = window.matchMedia("(prefers-reduced-motion: reduce)");
+    const sync = () => setPrefersReducedMotion(mq.matches);
+    sync();
+    mq.addEventListener("change", sync);
+    return () => mq.removeEventListener("change", sync);
   }, []);
 
   useEffect(() => {
@@ -633,6 +667,18 @@ export function KodikPlayerBetaViewport({
     setUiVisible(true);
     scheduleHide();
   }, [kodikUiAccess, scheduleHide]);
+
+  const handleAmbientGlowSettingsChange = useCallback(
+    (patch: Partial<PlayerAmbientGlowSettings>) => {
+      setAmbientGlowSettings((prev) => {
+        const next = { ...prev, ...patch };
+        writePlayerAmbientGlowSettings(next);
+        return next;
+      });
+      revealUi();
+    },
+    [revealUi],
+  );
 
   useEffect(() => {
     if (!isTaPlus) {
@@ -1739,6 +1785,13 @@ export function KodikPlayerBetaViewport({
       onPlaybackRateChange={
         isTaPlus && taPlusStarted ? handlePlaybackRateChange : undefined
       }
+      ambientGlowAvailable={isTaPlus && displayWiderThan16x9 && fullscreenActive}
+      ambientGlowSettings={ambientGlowSettings}
+      onAmbientGlowSettingsChange={
+        isTaPlus && displayWiderThan16x9 && fullscreenActive
+          ? handleAmbientGlowSettingsChange
+          : undefined
+      }
       tvBarPlayPrimary={!continueAction}
     />
   );
@@ -1818,6 +1871,21 @@ export function KodikPlayerBetaViewport({
                 seasonNumber={seasonNumber}
                 episodeNumber={currentEpisode}
                 initialResume={initialResume}
+                ambientGlowActive={
+                  ambientGlowSettings.enabled &&
+                  displayWiderThan16x9 &&
+                  fullscreenActive &&
+                  !prefersReducedMotion
+                }
+                ambientGlowSettings={{
+                  blur: ambientGlowSettings.blur,
+                  opacity: ambientGlowSettings.opacity,
+                  brightness: ambientGlowSettings.brightness,
+                  saturate: ambientGlowSettings.saturate,
+                  scale: ambientGlowSettings.scale,
+                  downscale: ambientGlowSettings.downscale,
+                  updateIntervalMs: ambientGlowSettings.updateIntervalMs,
+                }}
                 onReady={handleTaPlusReady}
                 onProgress={onProgress}
                 onPause={onPause}

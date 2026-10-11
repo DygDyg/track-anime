@@ -19,7 +19,7 @@ Next.js anime streaming site with Shikimori OAuth + Kodik player. Data lives in 
 | Task | Start here |
 |------|------------|
 | Fix auth/login | `src/lib/auth/shikimori-oauth.ts`, `src/lib/auth/local-credentials.ts`, `src/lib/auth/qr-login.ts`, `src/app/api/auth/callback/shikimori/route.ts` |
-| Fix player | `src/components/anime/KodikPlayer.tsx`, `KodikPlayerBetaViewport.tsx`, `TaPlusPlayer.tsx`, `src/lib/kodik-player-api.ts`, `src/lib/kodik-ftor.ts`, `src/hooks/useTaPlusStream.ts`, `CvhWatchSection.tsx`, `src/lib/cvh-player.ts`, `src/lib/anime-watch-share.ts` |
+| Fix player | `src/components/anime/KodikPlayer.tsx`, `KodikPlayerBetaViewport.tsx`, `TaPlusPlayer.tsx`, `VideoAmbientGlow.tsx`, `src/lib/player-ambient-glow.ts`, `src/lib/kodik-player-api.ts`, `src/lib/kodik-ftor.ts`, `src/hooks/useTaPlusStream.ts`, `CvhWatchSection.tsx`, `src/lib/cvh-player.ts`, `src/lib/anime-watch-share.ts` |
 | Fix watch party | `src/hooks/useWatchParty.ts`, `scripts/watch-party-server.mjs`, `scripts/watch-party-history.mjs`, `src/components/anime/AnimeWatchPanel.tsx`, `src/lib/admin/watch-party-history.ts` |
 | Fix home feed | `src/lib/releases.ts`, `src/lib/home-feed-cache.ts`, `src/components/ReleaseFeed.tsx`, `src/lib/home-novelties.ts`, `HomeNoveltiesSection.tsx` |
 | Fix release card / hover / mobile sheet | `ReleaseCard.tsx`, `AnimeCardHoverShell.tsx`, `ReleaseCardHoverPanel.tsx`, `ReleaseCardMobileSheet.tsx`, `ReleaseCardPreviewMeta.tsx`, `ReleaseCardQuickActions.tsx` |
@@ -33,7 +33,7 @@ Next.js anime streaming site with Shikimori OAuth + Kodik player. Data lives in 
 | Fix MAL ID / AniSkip mapping | `src/lib/admin/mal-id-sync.ts`, `src/lib/shikimori/mal-id.ts`, `src/lib/aniskip.ts`, `MalIdSyncPanel.tsx` |
 | Fix posters | `src/lib/poster.ts`, `AnimePoster.tsx`, `src/lib/cover-cache.ts`, `src/lib/poster-fallback.ts`, `src/lib/admin/cover-cache-settings.ts`, `src/app/api/cover/route.ts`, `/admin/covers` |
 | Fix notifications | `src/lib/notifications/`, `src/app/api/notifications/`, `scripts/notification-worker.ts` |
-| Fix companion | `src/components/companion/AquaCoderCompanion.tsx`, `src/lib/companion/AquaCoderCanvas.ts`, `src/lib/companion/companion-bus.ts`, `public/companion/aqua-coder-chibi/`, `aqua-coder-web/` |
+| Fix companion | `src/components/companion/AquaCoderCompanion.tsx`, `src/lib/companion/AquaCoderCanvas.ts`, `src/lib/companion/companion-bus.ts`, `src/lib/site-settings.ts` (`companionEnabled` local + `companionDisabledForAccount` synced, `isCompanionEnabledInSettings`), `public/companion/aqua-coder-chibi/`, `aqua-coder-web/` |
 | Fix admin | `src/lib/auth/admin.ts`, `src/app/admin/` |
 | Fix DB WebDAV backup | `src/lib/admin/db-backup.ts`, `db-backup-settings.ts`, `db-backup-webdav.ts`, `DbBackupSettingsPanel.tsx`, `/admin/db`, cron в `kodik-sync-scheduled.ts` |
 | Fix app promo | `src/lib/admin/app-promo-settings.ts`, `AndroidAppPromoPrompt.tsx`, `DesktopAppPromoPrompt.tsx`, `/admin/app-promo` |
@@ -52,7 +52,7 @@ Codex: использовать эту таблицу напрямую и чит
 | Anime page | lightbox, player expand, trailer, screenshots | `AnimePageView.tsx`, `AnimeWatchPanel.tsx`, `KodikPlayer.tsx`, `KodikPlayerBetaViewport.tsx` |
 | Covers / posters | обложк, poster, thumb, cover | `AnimePoster.tsx`, `src/lib/poster.ts`, `cover-cache.ts`, `poster-fallback.ts`, `cover-cache-settings.ts`, `src/app/api/cover/route.ts` |
 | Lists / sync | списк, sync, rewatches, shikimori | `favorites-sync.ts`, `user-list-mutations.ts` |
-| Player | kodik, taplus, ta plus, cvh, videohub, плеер, progress, theater, по высоте | `KodikPlayer.tsx`, `KodikPlayerBetaViewport.tsx`, `TaPlusPlayer.tsx`, `TaPlusIdleBackdrop.tsx`, `hooks/useTaPlusStream.ts`, `ta-plus-tiles.ts`, `ta-plus-previews.ts`, `CvhWatchSection.tsx`, `kodik-player-api.ts`, `kodik-ftor.ts`, `cvh-player.ts`, `globals.css` |
+| Player | kodik, taplus, ta plus, cvh, videohub, плеер, progress, theater, по высоте, ambient, подсветк | `KodikPlayer.tsx`, `KodikPlayerBetaViewport.tsx`, `TaPlusPlayer.tsx`, `VideoAmbientGlow.tsx`, `player-ambient-glow.ts`, `TaPlusIdleBackdrop.tsx`, `hooks/useTaPlusStream.ts`, `ta-plus-tiles.ts`, `ta-plus-previews.ts`, `CvhWatchSection.tsx`, `kodik-player-api.ts`, `kodik-ftor.ts`, `cvh-player.ts`, `globals.css` |
 | Deploy | деплой, deploy, prod | **`npm run deploy:smart`** (агент сам выбирает канал; не спрашивать webhook/Actions/SSH), `deploy-auto.ps1`, `git-deploy.ts`, `.github/workflows/deploy.yml`, `docs/DEPLOY.md` |
 | Auth | oauth, login, session | `shikimori-oauth.ts`, `src/app/api/auth/` |
 | Home feed | главная, лента, новинки | `releases.ts`, `home-feed-cache.ts`, `ReleaseFeed.tsx`, `home-novelties.ts`, `HomeNoveltiesSection.tsx` |
@@ -141,6 +141,7 @@ Calendar: `/calendar` → calendar.ts → local Kodik DB or Shikimori `/api/cale
 | TV player arrows move focus instead of seek | Center Play has `data-tv-player-seek-keys`; arrows seek / jump chrome — see `KodikPlayerBetaViewport` |
 | TA Plus bottom bar before play | Idle hides bottom controls (no synthetic scrub); episode strip + Continue/play stay until HLS mounts |
 | TA Plus play shows UI but no video | `initialResume`/`taPlusSeekSeconds` must not reload HLS after ready — boot seek is captured once in `TaPlusPlayer` |
+| Ambient glow on non-ultrawide / windowed | Button + runtime only if `screen` AR > 16:9 and native fullscreen; settings JSON `ta:player-ambient-glow` may stay enabled while runtime unmounts (`VideoAmbientGlow`) so there is no canvas load |
 | TA Plus no OP/ED skip button | Skip-times used to clear when HLS duration briefly hits 0; fetch uses last-good/1440 fallback (`skipTimesEpisodeLength`) |
 | TA Plus prefer parser skips | If `/ftor` returns `skip_timings`/`skip_raw`, TA Plus uses them instead of AniSkip (`kodik-parser-skip.ts`) |
 

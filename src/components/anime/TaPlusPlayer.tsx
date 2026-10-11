@@ -15,6 +15,7 @@ import type {
   KodikPlayerResume,
   KodikPlayerResumeMode,
 } from "@/components/anime/KodikPlayer";
+import { VideoAmbientGlow } from "@/components/anime/VideoAmbientGlow";
 import {
   readKodikPlayerVolumePreferences,
   writeKodikPlayerVolumePreferences,
@@ -63,6 +64,20 @@ type Props = {
   onBufferedEndChange?: (bufferedEndSeconds: number) => void;
   /** Active ABR / locked height for UI label (e.g. 720). */
   onActiveQualityChange?: (height: number | null) => void;
+  /**
+   * Runtime ambient glow (tiny canvas + CSS blur). Parent gates by preference + display AR.
+   * When false, glow is fully unmounted — no sampling.
+   */
+  ambientGlowActive?: boolean;
+  ambientGlowSettings?: {
+    blur: number;
+    opacity: number;
+    brightness: number;
+    saturate: number;
+    scale: number;
+    downscale: number;
+    updateIntervalMs: number;
+  } | null;
 };
 
 const DEFAULT_PLAYBACK: KodikPlayerPlaybackState = {
@@ -119,10 +134,13 @@ export const TaPlusPlayer = forwardRef<TaPlusPlayerHandle, Props>(function TaPlu
     onStreamFailed,
     onBufferedEndChange,
     onActiveQualityChange,
+    ambientGlowActive = false,
+    ambientGlowSettings = null,
   },
   ref,
 ) {
   const videoRef = useRef<HTMLVideoElement>(null);
+  const [videoEl, setVideoEl] = useState<HTMLVideoElement | null>(null);
   const hlsRef = useRef<Hls | null>(null);
   const seekAppliedForSrcRef = useRef<string | null>(null);
   const pendingResumeModeRef = useRef<KodikPlayerResumeMode>("play");
@@ -524,19 +542,28 @@ export const TaPlusPlayer = forwardRef<TaPlusPlayerHandle, Props>(function TaPlu
   return (
     <div
       className={[
-        "overflow-hidden bg-black",
+        "relative bg-black",
+        ambientGlowActive ? "overflow-visible" : "overflow-hidden",
         fillViewport ? "anime-player-shell-viewport h-full w-full max-w-none" : "",
         className ?? "",
       ].join(" ")}
     >
+      <VideoAmbientGlow
+        video={videoEl}
+        active={ambientGlowActive}
+        settings={ambientGlowSettings}
+      />
       <div
         className={[
-          "kodik-player-beta-frame relative w-full",
+          "kodik-player-beta-frame relative z-[1] w-full",
           fillViewport ? "anime-player-viewport-frame h-full max-h-full" : "aspect-video",
         ].join(" ")}
       >
         <video
-          ref={videoRef}
+          ref={(node) => {
+            videoRef.current = node;
+            setVideoEl(node);
+          }}
           className="absolute inset-0 h-full w-full object-contain"
           controls={false}
           playsInline

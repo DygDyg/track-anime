@@ -19,6 +19,7 @@ import {
   COMPANION_SCALE_MAX,
   COMPANION_SCALE_MIN,
   COMPANION_SCALE_STEP,
+  isCompanionEnabledInSettings,
   normalizeAvatarDecorationScale,
   normalizeCompanionScale,
   SITE_ACCENT_OPTIONS,
@@ -647,7 +648,8 @@ export function SiteSettingsAppearanceTab({
       <section className="space-y-2">
         <SectionTitle>Анимации и персонаж</SectionTitle>
         <SectionHint>
-          Сохраняются только в этом браузере и не синхронизируются с аккаунтом.
+          Анимации и локальный персонаж сохраняются только в этом браузере. Отключение персонажа
+          для аккаунта синхронизируется и важнее локальной галочки.
         </SectionHint>
         <ToggleRow
           label="Уменьшить анимации"
@@ -669,10 +671,23 @@ export function SiteSettingsAppearanceTab({
         />
         <ToggleRow
           label="Персонаж Aqua Coder"
-          hint="Показывает персонажа в правом нижнем углу экрана"
+          hint={
+            settings.companionDisabledForAccount
+              ? "Локальная настройка этого браузера; сейчас скрыт настройкой аккаунта"
+              : "Показывает персонажа в правом нижнем углу экрана (только этот браузер)"
+          }
           checked={settings.companionEnabled}
           onChange={(checked) => patchLocalSettings({ companionEnabled: checked })}
         />
+        {user ? (
+          <ToggleRow
+            label="Отключить персонажа для аккаунта"
+            hint="Скрывает персонажа на всех устройствах; важнее локальной настройки"
+            checked={settings.companionDisabledForAccount}
+            disabled={settingsBusy}
+            onChange={(checked) => updateSettings({ companionDisabledForAccount: checked })}
+          />
+        ) : null}
         <RangeRow
           label="Размер персонажа"
           hint="Масштаб companion (1× ≈ половина исходного кадра)"
@@ -681,7 +696,7 @@ export function SiteSettingsAppearanceTab({
           max={COMPANION_SCALE_MAX}
           step={COMPANION_SCALE_STEP}
           unit="×"
-          disabled={!settings.companionEnabled}
+          disabled={!isCompanionEnabledInSettings(settings)}
           onChange={(value) =>
             patchLocalSettings({ companionScale: normalizeCompanionScale(value) })
           }
@@ -690,7 +705,7 @@ export function SiteSettingsAppearanceTab({
           label="Отключить анимации персонажа"
           hint="Показывает только первый кадр каждой позы без движения"
           checked={settings.companionStaticAnimations}
-          disabled={!settings.companionEnabled}
+          disabled={!isCompanionEnabledInSettings(settings)}
           onChange={(checked) => patchLocalSettings({ companionStaticAnimations: checked })}
         />
       </section>

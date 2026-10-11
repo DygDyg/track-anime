@@ -148,6 +148,11 @@ export type SiteSettings = {
   playerLargeUi: boolean;
   /** Локально для браузера: показывать companion Aqua Coder в правом нижнем углу */
   companionEnabled: boolean;
+  /**
+   * Синхронизируется с аккаунтом: полностью скрыть companion на всех устройствах.
+   * Важнее локального `companionEnabled`.
+   */
+  companionDisabledForAccount: boolean;
   /** Локально для браузера: масштаб companion (1 = кадр 192×208) */
   companionScale: number;
   /** Локально для браузера: без покадровой анимации — только первый кадр каждой позы */
@@ -302,6 +307,7 @@ export const DEFAULT_SITE_SETTINGS: SiteSettings = {
   tvNavigationEnabled: true,
   playerLargeUi: true,
   companionEnabled: true,
+  companionDisabledForAccount: false,
   companionScale: COMPANION_SCALE_DEFAULT,
   companionStaticAnimations: false,
 };
@@ -406,6 +412,14 @@ export function normalizeCompanionScale(value: unknown): number {
 /** Settings scale (1×) → canvas/CSS scale with display base applied. */
 export function resolveCompanionDisplayScale(value: unknown): number {
   return normalizeCompanionScale(value) * COMPANION_DISPLAY_BASE;
+}
+
+/** Учётный запрет важнее локального включения. */
+export function isCompanionEnabledInSettings(
+  settings: Pick<SiteSettings, "companionEnabled" | "companionDisabledForAccount">,
+): boolean {
+  if (settings.companionDisabledForAccount) return false;
+  return settings.companionEnabled !== false;
 }
 
 function parseAutoSkipTranslationIds(value: unknown): AutoSkipTranslationIds {
@@ -518,6 +532,7 @@ export function normalizeSiteSettings(raw: unknown): SiteSettings {
     tvNavigationEnabled: raw.tvNavigationEnabled !== false,
     playerLargeUi: raw.playerLargeUi !== false,
     companionEnabled: raw.companionEnabled !== false,
+    companionDisabledForAccount: raw.companionDisabledForAccount === true,
     companionScale: normalizeCompanionScale(raw.companionScale),
     companionStaticAnimations: raw.companionStaticAnimations === true,
   };

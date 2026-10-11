@@ -15,6 +15,7 @@ import {
 import { isTvNavigationSessionActive } from "@/lib/tv-navigation";
 import {
   COMPANION_FRAME_WIDTH,
+  isCompanionEnabledInSettings,
   normalizeCompanionScale,
   resolveCompanionDisplayScale,
 } from "@/lib/site-settings";
@@ -77,7 +78,7 @@ export function AquaCoderCompanion() {
   const [menuOpen, setMenuOpen] = useState(false);
   const [desktop, setDesktop] = useState(false);
   const [currentAnimation, setCurrentAnimation] = useState<CompanionAnimation>("idle");
-  const enabled = settings.companionEnabled;
+  const enabled = isCompanionEnabledInSettings(settings);
   const companionScale = normalizeCompanionScale(settings.companionScale);
   const displayScale = resolveCompanionDisplayScale(companionScale);
   const companionStatic = settings.companionStaticAnimations === true;
