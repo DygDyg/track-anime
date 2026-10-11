@@ -1863,7 +1863,10 @@ html[data-tv-nav="true"] .kodik-player-beta-theater-button {
   flex: 0 0 auto;
   width: 5rem;
   min-width: 0;
-  overflow: hidden;
+  /* Keep thumb visible when expanded; collapse rule sets overflow:hidden. */
+  overflow: visible;
+  padding-block: 0.35rem;
+  margin-block: -0.35rem;
   transition:
     width 0.15s ease,
     opacity 0.15s ease,
@@ -1891,6 +1894,7 @@ html[data-tv-nav="true"] .kodik-player-beta-theater-button {
     width: 0;
     opacity: 0;
     margin-inline: 0;
+    overflow: hidden;
     pointer-events: none;
   }
 
@@ -1925,53 +1929,6 @@ html[data-tv-nav="true"] .kodik-player-beta-theater-button {
 
 .kodik-player-beta-episodes::-webkit-scrollbar {
   display: none;
-}
-
-.kodik-player-beta-episodes-edge {
-  pointer-events: none;
-  position: absolute;
-  bottom: 0;
-  z-index: 2;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  width: 2.75rem;
-  height: 100%;
-}
-
-.kodik-player-beta-episodes-edge--left {
-  left: 0;
-  background: linear-gradient(to right, rgba(0, 0, 0, 0.72), transparent);
-}
-
-.kodik-player-beta-episodes-edge--right {
-  right: 0;
-  background: linear-gradient(to left, rgba(0, 0, 0, 0.72), transparent);
-}
-
-.kodik-player-beta-episodes-scroll-btn {
-  pointer-events: auto;
-  display: inline-flex;
-  height: 2.25rem;
-  width: 2rem;
-  align-items: center;
-  justify-content: center;
-  border: 1px solid rgba(255, 255, 255, 0.18);
-  border-radius: 0.375rem;
-  background: rgba(0, 0, 0, 0.72);
-  color: rgba(255, 255, 255, 0.9);
-  font-size: 1.25rem;
-  line-height: 1;
-  transition:
-    border-color 0.15s ease,
-    background-color 0.15s ease,
-    color 0.15s ease;
-}
-
-.kodik-player-beta-episodes-scroll-btn:hover {
-  border-color: color-mix(in srgb, var(--accent, #7c5cff) 50%, transparent);
-  background: rgba(0, 0, 0, 0.88);
-  color: #fff;
 }
 
 .kodik-player-beta-episodes-scroll-btn:focus-visible {
@@ -2200,6 +2157,19 @@ html[data-player-theater="height"][data-player-theater-chrome="hidden"] .site-he
   accent-color: var(--accent);
 }
 
+/* White thumb so the knob stays visible on the accent fill. */
+.kodik-player-beta-controls .site-range::-webkit-slider-thumb {
+  border: 2px solid rgba(255, 255, 255, 0.95);
+  background: #fff;
+  box-shadow: 0 0 0 1px rgba(0, 0, 0, 0.35);
+}
+
+.kodik-player-beta-controls .site-range::-moz-range-thumb {
+  border: 2px solid rgba(255, 255, 255, 0.95);
+  background: #fff;
+  box-shadow: 0 0 0 1px rgba(0, 0, 0, 0.35);
+}
+
 @media (max-width: 639px) {
   .kodik-player-beta-stage {
     border-radius: 0.5rem;
@@ -2213,10 +2183,18 @@ html[data-player-theater="height"][data-player-theater-chrome="hidden"] .site-he
     padding: 0.375rem;
   }
 
-  .kodik-player-beta-episodes select,
-  .kodik-player-beta-episodes button {
+  .kodik-player-beta-episodes button,
+  .kodik-player-beta-episodes-scroll-btn {
     height: 2rem;
     min-width: 2rem;
+    width: 2rem;
+  }
+
+  .kodik-player-beta-season-picker > button {
+    height: 2rem;
+    min-width: 2rem;
+    width: auto;
+    padding-inline: 0.25rem;
   }
 
   .kodik-player-beta-controls--overlay {
@@ -2416,22 +2394,22 @@ html[data-player-large-ui="true"] .kodik-player-beta-episodes--overlay {
   gap: 0.5rem;
 }
 
-html[data-player-large-ui="true"] .kodik-player-beta-episodes select,
-html[data-player-large-ui="true"] .kodik-player-beta-episodes button {
+html[data-player-large-ui="true"] .kodik-player-beta-episodes button,
+html[data-player-large-ui="true"] .kodik-player-beta-episodes-scroll-btn {
   height: 2.75rem;
   min-height: 2.75rem;
   min-width: 2.75rem;
+  width: 2.75rem;
   font-size: 0.875rem;
 }
 
-html[data-player-large-ui="true"] .kodik-player-beta-episodes-edge {
-  width: 3.25rem;
-}
-
-html[data-player-large-ui="true"] .kodik-player-beta-episodes-scroll-btn {
+html[data-player-large-ui="true"] .kodik-player-beta-season-picker > button {
   height: 2.75rem;
-  width: 2.5rem;
-  font-size: 1.5rem;
+  min-height: 2.75rem;
+  min-width: 2.75rem;
+  width: auto;
+  padding-inline: 0.35rem;
+  font-size: 0.875rem;
 }
 
 html[data-player-large-ui="true"] .kodik-player-beta-translations-toggle {

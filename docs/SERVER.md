@@ -279,7 +279,7 @@ sudo systemctl start track-anime-watch-party
 
 Прод: зеркала `track-anime.win` (+ `www` + `mirror`), `track-anime.duckdns.org` → Next.js `:3001`. Конфиг в `scripts/server-tuning/nginx.conf` + `track-anime-proxy.conf`, применение: `bash scripts/server-tuning/apply-track-anime-nginx.sh`. В `track-anime-proxy.conf` обязателен `location /watch-party-ws` → `:3002` (иначе `wss` уходит в Next.js и совместный просмотр «висит»).
 
-`track-anime.dygdyg.ru` и `ta.dygdyg.ru` (80/443): для обычных браузеров (`Mozilla*`) — HTML 200 bounce (`error_page 418` / `@ta_legacy_bounce`, `Cache-Control: no-store`) с `location.replace` на `https://track-anime.win$uri?…&legacy_redirect=1` (не 301: браузеры навсегда кэшируют Location и иначе игнорируют новый query). Клиент (`LegacyDomainRedirectNotice` + early script в `layout.tsx`) показывает модалку про отключение legacy-доменов и ссылки на `https://track-anime.github.io` / `https://track-anime.win/`. Без bounce для Android WebView (`; wv)`), `TrackAnimeAndroid` / `TrackAnimeWindows` — иначе старая оболочка открывает `.win` во внешнем браузере и не видит in-app update.
+`track-anime.dygdyg.ru` и `ta.dygdyg.ru` (80/443): для обычных браузеров (`Mozilla*`) — HTML 200 bounce (`error_page 418` / `@ta_legacy_bounce`, `Cache-Control: no-store`) с `location.replace` на `https://track-anime.win$uri?…` (не 301: браузеры навсегда кэшируют Location). Query `legacy_redirect=1` nginx может ещё добавлять — сайт его больше не обрабатывает (модалка убрана). Без bounce для Android WebView (`; wv)`), `TrackAnimeAndroid` / `TrackAnimeWindows` — иначе старая оболочка открывает `.win` во внешнем браузере и не видит in-app update.
 
 Сертификаты Let's Encrypt (certbot timer):
 - `track-anime.win` (+ `www.track-anime.win` + `mirror.track-anime.win` + `777.track-anime.win`) — **отдельный** сертификат `/etc/letsencrypt/live/track-anime.win/`
@@ -436,7 +436,7 @@ npm run kodik:sync:scheduled
 
 ```powershell
 cd E:\GitHub\ta_new
-npm run deploy:smart        # сам выбирает канал: webhook → SSH git / tar / Actions
+npm run deploy:smart        # сам выбирает канал: SSH git → tar → webhook → Actions
 npm run deploy              # авто: site / rpc / apk по git diff (нужен SSH)
 .\scripts\deploy.ps1        # только сайт
 npm run deploy:rpc          # только Discord RPC exe

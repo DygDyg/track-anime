@@ -1,14 +1,15 @@
 # Smart production deploy: pick the best channel for current network.
 #
 # Order (auto):
-#   1) git push → GitHub webhook (server pull+build; Discord start/finish)
-#   2) SSH + git checkout on server  → server-deploy-git-bg.sh
-#   3) SSH without git               → classic deploy.ps1 (tar/scp)
+#   1) SSH + git checkout on server  → server-deploy-git-bg.sh (~5m, Discord soon)
+#   2) SSH without git               → classic deploy.ps1 (tar/scp)
+#   3) git push → GitHub webhook     → wait /api/site-build (+ SSH status if available)
 #   4) GitHub Actions workflow_dispatch (runner SSH from outside RU)
 #
 # Usage:
 #   .\scripts\deploy-smart.ps1
 #   .\scripts\deploy-smart.ps1 -DryRun
+#   .\scripts\deploy-smart.ps1 -Channel webhook-push
 #   .\scripts\deploy-smart.ps1 -Channel actions
 #   .\scripts\deploy-smart.ps1 -NoPush
 #   .\scripts\deploy-smart.ps1 -NoCommit
@@ -24,6 +25,7 @@ param(
     [string]$ServerAppDir = "/var/www/ta_new",
     [string]$SiteUrl = "https://track-anime.win/",
     [string]$Workflow = "deploy.yml",
+    [int]$WebhookWaitMinutes = 3,
     [switch]$Force,
     [switch]$NoForce,
     [switch]$NoPush,
@@ -90,31 +92,189 @@ function Test-GhAvailable {
     }
 }
 
+function Get-SiteBuildProbe {
+    param([string]$Url)
+    $api = ($Url.TrimEnd("/") + "/api/site-build")
+    try {
+        $resp = Invoke-WebRequest -Uri $api -Method Get -TimeoutSec 15 -UseBasicParsing
+        $json = $null
+        try { $json = $resp.Content | ConvertFrom-Json } catch { $json = $null }
+        $fp = $null
+        $buildNumber = $null
+        if ($null -ne $json) {
+            if ($null -ne $json.buildNumber -and "$($json.buildNumber)" -ne "") {
+                try { $buildNumber = [int]$json.buildNumber } catch { $buildNumber = $null }
+            }
+            # Actual /api/site-build payload is { fingerprint: "build:N" | "next:..." }.
+            $fp = [string]$json.fingerprint
+            if ($null -eq $buildNumber -and $fp -match "^build:(\d+)$") {
+                $buildNumber = [int]$Matches[1]
+            }
+            if ([string]::IsNullOrWhiteSpace($fp)) { $fp = $null }
+        }
+        return @{
+            Ok          = $true
+            HttpStatus  = [int]$resp.StatusCode
+            BuildNumber = $buildNumber
+            Fingerprint = $fp
+        }
+    } catch {
+        $code = $null
+        try {
+            if ($_.Exception.Response -and $null -ne $_.Exception.Response.StatusCode) {
+                $code = [int]$_.Exception.Response.StatusCode
+            }
+        } catch { $code = $null }
+        return @{
+            Ok          = $false
+            HttpStatus  = $code
+            BuildNumber = $null
+            Fingerprint = $null
+        }
+    }
+}
+
 function Get-SiteBuildNumber {
     param([string]$Url)
+    $probe = Get-SiteBuildProbe -Url $Url
+    return $probe.BuildNumber
+}
+
+function Test-SiteBuildAdvanced {
+    param(
+        $BeforeNumber,
+        [string]$BeforeFingerprint,
+        $Probe
+    )
+    if ($null -eq $Probe) { return $false }
+
+    if ($null -ne $BeforeNumber -and $null -ne $Probe.BuildNumber -and $Probe.BuildNumber -gt $BeforeNumber) {
+        return $true
+    }
+    # Site was unreachable (502 during next build) at start — any valid build number is success.
+    if ($null -eq $BeforeNumber -and $null -ne $Probe.BuildNumber) {
+        return $true
+    }
+    $fp = [string]$Probe.Fingerprint
+    if (-not [string]::IsNullOrWhiteSpace($fp)) {
+        if ([string]::IsNullOrWhiteSpace($BeforeFingerprint)) { return $true }
+        if ($fp -ne $BeforeFingerprint) { return $true }
+    }
+    return $false
+}
+
+function Get-ServerDeployStatus {
+    $probe = Invoke-Ssh -Command "if [ -f /tmp/ta_deploy_status.json ]; then cat /tmp/ta_deploy_status.json; else echo {}; fi"
+    if (-not $probe.Ok -or [string]::IsNullOrWhiteSpace($probe.Output)) { return $null }
     try {
-        $api = ($Url.TrimEnd("/") + "/api/site-build")
-        $resp = Invoke-RestMethod -Uri $api -Method Get -TimeoutSec 15
-        if ($null -eq $resp.buildNumber) { return $null }
-        return [int]$resp.buildNumber
+        return ($probe.Output | ConvertFrom-Json)
     } catch {
         return $null
     }
 }
 
+function Test-ServerDeployRunning {
+    $probe = Invoke-Ssh -Command "if screen -list 2>/dev/null | grep -qE '[[:space:]][0-9]+\.ta_deploy[[:space:]]'; then echo RUNNING; else echo IDLE; fi"
+    return ($probe.Ok -and ($probe.Output -match "RUNNING"))
+}
+
+function Test-ServerDeployDoneForCommit {
+    param([string]$Commit)
+    if (-not $Commit) { return $false }
+
+    $status = Get-ServerDeployStatus
+    if ($null -ne $status) {
+        $state = [string]$status.state
+        $after = [string]$status.commitAfter
+        $ec = $status.exitCode
+        $ecOk = ($null -eq $ec) -or ("$ec" -eq "") -or ([int]$ec -eq 0)
+        if ($after -and ($after -eq $Commit) -and $ecOk -and ($state -in @("success", "skipped"))) {
+            return $true
+        }
+    }
+
+    $probe = Invoke-Ssh -Command @"
+cd '$ServerAppDir' 2>/dev/null || exit 0
+echo HEAD:`$(git rev-parse HEAD 2>/dev/null || echo '')
+if [ -f /tmp/ta_deploy.exit ]; then echo EXIT:`$(cat /tmp/ta_deploy.exit); fi
+"@
+    if (-not $probe.Ok) { return $false }
+    $head = $null
+    $exitCode = $null
+    if ($probe.Output -match "HEAD:([0-9a-f]{7,40})") { $head = $Matches[1] }
+    if ($probe.Output -match "EXIT:(\-?\d+)") { $exitCode = [int]$Matches[1] }
+    return ($head -eq $Commit -and $null -ne $exitCode -and $exitCode -eq 0)
+}
+
+function Write-DeployLogDelta {
+    param([string]$Delta)
+    if (-not $Delta) { return }
+    $remaining = $Delta
+    while ($remaining.Length -gt 0) {
+        $nl = $remaining.IndexOf("`n")
+        if ($nl -lt 0) {
+            $line = $remaining
+            $remaining = ""
+        } else {
+            $line = $remaining.Substring(0, $nl).TrimEnd("`r")
+            $remaining = $remaining.Substring($nl + 1)
+        }
+        if ($line -match '^npm warn deprecated ') { continue }
+        if ($line.Length -gt 2000) {
+            $line = $line.Substring(0, 2000) + " ... [truncated]"
+        }
+        if ($line.Length -gt 0) { Write-Host $line }
+    }
+}
+
 function Wait-DeployExitViaSsh {
-    param([int]$MaxMinutes = 40)
+    param(
+        [int]$MaxMinutes = 40,
+        [int]$LogOffset = 0
+    )
     $deadline = (Get-Date).AddMinutes($MaxMinutes)
-    Write-Smart "waiting for /tmp/ta_deploy.exit (up to ${MaxMinutes}m)..."
+    $logFile = "/tmp/ta_deploy.log"
+    $offset = [int64]$LogOffset
+    $pollSec = 4
+    Write-Smart "streaming $logFile (up to ${MaxMinutes}m)..."
     while ((Get-Date) -lt $deadline) {
+        $sizeProbe = Invoke-Ssh -Command "wc -c < '$logFile' 2>/dev/null || echo 0"
+        if ($sizeProbe.Ok) {
+            $size = 0
+            try {
+                $size = [int64]((($sizeProbe.Output -split "`n")[0]).Trim())
+            } catch { $size = 0 }
+            if ($size -gt $offset) {
+                $delta = Invoke-Ssh -Command "tail -c +$($offset + 1) '$logFile'"
+                if ($delta.Ok -and $delta.Output) {
+                    Write-DeployLogDelta -Delta $delta.Output
+                    if ($delta.Output -match "\[deploy(?:-git)?-bg\] finished ok\b") {
+                        return 0
+                    }
+                    if ($delta.Output -match "\[deploy(?:-git)?-bg\] finished with error (\d+)\b") {
+                        return [int]$Matches[1]
+                    }
+                }
+                $offset = $size
+            }
+        }
+
         $probe = Invoke-Ssh -Command "if [ -f /tmp/ta_deploy.exit ]; then echo EXIT:`$(cat /tmp/ta_deploy.exit); else echo WAIT; fi"
         if ($probe.Ok -and $probe.Output -match "EXIT:(\-?\d+)") {
             $code = [int]$Matches[1]
-            $tail = Invoke-Ssh -Command "tail -n 40 /tmp/ta_deploy.log 2>/dev/null || true"
-            if ($tail.Output) { Write-Host $tail.Output }
+            $sizeProbe2 = Invoke-Ssh -Command "wc -c < '$logFile' 2>/dev/null || echo 0"
+            if ($sizeProbe2.Ok) {
+                try {
+                    $size2 = [int64]((($sizeProbe2.Output -split "`n")[0]).Trim())
+                    if ($size2 -gt $offset) {
+                        $tail = Invoke-Ssh -Command "tail -c +$($offset + 1) '$logFile'"
+                        if ($tail.Ok -and $tail.Output) { Write-DeployLogDelta -Delta $tail.Output }
+                    }
+                } catch { }
+            }
             return $code
         }
-        Start-Sleep -Seconds 10
+        Start-Sleep -Seconds $pollSec
     }
     throw "Timed out waiting for deploy exit on server"
 }
@@ -289,7 +449,10 @@ function Choose-Channel {
 
     if ($Channel -ne "auto") { return $Channel }
 
-    # Prefer GitHub webhook (push → server pull+build). SSH/Actions are fallbacks.
+    # Prefer SSH git when available (faster + Discord/logs via server; avoids public API 502 wait).
+    # Webhook-push remains for SSH-down networks or explicit -Channel webhook-push.
+    if ($SshOk -and $ServerHasGit) { return "ssh-git" }
+    if ($SshOk) { return "ssh-tar" }
     return "webhook-push"
 }
 
@@ -327,9 +490,17 @@ if ($sshOk) {
 $ghOk = Test-GhAvailable
 Write-Smart ("gh CLI: " + ($(if ($ghOk) { "authenticated" } else { "missing/unauthenticated" })))
 
-$buildBefore = Get-SiteBuildNumber -Url $SiteUrl
+$buildProbeBefore = Get-SiteBuildProbe -Url $SiteUrl
+$buildBefore = $buildProbeBefore.BuildNumber
+$fpBefore = $buildProbeBefore.Fingerprint
 if ($null -ne $buildBefore) {
     Write-Smart "site build before: #$buildBefore"
+} elseif ($fpBefore) {
+    Write-Smart "site fingerprint before: $fpBefore"
+} elseif ($null -ne $buildProbeBefore.HttpStatus) {
+    Write-Smart "site build before: unreachable (HTTP $($buildProbeBefore.HttpStatus))" -Color Yellow
+} else {
+    Write-Smart "site build before: unreachable" -Color Yellow
 }
 
 $chosen = Choose-Channel -SshOk $sshOk -ServerHasGit $serverHasGit -GhOk $ghOk
@@ -412,29 +583,100 @@ function Invoke-SmartActions {
 }
 
 function Invoke-SmartWebhookWait {
+    $waitMinutes = [Math]::Max(1, $WebhookWaitMinutes)
+    $pollSec = 15
     Write-Smart "relying on GitHub webhook after push (Discord: start + finish)" -Color Cyan
-    Write-Smart "if webhook is configured, server should pull+build soon"
-    Write-Smart "fallback: open /admin → «Задеплоить master» or -Channel ssh-git"
-    $deadline = (Get-Date).AddMinutes(15)
+    Write-Smart "waiting up to ${waitMinutes}m for site-build / server status (poll ${pollSec}s)"
+    Write-Smart "fallback: -Channel ssh-git or /admin deploy button"
+    $deadline = (Get-Date).AddMinutes($waitMinutes)
+    $started = Get-Date
+    $expectedCommit = $null
+    try { $expectedCommit = (git rev-parse HEAD).Trim() } catch { $expectedCommit = $null }
+    $logOffset = [int64]0
     $sawChange = $false
+    $serverFailed = $false
+
     while ((Get-Date) -lt $deadline) {
-        $now = Get-SiteBuildNumber -Url $SiteUrl
-        if ($null -ne $buildBefore -and $null -ne $now -and $now -gt $buildBefore) {
-            Write-Smart "site build advanced: #$buildBefore → #$now (webhook OK)" -Color Green
+        $elapsed = [int]((Get-Date) - $started).TotalSeconds
+        $probe = Get-SiteBuildProbe -Url $SiteUrl
+        $httpLabel = if ($null -ne $probe.HttpStatus) { "$($probe.HttpStatus)" } else { "err" }
+        $nowLabel = if ($null -ne $probe.BuildNumber) { "#$($probe.BuildNumber)" } elseif ($probe.Fingerprint) { $probe.Fingerprint } else { "null" }
+        $beforeLabel = if ($null -ne $buildBefore) { "#$buildBefore" } elseif ($fpBefore) { $fpBefore } else { "null" }
+        Write-Smart ("webhook wait +{0}s | before={1} now={2} http={3}" -f $elapsed, $beforeLabel, $nowLabel, $httpLabel) -Color DarkGray
+
+        if (Test-SiteBuildAdvanced -BeforeNumber $buildBefore -BeforeFingerprint $fpBefore -Probe $probe) {
+            Write-Smart "site build confirmed (webhook OK): $beforeLabel -> $nowLabel" -Color Green
             $sawChange = $true
             break
         }
-        Start-Sleep -Seconds 20
-    }
-    if (-not $sawChange) {
-        $fallback = Choose-FallbackChannel -SshOk $sshOk -ServerHasGit $serverHasGit -GhOk $ghOk
-        if ($fallback) {
-            Write-Smart "webhook/build not confirmed in 15m → fallback $fallback" -Color Yellow
-            return $fallback
+
+        if ($sshOk) {
+            $status = Get-ServerDeployStatus
+            if ($null -ne $status) {
+                $state = [string]$status.state
+                $after = [string]$status.commitAfter
+                $ec = $status.exitCode
+                Write-Smart ("server status: state={0} commitAfter={1} exit={2}" -f $state, ($(if ($after) { $after.Substring(0, [Math]::Min(12, $after.Length)) } else { "-" })), ($(if ($null -ne $ec -and "$ec" -ne "") { $ec } else { "-" }))) -Color DarkGray
+
+                $commitMatch = (-not $expectedCommit) -or (-not $after) -or ($after -eq $expectedCommit)
+                $ecOk = ($null -eq $ec) -or ("$ec" -eq "") -or ([int]$ec -eq 0)
+                if ($commitMatch -and $ecOk -and ($state -in @("success", "skipped"))) {
+                    Write-Smart "server status OK for commit (webhook deploy done; public API may be 502)" -Color Green
+                    $sawChange = $true
+                    break
+                }
+                if ($after -and $expectedCommit -and ($after -eq $expectedCommit) -and ($state -eq "error")) {
+                    Write-Smart "server status: deploy error for this commit - will fallback" -Color Yellow
+                    $serverFailed = $true
+                    break
+                }
+            }
+
+            # Stream log while waiting (same pattern as deploy.ps1).
+            $sizeProbe = Invoke-Ssh -Command "wc -c < /tmp/ta_deploy.log 2>/dev/null || echo 0"
+            if ($sizeProbe.Ok) {
+                try {
+                    $size = [int64]((($sizeProbe.Output -split "`n")[0]).Trim())
+                    if ($size -gt $logOffset) {
+                        $delta = Invoke-Ssh -Command "tail -c +$($logOffset + 1) /tmp/ta_deploy.log"
+                        if ($delta.Ok -and $delta.Output) { Write-DeployLogDelta -Delta $delta.Output }
+                        $logOffset = $size
+                    }
+                } catch { }
+            }
         }
-        throw "Webhook/build not confirmed. Configure GIT_DEPLOY_WEBHOOK_SECRET or use /admin deploy button."
+
+        Start-Sleep -Seconds $pollSec
     }
-    return $null
+
+    if ($sawChange) { return $null }
+
+    $fallback = Choose-FallbackChannel -SshOk $sshOk -ServerHasGit $serverHasGit -GhOk $ghOk
+    if ($fallback) {
+        $why = if ($serverFailed) { "server reported error" } else { "not confirmed in ${waitMinutes}m" }
+        Write-Smart "webhook/build $why -> fallback $fallback" -Color Yellow
+        return $fallback
+    }
+    throw "Webhook/build not confirmed. Configure GIT_DEPLOY_WEBHOOK_SECRET or use /admin deploy button."
+}
+
+function Invoke-SmartSshGitFallback {
+    # After webhook wait: avoid a second full rebuild if webhook already finished (or still running).
+    $expectedCommit = $null
+    try { $expectedCommit = (git rev-parse HEAD).Trim() } catch { $expectedCommit = $null }
+
+    if ($sshOk -and $expectedCommit -and (Test-ServerDeployDoneForCommit -Commit $expectedCommit)) {
+        Write-Smart "fallback skipped: server already deployed $expectedCommit (exit 0)" -Color Green
+        return
+    }
+    if ($sshOk -and (Test-ServerDeployRunning)) {
+        Write-Smart "webhook deploy still running on server — waiting (no second start)" -Color Yellow
+        $code = Wait-DeployExitViaSsh
+        if ($code -ne 0) { throw "ssh-git deploy failed (exit $code)" }
+        Write-Smart "ssh-git deploy OK (attached to running job)" -Color Green
+        return
+    }
+    Invoke-SmartSshGit
 }
 
 $retryChannel = $null
@@ -455,7 +697,7 @@ if ($retryChannel) {
     $chosen = $retryChannel
     Write-Smart "retry via channel=$chosen" -Color Magenta
     switch ($chosen) {
-        "ssh-git" { Invoke-SmartSshGit }
+        "ssh-git" { Invoke-SmartSshGitFallback }
         "ssh-tar" {
             Write-Smart "falling back to classic tar/scp deploy.ps1"
             & (Join-Path $PSScriptRoot "deploy.ps1") -Remote $Remote -SshKey $SshKey -ServerAppDir $ServerAppDir

@@ -8,7 +8,7 @@
 **Зеркала:** https://track-anime.win/, https://mirror.track-anime.win/ и https://track-anime.duckdns.org/
 
 **Миграция (окт 2026):** приложение и БД на `151.245.136.79`. Cloudflare origin для `track-anime.win` указывает на новый IP. На старом `194.180.189.34` в nginx `stream` ещё может быть запасной `upstream web_new` → новый:443 (rollback); через несколько дней можно убрать. Старый VPS не гасить сразу.
-**Редирект:** `track-anime.dygdyg.ru` и `ta.dygdyg.ru` → HTML-bounce (200, без кэшируемого 301) → `https://track-anime.win/*?legacy_redirect=1` только для обычных браузеров; сайт показывает модалку с актуальными ссылками (`track-anime.github.io`, `track-anime.win`). Android WebView (`; wv)`) и UA `TrackAnimeAndroid` / `TrackAnimeWindows` остаются на legacy-хосте (in-app update). Если модалка не появляется — скорее всего в браузере закэширован старый 301: инкогнито или очистка кэша для этих доменов.
+**Редирект:** `track-anime.dygdyg.ru` и `ta.dygdyg.ru` → HTML-bounce (200, без кэшируемого 301) → `https://track-anime.win/*` только для обычных браузеров (query `legacy_redirect=1` nginx может ещё добавлять — клиент его больше не использует). Android WebView (`; wv)`) и UA `TrackAnimeAndroid` / `TrackAnimeWindows` остаются на legacy-хосте (in-app update). Если редирект «залип» без query — скорее всего в браузере закэширован старый 301: инкогнито или очистка кэша для этих доменов.
 
 ---
 
@@ -138,14 +138,16 @@ npm run deploy:smart
 
 Порядок выбора (`-Channel auto`):
 
-1. **webhook-push** — `git push` → GitHub webhook на сервере; ждём рост `GET /api/site-build` (нужен `GIT_DEPLOY_WEBHOOK_SECRET`)
-2. **ssh-git** — fallback: SSH жив и на сервере есть `.git` → `server-deploy-git-bg.sh` (если нечего пушить + force, или webhook не подтвердился за 15 мин)
-3. **ssh-tar** — SSH жив, git нет → классический `deploy.ps1`
-4. **actions** — SSH мёртв, `gh` залогинен → `gh workflow run deploy.yml`
+1. **ssh-git** — SSH жив и на сервере есть `.git` → `server-deploy-git-bg.sh` (стрим `/tmp/ta_deploy.log`, Discord start/finish с сервера)
+2. **ssh-tar** — SSH жив, git нет → классический `deploy.ps1`
+3. **webhook-push** — SSH недоступен: `git push` → GitHub webhook; ждём подтверждение ~3 мин (`GET /api/site-build` и/или `/tmp/ta_deploy_status.json` по SSH, если SSH появился). Явно: `-Channel webhook-push`
+4. **actions** — fallback: `gh` залогинен → `gh workflow run deploy.yml`
 
 Перед push скрипт сам делает **auto-commit** локальных изменений (кроме мусора вроде `.obsidian/`, `test/results*`, `*.tsbuildinfo`; отключить: `-NoCommit`). Затем `git push`, если есть незапушенные коммиты. `-NoPush` пропускает и commit, и push.
 
-Если **нечего пушить** (рабочее дерево чистое и уже на origin) и включён force (по умолчанию) — webhook не сработает, будет fallback на **ssh-git** / Actions. Именно поэтому «задеплой» без нового коммита часто шёл через SSH: сервер пересобирал уже запушенный commit, а не локальные незакоммиченные правки.
+**Webhook wait:** по умолчанию до ~3 минут с heartbeat каждый poll (`before` / `now` / HTTP). Успех: рост `build:N`, появление fingerprint если раньше сайт был недоступен (502 во время `next build`), либо `state=success|skipped` в `/tmp/ta_deploy_status.json` для текущего commit. Если не подтвердилось — fallback; перед повторным **ssh-git** скрипт не форсит вторую сборку, если деплой уже успел (status/exit) или ещё бежит в `screen`.
+
+Если выбран **webhook-push** и **нечего пушить** + force (по умолчанию) — webhook не сработает, сразу fallback на **ssh-git** / Actions.
 
 Для агента Cursor: при просьбе «задеплой» запускать `deploy:smart`, не спрашивая канал (см. `.cursor/rules/deploy-smart.mdc`).
 
@@ -157,7 +159,7 @@ npm run deploy:smart
 
 | Канал | Как | Когда |
 |-------|-----|--------|
-| Webhook | `push` → `POST /api/deploy/webhook` | основной авто-деплой |
+| Webhook | `push` → `POST /api/deploy/webhook` | авто-деплой без SSH с ПК (`-Channel webhook-push` / SSH down) |
 | Админка | `/admin` → «Задеплоить master» | вручную |
 | GitHub Actions | workflow `Deploy production (git pull)` → SSH с runner | запасной канал (`workflow_dispatch`) |
 | Классика | `deploy.ps1` / tar+scp | APK/Windows/RPC и первый bootstrap |

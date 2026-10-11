@@ -12,7 +12,6 @@ import { HeaderDiscordRpcButton } from "@/components/HeaderDiscordRpcButton";
 import { HeaderAndroidAppButton } from "@/components/HeaderAndroidAppButton";
 import { AndroidAppPromoPrompt } from "@/components/AndroidAppPromoPrompt";
 import { DesktopAppPromoPrompt } from "@/components/DesktopAppPromoPrompt";
-import { LegacyDomainRedirectNotice } from "@/components/LegacyDomainRedirectNotice";
 import { RecentAnimeOpensButton } from "@/components/RecentAnimeOpensButton";
 import { SiteSettingsButton } from "@/components/SiteSettingsMenu";
 import { SiteClock } from "@/components/SiteClock";
@@ -233,7 +232,6 @@ export function Header({ logoSrc: initialLogoSrc = SITE_LOGO_PATH }: { logoSrc?:
 
       <AndroidAppPromoPrompt />
       <DesktopAppPromoPrompt />
-      <LegacyDomainRedirectNotice />
 
       <div className="md:hidden">
         <HeaderSearch

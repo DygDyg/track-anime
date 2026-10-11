@@ -3,10 +3,12 @@
 import {
   useCallback,
   useEffect,
+  useMemo,
   useRef,
   useState,
   type WheelEvent as ReactWheelEvent,
 } from "react";
+import { EpisodeSeasonPicker } from "@/components/anime/EpisodeSeasonPicker";
 
 type EpisodeItem = {
   episodeNumber: number;
@@ -148,40 +150,52 @@ export function KodikPlayerBetaEpisodeStrip({
     node.scrollBy({ left: direction * step, behavior: "smooth" });
   };
 
-  const stripClass = overlay
-    ? "kodik-player-beta-episodes kodik-player-beta-episodes--overlay flex select-none gap-1.5 overflow-x-auto p-2 pt-1.5"
-    : "kodik-player-beta-episodes flex select-none gap-1.5 overflow-x-auto border-b border-border bg-[#0f0f0f] p-2";
   const shellClass = overlay
     ? "kodik-player-beta-episodes-shell relative p-2"
     : "kodik-player-beta-episodes-shell relative";
+  const rowClass = overlay
+    ? "kodik-player-beta-episodes-row kodik-player-beta-episodes--overlay flex items-center gap-1.5 p-2 pt-1.5"
+    : "kodik-player-beta-episodes-row flex items-center gap-1.5 border-b border-border bg-[#0f0f0f] p-2";
+  const stripClass =
+    "kodik-player-beta-episodes flex min-w-0 flex-1 select-none gap-1.5 overflow-x-auto";
+  const scrollBtnClass =
+    "kodik-player-beta-episodes-scroll-btn inline-flex aspect-square h-9 w-9 shrink-0 items-center justify-center rounded-md border border-white/15 bg-white/5 text-base font-semibold leading-none text-white/85 transition hover:border-accent/50 hover:bg-white/10";
   const canScrollLeft = scrollState.left > 1;
   const canScrollRight = scrollState.left < scrollState.max - 1;
   const showSeasonSelect = seasons.length > 1;
-  const handleSeasonChange = (value: string) => {
-    setSelectedSeason(Number(value));
+  const seasonOptions = useMemo(
+    () =>
+      seasons.map((season) => ({
+        value: season.seasonNumber,
+        label: formatSeasonLabel(season),
+      })),
+    [seasons],
+  );
+  const handleSeasonChange = (nextSeason: number) => {
+    setSelectedSeason(nextSeason);
     setExactSeason(true);
   };
+  const seasonPicker = showSeasonSelect ? (
+    <EpisodeSeasonPicker
+      seasons={seasonOptions}
+      value={selectedSeason}
+      disabled={disabled}
+      onChange={handleSeasonChange}
+    />
+  ) : null;
+
+  useEffect(() => {
+    syncScrollState();
+  }, [canScrollLeft, canScrollRight, syncScrollState]);
 
   if (loading && episodes.length === 0) {
     return (
       <div className={shellClass} onWheel={handleWheel}>
-        <div className={stripClass}>
-          {showSeasonSelect ? (
-            <select
-              value={selectedSeason}
-              disabled={disabled}
-              aria-label="Сезон"
-              onChange={(event) => handleSeasonChange(event.target.value)}
-              className="h-9 shrink-0 rounded-md border border-white/15 bg-black/65 px-2 text-xs font-semibold text-white/90 outline-none transition hover:border-accent/50 focus:border-accent disabled:cursor-not-allowed disabled:opacity-40"
-            >
-              {seasons.map((season) => (
-                <option key={season.seasonNumber} value={season.seasonNumber}>
-                  {formatSeasonLabel(season)}
-                </option>
-              ))}
-            </select>
-          ) : null}
-          <span className="px-2 py-1.5 text-xs text-white/50">Серии…</span>
+        <div className={rowClass}>
+          {seasonPicker}
+          <div className={stripClass}>
+            <span className="px-2 py-1.5 text-xs text-white/50">Серии…</span>
+          </div>
         </div>
       </div>
     );
@@ -192,21 +206,11 @@ export function KodikPlayerBetaEpisodeStrip({
 
     return (
       <div className={shellClass} onWheel={handleWheel}>
-        <div className={stripClass}>
-          <select
-            value={selectedSeason}
-            disabled={disabled}
-            aria-label="Сезон"
-            onChange={(event) => handleSeasonChange(event.target.value)}
-            className="h-9 shrink-0 rounded-md border border-white/15 bg-black/65 px-2 text-xs font-semibold text-white/90 outline-none transition hover:border-accent/50 focus:border-accent disabled:cursor-not-allowed disabled:opacity-40"
-          >
-            {seasons.map((season) => (
-              <option key={season.seasonNumber} value={season.seasonNumber}>
-                {formatSeasonLabel(season)}
-              </option>
-            ))}
-          </select>
-          <span className="px-2 py-1.5 text-xs text-white/50">Серий нет</span>
+        <div className={rowClass}>
+          {seasonPicker}
+          <div className={stripClass}>
+            <span className="px-2 py-1.5 text-xs text-white/50">Серий нет</span>
+          </div>
         </div>
       </div>
     );
@@ -214,74 +218,58 @@ export function KodikPlayerBetaEpisodeStrip({
 
   return (
     <div className={shellClass}>
-      {canScrollLeft ? (
-        <div className="kodik-player-beta-episodes-edge kodik-player-beta-episodes-edge--left">
+      <div className={rowClass}>
+        {canScrollLeft ? (
           <button
             type="button"
             aria-label="Прокрутить серии влево"
-            className="kodik-player-beta-episodes-scroll-btn"
+            className={scrollBtnClass}
             onMouseDown={(event) => event.preventDefault()}
             onClick={() => scrollByStep(-1)}
           >
             ‹
           </button>
+        ) : null}
+        {seasonPicker}
+        <div ref={stripRef} className={stripClass} onScroll={syncScrollState} onWheel={handleWheel}>
+          {episodes.map((episode) => {
+            const active =
+              episode.seasonNumber === seasonNumber && episode.episodeNumber === currentEpisode;
+            return (
+              <button
+                key={`${episode.seasonNumber}-${episode.episodeNumber}`}
+                type="button"
+                disabled={disabled}
+                aria-current={active ? "true" : undefined}
+                aria-label={`Сезон ${episode.seasonNumber}, серия ${episode.episodeNumber}`}
+                onMouseDown={(event) => event.preventDefault()}
+                onClick={() =>
+                  onSelect(episode.seasonNumber, episode.episodeNumber, episode.playerLink)
+                }
+                className={[
+                  "inline-flex aspect-square h-9 w-9 shrink-0 items-center justify-center rounded-md border text-xs font-semibold tabular-nums transition",
+                  active
+                    ? "border-accent bg-accent text-white"
+                    : "border-white/15 bg-white/5 text-white/85 hover:border-accent/50 hover:bg-white/10",
+                  "disabled:cursor-not-allowed disabled:opacity-40",
+                ].join(" ")}
+              >
+                {episode.episodeNumber}
+              </button>
+            );
+          })}
         </div>
-      ) : null}
-      {canScrollRight ? (
-        <div className="kodik-player-beta-episodes-edge kodik-player-beta-episodes-edge--right">
+        {canScrollRight ? (
           <button
             type="button"
             aria-label="Прокрутить серии вправо"
-            className="kodik-player-beta-episodes-scroll-btn"
+            className={scrollBtnClass}
             onMouseDown={(event) => event.preventDefault()}
             onClick={() => scrollByStep(1)}
           >
             ›
           </button>
-        </div>
-      ) : null}
-      <div ref={stripRef} className={stripClass} onScroll={syncScrollState} onWheel={handleWheel}>
-        {showSeasonSelect ? (
-          <select
-            value={selectedSeason}
-            disabled={disabled}
-            aria-label="Сезон"
-            onChange={(event) => handleSeasonChange(event.target.value)}
-            className="h-9 shrink-0 rounded-md border border-white/15 bg-black/65 px-2 text-xs font-semibold text-white/90 outline-none transition hover:border-accent/50 focus:border-accent disabled:cursor-not-allowed disabled:opacity-40"
-          >
-            {seasons.map((season) => (
-              <option key={season.seasonNumber} value={season.seasonNumber}>
-                {formatSeasonLabel(season)}
-              </option>
-            ))}
-          </select>
         ) : null}
-        {episodes.map((episode) => {
-          const active =
-            episode.seasonNumber === seasonNumber && episode.episodeNumber === currentEpisode;
-          return (
-            <button
-              key={`${episode.seasonNumber}-${episode.episodeNumber}`}
-              type="button"
-              disabled={disabled}
-              aria-current={active ? "true" : undefined}
-              aria-label={`Сезон ${episode.seasonNumber}, серия ${episode.episodeNumber}`}
-              onMouseDown={(event) => event.preventDefault()}
-              onClick={() =>
-                onSelect(episode.seasonNumber, episode.episodeNumber, episode.playerLink)
-              }
-              className={[
-                "inline-flex aspect-square h-9 w-9 shrink-0 items-center justify-center rounded-md border text-xs font-semibold tabular-nums transition",
-                active
-                  ? "border-accent bg-accent text-white"
-                  : "border-white/15 bg-white/5 text-white/85 hover:border-accent/50 hover:bg-white/10",
-                "disabled:cursor-not-allowed disabled:opacity-40",
-              ].join(" ")}
-            >
-              {episode.episodeNumber}
-            </button>
-          );
-        })}
       </div>
     </div>
   );

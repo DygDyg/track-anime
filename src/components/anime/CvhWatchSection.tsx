@@ -8,6 +8,7 @@ import {
   useState,
   type WheelEvent as ReactWheelEvent,
 } from "react";
+import { EpisodeSeasonPicker } from "@/components/anime/EpisodeSeasonPicker";
 import { CvhPlayerFrame } from "@/components/anime/CvhPlayerFrame";
 import {
   getCvhPub,
@@ -118,90 +119,91 @@ function CvhEpisodeStrip({
     node.scrollBy({ left: direction * step, behavior: "smooth" });
   };
 
-  if (episodes.length <= 1) return null;
-
   const canScrollLeft = scrollState.left > 1;
   const canScrollRight = scrollState.left < scrollState.max - 1;
+
+  useEffect(() => {
+    syncScrollState();
+  }, [canScrollLeft, canScrollRight, syncScrollState]);
+
+  if (episodes.length <= 1) return null;
+
   const showSeasonSelect = seasons.length > 1;
+  const seasonOptions = seasons.map((season) => ({
+    value: season,
+    label: season === 0 ? "Спешлы" : `${season} сезон`,
+  }));
+  const scrollBtnClass =
+    "kodik-player-beta-episodes-scroll-btn inline-flex aspect-square h-9 w-9 shrink-0 items-center justify-center rounded-md border border-white/15 bg-white/5 text-base font-semibold leading-none text-white/85 transition hover:border-accent/50 hover:bg-white/10";
 
   return (
     <div className="kodik-player-beta-episodes-shell relative" onWheel={handleWheel}>
-      {canScrollLeft ? (
-        <div className="kodik-player-beta-episodes-edge kodik-player-beta-episodes-edge--left">
+      <div className="kodik-player-beta-episodes-row flex items-center gap-1.5 border-b border-border bg-[#0f0f0f] p-2">
+        {canScrollLeft ? (
           <button
             type="button"
             aria-label="Прокрутить серии влево"
-            className="kodik-player-beta-episodes-scroll-btn"
+            className={scrollBtnClass}
             onMouseDown={(event) => event.preventDefault()}
             onClick={() => scrollByStep(-1)}
           >
             ‹
           </button>
+        ) : null}
+        {showSeasonSelect ? (
+          <EpisodeSeasonPicker
+            seasons={seasonOptions}
+            value={selectedSeason}
+            onChange={(nextSeason) => {
+              setSelectedSeason(nextSeason);
+              const firstInSeason = episodes.find((item) => item.season === nextSeason);
+              if (firstInSeason) onSelect(firstInSeason);
+            }}
+          />
+        ) : null}
+        <div
+          ref={stripRef}
+          className="kodik-player-beta-episodes flex min-w-0 flex-1 select-none gap-1.5 overflow-x-auto"
+          onScroll={syncScrollState}
+        >
+          {seasonEpisodes.map((item) => {
+            const active =
+              current?.season === item.season && current?.episode === item.episode;
+            return (
+              <button
+                key={`${item.season}:${item.episode}`}
+                type="button"
+                aria-current={active ? "true" : undefined}
+                aria-label={
+                  item.season > 1
+                    ? `Сезон ${item.season}, серия ${item.episode}`
+                    : `Серия ${item.episode}`
+                }
+                onMouseDown={(event) => event.preventDefault()}
+                onClick={() => onSelect(item)}
+                className={[
+                  "inline-flex aspect-square h-9 w-9 shrink-0 items-center justify-center rounded-md border text-xs font-semibold tabular-nums transition",
+                  active
+                    ? "border-accent bg-accent text-white"
+                    : "border-white/15 bg-white/5 text-white/85 hover:border-accent/50 hover:bg-white/10",
+                ].join(" ")}
+              >
+                {item.episode}
+              </button>
+            );
+          })}
         </div>
-      ) : null}
-      {canScrollRight ? (
-        <div className="kodik-player-beta-episodes-edge kodik-player-beta-episodes-edge--right">
+        {canScrollRight ? (
           <button
             type="button"
             aria-label="Прокрутить серии вправо"
-            className="kodik-player-beta-episodes-scroll-btn"
+            className={scrollBtnClass}
             onMouseDown={(event) => event.preventDefault()}
             onClick={() => scrollByStep(1)}
           >
             ›
           </button>
-        </div>
-      ) : null}
-      <div
-        ref={stripRef}
-        className="kodik-player-beta-episodes flex select-none gap-1.5 overflow-x-auto border-b border-border bg-[#0f0f0f] p-2"
-        onScroll={syncScrollState}
-      >
-        {showSeasonSelect ? (
-          <select
-            value={selectedSeason}
-            aria-label="Сезон"
-            onChange={(event) => {
-              const nextSeason = Number(event.target.value);
-              setSelectedSeason(nextSeason);
-              const firstInSeason = episodes.find((item) => item.season === nextSeason);
-              if (firstInSeason) onSelect(firstInSeason);
-            }}
-            className="h-9 shrink-0 rounded-md border border-white/15 bg-black/65 px-2 text-xs font-semibold text-white/90 outline-none transition hover:border-accent/50 focus:border-accent"
-          >
-            {seasons.map((season) => (
-              <option key={season} value={season}>
-                {season === 0 ? "Спешлы" : `${season} сезон`}
-              </option>
-            ))}
-          </select>
         ) : null}
-        {seasonEpisodes.map((item) => {
-          const active =
-            current?.season === item.season && current?.episode === item.episode;
-          return (
-            <button
-              key={`${item.season}:${item.episode}`}
-              type="button"
-              aria-current={active ? "true" : undefined}
-              aria-label={
-                item.season > 1
-                  ? `Сезон ${item.season}, серия ${item.episode}`
-                  : `Серия ${item.episode}`
-              }
-              onMouseDown={(event) => event.preventDefault()}
-              onClick={() => onSelect(item)}
-              className={[
-                "inline-flex aspect-square h-9 w-9 shrink-0 items-center justify-center rounded-md border text-xs font-semibold tabular-nums transition",
-                active
-                  ? "border-accent bg-accent text-white"
-                  : "border-white/15 bg-white/5 text-white/85 hover:border-accent/50 hover:bg-white/10",
-              ].join(" ")}
-            >
-              {item.episode}
-            </button>
-          );
-        })}
       </div>
     </div>
   );
