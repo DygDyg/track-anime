@@ -30,8 +30,13 @@ import { TaPlusPlayer, type TaPlusPlayerHandle } from "@/components/anime/TaPlus
 import { SiteClock } from "@/components/SiteClock";
 import { TA_PLUS_QUALITY_AUTO } from "@/lib/ta-plus-master-playlist";
 import { toTaPlusDisplayPreviewUrl } from "@/lib/ta-plus-previews";
-import type { TaPlusTiles } from "@/lib/ta-plus-tiles";
+import {
+  resolveTaPlusTilePreview,
+  taPlusTilePreviewStyle,
+  type TaPlusTiles,
+} from "@/lib/ta-plus-tiles";
 import { coverCacheUrl } from "@/lib/poster";
+import { formatWatchPosition } from "@/lib/watch-history";
 import { useSiteSettings } from "@/components/SiteSettingsProvider";
 import { isTrackAnimeAndroidApp } from "@/lib/android-app";
 import { toKodikPlayerEmbedUrl } from "@/lib/player-url";
@@ -66,6 +71,8 @@ const CLICK_LAYER_APPEAR_DELAY_MS = 2_000;
 /** Kodik iframe steals focus; reclaim on interaction/keydown so Space/arrows reach TA (no polling). */
 const SEEK_FEEDBACK_MS = 900;
 const MOBILE_DOUBLE_TAP_SEEK_SECONDS = 10;
+/** TA Plus mobile double-tap: accumulate ±10, apply once after idle (matches feedback fade). */
+const MOBILE_TAP_SEEK_COMMIT_MS = SEEK_FEEDBACK_MS;
 /** Fallback episode length for TA Plus scrub before HLS reports duration (~24 min). */
 const TA_PLUS_IDLE_DURATION_FALLBACK_SECONDS = 24 * 60;
 const MOBILE_DOCK_CONTROLS_MQ = "(max-width: 639px) and (orientation: portrait)";
@@ -265,6 +272,11 @@ export function KodikPlayerBetaViewport({
   const [tvChromePinned, setTvChromePinned] = useState(false);
   const primaryFocusDoneRef = useRef(false);
   const [seekFeedback, setSeekFeedback] = useState({ backward: 0, forward: 0 });
+  /** Storyboard target while ±seek feedback is visible (TA Plus). */
+  const [seekPreview, setSeekPreview] = useState<{
+    seconds: number;
+    side: "backward" | "forward";
+  } | null>(null);
   const [brightnessHud, setBrightnessHud] = useState<number | null>(null);
   const [volumeHud, setVolumeHud] = useState<number | null>(null);
   const [overlayBrightness, setOverlayBrightness] = useState(1);
@@ -282,6 +294,12 @@ export function KodikPlayerBetaViewport({
     backward: null,
     forward: null,
   });
+  /** TA Plus touch double-tap: net ±seconds waiting for idle commit. */
+  const pendingMobileSeekDeltaRef = useRef(0);
+  const pendingMobileSeekBaseRef = useRef(0);
+  const pendingMobileSeekTimerRef = useRef<number | null>(null);
+  /** Latest scrub position/duration for tap-seek preview (updated each render). */
+  const playbackAnchorRef = useRef({ position: 0, duration: 0 });
   const brightnessHudTimerRef = useRef<number | null>(null);
   const volumeHudTimerRef = useRef<number | null>(null);
   const brightnessValueRef = useRef(readStoredPlayerBrightness());
@@ -988,12 +1006,25 @@ export function KodikPlayerBetaViewport({
         [direction]: current[direction] + Math.abs(deltaSeconds),
       }));
       seekFeedbackTimersRef.current[direction] = window.setTimeout(() => {
-        setSeekFeedback((current) => ({ ...current, [direction]: 0 }));
+        setSeekFeedback((current) => {
+          const next = { ...current, [direction]: 0 };
+          if (next.backward === 0 && next.forward === 0) {
+            setSeekPreview(null);
+          }
+          return next;
+        });
         seekFeedbackTimersRef.current[direction] = null;
       }, SEEK_FEEDBACK_MS);
     },
     [clearSeekFeedbackTimer],
   );
+
+  const updateSeekPreviewTarget = useCallback((seconds: number, side: "backward" | "forward") => {
+    const duration = playbackAnchorRef.current.duration;
+    const clamped =
+      duration > 0 ? Math.min(Math.max(0, seconds), duration) : Math.max(0, seconds);
+    setSeekPreview({ seconds: clamped, side });
+  }, []);
 
   const applyTaPlusIdleSeek = useCallback(
     (seconds: number) => {
@@ -1022,23 +1053,76 @@ export function KodikPlayerBetaViewport({
     [applyTaPlusIdleSeek, isTaPlus, onSeek, taPlusStarted],
   );
 
-  const handleSeekSkip = useCallback(
+  const applySeekSkipDelta = useCallback(
     (deltaSeconds: number) => {
+      if (deltaSeconds === 0) return;
       if (isTaPlus && !taPlusStarted) {
         applyTaPlusIdleSeek(idleSeekSeconds + deltaSeconds);
-        showSeekFeedback(deltaSeconds);
         return;
       }
       onSeekSkip(deltaSeconds);
+    },
+    [applyTaPlusIdleSeek, idleSeekSeconds, isTaPlus, onSeekSkip, taPlusStarted],
+  );
+
+  const clearPendingMobileSeekTimer = useCallback(() => {
+    if (pendingMobileSeekTimerRef.current != null) {
+      window.clearTimeout(pendingMobileSeekTimerRef.current);
+      pendingMobileSeekTimerRef.current = null;
+    }
+  }, []);
+
+  const flushPendingMobileSeek = useCallback(() => {
+    clearPendingMobileSeekTimer();
+    const total = pendingMobileSeekDeltaRef.current;
+    pendingMobileSeekDeltaRef.current = 0;
+    if (total !== 0) applySeekSkipDelta(total);
+    return total;
+  }, [applySeekSkipDelta, clearPendingMobileSeekTimer]);
+
+  const queueMobileTapSeek = useCallback(
+    (deltaSeconds: number) => {
+      if (deltaSeconds === 0) return;
+      if (pendingMobileSeekDeltaRef.current === 0) {
+        pendingMobileSeekBaseRef.current = playbackAnchorRef.current.position;
+      }
+      pendingMobileSeekDeltaRef.current += deltaSeconds;
+      const target = pendingMobileSeekBaseRef.current + pendingMobileSeekDeltaRef.current;
+      updateSeekPreviewTarget(target, deltaSeconds < 0 ? "backward" : "forward");
+      showSeekFeedback(deltaSeconds);
+      clearPendingMobileSeekTimer();
+      pendingMobileSeekTimerRef.current = window.setTimeout(() => {
+        const total = pendingMobileSeekDeltaRef.current;
+        pendingMobileSeekDeltaRef.current = 0;
+        pendingMobileSeekTimerRef.current = null;
+        applySeekSkipDelta(total);
+      }, MOBILE_TAP_SEEK_COMMIT_MS);
+    },
+    [
+      applySeekSkipDelta,
+      clearPendingMobileSeekTimer,
+      showSeekFeedback,
+      updateSeekPreviewTarget,
+    ],
+  );
+
+  const handleSeekSkip = useCallback(
+    (deltaSeconds: number) => {
+      // Buttons / keys apply immediately; flush any queued double-tap first.
+      const flushed = flushPendingMobileSeek();
+      applySeekSkipDelta(deltaSeconds);
+      const side = deltaSeconds < 0 ? "backward" : "forward";
+      updateSeekPreviewTarget(
+        playbackAnchorRef.current.position + flushed + deltaSeconds,
+        side,
+      );
       showSeekFeedback(deltaSeconds);
     },
     [
-      applyTaPlusIdleSeek,
-      idleSeekSeconds,
-      isTaPlus,
-      onSeekSkip,
+      applySeekSkipDelta,
+      flushPendingMobileSeek,
       showSeekFeedback,
-      taPlusStarted,
+      updateSeekPreviewTarget,
     ],
   );
 
@@ -1306,8 +1390,11 @@ export function KodikPlayerBetaViewport({
       clearClickTimer();
       clearSeekFeedbackTimer("backward");
       clearSeekFeedbackTimer("forward");
+      clearPendingMobileSeekTimer();
+      pendingMobileSeekDeltaRef.current = 0;
+      setSeekPreview(null);
     };
-  }, [clearClickTimer, clearHideTimer, clearSeekFeedbackTimer]);
+  }, [clearClickTimer, clearHideTimer, clearPendingMobileSeekTimer, clearSeekFeedbackTimer]);
 
   useEffect(() => {
     const focusPlayerChrome = (kind: "episodes" | "bar") => {
@@ -1626,9 +1713,11 @@ export function KodikPlayerBetaViewport({
         const rect = videoShellRef.current?.getBoundingClientRect();
         if (!rect || rect.width <= 0) return;
         const ratio = (event.clientX - rect.left) / rect.width;
-        handleSeekSkip(
-          ratio < 0.5 ? -MOBILE_DOUBLE_TAP_SEEK_SECONDS : MOBILE_DOUBLE_TAP_SEEK_SECONDS,
-        );
+        const delta =
+          ratio < 0.5 ? -MOBILE_DOUBLE_TAP_SEEK_SECONDS : MOBILE_DOUBLE_TAP_SEEK_SECONDS;
+        // TA Plus: accumulate ±10 on the badge, seek once after idle. TA Old: immediate.
+        if (isTaPlus) queueMobileTapSeek(delta);
+        else handleSeekSkip(delta);
         return;
       }
 
@@ -1638,8 +1727,10 @@ export function KodikPlayerBetaViewport({
       clearClickTimer,
       controlsDisabled,
       handleSeekSkip,
+      isTaPlus,
       kodikUiAccess,
       onFullscreenToggle,
+      queueMobileTapSeek,
       touchLikeUi,
     ],
   );
@@ -1661,6 +1752,34 @@ export function KodikPlayerBetaViewport({
     duration || (taPlusIdle ? idleSeekSeconds : viewPlayback.positionSeconds),
   );
   const progressMax = duration > 0 ? duration : Math.max(position, 1);
+  playbackAnchorRef.current = { position, duration: progressMax };
+  const seekTapTilePreview =
+    isTaPlus && seekPreview != null && tiles
+      ? resolveTaPlusTilePreview(tiles, seekPreview.seconds)
+      : null;
+  const seekTapPreviewChrome =
+    seekTapTilePreview && seekPreview && tiles ? (
+      <>
+        <div
+          className="overflow-hidden rounded-md border border-white/25 bg-black/85 shadow-xl"
+          style={{
+            ...taPlusTilePreviewStyle(
+              {
+                ...seekTapTilePreview,
+                cellWidth: Math.max(160, seekTapTilePreview.cellWidth),
+                cellHeight: Math.max(90, seekTapTilePreview.cellHeight),
+              },
+              tiles,
+            ),
+            width: Math.max(160, seekTapTilePreview.cellWidth),
+            height: Math.max(90, seekTapTilePreview.cellHeight),
+          }}
+        />
+        <span className="rounded-md border border-white/10 bg-black/70 px-1.5 py-0.5 text-[10px] font-semibold tabular-nums text-white/90 shadow-lg backdrop-blur-sm">
+          {formatWatchPosition(seekPreview.seconds)}
+        </span>
+      </>
+    ) : null;
   const progressFill = `${(position / progressMax) * 100}%`;
   const timelineSegmentBackground = buildTimelineSegmentBackground(
     timelineSegments,
@@ -2153,13 +2272,19 @@ export function KodikPlayerBetaViewport({
           </div>
         ) : null}
         {seekFeedback.backward > 0 ? (
-          <div className="pointer-events-none absolute left-[12%] top-1/2 z-30 flex h-20 min-w-20 -translate-y-1/2 items-center justify-center rounded-full border border-white/20 bg-black/60 px-4 text-xl font-bold tabular-nums text-white shadow-2xl shadow-black/40 backdrop-blur-sm sm:left-[16%] sm:h-24 sm:min-w-24 sm:text-2xl">
-            -{seekFeedback.backward}
+          <div className="pointer-events-none absolute left-[12%] top-1/2 z-30 flex -translate-y-1/2 flex-col items-center gap-1.5 sm:left-[16%]">
+            {seekPreview?.side === "backward" ? seekTapPreviewChrome : null}
+            <div className="flex h-20 min-w-20 items-center justify-center rounded-full border border-white/20 bg-black/60 px-4 text-xl font-bold tabular-nums text-white shadow-2xl shadow-black/40 backdrop-blur-sm sm:h-24 sm:min-w-24 sm:text-2xl">
+              -{seekFeedback.backward}
+            </div>
           </div>
         ) : null}
         {seekFeedback.forward > 0 ? (
-          <div className="pointer-events-none absolute right-[12%] top-1/2 z-30 flex h-20 min-w-20 -translate-y-1/2 items-center justify-center rounded-full border border-white/20 bg-black/60 px-4 text-xl font-bold tabular-nums text-white shadow-2xl shadow-black/40 backdrop-blur-sm sm:right-[16%] sm:h-24 sm:min-w-24 sm:text-2xl">
-            +{seekFeedback.forward}
+          <div className="pointer-events-none absolute right-[12%] top-1/2 z-30 flex -translate-y-1/2 flex-col items-center gap-1.5 sm:right-[16%]">
+            {seekPreview?.side === "forward" ? seekTapPreviewChrome : null}
+            <div className="flex h-20 min-w-20 items-center justify-center rounded-full border border-white/20 bg-black/60 px-4 text-xl font-bold tabular-nums text-white shadow-2xl shadow-black/40 backdrop-blur-sm sm:h-24 sm:min-w-24 sm:text-2xl">
+              +{seekFeedback.forward}
+            </div>
           </div>
         ) : null}
         {kodikUiAccess ? (
