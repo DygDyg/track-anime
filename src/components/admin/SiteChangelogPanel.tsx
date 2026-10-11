@@ -24,7 +24,7 @@ const KIND_BADGE: Record<SiteChangelogItemKind, string> = {
 /** Demo payload so empty file still shows how users might see it. */
 const DEMO_ENTRIES: SiteChangelogEntry[] = [
   {
-    id: "2026-10-11-demo01",
+    id: "2026-10-11",
     recordedAt: "2026-10-11T10:15:00.000Z",
     gitSha: "demo01",
     buildNumber: 128,
@@ -45,7 +45,7 @@ const DEMO_ENTRIES: SiteChangelogEntry[] = [
     ],
   },
   {
-    id: "2026-10-05-demo02",
+    id: "2026-10-05",
     recordedAt: "2026-10-05T18:40:00.000Z",
     gitSha: "demo02",
     buildNumber: 120,
@@ -126,8 +126,9 @@ export function SiteChangelogPanel({
             <p className="mt-1 max-w-2xl text-sm text-muted">
               Черновик будущего блока «Что нового». Данные из{" "}
               <code className={adminClass.code}>data/site-changelog.json</code>
-              — не дамп коммитов, а нововведения и заметные изменения. Сейчас только превью в
-              админке.
+              — не дамп коммитов, а нововведения и заметные изменения. Одна карточка на
+              календарный день (Europe/Moscow); несколько деплоев за день мержатся в запись
+              крайнего билда. Сейчас только превью в админке.
             </p>
           </div>
           <div className="flex flex-wrap gap-2">
@@ -169,7 +170,7 @@ export function SiteChangelogPanel({
 
         {entries.length === 0 ? (
           <p className="rounded-lg border border-border bg-background p-4 text-sm text-muted">
-            Пока пусто. Перед деплоем агент добавит пункты в{" "}
+            Пока пусто. Перед деплоем агент дополнит дневную запись в{" "}
             <code className={adminClass.code}>data/site-changelog.json</code>, либо открой
             «Пример превью».
           </p>

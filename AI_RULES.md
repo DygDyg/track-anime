@@ -80,9 +80,10 @@ Shared rules for Codex, Cursor, and local model workflows. Codex should also rea
 
 Перед каждым prod-деплоем (`deploy:smart` / «задеплой») обновляй `data/site-changelog.json`, если в выкладке есть **заметные для пользователей** изменения или нововведения.
 
-- Читалка: `src/lib/site-changelog.ts`; типы: `src/lib/site-changelog-types.ts`
+- Читалка / merge: `src/lib/site-changelog.ts` (`upsertDailyChangelogEntry`); типы: `src/lib/site-changelog-types.ts`
 - Превью: `/admin/changelog`
 - Cursor: `.cursor/rules/deploy-changelog.mdc` (+ шаг в `deploy-smart.mdc`)
+- **Суточная группировка** (Europe/Moscow): одна запись на календарный день (`id: YYYY-MM-DD`). Если top-entry уже за сегодня — мержить новые `items` (дедуп по тексту), обновить `recordedAt` / `gitSha` / опционально `title` / `buildNumber`; не создавать вторую карточку за день
 - Пиши по-русски, кратко; `kind`: `feature` | `improvement` | `change` | `fix` (fix — только заметные сбои)
 - Не включать: рефакторинг, CI, docs-only, чисто админское, дамп commit messages
 - Если нечего показать пользователям — не создавай пустую запись

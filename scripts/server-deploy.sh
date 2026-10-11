@@ -135,21 +135,22 @@ deploy_progress 4 "prisma db push"
 npx prisma db push --skip-generate --accept-data-loss
 echo "[deploy] prisma db push done"
 
+deploy_progress 5 "cover cache setup"
+bash scripts/setup-cover-cache.sh
+
+deploy_progress 6 "next build"
+# Останавливаем до удаления .next — иначе rm/build падают на занятом fetch-cache.
+# .build-number пишем только после stop: иначе живой процесс отдаёт новый
+# fingerprint в /api/site-build и ClientUpdateGuard зовёт reload в downtime.
+if systemctl is-active --quiet "$SERVICE_NAME"; then
+  systemctl stop "$SERVICE_NAME"
+fi
 BUILD_FILE="$APP_DIR/.build-number"
 BUILD_NUM=$(($(cat "$BUILD_FILE" 2>/dev/null || echo 0) + 1))
 echo "$BUILD_NUM" > "$BUILD_FILE"
 export BUILD_NUMBER="$BUILD_NUM"
 _ta_deploy_build="$BUILD_NUM"
 echo "[deploy] build number: $BUILD_NUM"
-
-deploy_progress 5 "cover cache setup"
-bash scripts/setup-cover-cache.sh
-
-deploy_progress 6 "next build"
-# Останавливаем до удаления .next — иначе rm/build падают на занятом fetch-cache.
-if systemctl is-active --quiet "$SERVICE_NAME"; then
-  systemctl stop "$SERVICE_NAME"
-fi
 rm -rf .next
 npm run build
 echo "[deploy] next build done"

@@ -10,15 +10,18 @@ export type SiteChangelogItem = {
 };
 
 export type SiteChangelogEntry = {
-  /** Stable id: YYYY-MM-DD + short git sha, e.g. 2026-10-11-a1b2c3d */
+  /**
+   * Stable daily id: `YYYY-MM-DD` in Europe/Moscow (one card per calendar day).
+   * Legacy ids may still be `YYYY-MM-DD-<shortSha>`.
+   */
   id: string;
-  /** ISO time when the entry was recorded (usually right before deploy) */
+  /** ISO time of the latest merge/update for this day (usually right before deploy) */
   recordedAt: string;
-  /** Short git sha of the tree being deployed (optional until known) */
+  /** Short git sha of the latest tree merged into this day (optional until known) */
   gitSha?: string;
-  /** Filled after build when known (.build-number); optional */
+  /** Filled after build when known (.build-number); optional — keep latest for the day */
   buildNumber?: number | null;
-  /** Optional short Russian headline for the deploy batch */
+  /** Optional short Russian headline; may be refreshed on later deploys that day */
   title?: string;
   items: SiteChangelogItem[];
 };

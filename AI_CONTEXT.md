@@ -53,7 +53,7 @@ Codex: использовать эту таблицу напрямую и чит
 | Covers / posters | обложк, poster, thumb, cover | `AnimePoster.tsx`, `src/lib/poster.ts`, `cover-cache.ts`, `poster-fallback.ts`, `cover-cache-settings.ts`, `src/app/api/cover/route.ts` |
 | Lists / sync | списк, sync, rewatches, shikimori | `favorites-sync.ts`, `user-list-mutations.ts` |
 | Player | kodik, taplus, ta plus, cvh, videohub, плеер, progress, theater, по высоте, ambient, подсветк | `KodikPlayer.tsx`, `KodikPlayerBetaViewport.tsx`, `TaPlusPlayer.tsx`, `VideoAmbientGlow.tsx`, `player-ambient-glow.ts`, `TaPlusIdleBackdrop.tsx`, `hooks/useTaPlusStream.ts`, `ta-plus-tiles.ts`, `ta-plus-previews.ts`, `CvhWatchSection.tsx`, `kodik-player-api.ts`, `kodik-ftor.ts`, `cvh-player.ts`, `globals.css` |
-| Deploy | деплой, deploy, prod | **Сначала** `data/site-changelog.json` (user-facing нововведения; `.cursor/rules/deploy-changelog.mdc`), затем **`npm run deploy:smart`** (канал сам; не спрашивать webhook/Actions/SSH), `deploy-auto.ps1`, `git-deploy.ts`, `.github/workflows/deploy.yml`, `docs/DEPLOY.md` |
+| Deploy | деплой, deploy, prod | **Сначала** `data/site-changelog.json` (user-facing; суточная группировка Europe/Moscow; `.cursor/rules/deploy-changelog.mdc`), затем **`npm run deploy:smart`** (канал сам; не спрашивать webhook/Actions/SSH), `deploy-auto.ps1`, `git-deploy.ts`, `.github/workflows/deploy.yml`, `docs/DEPLOY.md` |
 | Auth | oauth, login, session | `shikimori-oauth.ts`, `src/app/api/auth/` |
 | Home feed | главная, лента, новинки | `releases.ts`, `home-feed-cache.ts`, `ReleaseFeed.tsx`, `home-novelties.ts`, `HomeNoveltiesSection.tsx` |
 | Notifications | уведомлен, push, telegram, vk, discord | `src/lib/notifications/`, `src/app/api/notifications/`, `NotificationSettingsPanel.tsx` |
@@ -116,6 +116,7 @@ Calendar: `/calendar` → calendar.ts → local Kodik DB or Shikimori `/api/cale
 
 | Problem | Likely cause |
 |---------|--------------|
+| Banner «Сайт обновился» mid-deploy / reload → down | `/api/site-build` must use process-cached fingerprint; deploy writes `.build-number` only after `systemctl stop`; ClientUpdateGuard confirms + waits before reload |
 | Empty home feed | No sync run — `npm run kodik:sync` |
 | «Новинки» без 2-го сезона / пусто | Не путать с бейджем NEW (эпизоды 1–3). Блок: ≤5 серий (`GREATEST(episodes_aired, № серии)`) + `releasedAt`≤30д + `aired_on`≤90д, любой `seasonNumber`; кеш 24ч — сброс в `/admin/import` |
 | Тайтл с 6+ сериями в «Новинках» | У озвучки устаревший `episodes_aired`; порог обязан учитывать номер серии в релизе (`home-novelties.ts`) |

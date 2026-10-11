@@ -1,32 +1,88 @@
 "use client";
 
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 
 const CHECK_INTERVAL_MS = 5 * 60 * 1000;
+/** How long to wait between confirmation polls after a new fingerprint appears. */
+const CONFIRM_GAP_MS = 4_000;
+const CONFIRM_NEEDED = 2;
+const RELOAD_POLL_MS = 1_500;
+const RELOAD_TIMEOUT_MS = 90_000;
 
 type Props = {
   initialFingerprint: string | null;
 };
 
+async function fetchFingerprint(): Promise<string | null> {
+  const response = await fetch("/api/site-build", { cache: "no-store" });
+  if (!response.ok) return null;
+  const data = (await response.json()) as { fingerprint?: unknown };
+  return typeof data.fingerprint === "string" ? data.fingerprint : null;
+}
+
+function sleep(ms: number): Promise<void> {
+  return new Promise((resolve) => {
+    window.setTimeout(resolve, ms);
+  });
+}
+
 export function ClientUpdateGuard({ initialFingerprint }: Props) {
   const [updateReady, setUpdateReady] = useState(false);
+  const [reloading, setReloading] = useState(false);
   const [mounted, setMounted] = useState(false);
+  const confirmCountRef = useRef(0);
+  const candidateRef = useRef<string | null>(null);
+  const confirmTimerRef = useRef<number | null>(null);
+
+  const clearConfirmTimer = useCallback(() => {
+    if (confirmTimerRef.current != null) {
+      window.clearTimeout(confirmTimerRef.current);
+      confirmTimerRef.current = null;
+    }
+  }, []);
 
   const checkForUpdate = useCallback(async () => {
-    if (!initialFingerprint || document.visibilityState === "hidden") return;
+    if (!initialFingerprint || document.visibilityState === "hidden" || updateReady) return;
 
     try {
-      const response = await fetch("/api/site-build", { cache: "no-store" });
-      if (!response.ok) return;
-      const data = (await response.json()) as { fingerprint?: unknown };
-      if (typeof data.fingerprint === "string" && data.fingerprint !== initialFingerprint) {
-        setUpdateReady(true);
+      const fingerprint = await fetchFingerprint();
+      if (!fingerprint || fingerprint === initialFingerprint) {
+        candidateRef.current = null;
+        confirmCountRef.current = 0;
+        clearConfirmTimer();
+        return;
       }
+
+      if (candidateRef.current !== fingerprint) {
+        candidateRef.current = fingerprint;
+        confirmCountRef.current = 1;
+        clearConfirmTimer();
+        confirmTimerRef.current = window.setTimeout(() => {
+          void checkForUpdate();
+        }, CONFIRM_GAP_MS);
+        return;
+      }
+
+      confirmCountRef.current += 1;
+      if (confirmCountRef.current >= CONFIRM_NEEDED) {
+        clearConfirmTimer();
+        setUpdateReady(true);
+        return;
+      }
+
+      clearConfirmTimer();
+      confirmTimerRef.current = window.setTimeout(() => {
+        void checkForUpdate();
+      }, CONFIRM_GAP_MS);
     } catch {
-      // A failed check must not interrupt viewing.
+      // A failed check must not interrupt viewing — also resets confirm so we
+      // only show the banner after the new process is stably answering.
+      candidateRef.current = null;
+      confirmCountRef.current = 0;
+      clearConfirmTimer();
     }
-  }, [initialFingerprint]);
+  }, [clearConfirmTimer, initialFingerprint, updateReady]);
 
   useEffect(() => {
     setMounted(true);
@@ -44,8 +100,31 @@ export function ClientUpdateGuard({ initialFingerprint }: Props) {
       window.clearInterval(intervalId);
       window.removeEventListener("focus", onVisibilityChange);
       document.removeEventListener("visibilitychange", onVisibilityChange);
+      clearConfirmTimer();
     };
-  }, [checkForUpdate]);
+  }, [checkForUpdate, clearConfirmTimer]);
+
+  const handleReload = useCallback(async () => {
+    if (reloading) return;
+    setReloading(true);
+    const deadline = Date.now() + RELOAD_TIMEOUT_MS;
+
+    while (Date.now() < deadline) {
+      try {
+        const fingerprint = await fetchFingerprint();
+        if (fingerprint && fingerprint !== initialFingerprint) {
+          window.location.reload();
+          return;
+        }
+      } catch {
+        // server still down / restarting
+      }
+      await sleep(RELOAD_POLL_MS);
+    }
+
+    // Last resort: user waited long enough.
+    window.location.reload();
+  }, [initialFingerprint, reloading]);
 
   if (!updateReady || !mounted) return null;
 
@@ -61,10 +140,11 @@ export function ClientUpdateGuard({ initialFingerprint }: Props) {
         </p>
         <button
           type="button"
-          className="shrink-0 rounded-lg bg-amber-400 px-3.5 py-2 text-sm font-bold text-amber-950 shadow-md shadow-amber-900/40 transition hover:bg-amber-300 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-amber-200 focus-visible:ring-offset-2 focus-visible:ring-offset-amber-950"
-          onClick={() => window.location.reload()}
+          disabled={reloading}
+          className="shrink-0 rounded-lg bg-amber-400 px-3.5 py-2 text-sm font-bold text-amber-950 shadow-md shadow-amber-900/40 transition hover:bg-amber-300 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-amber-200 focus-visible:ring-offset-2 focus-visible:ring-offset-amber-950 disabled:cursor-wait disabled:opacity-80"
+          onClick={() => void handleReload()}
         >
-          Обновить
+          {reloading ? "Ждём сервер…" : "Обновить"}
         </button>
       </div>
     </div>,

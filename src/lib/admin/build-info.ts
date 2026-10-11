@@ -50,8 +50,15 @@ function readConfiguredBuildNumber(): number | null {
   }
 }
 
-/** A stable value embedded into an HTML response and compared by open tabs. */
-export function getSiteBuildFingerprint(): string | null {
+/**
+ * Process-stable fingerprint for open-tab update detection.
+ * Must NOT re-read `.build-number` on every request: deploy writes the new
+ * number before/while the old Node process is still serving, which would
+ * flash «Сайт обновился» and send users into a restarting server.
+ */
+let processFingerprint: string | null | undefined;
+
+function computeSiteBuildFingerprint(): string | null {
   const buildNumber = readConfiguredBuildNumber();
   if (buildNumber != null) return `build:${buildNumber}`;
 
@@ -61,6 +68,13 @@ export function getSiteBuildFingerprint(): string | null {
   } catch {
     return null;
   }
+}
+
+/** A stable value embedded into an HTML response and compared by open tabs. */
+export function getSiteBuildFingerprint(): string | null {
+  if (processFingerprint !== undefined) return processFingerprint;
+  processFingerprint = computeSiteBuildFingerprint();
+  return processFingerprint;
 }
 
 function readBuildInfoFile(): SiteBuildInfo | null {

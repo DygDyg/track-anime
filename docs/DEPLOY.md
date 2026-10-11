@@ -156,9 +156,11 @@ npm run deploy:smart
 Перед деплоем агент/разработчик при необходимости дополняет **пользовательский** лог:
 
 - файл: `data/site-changelog.json` (в git; `entries` — новые сверху)
-- читалка: `src/lib/site-changelog.ts` (для будущего UI «Что нового»)
+- читалка / merge helper: `src/lib/site-changelog.ts` (`upsertDailyChangelogEntry` и др.; для будущего UI «Что нового»)
 - превью в админке: `/admin/changelog` (`SiteChangelogPanel`)
 - правило: `.cursor/rules/deploy-changelog.mdc`, кратко в `AI_RULES.md`
+
+**Группировка:** не чаще одного раза в календарные сутки (**Europe/Moscow**). Несколько деплоев за день мержатся в одну запись (`id: YYYY-MM-DD`): новые `items` добавляются с дедупом по тексту, обновляются `recordedAt` / `gitSha` (крайний билд дня) и при необходимости `title` / `buildNumber`.
 
 Писать нововведения и заметные изменения по-русски (`feature` / `improvement` / `change` / заметный `fix`). Не писать рефакторинг, CI, docs-only и дамп commit messages. Если для пользователей нечего показать — запись не создавать.
 
