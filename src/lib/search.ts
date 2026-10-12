@@ -43,7 +43,8 @@ const FUZZY_SEARCH_MIN_TOKEN_LENGTH = 4;
 /** Минимум сильных токенов в запросе, чтобы включать partial-fallback. */
 const PARTIAL_FUZZY_MIN_QUERY_TOKENS = 2;
 
-type FuzzySearchMode = "strict" | "partial";
+/** `ilike` — быстрый SQL; fuzzy-режимы — полный проход по названиям, только при пустой выдаче. */
+type FuzzySearchMode = "ilike" | "strict" | "partial";
 
 export {
   SEARCH_MAX_PAGE,
@@ -240,7 +241,7 @@ type FuzzySearchCandidateRow = {
 
 async function findFuzzySearchShikimoriIds(
   query: string,
-  mode: FuzzySearchMode = "strict",
+  mode: Exclude<FuzzySearchMode, "ilike"> = "strict",
 ): Promise<number[]> {
   const normalizedQuery = normalizeSearchText(query);
   if (normalizedQuery.length < SEARCH_MIN_QUERY_LENGTH) return [];
@@ -718,71 +719,7 @@ export async function searchAnimes(
   pageSize = SEARCH_PAGE_SIZE,
   options?: { includeTotal?: boolean; sort?: SearchSortMode },
 ): Promise<SearchPage> {
-  const includeTotal = options?.includeTotal ?? true;
-  const sort = options?.sort ?? "relevance";
-  const trimmed = query.trim();
-  const safePage = Number.isFinite(page) && page > 0 ? Math.floor(page) : 1;
-  const safePageSize =
-    Number.isFinite(pageSize) && pageSize > 0 ? Math.min(Math.floor(pageSize), 48) : SEARCH_PAGE_SIZE;
-
-  if (trimmed.length < SEARCH_MIN_QUERY_LENGTH) {
-    return emptySearchPage(safePage, safePageSize, trimmed, null, "quick", {}, sort);
-  }
-
-  const pattern = `%${escapeIlikePattern(trimmed)}%`;
-  const prefixPattern = `${escapeIlikePattern(trimmed)}%`;
-  const shikimoriIdMatch = /^\d+$/.test(trimmed) ? Number(trimmed) : null;
-  const fuzzyShikimoriIds = await findFuzzySearchShikimoriIds(trimmed);
-  const offset = (safePage - 1) * safePageSize;
-
-  const shikimoriFilter =
-    shikimoriIdMatch !== null
-      ? Prisma.sql`OR m."shikimoriId" = ${shikimoriIdMatch}`
-      : Prisma.empty;
-  const fuzzyFilter =
-    fuzzyShikimoriIds.length > 0
-      ? Prisma.sql`OR m."shikimoriId" IN (${Prisma.join(fuzzyShikimoriIds)})`
-      : Prisma.empty;
-
-  const filterSql = Prisma.sql`
-    AND (
-      m.title ILIKE ${pattern}
-      OR COALESCE(m."titleOrig", '') ILIKE ${pattern}
-      OR COALESCE(m."otherTitle", '') ILIKE ${pattern}
-      OR COALESCE(m."materialData"->>'anime_title', '') ILIKE ${pattern}
-      ${shikimoriFilter}
-      ${fuzzyFilter}
-    )
-  `;
-
-  const candidateRankExpr = Prisma.sql`
-    CASE
-      WHEN lower(COALESCE(m."materialData"->>'anime_title', m.title)) = lower(${trimmed}) THEN 0
-      WHEN COALESCE(m."materialData"->>'anime_title', m.title) ILIKE ${prefixPattern} THEN 1
-      WHEN COALESCE(m."titleOrig", '') ILIKE ${prefixPattern} THEN 2
-      WHEN m."shikimoriId" IN (${Prisma.join(fuzzyShikimoriIds.length > 0 ? fuzzyShikimoriIds : [-1])}) THEN ${FUZZY_TITLE_MATCH_RANK}
-      ELSE 3
-    END
-  `;
-
-  const rowsPromise = fetchSearchRows(filterSql, candidateRankExpr, safePageSize, offset, sort);
-  const totalPromise = includeTotal ? countSearchMatches(filterSql) : Promise.resolve(undefined);
-  const [rows, total] = await Promise.all([rowsPromise, totalPromise]);
-
-  return buildSearchPage(
-    rows,
-    safePage,
-    safePageSize,
-    includeTotal,
-    offset,
-    trimmed,
-    null,
-    total,
-    "quick",
-    {},
-    null,
-    sort,
-  );
+  return searchAnimesQuick(query, "", page, pageSize, options);
 }
 
 async function searchAnimesByDescriptionUncached(
@@ -840,7 +777,16 @@ async function searchAnimesQuickUncached(
   options?: { includeTotal?: boolean; sort?: SearchSortMode },
 ): Promise<SearchPage> {
   const trimmed = query.trim();
-  const result = await searchAnimesQuickCore(trimmed, genresParam, page, pageSize, options, trimmed);
+  const result = await searchAnimesQuickCore(
+    trimmed,
+    genresParam,
+    page,
+    pageSize,
+    options,
+    trimmed,
+    null,
+    "ilike",
+  );
 
   const genres = parseGenreList(genresParam);
   const hasQuery = trimmed.length >= SEARCH_MIN_QUERY_LENGTH;
@@ -860,9 +806,40 @@ async function searchAnimesQuickUncached(
       options,
       trimmed,
       alternateQuery,
+      "ilike",
     );
     if (corrected.items.length > 0) {
       return corrected;
+    }
+  }
+
+  const strictFuzzy = await searchAnimesQuickCore(
+    trimmed,
+    genresParam,
+    page,
+    pageSize,
+    options,
+    trimmed,
+    null,
+    "strict",
+  );
+  if (strictFuzzy.items.length > 0) {
+    return strictFuzzy;
+  }
+
+  if (alternateQuery) {
+    const strictAlt = await searchAnimesQuickCore(
+      alternateQuery,
+      genresParam,
+      page,
+      pageSize,
+      options,
+      trimmed,
+      alternateQuery,
+      "strict",
+    );
+    if (strictAlt.items.length > 0) {
+      return strictAlt;
     }
   }
 
@@ -907,7 +884,7 @@ async function searchAnimesQuickCore(
   options?: { includeTotal?: boolean; sort?: SearchSortMode },
   displayQuery = searchQuery,
   layoutCorrectedQuery?: string | null,
-  fuzzyMode: FuzzySearchMode = "strict",
+  fuzzyMode: FuzzySearchMode = "ilike",
 ): Promise<SearchPage> {
   const includeTotal = options?.includeTotal ?? true;
   const sort = options?.sort ?? "relevance";
@@ -919,7 +896,7 @@ async function searchAnimesQuickCore(
   const safePage = Number.isFinite(page) && page > 0 ? Math.floor(page) : 1;
   const safePageSize =
     Number.isFinite(pageSize) && pageSize > 0 ? Math.min(Math.floor(pageSize), 48) : SEARCH_PAGE_SIZE;
-  const partialFuzzyOnly = fuzzyMode === "partial";
+  const fuzzyOnly = fuzzyMode === "strict" || fuzzyMode === "partial";
 
   if (!hasQuery && !hasGenres) {
     return emptySearchPage(
@@ -937,9 +914,8 @@ async function searchAnimesQuickCore(
   let fuzzyShikimoriIds: number[] = [];
 
   if (hasQuery) {
-    fuzzyShikimoriIds = await findFuzzySearchShikimoriIds(trimmed, fuzzyMode);
-
-    if (partialFuzzyOnly) {
+    if (fuzzyOnly) {
+      fuzzyShikimoriIds = await findFuzzySearchShikimoriIds(trimmed, fuzzyMode);
       if (fuzzyShikimoriIds.length === 0) {
         return emptySearchPage(
           safePage,
@@ -962,10 +938,6 @@ async function searchAnimesQuickCore(
         shikimoriIdMatch !== null
           ? Prisma.sql`OR m."shikimoriId" = ${shikimoriIdMatch}`
           : Prisma.empty;
-      const fuzzyFilter =
-        fuzzyShikimoriIds.length > 0
-          ? Prisma.sql`OR m."shikimoriId" IN (${Prisma.join(fuzzyShikimoriIds)})`
-          : Prisma.empty;
 
       parts.push(Prisma.sql`
         AND (
@@ -974,7 +946,6 @@ async function searchAnimesQuickCore(
           OR COALESCE(m."otherTitle", '') ILIKE ${pattern}
           OR COALESCE(m."materialData"->>'anime_title', '') ILIKE ${pattern}
           ${shikimoriFilter}
-          ${fuzzyFilter}
         )
       `);
     }
@@ -998,17 +969,16 @@ async function searchAnimesQuickCore(
   const filterSql = Prisma.join(parts, " ");
   const offset = (safePage - 1) * safePageSize;
   const prefixPattern = `${escapeIlikePattern(trimmed)}%`;
-  const fuzzyRank = partialFuzzyOnly ? PARTIAL_FUZZY_TITLE_MATCH_RANK : FUZZY_TITLE_MATCH_RANK;
+  const fuzzyRank = fuzzyMode === "partial" ? PARTIAL_FUZZY_TITLE_MATCH_RANK : FUZZY_TITLE_MATCH_RANK;
 
   const candidateRankExpr = hasQuery
-    ? partialFuzzyOnly
+    ? fuzzyOnly
       ? Prisma.sql`${fuzzyRank}`
       : Prisma.sql`
         CASE
           WHEN lower(COALESCE(m."materialData"->>'anime_title', m.title)) = lower(${trimmed}) THEN 0
           WHEN COALESCE(m."materialData"->>'anime_title', m.title) ILIKE ${prefixPattern} THEN 1
           WHEN COALESCE(m."titleOrig", '') ILIKE ${prefixPattern} THEN 2
-          WHEN m."shikimoriId" IN (${Prisma.join(fuzzyShikimoriIds.length > 0 ? fuzzyShikimoriIds : [-1])}) THEN ${fuzzyRank}
           ELSE 3
         END
       `

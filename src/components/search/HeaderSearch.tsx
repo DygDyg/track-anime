@@ -358,6 +358,12 @@ export function HeaderSearch({
         const needed = HEADER_SEARCH_LIMIT - titleData.items.length;
         if (needed > 0) {
           clearSearchStatus();
+          // Сразу показать title-хиты, пока идёт добор по описанию.
+          if (titleData.items.length > 0) {
+            setItems(titleData.items);
+            setTotal(titleData.total);
+            setLoading(false);
+          }
           setExpandingSearch(true);
 
           const descriptionParams = new URLSearchParams({
