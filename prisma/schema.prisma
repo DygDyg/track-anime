@@ -88,6 +88,85 @@ model AnimeExternalIdMap {
   @@index([malId])
 }
 
+/// Каталог аниме по Shikimori id (одна мета на тайтл; озвучки — в KodikMaterial)
+model AnimeCatalog {
+  shikimoriId      Int       @id
+  title            String
+  titleOrig        String?
+  description      String?   @db.Text
+  status           String?
+  kind             String?
+  score            String?
+  year             Int?
+  episodesTotal    Int?
+  episodesAired    Int?
+  airedOn          DateTime?
+  releasedOn       DateTime?
+  nextEpisodeAt    DateTime?
+  posterUrl        String?
+  animeLicenseName String?
+  /// kodik | shikimori | merge
+  source           String    @default("kodik")
+  syncedAt         DateTime  @default(now())
+  createdAt        DateTime  @default(now())
+  updatedAt        DateTime  @updatedAt
+  aliases          AnimeTitleAlias[]
+  genres           AnimeGenre[]
+
+  @@index([status])
+  @@index([kind])
+  @@index([year])
+  @@index([nextEpisodeAt])
+  @@index([syncedAt])
+}
+
+/// Альтернативные названия для поиска (RU/EN/JP/license и т.п.)
+model AnimeTitleAlias {
+  id              String   @id @default(cuid())
+  shikimoriId     Int
+  catalog         AnimeCatalog @relation(fields: [shikimoriId], references: [shikimoriId], onDelete: Cascade)
+  title           String
+  /// lower(trim) без лишних пробелов — для unique
+  titleNormalized String
+  /// title | titleOrig | otherTitle | anime_title | other_titles | license | synonym | material
+  source          String
+  createdAt       DateTime @default(now())
+
+  @@unique([shikimoriId, titleNormalized])
+  @@index([titleNormalized])
+  @@index([shikimoriId])
+}
+
+/// Жанры на уровне аниме (не на каждую озвучку)
+model AnimeGenre {
+  shikimoriId Int
+  genreKey    String
+  catalog     AnimeCatalog @relation(fields: [shikimoriId], references: [shikimoriId], onDelete: Cascade)
+
+  @@id([shikimoriId, genreKey])
+  @@index([genreKey, shikimoriId])
+}
+
+/// Прогресс backfill каталога (для мониторинга / Grok-бота)
+model AnimeCatalogBackfillJob {
+  id                   String    @id @default("default")
+  /// idle | running | paused | done | failed
+  status               String    @default("idle")
+  /// Курсор по KodikMaterial.kodikId
+  cursorKodikId        String?
+  processedMaterials   Int       @default(0)
+  upsertedCatalog      Int       @default(0)
+  upsertedAliases      Int       @default(0)
+  upsertedGenres       Int       @default(0)
+  skippedNoShikimori   Int       @default(0)
+  errorCount           Int       @default(0)
+  lastError            String?   @db.Text
+  lastProgressAt       DateTime?
+  startedAt            DateTime?
+  finishedAt           DateTime?
+  updatedAt            DateTime  @updatedAt
+}
+
 /// Снимок related / franchise / similar с Shikimori (SWR для блоков на странице аниме)
 model AnimeRelationSnapshot {
   shikimoriId Int

@@ -158,6 +158,10 @@ Shikimori anime.id  ===  Kodik shikimori_id  ===  URL /anime/[shikimoriId]
 5. Вкладка «Анонсы» продолжает использовать `ShikimoriAnonsEntry`.
 6. Дни/месяцы и блоки анонсов сворачиваются по клику на заголовок; в шапке календаря — «Свернуть все» / «Развернуть все». Блоки «Прошедшие даты анонса» и «Дата уточняется» по умолчанию свёрнуты.
 
+### 8.1. Anime catalog (подготовка)
+
+Параллельно с `KodikMaterial.materialData` вводятся таблицы **`AnimeCatalog`** (1× `shikimoriId`), **`AnimeTitleAlias`**, **`AnimeGenre`**. Dual-write при save-material / Shikimori cache. Backfill: `npm run anime-catalog:backfill` (+ `:status`). Поиск пока ещё читает materials; переключение на каталог — отдельный cutover. Мониторинг: `AnimeCatalogBackfillJob`, админ `GET /api/admin/anime-catalog/backfill`, промпт для бота — `docs/migration/GROK_ANIME_CATALOG_BACKFILL_PROMPT.md`.
+
 ### 9. Search
 
 **Источник:** локальная БД `KodikMaterial` (raw SQL в `search.ts`).

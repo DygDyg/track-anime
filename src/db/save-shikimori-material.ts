@@ -5,6 +5,7 @@ import {
   type ShikimoriAnimeBrief,
 } from "@/lib/shikimori/anime-brief";
 import { shikimoriAssetUrl } from "@/lib/shikimori/client";
+import { upsertAnimeCatalogFromMaterial } from "@/lib/anime-catalog";
 
 const STUB_KODIK_PREFIX = "shikimori:";
 const STUB_TRANSLATION_ID = 0;
@@ -38,6 +39,7 @@ function buildMaterialData(item: ShikimoriAnimeBrief): Prisma.InputJsonValue {
 async function persistOne(prisma: PrismaClient, item: ShikimoriAnimeBrief): Promise<void> {
   const title = animeBriefTitle(item);
 
+  const materialData = buildMaterialData(item);
   await prisma.kodikMaterial.upsert({
     where: { kodikId: shikimoriStubKodikId(item.id) },
     create: {
@@ -50,15 +52,24 @@ async function persistOne(prisma: PrismaClient, item: ShikimoriAnimeBrief): Prom
       translationTitle: "Shikimori",
       translationType: SHIKIMORI_CACHE_TRANSLATION_TYPE,
       kodikUpdatedAt: new Date(),
-      materialData: buildMaterialData(item),
+      materialData,
     },
     update: {
       title,
       titleOrig: item.name,
       type: item.kind ?? "anime",
       kodikUpdatedAt: new Date(),
-      materialData: buildMaterialData(item),
+      materialData,
     },
+  });
+
+  await upsertAnimeCatalogFromMaterial(prisma, {
+    shikimoriId: item.id,
+    title,
+    titleOrig: item.name,
+    materialData,
+  }).catch((error) => {
+    console.warn("[save-shikimori-material] anime catalog dual-write failed:", item.id, error);
   });
 }
 

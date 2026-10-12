@@ -29,6 +29,7 @@ Next.js anime streaming site with Shikimori OAuth + Kodik player. Data lives in 
 | Fix anime page | `src/lib/anime-page.ts`, `src/app/anime/[shikimoriId]/page.tsx` |
 | Fix lists/favorites | `src/app/user/[shikimoriId]/favorites/page.tsx`, `FavoritesView.tsx`, `src/lib/favorites-sync.ts`, `src/lib/shikimori/user-list-mutations.ts` |
 | Fix search | `src/lib/search.ts` (server-only, raw SQL) |
+| Anime catalog backfill | `AnimeCatalog` + `npm run anime-catalog:backfill`; Grok prompt `docs/migration/GROK_ANIME_CATALOG_BACKFILL_PROMPT.md` |
 | Fix import/sync | `src/lib/admin/kodik-sync.ts`, `scripts/kodik-import-full.ts` |
 | Fix MAL ID / AniSkip mapping | `src/lib/admin/mal-id-sync.ts`, `src/lib/shikimori/mal-id.ts`, `src/lib/aniskip.ts`, `MalIdSyncPanel.tsx` |
 | Fix posters | `src/lib/poster.ts`, `AnimePoster.tsx`, `src/lib/cover-cache.ts`, `src/lib/poster-fallback.ts`, `src/lib/admin/cover-cache-settings.ts`, `src/app/api/cover/route.ts`, `/admin/covers` |
@@ -147,6 +148,7 @@ Calendar: `/calendar` → calendar.ts → local Kodik DB or Shikimori `/api/cale
 | TA Plus bottom bar before play | Idle hides bottom controls (no synthetic scrub); episode strip + Continue/play stay until HLS mounts |
 | TA Plus play shows UI but no video | `initialResume`/`taPlusSeekSeconds` must not reload HLS after ready — boot seek is captured once in `TaPlusPlayer` |
 | Ambient glow on non-ultrawide / windowed | Button + runtime only if `screen` AR > 16:9 and native fullscreen; settings JSON `ta:player-ambient-glow` may stay enabled while runtime unmounts (`VideoAmbientGlow`) so there is no canvas load |
+| Ambient glow invisible in FS pillarbox | `<video bg-black>` covers letterbox over `VideoAmbientGlow` — use `bg-transparent` while glow active; paint one still frame on activate even if paused |
 | Thin black strip on FS right edge | Often `html { scrollbar-gutter: stable }` + `100dvw`; FS disables gutter (`html:has(:fullscreen)`) and uses `%` widths; keep TaPlus overflow clipped when glow scales |
 | TA Plus no OP/ED skip button | Skip-times used to clear when HLS duration briefly hits 0; fetch uses last-good/1440 fallback (`skipTimesEpisodeLength`) |
 | TA Plus prefer parser skips | If `/ftor` returns `skip_timings`/`skip_raw`, TA Plus uses them instead of AniSkip (`kodik-parser-skip.ts`) |

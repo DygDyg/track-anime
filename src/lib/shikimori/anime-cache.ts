@@ -9,6 +9,8 @@ import {
   invalidateRelationSnapshots,
 } from "@/lib/shikimori/relation-snapshot";
 import type { ShikimoriAnime } from "@/lib/shikimori/types";
+import { upsertAnimeCatalogFromMaterial } from "@/lib/anime-catalog";
+import { posterFromShikimoriAnime } from "@/lib/poster-fallback";
 
 export const SHIKIMORI_ANIME_CACHE_TTL_MS = 24 * 60 * 60 * 1000;
 
@@ -115,6 +117,28 @@ export async function persistShikimoriAnimeCache(anime: ShikimoriAnime): Promise
       console.warn("[anime-cache] relation snapshot invalidate failed:", anime.id, error);
     });
   }
+
+  const catalogMaterialData = {
+    source: "shikimori",
+    [ANIME_FULL_KEY]: anime,
+    [ANIME_FULL_SYNCED_AT_KEY]: syncedAt,
+    anime_title: title,
+    anime_kind: anime.kind ?? null,
+    anime_status: anime.status ?? null,
+    shikimori_episodes: anime.episodes ?? null,
+    year,
+    anime_poster_url: posterFromShikimoriAnime(anime),
+  };
+
+  await upsertAnimeCatalogFromMaterial(prisma, {
+    shikimoriId: anime.id,
+    title,
+    titleOrig: anime.name,
+    year,
+    materialData: catalogMaterialData,
+  }).catch((error) => {
+    console.warn("[anime-cache] anime catalog dual-write failed:", anime.id, error);
+  });
 }
 
 export function parseShikimoriAnimeFromMaterialData(data: unknown): ShikimoriAnime | null {

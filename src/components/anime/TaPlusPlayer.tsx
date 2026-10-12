@@ -860,7 +860,11 @@ export const TaPlusPlayer = forwardRef<TaPlusPlayerHandle, Props>(function TaPlu
             videoRef.current = node;
             setVideoEl(node);
           }}
-          className="absolute inset-0 h-full w-full bg-black object-contain [color-scheme:dark]"
+          className={[
+            /* Transparent letterbox when glow is on — otherwise bg-black covers VideoAmbientGlow. */
+            "absolute inset-0 h-full w-full object-contain [color-scheme:dark]",
+            ambientGlowActive ? "bg-transparent" : "bg-black",
+          ].join(" ")}
           controls={false}
           playsInline
           preload="metadata"

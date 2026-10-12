@@ -34,6 +34,8 @@
     "kodik:normalize-metadata": "tsx scripts/normalize-kodik-material-metadata.ts",
     "kodik:normalize-metadata:write": "tsx scripts/normalize-kodik-material-metadata.ts --write --quiet",
     "kodik:backfill-genres": "tsx scripts/kodik-backfill-genres.ts",
+    "anime-catalog:backfill": "tsx scripts/anime-catalog-backfill.ts",
+    "anime-catalog:backfill:status": "tsx scripts/anime-catalog-backfill.ts --status",
     "shikimori:sync-anons": "tsx scripts/shikimori-sync-anons.ts",
     "shikimori:malid-stats": "tsx scripts/shikimori-malid-stats.ts",
     "kodik:backfill-dates": "tsx scripts/kodik-backfill-release-dates.ts",

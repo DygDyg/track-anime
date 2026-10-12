@@ -96,10 +96,11 @@ export function VideoAmbientGlow({ video, active, settings }: Props) {
       }
     };
 
-    const draw = (now: number) => {
-      if (cancelled || document.hidden || video.paused || video.ended) return;
+    const paint = (now: number, force = false) => {
+      if (cancelled || document.hidden) return;
       if (video.readyState < HTMLMediaElement.HAVE_CURRENT_DATA) return;
-      if (now - lastDrawMs < intervalRef.current) return;
+      if (!force && (video.paused || video.ended)) return;
+      if (!force && now - lastDrawMs < intervalRef.current) return;
       lastDrawMs = now;
       syncBufferSize();
       try {
@@ -114,14 +115,14 @@ export function VideoAmbientGlow({ video, active, settings }: Props) {
       if (typeof video.requestVideoFrameCallback === "function") {
         rvfcId = video.requestVideoFrameCallback(() => {
           rvfcId = null;
-          draw(performance.now());
+          paint(performance.now());
           schedule();
         });
         return;
       }
       rafId = requestAnimationFrame((now) => {
         rafId = null;
-        draw(now);
+        paint(now);
         schedule();
       });
     };
@@ -131,7 +132,11 @@ export function VideoAmbientGlow({ video, active, settings }: Props) {
       schedule();
     };
 
-    const onStop = () => stopLoops();
+    const onStop = () => {
+      /* Keep last frame; one forced paint if we never drew (enable while paused). */
+      stopLoops();
+      paint(performance.now(), true);
+    };
 
     const onVisibility = () => {
       if (document.hidden) {
@@ -139,6 +144,7 @@ export function VideoAmbientGlow({ video, active, settings }: Props) {
         return;
       }
       if (!video.paused && !video.ended) schedule();
+      else paint(performance.now(), true);
     };
 
     syncBufferSize();
@@ -148,6 +154,8 @@ export function VideoAmbientGlow({ video, active, settings }: Props) {
     video.addEventListener("loadedmetadata", syncBufferSize);
     document.addEventListener("visibilitychange", onVisibility);
 
+    /* Still frame when enabling glow while paused / seeking. */
+    paint(performance.now(), true);
     if (!video.paused && !video.ended) schedule();
 
     return () => {

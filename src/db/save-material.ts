@@ -14,6 +14,7 @@ import {
   invalidateRelationSnapshots,
   normalizeAnimeStatus,
 } from "@/lib/shikimori/relation-snapshot";
+import { upsertAnimeCatalogFromMaterial } from "@/lib/anime-catalog";
 
 function parseShikimoriId(value?: string | number | null): number | null {
   if (value === undefined || value === null || value === "") return null;
@@ -198,6 +199,18 @@ export async function saveKodikMaterial(
       skipDuplicates: true,
     }),
   ]);
+
+  // Dual-write: каталог аниме по shikimoriId (подготовка к переезду с materialData).
+  await upsertAnimeCatalogFromMaterial(prisma, {
+    shikimoriId,
+    title: material.title,
+    titleOrig: material.title_orig ?? null,
+    otherTitle: material.other_title ?? null,
+    year: material.year ?? null,
+    materialData: material.material_data ?? materialData,
+  }).catch((error) => {
+    console.warn("[save-material] anime catalog dual-write failed:", shikimoriId, error);
+  });
 
   let newEpisodes = 0;
   let newReleases = 0;
