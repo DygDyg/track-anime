@@ -87,6 +87,12 @@ const MOBILE_TRANSLATIONS_SWIPE_ZONE_PX = 96;
 const MOBILE_TRANSLATIONS_SWIPE_THRESHOLD_PX = 56;
 const BRIGHTNESS_GESTURE_ACTIVATE_PX = 8;
 const VOLUME_GESTURE_ACTIVATE_PX = 8;
+/** Horizontal swipe seek: lock axis after this distance. */
+const SEEK_GESTURE_ACTIVATE_PX = 24;
+/** Ignore horizontal seek if touch started near left/right edge (system back). */
+const SEEK_GESTURE_EDGE_IGNORE_PX = 20;
+/** Minimum px per ±10s step; also uses 12% of shell width. */
+const SEEK_GESTURE_STEP_MIN_PX = 56;
 const BRIGHTNESS_HUD_MS = 900;
 const VOLUME_HUD_MS = 900;
 const KODIK_NATIVE_SKIP_PASSTHROUGH_WIDTH = "min(18rem, 44vw)";
@@ -322,12 +328,18 @@ export function KodikPlayerBetaViewport({
     startX: number;
     startY: number;
     startedNearBottom: boolean;
+    startedNearHorizontalEdge: boolean;
     startedOnRight: boolean;
     startedOnLeft: boolean;
-    mode: "none" | "brightness" | "volume" | "translations";
+    mode: "none" | "brightness" | "volume" | "translations" | "seek";
     startBrightness: number;
     startVolume: number;
     shellHeight: number;
+    shellWidth: number;
+    /** Playback position when seek gesture locked. */
+    seekBasePosition: number;
+    /** Signed ±10s steps already shown in HUD for this gesture. */
+    lastSeekSteps: number;
   } | null>(null);
   const wakeLockRef = useRef<WakeLockSentinel | null>(null);
   /** Local copy for timeline UI — parent skips position-only React updates to avoid panel thrash. */
@@ -1123,6 +1135,53 @@ export function KodikPlayerBetaViewport({
     setSeekPreview({ seconds: clamped, side });
   }, []);
 
+  /** Absolute ±HUD while horizontal seek swipe is active (not additive like tap bursts). */
+  const setSeekGestureHud = useCallback(
+    (deltaSeconds: number, basePosition: number) => {
+      clearSeekFeedbackTimer("backward");
+      clearSeekFeedbackTimer("forward");
+      if (deltaSeconds === 0) {
+        setSeekFeedback({ backward: 0, forward: 0 });
+        setSeekPreview(null);
+        return;
+      }
+      const side = deltaSeconds < 0 ? "backward" : "forward";
+      const abs = Math.abs(deltaSeconds);
+      setSeekFeedback({
+        backward: side === "backward" ? abs : 0,
+        forward: side === "forward" ? abs : 0,
+      });
+      updateSeekPreviewTarget(basePosition + deltaSeconds, side);
+    },
+    [clearSeekFeedbackTimer, updateSeekPreviewTarget],
+  );
+
+  const armSeekFeedbackFade = useCallback(() => {
+    const feedback = seekFeedbackRef.current;
+    if (feedback.backward > 0) {
+      clearSeekFeedbackTimer("backward");
+      seekFeedbackTimersRef.current.backward = window.setTimeout(() => {
+        setSeekFeedback((current) => {
+          const next = { ...current, backward: 0 };
+          if (next.forward === 0) setSeekPreview(null);
+          return next;
+        });
+        seekFeedbackTimersRef.current.backward = null;
+      }, SEEK_FEEDBACK_MS);
+    }
+    if (feedback.forward > 0) {
+      clearSeekFeedbackTimer("forward");
+      seekFeedbackTimersRef.current.forward = window.setTimeout(() => {
+        setSeekFeedback((current) => {
+          const next = { ...current, forward: 0 };
+          if (next.backward === 0) setSeekPreview(null);
+          return next;
+        });
+        seekFeedbackTimersRef.current.forward = null;
+      }, SEEK_FEEDBACK_MS);
+    }
+  }, [clearSeekFeedbackTimer]);
+
   const applyTaPlusIdleSeek = useCallback(
     (seconds: number) => {
       const duration = resolveTaPlusIdleDuration();
@@ -1278,6 +1337,8 @@ export function KodikPlayerBetaViewport({
 
       const ratioX = (touch.clientX - rect.left) / rect.width;
       const startedOnRight = ratioX >= 0.5;
+      const insetLeft = touch.clientX - rect.left;
+      const insetRight = rect.right - touch.clientX;
       let startVolume = volumeValueRef.current;
       if (fullscreenActive && !startedOnRight) {
         if (hasNativePlayerStreamVolume()) {
@@ -1293,12 +1354,17 @@ export function KodikPlayerBetaViewport({
         startY: touch.clientY,
         startedNearBottom:
           fullscreenActive && rect.bottom - touch.clientY <= MOBILE_TRANSLATIONS_SWIPE_ZONE_PX,
+        startedNearHorizontalEdge:
+          insetLeft <= SEEK_GESTURE_EDGE_IGNORE_PX || insetRight <= SEEK_GESTURE_EDGE_IGNORE_PX,
         startedOnRight,
         startedOnLeft: !startedOnRight,
         mode: "none",
         startBrightness: brightnessValueRef.current,
         startVolume,
         shellHeight: rect.height,
+        shellWidth: rect.width,
+        seekBasePosition: playbackAnchorRef.current.position,
+        lastSeekSteps: 0,
       };
       suppressClickAfterGestureRef.current = false;
     },
@@ -1325,6 +1391,14 @@ export function KodikPlayerBetaViewport({
         return;
       }
 
+      if (gesture.mode === "seek") {
+        suppressClickAfterGestureRef.current = true;
+        const total = gesture.lastSeekSteps * MOBILE_DOUBLE_TAP_SEEK_SECONDS;
+        if (total !== 0) applySeekSkipDelta(total);
+        armSeekFeedbackFade();
+        return;
+      }
+
       if (!gesture.startedNearBottom || fullscreenTranslationsOpen) return;
 
       const deltaX = touch.clientX - gesture.startX;
@@ -1336,7 +1410,12 @@ export function KodikPlayerBetaViewport({
         onFullscreenTranslationsIntent?.(true);
       }
     },
-    [fullscreenTranslationsOpen, onFullscreenTranslationsIntent],
+    [
+      applySeekSkipDelta,
+      armSeekFeedbackFade,
+      fullscreenTranslationsOpen,
+      onFullscreenTranslationsIntent,
+    ],
   );
 
   // Non-passive listeners: React's synthetic touchmove is often passive, so preventDefault
@@ -1383,6 +1462,20 @@ export function KodikPlayerBetaViewport({
           clearClickTimer();
           suppressClickAfterGestureRef.current = true;
           setUiVisible(false);
+        } else if (
+          !gesture.startedNearBottom &&
+          !gesture.startedNearHorizontalEdge &&
+          Math.abs(deltaX) >= SEEK_GESTURE_ACTIVATE_PX &&
+          Math.abs(deltaX) > Math.abs(deltaY) * 1.2
+        ) {
+          gesture.mode = "seek";
+          gesture.seekBasePosition = playbackAnchorRef.current.position;
+          gesture.lastSeekSteps = 0;
+          clearClickTimer();
+          clearPendingMobileSeekTimer();
+          pendingMobileSeekDeltaRef.current = 0;
+          suppressClickAfterGestureRef.current = true;
+          setUiVisible(false);
         }
       }
 
@@ -1394,6 +1487,17 @@ export function KodikPlayerBetaViewport({
         event.preventDefault();
         const span = Math.max(gesture.shellHeight * 0.55, 140);
         setVolumeFromGesture(gesture.startVolume - deltaY / span);
+      } else if (gesture.mode === "seek") {
+        event.preventDefault();
+        const stepPx = Math.max(gesture.shellWidth * 0.12, SEEK_GESTURE_STEP_MIN_PX);
+        const rawSteps = Math.trunc(deltaX / stepPx);
+        if (rawSteps !== gesture.lastSeekSteps) {
+          gesture.lastSeekSteps = rawSteps;
+          setSeekGestureHud(
+            rawSteps * MOBILE_DOUBLE_TAP_SEEK_SECONDS,
+            gesture.seekBasePosition,
+          );
+        }
       } else if (gesture.mode === "translations") {
         if (
           deltaY < -MOBILE_TRANSLATIONS_SWIPE_THRESHOLD_PX &&
@@ -1408,11 +1512,13 @@ export function KodikPlayerBetaViewport({
     return () => shell.removeEventListener("touchmove", onTouchMove, true);
   }, [
     clearClickTimer,
+    clearPendingMobileSeekTimer,
     fullscreenActive,
     fullscreenTranslationsOpen,
     kodikUiAccess,
     passThroughHits,
     setBrightnessFromGesture,
+    setSeekGestureHud,
     setVolumeFromGesture,
     touchLikeUi,
   ]);
@@ -2109,7 +2215,11 @@ export function KodikPlayerBetaViewport({
         kodikUiAccess
           ? undefined
           : () => {
+              const gesture = touchGestureRef.current;
               touchGestureRef.current = null;
+              if (gesture?.mode === "seek") {
+                setSeekGestureHud(0, 0);
+              }
             }
       }
       onFocusCapture={kodikUiAccess ? undefined : revealUi}
