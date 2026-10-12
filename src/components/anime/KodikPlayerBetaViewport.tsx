@@ -1956,7 +1956,12 @@ export function KodikPlayerBetaViewport({
    */
   const showTaPlusClickCatcher = isTaPlus && taPlusStarted && !kodikUiAccess;
   const taPlusCatcherInteractive = !controlsDisabled && !passThroughHits;
-  /** YouTube-style center play/pause — only while chrome is up (not during ±seek badges). */
+  /**
+   * YouTube-style center play/pause while chrome is up.
+   * Hit zone ≈ 80% × 65% of the frame (large center rectangle); left/right margins
+   * stay free for UI toggle and double-tap ±seek. Visible icon stays compact.
+   * Below chrome (z-20) and Continue/Skip (z-40) so those stay clickable on top.
+   */
   const showTaPlusCenterPlay =
     showTaPlusClickCatcher &&
     uiVisible &&
@@ -2463,24 +2468,34 @@ export function KodikPlayerBetaViewport({
               revealUi();
             }}
             className={[
-              "absolute left-1/2 top-1/2 z-30 flex h-20 w-20 -translate-x-1/2 -translate-y-1/2",
-              "items-center justify-center rounded-full border border-white/20 bg-black/60 text-white",
-              "shadow-2xl shadow-black/40 backdrop-blur-sm transition",
-              "hover:bg-black/75 hover:border-white/30 active:scale-95",
-              "disabled:cursor-wait disabled:opacity-50 sm:h-24 sm:w-24",
+              // Hit target ≈ red mockup: ~80% × 65% centered; under chrome / Continue / Skip.
+              "group absolute left-1/2 top-1/2 z-[15] flex h-[65%] w-[80%] -translate-x-1/2 -translate-y-1/2",
+              "items-center justify-center bg-transparent",
+              "disabled:cursor-wait",
               "touch-manipulation select-none [-webkit-tap-highlight-color:transparent]",
-              "outline-none focus-visible:ring-2 focus-visible:ring-white/50",
+              "outline-none focus-visible:outline-none",
             ].join(" ")}
           >
-            {viewPlayback.isPlaying ? (
-              <svg viewBox="0 0 24 24" className="h-10 w-10 fill-current sm:h-12 sm:w-12" aria-hidden>
-                <path d="M6 5h4v14H6V5zm8 0h4v14h-4V5z" />
-              </svg>
-            ) : (
-              <svg viewBox="0 0 24 24" className="ml-1 h-10 w-10 fill-current sm:h-12 sm:w-12" aria-hidden>
-                <path d="M8 5v14l11-7z" />
-              </svg>
-            )}
+            <span
+              className={[
+                "pointer-events-none flex h-20 w-20 items-center justify-center rounded-full",
+                "border border-white/20 bg-black/60 text-white shadow-2xl shadow-black/40 backdrop-blur-sm",
+                "transition group-hover:border-white/30 group-hover:bg-black/75 group-active:scale-95",
+                "group-disabled:opacity-50 group-focus-visible:ring-2 group-focus-visible:ring-white/50",
+                "sm:h-24 sm:w-24",
+              ].join(" ")}
+              aria-hidden
+            >
+              {viewPlayback.isPlaying ? (
+                <svg viewBox="0 0 24 24" className="h-10 w-10 fill-current sm:h-12 sm:w-12" aria-hidden>
+                  <path d="M6 5h4v14H6V5zm8 0h4v14h-4V5z" />
+                </svg>
+              ) : (
+                <svg viewBox="0 0 24 24" className="ml-1 h-10 w-10 fill-current sm:h-12 sm:w-12" aria-hidden>
+                  <path d="M8 5v14l11-7z" />
+                </svg>
+              )}
+            </span>
           </button>
         ) : null}
         {playPauseFlash ? (

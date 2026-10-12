@@ -3,13 +3,17 @@
   "entries": [
     {
       "id": "2026-10-12",
-      "recordedAt": "2026-10-12T09:56:00.000Z",
-      "gitSha": "7700568",
+      "recordedAt": "2026-10-12T10:51:00.000Z",
+      "gitSha": "e3196bf",
       "title": "TA Plus как на YouTube",
       "items": [
         {
           "kind": "change",
           "text": "В TA Plus тап по видео только показывает или скрывает кнопки; play и pause — большая кнопка по центру (как на YouTube), а также панель снизу."
+        },
+        {
+          "kind": "improvement",
+          "text": "Зона play/pause по центру в TA Plus стала заметно больше; кнопки «Продолжить» и «Пропустить» остаются поверх неё."
         },
         {
           "kind": "improvement",
