@@ -1813,18 +1813,22 @@ export function KodikPlayerBetaViewport({
       clearClickTimer();
       const clickDelay = touchLikeUi ? TOUCH_SINGLE_CLICK_DELAY_MS : SINGLE_CLICK_DELAY_MS;
       clickTimerRef.current = window.setTimeout(() => {
-        // Hidden chrome: first tap only reveals UI. Play/pause needs UI already visible.
+        // Hidden chrome: first tap only reveals UI.
         if (!uiVisible) {
           revealUi();
           clickTimerRef.current = null;
           return;
         }
-        // TA Plus: idle → start HLS; after start → play/pause. Kodik → play/pause.
+        // TA Plus (YouTube-style): tap on the frame only toggles chrome.
+        // Play/pause is the center button / bottom bar / Space — not the whole surface.
         if (isTaPlus) {
-          startTaPlusMedia();
-        } else {
-          handlePlayPauseWithFlash();
+          clearHideTimer();
+          setUiVisible(false);
+          onFullscreenTranslationsIntent?.(false);
+          clickTimerRef.current = null;
+          return;
         }
+        handlePlayPauseWithFlash();
         revealUi();
         clickTimerRef.current = null;
       }, clickDelay);
@@ -1832,13 +1836,14 @@ export function KodikPlayerBetaViewport({
     [
       applyTouchSeekDelta,
       clearClickTimer,
+      clearHideTimer,
       controlsDisabled,
       handlePlayPauseWithFlash,
       isTaPlus,
       kodikUiAccess,
+      onFullscreenTranslationsIntent,
       resolveTouchSeekDelta,
       revealUi,
-      startTaPlusMedia,
       touchLikeUi,
       uiVisible,
     ],
@@ -1951,6 +1956,16 @@ export function KodikPlayerBetaViewport({
    */
   const showTaPlusClickCatcher = isTaPlus && taPlusStarted && !kodikUiAccess;
   const taPlusCatcherInteractive = !controlsDisabled && !passThroughHits;
+  /** YouTube-style center play/pause — only while chrome is up (not during ±seek badges). */
+  const showTaPlusCenterPlay =
+    showTaPlusClickCatcher &&
+    uiVisible &&
+    !passThroughHits &&
+    !playPauseFlash &&
+    seekFeedback.backward <= 0 &&
+    seekFeedback.forward <= 0 &&
+    brightnessHud == null &&
+    volumeHud == null;
   const skipPassthroughBottom = settings.playerLargeUi
     ? KODIK_NATIVE_SKIP_PASSTHROUGH_BOTTOM_LARGE
     : KODIK_NATIVE_SKIP_PASSTHROUGH_BOTTOM;
@@ -2433,6 +2448,40 @@ export function KodikPlayerBetaViewport({
               +{seekFeedback.forward}
             </div>
           </div>
+        ) : null}
+        {showTaPlusCenterPlay ? (
+          <button
+            type="button"
+            data-tv-focus
+            data-tv-player-seek-keys
+            disabled={controlsDisabled}
+            aria-label={viewPlayback.isPlaying ? "Пауза" : "Воспроизведение"}
+            onMouseDown={(event) => event.preventDefault()}
+            onClick={(event) => {
+              event.stopPropagation();
+              startTaPlusMedia();
+              revealUi();
+            }}
+            className={[
+              "absolute left-1/2 top-1/2 z-30 flex h-20 w-20 -translate-x-1/2 -translate-y-1/2",
+              "items-center justify-center rounded-full border border-white/20 bg-black/60 text-white",
+              "shadow-2xl shadow-black/40 backdrop-blur-sm transition",
+              "hover:bg-black/75 hover:border-white/30 active:scale-95",
+              "disabled:cursor-wait disabled:opacity-50 sm:h-24 sm:w-24",
+              "touch-manipulation select-none [-webkit-tap-highlight-color:transparent]",
+              "outline-none focus-visible:ring-2 focus-visible:ring-white/50",
+            ].join(" ")}
+          >
+            {viewPlayback.isPlaying ? (
+              <svg viewBox="0 0 24 24" className="h-10 w-10 fill-current sm:h-12 sm:w-12" aria-hidden>
+                <path d="M6 5h4v14H6V5zm8 0h4v14h-4V5z" />
+              </svg>
+            ) : (
+              <svg viewBox="0 0 24 24" className="ml-1 h-10 w-10 fill-current sm:h-12 sm:w-12" aria-hidden>
+                <path d="M8 5v14l11-7z" />
+              </svg>
+            )}
+          </button>
         ) : null}
         {playPauseFlash ? (
           <div

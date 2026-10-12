@@ -2,6 +2,22 @@
   "version": 1,
   "entries": [
     {
+      "id": "2026-10-12",
+      "recordedAt": "2026-10-12T09:56:00.000Z",
+      "gitSha": "7700568",
+      "title": "TA Plus как на YouTube",
+      "items": [
+        {
+          "kind": "change",
+          "text": "В TA Plus тап по видео только показывает или скрывает кнопки; play и pause — большая кнопка по центру (как на YouTube), а также панель снизу."
+        },
+        {
+          "kind": "improvement",
+          "text": "В списке зеркал приложения появилось 777.track-anime.win."
+        }
+      ]
+    },
+    {
       "id": "2026-10-11",
       "recordedAt": "2026-10-11T16:05:00.000Z",
       "gitSha": "a6f8c25",

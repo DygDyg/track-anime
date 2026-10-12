@@ -28,7 +28,7 @@ final class MirrorCatalog {
     static final String[] FALLBACK_HOSTS = {
             "track-anime.win",
             "mirror.track-anime.win",
-            "mirror.track-anime.win",
+            "777.track-anime.win",
             "track-anime.dygdyg.ru",
             "track-anime.duckdns.org",
             "ta.dygdyg.ru",
