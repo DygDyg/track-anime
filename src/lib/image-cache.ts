@@ -9,6 +9,9 @@ export type ImageCacheKind = "studio" | "screenshot";
 const FETCH_UA =
   "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36";
 
+/** Upstream image fetch budget — avoid holding /api/image-cache until maxDuration. */
+const FETCH_TIMEOUT_MS = 8_000;
+
 const KIND_SETTINGS: Record<
   ImageCacheKind,
   { dir: string; quality: number; maxWidth: number; maxHeight: number }
@@ -76,6 +79,7 @@ async function fetchImageBuffer(url: string): Promise<Buffer | null> {
       ...(origin ? { Referer: origin } : {}),
     },
     redirect: "follow",
+    signal: AbortSignal.timeout(FETCH_TIMEOUT_MS),
   });
 
   if (!res.ok) return null;

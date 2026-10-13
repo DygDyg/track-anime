@@ -1,13 +1,15 @@
 "use client";
 
-import Link from "next/link";
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { NavLink } from "@/components/NavLink";
 import { LoadingSpinner } from "@/components/ui/LoadingSpinner";
 import { EXTERNAL_IMG_ATTRS } from "@/lib/external-image";
 import { buildCachedImageUrl } from "@/lib/image-cache-url";
 import type { AnimePageDto } from "@/lib/anime-page";
 import { searchFieldParamName } from "@/lib/search-fields";
+
+/** Client budget — if /api/image-cache hangs, fall back to studio name. */
+const STUDIO_LOGO_LOAD_TIMEOUT_MS = 12_000;
 
 function buildStudioSearchHref(studioName: string): string {
   const params = new URLSearchParams();
@@ -22,10 +24,21 @@ function StudioLogo({ studio }: { studio: AnimePageDto["studios"][number] }) {
   const [imgLoading, setImgLoading] = useState(Boolean(imageUrl));
   const showImage = Boolean(imageUrl) && !imgFailed;
 
+  useEffect(() => {
+    if (!showImage || !imgLoading) return;
+    const timer = window.setTimeout(() => {
+      setImgFailed(true);
+      setImgLoading(false);
+    }, STUDIO_LOGO_LOAD_TIMEOUT_MS);
+    return () => window.clearTimeout(timer);
+  }, [showImage, imgLoading]);
+
   return (
     <NavLink
       href={buildStudioSearchHref(studio.name)}
       title={studio.name}
+      // Prefetch hits nginx /search rate limit (429) and starves image-cache requests.
+      prefetch={false}
       className="relative inline-flex h-10 min-w-[3.25rem] max-w-[6.5rem] shrink-0 items-center justify-center rounded-lg border border-border bg-background/90 px-2.5 py-1.5 transition hover:border-accent/40 hover:bg-surface-dim"
     >
       {showImage && imgLoading ? (

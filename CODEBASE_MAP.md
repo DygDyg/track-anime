@@ -231,7 +231,7 @@ Git deploy webhook (HMAC, no session): `api/deploy/webhook` (POST)
 | `history-upcoming-soon.ts` | History page «Скоро выйдут» block (last ep in dub + 7d, 12h window) |
 | `calendar.ts` | Release calendar, Shikimori/Kodik ongoing sources and anons grouping |
 | `cover-cache.ts` | Poster caching + freshness jitter |
-| `image-cache.ts`, `image-cache-url.ts` | Studio logo/screenshot server cache + URL helper |
+| `image-cache.ts`, `image-cache-url.ts` | Studio logo/screenshot server cache + URL helper (upstream fetch timeout 8s; miss/fail → 404) |
 | `poster.ts`, `poster-fallback.ts` | Poster resolution by configurable source order |
 | `kodik-player-api.ts` | Kodik iframe postMessage |
 | `watch-party/types.ts` | Shared WebSocket room message and state types |

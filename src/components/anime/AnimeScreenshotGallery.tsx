@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { EXTERNAL_IMG_ATTRS } from "@/lib/external-image";
 import { buildCachedImageUrl } from "@/lib/image-cache-url";
 import { ImageLightbox } from "@/components/anime/ImageLightbox";
@@ -12,11 +12,12 @@ type Props = {
   className?: string;
 };
 
+/** Client budget — pending /api/image-cache must not spin forever. */
+const SCREENSHOT_LOAD_TIMEOUT_MS = 12_000;
+
 export function AnimeScreenshotGallery({ title, screenshots, className = "" }: Props) {
   const [lightboxOpen, setLightboxOpen] = useState(false);
   const [lightboxIndex, setLightboxIndex] = useState(0);
-  const [loaded, setLoaded] = useState<Record<number, boolean>>({});
-  const [failed, setFailed] = useState<Record<number, boolean>>({});
 
   if (screenshots.length === 0) return null;
 
@@ -34,45 +35,15 @@ export function AnimeScreenshotGallery({ title, screenshots, className = "" }: P
         </p>
         <div className="flex gap-2 overflow-x-auto pb-1 snap-x snap-mandatory [-ms-overflow-style:none] [scrollbar-width:thin]">
           {cachedScreenshots.map((src, index) => (
-            <button
+            <ScreenshotThumb
               key={`${src}-${index}`}
-              type="button"
-              onClick={() => {
+              src={src}
+              index={index}
+              onOpen={() => {
                 setLightboxIndex(index);
                 setLightboxOpen(true);
               }}
-              className="group/shot relative shrink-0 snap-start overflow-hidden rounded-lg border border-border bg-surface-dim text-left transition hover:border-accent/40 hover:shadow-md hover:shadow-accent/10"
-              aria-label={`Открыть скриншот ${index + 1}`}
-            >
-              {!loaded[index] && !failed[index] ? (
-                <span className="flex aspect-square w-[4.5rem] items-center justify-center sm:w-20">
-                  <LoadingSpinner size="sm" />
-                </span>
-              ) : null}
-              {!failed[index] ? (
-                // eslint-disable-next-line @next/next/no-img-element
-                <img
-                  src={src}
-                  alt=""
-                  loading="lazy"
-                  decoding="async"
-                  {...EXTERNAL_IMG_ATTRS}
-                  onLoad={() => setLoaded((prev) => ({ ...prev, [index]: true }))}
-                  onError={() => {
-                    setFailed((prev) => ({ ...prev, [index]: true }));
-                    setLoaded((prev) => ({ ...prev, [index]: true }));
-                  }}
-                  className={[
-                    "aspect-square w-[4.5rem] object-cover transition duration-300 group-hover/shot:scale-[1.03] sm:w-20",
-                    loaded[index] ? "opacity-100" : "absolute inset-0 opacity-0",
-                  ].join(" ")}
-                />
-              ) : (
-                <span className="flex aspect-square w-[4.5rem] items-center justify-center bg-surface-dim text-[10px] text-muted sm:w-20">
-                  Нет превью
-                </span>
-              )}
-            </button>
+            />
           ))}
         </div>
       </div>
@@ -85,5 +56,59 @@ export function AnimeScreenshotGallery({ title, screenshots, className = "" }: P
         onIndexChange={setLightboxIndex}
       />
     </>
+  );
+}
+
+function ScreenshotThumb({
+  src,
+  index,
+  onOpen,
+}: {
+  src: string;
+  index: number;
+  onOpen: () => void;
+}) {
+  const [loaded, setLoaded] = useState(false);
+  const [failed, setFailed] = useState(false);
+
+  useEffect(() => {
+    if (loaded || failed) return;
+    const timer = window.setTimeout(() => setFailed(true), SCREENSHOT_LOAD_TIMEOUT_MS);
+    return () => window.clearTimeout(timer);
+  }, [loaded, failed]);
+
+  return (
+    <button
+      type="button"
+      onClick={onOpen}
+      className="group/shot relative shrink-0 snap-start overflow-hidden rounded-lg border border-border bg-surface-dim text-left transition hover:border-accent/40 hover:shadow-md hover:shadow-accent/10"
+      aria-label={`Открыть скриншот ${index + 1}`}
+    >
+      {!loaded && !failed ? (
+        <span className="flex aspect-square w-[4.5rem] items-center justify-center sm:w-20">
+          <LoadingSpinner size="sm" />
+        </span>
+      ) : null}
+      {!failed ? (
+        // eslint-disable-next-line @next/next/no-img-element
+        <img
+          src={src}
+          alt=""
+          loading="lazy"
+          decoding="async"
+          {...EXTERNAL_IMG_ATTRS}
+          onLoad={() => setLoaded(true)}
+          onError={() => setFailed(true)}
+          className={[
+            "aspect-square w-[4.5rem] object-cover transition duration-300 group-hover/shot:scale-[1.03] sm:w-20",
+            loaded ? "opacity-100" : "absolute inset-0 opacity-0",
+          ].join(" ")}
+        />
+      ) : (
+        <span className="flex aspect-square w-[4.5rem] items-center justify-center bg-surface-dim text-[10px] text-muted sm:w-20">
+          Нет превью
+        </span>
+      )}
+    </button>
   );
 }

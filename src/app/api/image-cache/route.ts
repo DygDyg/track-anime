@@ -20,12 +20,13 @@ export async function GET(request: NextRequest) {
   try {
     const result = await fetchAndCacheImage(kind, url);
     if (!result) {
-      return NextResponse.redirect(url, 302);
+      // Fail closed: redirect to a slow upstream kept <img> spinners pending forever.
+      return new NextResponse(null, { status: 404 });
     }
 
     return buildImageCacheResponse(result, request);
   } catch (error) {
     console.error("[api/image-cache]", error);
-    return NextResponse.redirect(url, 302);
+    return new NextResponse(null, { status: 404 });
   }
 }
