@@ -10,6 +10,7 @@ import { SiteSettingsInit } from "@/components/SiteSettingsInit";
 import { SiteSettingsProvider } from "@/components/SiteSettingsProvider";
 import { DiscordSitePresence } from "@/components/DiscordSitePresence";
 import { SiteSettingsModal } from "@/components/settings/SiteSettingsModal";
+import { SiteChangelogWhatsNewModal } from "@/components/SiteChangelogWhatsNewModal";
 import { AuthProvider } from "@/components/auth/AuthProvider";
 import { UserListStatusProvider } from "@/components/favorites/UserListStatusProvider";
 import { getSiteSettingsDefaults } from "@/lib/admin/site-settings-defaults";
@@ -140,6 +141,7 @@ export default async function RootLayout({ children }: { children: React.ReactNo
                     <ScrollToTopButton />
                     <AquaCoderCompanion />
                     <SiteSettingsModal />
+                    <SiteChangelogWhatsNewModal />
                     <PwaBottomNav />
                   </NavigationProgressProvider>
                 </UserListStatusProvider>

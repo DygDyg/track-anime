@@ -52,10 +52,18 @@ import {
 } from "@/lib/tv-navigation";
 import { NotificationsSettingsTab } from "@/components/settings/NotificationsSettingsTab";
 import { PlayerSettingsTab } from "@/components/settings/PlayerSettingsTab";
+import { ChangelogSettingsTab } from "@/components/settings/ChangelogSettingsTab";
 import { useNotificationDiscovery } from "@/hooks/useNotificationDiscovery";
 import type { Theme } from "@/lib/theme";
 
-type TabId = "appearance" | "home" | "player" | "application" | "notifications" | "discord";
+type TabId =
+  | "appearance"
+  | "home"
+  | "player"
+  | "application"
+  | "notifications"
+  | "discord"
+  | "changelog";
 
 const TABS: { id: TabId; label: string }[] = [
   { id: "home", label: "Главная" },
@@ -64,6 +72,7 @@ const TABS: { id: TabId; label: string }[] = [
   { id: "appearance", label: "Внешний вид" },
   { id: "notifications", label: "Уведомления" },
   { id: "discord", label: "Discord RPC" },
+  { id: "changelog", label: "Что нового" },
 ];
 
 function SectionTitle({ children }: { children: React.ReactNode }) {
@@ -1103,6 +1112,9 @@ export function SiteSettingsModal() {
             ) : null}
             {tab === "discord" ? (
               <SiteSettingsDiscordTab settings={settings} updateSettings={updateSettings} />
+            ) : null}
+            {tab === "changelog" ? (
+              <ChangelogSettingsTab settings={settings} updateSettings={updateSettings} />
             ) : null}
           </div>
         </div>

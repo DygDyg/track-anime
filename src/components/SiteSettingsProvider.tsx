@@ -28,6 +28,8 @@ import {
 
 type SiteSettingsContextValue = {
   settings: SiteSettings;
+  /** Local storage hydrated and account settings synced (or guest). */
+  settingsReady: boolean;
   remoteSaving: boolean;
   updateSettings: (patch: Partial<SiteSettings>) => void;
   updateLocalSettings: (patch: Partial<SiteSettings>) => void;
@@ -109,6 +111,7 @@ export function SiteSettingsProvider({
   const [settingsOpen, setSettingsOpen] = useState(false);
   const [settingsInitialTab, setSettingsInitialTab] = useState<"notifications" | null>(null);
   const [hydrated, setHydrated] = useState(false);
+  const [accountSettingsReady, setAccountSettingsReady] = useState(false);
   const [remoteSaving, setRemoteSaving] = useState(false);
   const saveTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const saveInFlightRef = useRef(0);
@@ -178,13 +181,19 @@ export function SiteSettingsProvider({
   }, [user]);
 
   useEffect(() => {
-    if (!hydrated || authLoading || !user) {
-      if (!user) syncedUserIdRef.current = null;
+    if (!hydrated || authLoading) return;
+    if (!user) {
+      syncedUserIdRef.current = null;
+      setAccountSettingsReady(true);
       return;
     }
-    if (syncedUserIdRef.current === user.id) return;
+    if (syncedUserIdRef.current === user.id) {
+      setAccountSettingsReady(true);
+      return;
+    }
 
     let cancelled = false;
+    setAccountSettingsReady(false);
 
     void (async () => {
       try {
@@ -198,11 +207,13 @@ export function SiteSettingsProvider({
           if (wasLegacyKodikPlayerDefaultResetApplied()) {
             const next = { ...merged, useLegacyKodikPlayer: false };
             commitSettings(next, remote.useLegacyKodikPlayer);
+            if (!cancelled) setAccountSettingsReady(true);
             return;
           }
           const afterLegacy = consumeUseLegacyKodikPlayerDefaultReset(merged);
           const { settings: next, didReset } = consumePlayerLargeUiDefaultLarge(afterLegacy.settings);
           commitSettings(next, afterLegacy.didReset || didReset);
+          if (!cancelled) setAccountSettingsReady(true);
           return;
         }
 
@@ -213,8 +224,12 @@ export function SiteSettingsProvider({
         const { settings: next } = consumePlayerLargeUiDefaultLarge(afterLegacy);
         commitSettings(next, false);
         await saveRemoteSiteSettings(next);
+        if (!cancelled) setAccountSettingsReady(true);
       } catch {
-        if (!cancelled) syncedUserIdRef.current = null;
+        if (!cancelled) {
+          syncedUserIdRef.current = null;
+          setAccountSettingsReady(true);
+        }
       }
     })();
 
@@ -288,9 +303,12 @@ export function SiteSettingsProvider({
     }
   }, []);
 
+  const settingsReady = hydrated && !authLoading && accountSettingsReady;
+
   const value = useMemo<SiteSettingsContextValue>(
     () => ({
       settings: hydrated ? settings : defaults,
+      settingsReady,
       remoteSaving,
       updateSettings,
       updateLocalSettings,
@@ -309,6 +327,7 @@ export function SiteSettingsProvider({
     }),
     [
       hydrated,
+      settingsReady,
       settings,
       defaults,
       remoteSaving,

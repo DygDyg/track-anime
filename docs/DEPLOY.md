@@ -157,7 +157,8 @@ npm run deploy:smart
 Перед деплоем агент/разработчик при необходимости дополняет **пользовательский** лог:
 
 - файл: `data/site-changelog.json` (в git; `entries` — новые сверху)
-- читалка / merge helper: `src/lib/site-changelog.ts` (`upsertDailyChangelogEntry` и др.; для будущего UI «Что нового»)
+- читалка / merge helper: `src/lib/site-changelog.ts` (`upsertDailyChangelogEntry`, `listCompletedSiteChangelogEntries`)
+- UI: модалка `SiteChangelogWhatsNewModal` (только completed-дни; `?whatsNew=1`), вкладка настроек «Что нового», `GET /api/site-changelog`
 - превью в админке: `/admin/changelog` (`SiteChangelogPanel`)
 - правило: `.cursor/rules/deploy-changelog.mdc`, кратко в `AI_RULES.md`
 

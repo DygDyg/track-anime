@@ -39,6 +39,7 @@ Next.js anime streaming site with Shikimori OAuth + Kodik player. Data lives in 
 | Fix DB WebDAV backup | `src/lib/admin/db-backup.ts`, `db-backup-settings.ts`, `db-backup-webdav.ts`, `DbBackupSettingsPanel.tsx`, `/admin/db`, cron в `kodik-sync-scheduled.ts` |
 | Fix app promo | `src/lib/admin/app-promo-settings.ts`, `AndroidAppPromoPrompt.tsx`, `DesktopAppPromoPrompt.tsx`, `/admin/app-promo` |
 | Fix audience analytics | `src/lib/analytics/track.ts`, `src/lib/admin/audience-stats.ts`, `src/lib/admin/watch-share-log.ts`, `WatchShareLogPanel.tsx`, `src/app/admin/audience/`, `WatchPartyStatsPanel.tsx`, `src/components/SiteAnalyticsBeacon.tsx` |
+| Fix «Что нового» / changelog UI | `src/lib/site-changelog.ts` (`listCompletedSiteChangelogEntries`), `src/app/api/site-changelog/route.ts`, `SiteChangelogWhatsNewModal.tsx`, `SiteChangelogEntries.tsx`, `ChangelogSettingsTab.tsx`, `site-settings.ts` (`lastSeenChangelogDayId`, `showWhatsNewChangelog`), `?whatsNew=1` |
 
 ## Request routing (multi-task / dispatcher)
 

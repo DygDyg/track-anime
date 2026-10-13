@@ -204,3 +204,17 @@ export async function listSiteChangelogEntries(limit?: number): Promise<SiteChan
   if (limit == null || limit <= 0) return entries;
   return entries.slice(0, limit);
 }
+
+/**
+ * Entries whose Moscow calendar day is already over (not "today").
+ * Today's daily entry is still being collected and must not auto-show.
+ */
+export async function listCompletedSiteChangelogEntries(
+  limit?: number,
+  when: string | Date = new Date(),
+): Promise<SiteChangelogEntry[]> {
+  const { entries } = await getSiteChangelog();
+  const completed = entries.filter((entry) => !isSameChangelogDay(entry, when));
+  if (limit == null || limit <= 0) return completed;
+  return completed.slice(0, limit);
+}

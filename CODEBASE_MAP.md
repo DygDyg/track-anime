@@ -219,7 +219,7 @@ Git deploy webhook (HMAC, no session): `api/deploy/webhook` (POST)
 | `releases.ts` | Home feed queries (SQL builders + page API) |
 | `home-feed-cache.ts` | Materialized home feed (`HomeFeedItem` / meta, head+full rebuild) |
 | `home-novelties.ts` | Home «Новинки» block (shared 24h cache) |
-| `site-changelog.ts`, `site-changelog-types.ts` | User-facing deploy changelog → `data/site-changelog.json` (daily merge Europe/Moscow via `upsertDailyChangelogEntry`); admin preview `/admin/changelog` (`SiteChangelogPanel`) |
+| `site-changelog.ts`, `site-changelog-types.ts` | User-facing deploy changelog → `data/site-changelog.json` (daily merge Europe/Moscow via `upsertDailyChangelogEntry`); `listCompletedSiteChangelogEntries` excludes today's Moscow day; public `GET /api/site-changelog`; UI: `SiteChangelogWhatsNewModal`, `SiteChangelogEntries`, settings tab `ChangelogSettingsTab`; admin preview `/admin/changelog` (`SiteChangelogPanel`) |
 | `search.ts` | DB search (server-only) |
 | `search-settings.ts` | Search UI settings |
 | `favorites-page.ts` | Favorites page data |

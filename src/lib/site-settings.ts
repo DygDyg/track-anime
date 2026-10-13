@@ -157,6 +157,13 @@ export type SiteSettings = {
   companionScale: number;
   /** Локально для браузера: без покадровой анимации — только первый кадр каждой позы */
   companionStaticAnimations: boolean;
+  /**
+   * Day id (`YYYY-MM-DD`) of the newest completed changelog entry the user dismissed.
+   * Synced with account when logged in; localStorage for guests.
+   */
+  lastSeenChangelogDayId: string | null;
+  /** Auto-show «Что нового» modal when a new completed day appears (default on). */
+  showWhatsNewChangelog: boolean;
 };
 
 /** Настройки, которые не синхронизируются с аккаунтом — только localStorage браузера. */
@@ -310,6 +317,8 @@ export const DEFAULT_SITE_SETTINGS: SiteSettings = {
   companionDisabledForAccount: false,
   companionScale: COMPANION_SCALE_DEFAULT,
   companionStaticAnimations: false,
+  lastSeenChangelogDayId: null,
+  showWhatsNewChangelog: true,
 };
 
 export const SITE_FONT_OPTIONS: { id: SiteFontFamily; label: string }[] = [
@@ -360,6 +369,14 @@ function parseHomeTranslationFilter(value: unknown): HomeTranslationFilter {
   if (value === null) return null;
   if (!Array.isArray(value)) return null;
   return value.filter((item): item is string => typeof item === "string" && item.trim().length > 0);
+}
+
+/** `YYYY-MM-DD` or legacy `YYYY-MM-DD-<sha>`; empty/invalid → null. */
+function parseLastSeenChangelogDayId(value: unknown): string | null {
+  if (typeof value !== "string") return null;
+  const trimmed = value.trim();
+  if (!/^\d{4}-\d{2}-\d{2}(?:-[a-zA-Z0-9]+)?$/.test(trimmed)) return null;
+  return trimmed;
 }
 
 function parseFontFamily(value: unknown): SiteFontFamily {
@@ -535,6 +552,8 @@ export function normalizeSiteSettings(raw: unknown): SiteSettings {
     companionDisabledForAccount: raw.companionDisabledForAccount === true,
     companionScale: normalizeCompanionScale(raw.companionScale),
     companionStaticAnimations: raw.companionStaticAnimations === true,
+    lastSeenChangelogDayId: parseLastSeenChangelogDayId(raw.lastSeenChangelogDayId),
+    showWhatsNewChangelog: raw.showWhatsNewChangelog !== false,
   };
 }
 
