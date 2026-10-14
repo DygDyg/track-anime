@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { NavLink } from "@/components/NavLink";
 import { LoadingSpinner } from "@/components/ui/LoadingSpinner";
 import { EXTERNAL_IMG_ATTRS } from "@/lib/external-image";
@@ -20,13 +20,33 @@ function buildStudioSearchHref(studioName: string): string {
 
 function StudioLogo({ studio }: { studio: AnimePageDto["studios"][number] }) {
   const imageUrl = buildCachedImageUrl("studio", studio.imageUrl);
+  const imgRef = useRef<HTMLImageElement | null>(null);
   const [imgFailed, setImgFailed] = useState(false);
   const [imgLoading, setImgLoading] = useState(Boolean(imageUrl));
   const showImage = Boolean(imageUrl) && !imgFailed;
 
   useEffect(() => {
+    setImgFailed(false);
+    setImgLoading(Boolean(imageUrl));
+  }, [imageUrl]);
+
+  // Disk/memory cache often completes before onLoad is attached.
+  useEffect(() => {
+    if (!imageUrl) return;
+    const img = imgRef.current;
+    if (img?.complete && img.naturalWidth > 0) {
+      setImgLoading(false);
+    }
+  }, [imageUrl]);
+
+  useEffect(() => {
     if (!showImage || !imgLoading) return;
     const timer = window.setTimeout(() => {
+      const img = imgRef.current;
+      if (img?.complete && img.naturalWidth > 0) {
+        setImgLoading(false);
+        return;
+      }
       setImgFailed(true);
       setImgLoading(false);
     }, STUDIO_LOGO_LOAD_TIMEOUT_MS);
@@ -49,6 +69,7 @@ function StudioLogo({ studio }: { studio: AnimePageDto["studios"][number] }) {
       {showImage ? (
         // eslint-disable-next-line @next/next/no-img-element
         <img
+          ref={imgRef}
           src={imageUrl!}
           alt={studio.name}
           loading="lazy"

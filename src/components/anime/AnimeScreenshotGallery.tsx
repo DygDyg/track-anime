@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { EXTERNAL_IMG_ATTRS } from "@/lib/external-image";
 import { buildCachedImageUrl } from "@/lib/image-cache-url";
 import { ImageLightbox } from "@/components/anime/ImageLightbox";
@@ -68,14 +68,35 @@ function ScreenshotThumb({
   index: number;
   onOpen: () => void;
 }) {
+  const imgRef = useRef<HTMLImageElement | null>(null);
   const [loaded, setLoaded] = useState(false);
   const [failed, setFailed] = useState(false);
 
   useEffect(() => {
+    setLoaded(false);
+    setFailed(false);
+  }, [src]);
+
+  // Cached images often fire `load` before React attaches onLoad — sync from complete.
+  useEffect(() => {
+    const img = imgRef.current;
+    if (img?.complete && img.naturalWidth > 0) {
+      setLoaded(true);
+    }
+  }, [src]);
+
+  useEffect(() => {
     if (loaded || failed) return;
-    const timer = window.setTimeout(() => setFailed(true), SCREENSHOT_LOAD_TIMEOUT_MS);
+    const timer = window.setTimeout(() => {
+      const img = imgRef.current;
+      if (img?.complete && img.naturalWidth > 0) {
+        setLoaded(true);
+        return;
+      }
+      setFailed(true);
+    }, SCREENSHOT_LOAD_TIMEOUT_MS);
     return () => window.clearTimeout(timer);
-  }, [loaded, failed]);
+  }, [loaded, failed, src]);
 
   return (
     <button
@@ -92,6 +113,7 @@ function ScreenshotThumb({
       {!failed ? (
         // eslint-disable-next-line @next/next/no-img-element
         <img
+          ref={imgRef}
           src={src}
           alt=""
           loading="lazy"
