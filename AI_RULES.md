@@ -1,6 +1,6 @@
 # Track Anime — AI Rules
 
-Shared rules for Codex, Cursor, and local model workflows. Codex should also read `AGENTS.md`; Cursor should also read `.cursorrules`.
+Shared rules for Codex, Cursor, Hermes, and local model workflows. Codex should also read `AGENTS.md`; Cursor should also read `.cursorrules`; Hermes should also read `.hermes.md` (Hermes-only; does not replace Cursor/Codex entrypoints).
 
 ---
 
@@ -103,7 +103,7 @@ Shared rules for Codex, Cursor, and local model workflows. Codex should also rea
 |----------------|--------------------------|
 | Архитектура, data flow, границы модулей | `ARCHITECTURE.md`, `CODEBASE_MAP.md` |
 | User flow, бизнес-правило, edge case | `BUSINESS_LOGIC.md`, `PROJECT_OVERVIEW.md`, `AI_CONTEXT.md` |
-| Critical path, pitfalls, AI workflow | `AI_CONTEXT.md`, `AGENTS.md`, `.cursorrules` |
+| Critical path, pitfalls, AI workflow | `AI_CONTEXT.md`, `AGENTS.md`, `.cursorrules`, `.hermes.md` (если затронут Hermes entrypoint) |
 | Naming, структура папок, паттерны | `CONVENTIONS.md` |
 | Команды, env, запуск, деплой | `README.md`, `.env.example`, `docs/SERVER.md`, `docs/DEPLOY.md` |
 | Kodik/Shikimori API usage | `docs/kodik-api/`, `docs/shikimori-api/` |
@@ -123,6 +123,7 @@ Shared rules for Codex, Cursor, and local model workflows. Codex should also rea
 
 * `AGENTS.md` — Codex entrypoint и ключевые project invariants
 * `.cursorrules` + `.cursor/rules/` — Cursor entrypoint и always-on helpers
+* `.hermes.md` — Hermes entrypoint (не ломать Cursor/Codex файлы ради Hermes)
 * `AI_CONTEXT.md` — quick reference для AI
 * `PROJECT_OVERVIEW.md` — назначение и user flows
 * `ARCHITECTURE.md` — модули, data flow, диаграммы

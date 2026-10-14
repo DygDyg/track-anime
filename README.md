@@ -136,6 +136,7 @@ http://localhost:3000/api/auth/callback/shikimori
 | `npm run dev` | Dev-сервер Next.js (`0.0.0.0`, удобно с телефона в LAN) |
 | `start-dev.bat` | Windows-запуск dev: Docker/PostgreSQL, Prisma schema, WebSocket-комнаты и Next.js |
 | `npm run build` | Production-сборка |
+| `npm run typecheck` | `tsc --noEmit` (быстрая проверка типов; default verifier для grok-mcp) |
 | `npm run start` | Запуск production |
 | `npm run db:studio` | Prisma Studio |
 | `npm run db:backup` | Dump локальной PostgreSQL БД из Docker в `backups/db` |

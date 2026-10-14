@@ -482,12 +482,11 @@ export function KodikPlayerBetaViewport({
       setPassThroughUntilPlay(true);
       return;
     }
-    // Episode switch often keeps isPlaying=true, so a separate "on play" effect never re-runs.
-    // Restore hit-testing when loading ends while already playing, or when play starts later.
-    if (viewPlayback.isPlaying) {
-      setPassThroughUntilPlay(false);
-    }
-  }, [androidShell, controlsDisabled, viewPlayback.isPlaying]);
+    // Loading finished — always restore TA chrome. Clearing only on isPlaying left
+    // Continue / controls / center play stuck after load while still paused (common on
+    // Android tablets: page header «Продолжить» vanishes in fullscreen).
+    setPassThroughUntilPlay(false);
+  }, [androidShell, controlsDisabled]);
 
   // Effective only inside the Android WebView shell — desktop/browser keep previous hit-testing.
   const passThroughHits = androidShell && passThroughUntilPlay;
@@ -2065,7 +2064,8 @@ export function KodikPlayerBetaViewport({
   /**
    * YouTube-style center play/pause while chrome is up.
    * Hit zone ≈ 80% × 65% of the frame (large center rectangle); left/right margins
-   * stay free for UI toggle and double-tap ±seek. Visible icon stays compact.
+   * stay free for UI toggle and double-tap ±seek. Visible icon stays compact;
+   * while playing the glyph is opacity-0 until hover/focus over the hit zone.
    * Below chrome (z-20) and Continue/Skip (z-40) so those stay clickable on top.
    */
   const showTaPlusCenterPlay =
@@ -2538,14 +2538,8 @@ export function KodikPlayerBetaViewport({
                   : "bottom-14 sm:bottom-16",
             ].join(" ")}
           >
-            {/* Keep skip clickable even when chrome auto-hides during playback. */}
-            <div
-              className={
-                !passThroughHits ? "pointer-events-auto" : "pointer-events-none"
-              }
-            >
-              {skipAction}
-            </div>
+            {/* Keep skip clickable even when chrome auto-hides / Android passThrough. */}
+            <div className="pointer-events-auto">{skipAction}</div>
           </div>
         ) : null}
         {seekFeedback.backward > 0 ? (
@@ -2593,6 +2587,10 @@ export function KodikPlayerBetaViewport({
                 "transition group-hover:border-white/30 group-hover:bg-black/75 group-active:scale-95",
                 "group-disabled:opacity-50 group-focus-visible:ring-2 group-focus-visible:ring-white/50",
                 "sm:h-24 sm:w-24",
+                // While playing: keep the large hit target, show the glyph only on hover/focus.
+                viewPlayback.isPlaying
+                  ? "opacity-0 group-hover:opacity-100 group-focus-visible:opacity-100"
+                  : "",
               ].join(" ")}
               aria-hidden
             >
@@ -2648,7 +2646,7 @@ export function KodikPlayerBetaViewport({
             </button>
           </div>
         ) : null}
-        {continueAction && !passThroughHits && !kodikUiAccess ? (
+        {continueAction && !kodikUiAccess ? (
           <div
             className={[
               "kodik-player-beta-ta-chrome pointer-events-none absolute inset-x-0 z-40 flex justify-center px-2",
@@ -2659,8 +2657,11 @@ export function KodikPlayerBetaViewport({
                   : settings.playerLargeUi
                     ? "bottom-24 sm:bottom-28"
                     : "bottom-20 sm:bottom-24",
+              // Fullscreen tablets / notched devices: keep above the home indicator.
+              fullscreenActive ? "mb-[env(safe-area-inset-bottom,0px)]" : "",
             ].join(" ")}
           >
+            {/* Always clickable — do not gate on Android passThrough (iframe hit-through). */}
             <div className="pointer-events-auto">{continueAction}</div>
           </div>
         ) : null}

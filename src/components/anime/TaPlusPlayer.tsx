@@ -835,12 +835,16 @@ export const TaPlusPlayer = forwardRef<TaPlusPlayerHandle, Props>(function TaPlu
 
   const fillViewport = sizeMode === "viewport";
 
+  /** Lift above viewport chrome / center play (z-15…40) so the offer isn’t covered. */
+  const modalAboveChrome = Boolean(safeModeOffer || error);
+
   return (
     <div
       className={[
         /* Keep overflow clipped: glow scale must not widen the FS scrollport (thin black strip). */
         "relative overflow-hidden bg-black",
         fillViewport ? "anime-player-shell-viewport h-full w-full max-w-none" : "",
+        modalAboveChrome ? "z-50" : "",
         className ?? "",
       ].join(" ")}
     >
@@ -892,7 +896,7 @@ export const TaPlusPlayer = forwardRef<TaPlusPlayerHandle, Props>(function TaPlu
           </div>
         ) : null}
         {safeModeOffer && !error ? (
-          <div className="absolute inset-0 z-[5] flex items-center justify-center bg-black/55 px-4">
+          <div className="absolute inset-0 z-50 flex items-center justify-center bg-black/55 px-4">
             <div className="max-w-sm rounded-xl bg-black/90 px-4 py-3 text-center text-sm text-white shadow-lg ring-1 ring-white/15">
               <p className="mb-1 font-medium">Видео зависло?</p>
               <p className="mb-3 text-xs leading-relaxed text-white/70">
@@ -919,7 +923,7 @@ export const TaPlusPlayer = forwardRef<TaPlusPlayerHandle, Props>(function TaPlu
           </div>
         ) : null}
         {error ? (
-          <div className="absolute inset-0 z-20 flex items-center justify-center bg-black/70 px-4 text-center text-sm text-white">
+          <div className="absolute inset-0 z-50 flex items-center justify-center bg-black/70 px-4 text-center text-sm text-white">
             {error}
           </div>
         ) : null}

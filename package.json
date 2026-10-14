@@ -16,6 +16,7 @@
     "start": "next start",
     "watch-party:server": "node scripts/watch-party-server.mjs",
     "lint": "next lint",
+    "typecheck": "tsc --noEmit",
     "db:generate": "prisma generate",
     "db:push": "prisma db push",
     "db:push:schema": "prisma db push --skip-generate",

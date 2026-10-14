@@ -8,6 +8,7 @@ Quick reference for AI assistants working on this codebase. Shared by Codex and 
 |------|------------|-------|
 | Codex | `AGENTS.md` | Primary Codex rules; also read this file and `AI_RULES.md` |
 | Cursor | `.cursorrules` + `.cursor/rules/` | Cursor entrypoint; helpers include `multi-task-dispatcher` and skill `ta-dispatcher`; also read this file and `AI_RULES.md` |
+| Hermes | `.hermes.md` | Hermes-only auto context (does not replace Cursor/Codex files); also read this file, `AI_RULES.md`, and skill `track-anime` |
 | Any AI | `PROJECT_OVERVIEW.md` → linked docs | Start here for full project onboarding |
 
 ## What This Project Is
@@ -246,7 +247,8 @@ Final response should include either changed docs or `Docs: not needed`.
 
 - Codex: follow `AGENTS.md`, then this file, then task-specific docs/code.
 - Cursor: follow `.cursorrules`, then `.cursor/rules/` (always-on), then this file, then task-specific docs/code.
-- Multi-topic requests: use the request routing table above; Cursor also has `.cursor/rules/multi-task-dispatcher.mdc` and skill `ta-dispatcher`.
+- Hermes: follow `.hermes.md` (auto), then this file / `AI_RULES.md` / task docs; skill `track-anime` for deploy/dispatcher shortcuts. Do not edit `.cursor/**` unless asked.
+- Multi-topic requests: use the request routing table above; Cursor also has `.cursor/rules/multi-task-dispatcher.mdc` and skill `ta-dispatcher`; Hermes uses the same table via `.hermes.md` / skill `track-anime`.
 - Decisions log: `DECISIONS.md` if present.
 - Ignore for indexing: `.cursorignore` / tool-specific excludes for `.next/`, `node_modules/`, caches.
 

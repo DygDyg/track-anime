@@ -84,7 +84,7 @@ When changing code, perform a documentation impact check before finishing.
 | User-visible behavior / edge cases | `BUSINESS_LOGIC.md`, `PROJECT_OVERVIEW.md`, `AI_CONTEXT.md` |
 | Conventions / commands / deploy | `CONVENTIONS.md`, `README.md`, `docs/SERVER.md`, `docs/DEPLOY.md` |
 | External API usage | `docs/kodik-api/`, `docs/shikimori-api/` |
-| AI workflow / entrypoints | `AGENTS.md`, `AI_RULES.md`, `AI_CONTEXT.md`, `.cursorrules` |
+| AI workflow / entrypoints | `AGENTS.md`, `AI_RULES.md`, `AI_CONTEXT.md`, `.cursorrules` (Hermes: `.hermes.md`, do not rewrite Cursor files for Hermes) |
 | Env / ops | `.env.example`, `README.md`, `docs/SERVER.md`, `docs/DEPLOY.md` |
 
 Update only affected sections. Keep docs factual and synced to real code. If no doc update is needed, state that in the final response. If a referenced doc is missing, write `ФАЙЛ НЕ НАЙДЕН`.

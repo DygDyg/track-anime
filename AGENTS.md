@@ -75,7 +75,7 @@ Update documentation in the same task when the change affects:
 - user-visible behavior, feature flows, edge cases, or invariants → `BUSINESS_LOGIC.md`, `PROJECT_OVERVIEW.md`, `AI_CONTEXT.md`
 - conventions, naming, folder structure, build/test/deploy commands → `CONVENTIONS.md`, `README.md`, `docs/SERVER.md`, `docs/DEPLOY.md`
 - external API usage, request parameters, OAuth scopes, rate limits → `docs/kodik-api/`, `docs/shikimori-api/`
-- AI workflow, critical paths, common pitfalls, entrypoints → `AGENTS.md`, `AI_RULES.md`, `AI_CONTEXT.md`, `.cursorrules`
+- AI workflow, critical paths, common pitfalls, entrypoints → `AGENTS.md`, `AI_RULES.md`, `AI_CONTEXT.md`, `.cursorrules`, `.hermes.md` (Hermes-only)
 - environment variables or operational setup → `.env.example`, `README.md`, `docs/SERVER.md`, `docs/DEPLOY.md`
 
 Rules:
@@ -103,8 +103,9 @@ Rules:
 - If a claim is not verified from code/docs/command output, write: `НЕ ПОДТВЕРЖДЕНО`.
 - For reviews and debugging, cite real files and lines where possible.
 
-## Codex vs Cursor
+## Codex vs Cursor vs Hermes
 
 - Codex: use this `AGENTS.md` plus `AI_RULES.md` and `AI_CONTEXT.md`.
 - Cursor: use `.cursorrules`, `.cursor/rules/`, skill `ta-dispatcher`, plus the same shared docs.
+- Hermes: use `.hermes.md` (Hermes-only auto entrypoint) plus the same shared docs and skill `track-anime`. Do not treat Hermes setup as a reason to change Cursor files.
 - If Cursor helpers under `.cursor/` are missing, fall back to `AI_CONTEXT.md` request routing and the task-specific files.
