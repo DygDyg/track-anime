@@ -229,6 +229,9 @@ export const USE_LEGACY_KODIK_PLAYER_RESET_STORAGE_KEY =
 /** One-time: switch default player UI from compact to large for existing browsers. */
 export const PLAYER_LARGE_UI_DEFAULT_V2_STORAGE_KEY =
   "ta.siteSettings.reset.playerLargeUiDefault.v2";
+/** One-time: default TV D-pad nav off (PC keyboards); Android TV APK re-enables on start. */
+export const TV_NAVIGATION_DEFAULT_OFF_V1_STORAGE_KEY =
+  "ta.siteSettings.reset.tvNavigationDefaultOff.v1";
 export const HOME_HISTORY_COLLAPSED_STORAGE_KEY = "track-anime-home-history-collapsed";
 export const HOME_UPCOMING_SOON_COLLAPSED_STORAGE_KEY = "track-anime-home-upcoming-soon-collapsed";
 export const HOME_STATUS_FILTER_STORAGE_KEY = "track-anime-home-status-filter";
@@ -311,7 +314,7 @@ export const DEFAULT_SITE_SETTINGS: SiteSettings = {
   betaHiddenProgressOpacity: BETA_HIDDEN_PROGRESS_OPACITY_DEFAULT,
   betaHiddenProgressThickness: BETA_HIDDEN_PROGRESS_THICKNESS_DEFAULT,
   playerControlsIdleMs: PLAYER_CONTROLS_IDLE_MS_DEFAULT,
-  tvNavigationEnabled: true,
+  tvNavigationEnabled: false,
   playerLargeUi: true,
   companionEnabled: true,
   companionDisabledForAccount: false,
@@ -546,7 +549,7 @@ export function normalizeSiteSettings(raw: unknown): SiteSettings {
       raw.betaHiddenProgressThickness,
     ),
     playerControlsIdleMs: normalizePlayerControlsIdleMs(raw.playerControlsIdleMs),
-    tvNavigationEnabled: raw.tvNavigationEnabled !== false,
+    tvNavigationEnabled: raw.tvNavigationEnabled === true,
     playerLargeUi: raw.playerLargeUi !== false,
     companionEnabled: raw.companionEnabled !== false,
     companionDisabledForAccount: raw.companionDisabledForAccount === true,
@@ -648,6 +651,38 @@ export function consumePlayerLargeUiDefaultLarge(settings: SiteSettings): {
   }
 }
 
+/**
+ * One-time: turn TV D-pad navigation off for existing installs (was on by default).
+ * Android TV shell re-writes `tvNavigationEnabled=true` on each start.
+ */
+export function consumeTvNavigationDefaultOff(settings: SiteSettings): {
+  settings: SiteSettings;
+  didReset: boolean;
+} {
+  if (typeof window === "undefined") {
+    return { settings, didReset: false };
+  }
+
+  try {
+    if (localStorage.getItem(TV_NAVIGATION_DEFAULT_OFF_V1_STORAGE_KEY) === "1") {
+      return { settings, didReset: false };
+    }
+    localStorage.setItem(TV_NAVIGATION_DEFAULT_OFF_V1_STORAGE_KEY, "1");
+    if (!settings.tvNavigationEnabled) {
+      return { settings, didReset: false };
+    }
+    return {
+      settings: { ...settings, tvNavigationEnabled: false },
+      didReset: true,
+    };
+  } catch {
+    return {
+      settings: { ...settings, tvNavigationEnabled: false },
+      didReset: Boolean(settings.tvNavigationEnabled),
+    };
+  }
+}
+
 export function hasStoredSiteSettings(): boolean {
   if (typeof window === "undefined") return false;
   return (
@@ -661,7 +696,8 @@ export function buildSiteSettingsInitScript(defaults: SiteSettings): string {
   const cookieName = LOCAL_SETTINGS_COOKIE;
   const localKeys = JSON.stringify([...LOCAL_ONLY_SITE_SETTING_KEYS]);
   const largeUiMigKey = PLAYER_LARGE_UI_DEFAULT_V2_STORAGE_KEY;
-  return `(function(){try{var k="${SITE_SETTINGS_STORAGE_KEY}";var raw=localStorage.getItem(k);var d=raw?JSON.parse(raw):${fallback};try{var ck=document.cookie.split(";");var prefix="${cookieName}=";for(var i=0;i<ck.length;i++){var p=ck[i].trim();if(p.indexOf(prefix)===0){var local=JSON.parse(decodeURIComponent(p.slice(prefix.length)));var keys=${localKeys};for(var j=0;j<keys.length;j++){var key=keys[j];if(Object.prototype.hasOwnProperty.call(local,key))d[key]=local[key];}break;}}}catch(e){}try{var mk="${largeUiMigKey}";if(localStorage.getItem(mk)!=="1"){d.playerLargeUi=true;localStorage.setItem(mk,"1");try{localStorage.setItem(k,JSON.stringify(d));}catch(e3){}}}catch(e2){d.playerLargeUi=true;}var el=document.documentElement;var f=d.fontFamily||"inter";var c=d.cursorStyle||"default";var s=d.cardSize||"normal";var a=d.accentPreset||"blue";var b=d.backgroundDim||"medium";var bg=typeof d.backgroundImageUrl==="string"&&d.backgroundImageUrl.length>0;var allowed=${JSON.stringify(SITE_FONT_IDS)};var cursors=${JSON.stringify(SITE_CURSOR_OPTIONS.map((item) => item.id))};if(allowed.indexOf(f)===-1)f="inter";if(cursors.indexOf(c)===-1)c="default";el.setAttribute("data-font",f);el.setAttribute("data-cursor",c);el.setAttribute("data-card-size",s);el.setAttribute("data-accent",a);el.setAttribute("data-bg-dim",b);el.setAttribute("data-site-bg",bg?"true":"false");el.setAttribute("data-tv-nav-enabled",d.tvNavigationEnabled===false?"false":"true");if(d.tvNavigationEnabled===false)el.removeAttribute("data-tv-nav");if(d.playerLargeUi!==false)el.setAttribute("data-player-large-ui","true");else el.removeAttribute("data-player-large-ui");if(d.reduceMotion===true)el.setAttribute("data-reduce-motion","true");else el.removeAttribute("data-reduce-motion");}catch(e){}})();`;
+  const tvNavMigKey = TV_NAVIGATION_DEFAULT_OFF_V1_STORAGE_KEY;
+  return `(function(){try{var k="${SITE_SETTINGS_STORAGE_KEY}";var raw=localStorage.getItem(k);var d=raw?JSON.parse(raw):${fallback};try{var ck=document.cookie.split(";");var prefix="${cookieName}=";for(var i=0;i<ck.length;i++){var p=ck[i].trim();if(p.indexOf(prefix)===0){var local=JSON.parse(decodeURIComponent(p.slice(prefix.length)));var keys=${localKeys};for(var j=0;j<keys.length;j++){var key=keys[j];if(Object.prototype.hasOwnProperty.call(local,key))d[key]=local[key];}break;}}}catch(e){}try{var mk="${largeUiMigKey}";if(localStorage.getItem(mk)!=="1"){d.playerLargeUi=true;localStorage.setItem(mk,"1");try{localStorage.setItem(k,JSON.stringify(d));}catch(e3){}}}catch(e2){d.playerLargeUi=true;}try{var tmk="${tvNavMigKey}";if(localStorage.getItem(tmk)!=="1"){d.tvNavigationEnabled=false;localStorage.setItem(tmk,"1");try{localStorage.setItem(k,JSON.stringify(d));}catch(e4){}}}catch(e5){d.tvNavigationEnabled=false;}var el=document.documentElement;var f=d.fontFamily||"inter";var c=d.cursorStyle||"default";var s=d.cardSize||"normal";var a=d.accentPreset||"blue";var b=d.backgroundDim||"medium";var bg=typeof d.backgroundImageUrl==="string"&&d.backgroundImageUrl.length>0;var allowed=${JSON.stringify(SITE_FONT_IDS)};var cursors=${JSON.stringify(SITE_CURSOR_OPTIONS.map((item) => item.id))};if(allowed.indexOf(f)===-1)f="inter";if(cursors.indexOf(c)===-1)c="default";el.setAttribute("data-font",f);el.setAttribute("data-cursor",c);el.setAttribute("data-card-size",s);el.setAttribute("data-accent",a);el.setAttribute("data-bg-dim",b);el.setAttribute("data-site-bg",bg?"true":"false");el.setAttribute("data-tv-nav-enabled",d.tvNavigationEnabled===true?"true":"false");if(d.tvNavigationEnabled!==true)el.removeAttribute("data-tv-nav");if(d.playerLargeUi!==false)el.setAttribute("data-player-large-ui","true");else el.removeAttribute("data-player-large-ui");if(d.reduceMotion===true)el.setAttribute("data-reduce-motion","true");else el.removeAttribute("data-reduce-motion");}catch(e){}})();`;
 }
 
 export const siteSettingsInitScript = buildSiteSettingsInitScript(DEFAULT_SITE_SETTINGS);

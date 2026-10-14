@@ -22,6 +22,7 @@ import {
   stripLocalOnlySiteSettings,
   consumeUseLegacyKodikPlayerDefaultReset,
   consumePlayerLargeUiDefaultLarge,
+  consumeTvNavigationDefaultOff,
   wasLegacyKodikPlayerDefaultResetApplied,
   type SiteSettings,
 } from "@/lib/site-settings";
@@ -166,7 +167,8 @@ export function SiteSettingsProvider({
       ? readStoredSiteSettings(defaultsRef.current)
       : { ...defaultsRef.current };
     const afterLegacy = consumeUseLegacyKodikPlayerDefaultReset(stored).settings;
-    const { settings: initial } = consumePlayerLargeUiDefaultLarge(afterLegacy);
+    const afterLargeUi = consumePlayerLargeUiDefaultLarge(afterLegacy).settings;
+    const { settings: initial } = consumeTvNavigationDefaultOff(afterLargeUi);
     settingsRef.current = initial;
     setSettings(initial);
     applySiteSettings(initial);
@@ -211,8 +213,12 @@ export function SiteSettingsProvider({
             return;
           }
           const afterLegacy = consumeUseLegacyKodikPlayerDefaultReset(merged);
-          const { settings: next, didReset } = consumePlayerLargeUiDefaultLarge(afterLegacy.settings);
-          commitSettings(next, afterLegacy.didReset || didReset);
+          const afterLargeUi = consumePlayerLargeUiDefaultLarge(afterLegacy.settings);
+          const { settings: next, didReset } = consumeTvNavigationDefaultOff(afterLargeUi.settings);
+          commitSettings(
+            next,
+            afterLegacy.didReset || afterLargeUi.didReset || didReset,
+          );
           if (!cancelled) setAccountSettingsReady(true);
           return;
         }
@@ -221,7 +227,8 @@ export function SiteSettingsProvider({
           ? readStoredSiteSettings(defaultsRef.current)
           : { ...defaultsRef.current };
         const afterLegacy = consumeUseLegacyKodikPlayerDefaultReset(local).settings;
-        const { settings: next } = consumePlayerLargeUiDefaultLarge(afterLegacy);
+        const afterLargeUi = consumePlayerLargeUiDefaultLarge(afterLegacy).settings;
+        const { settings: next } = consumeTvNavigationDefaultOff(afterLargeUi);
         commitSettings(next, false);
         await saveRemoteSiteSettings(next);
         if (!cancelled) setAccountSettingsReady(true);

@@ -270,7 +270,8 @@ export function getTvChromeFocusTarget(focusables?: HTMLElement[]): HTMLElement 
 
 export function isTvNavigationEnabled(): boolean {
   if (typeof document === "undefined") return false;
-  return document.documentElement.dataset.tvNavEnabled !== "false";
+  // Opt-in: missing attribute = off (PC default); Android TV / checkbox set "true".
+  return document.documentElement.dataset.tvNavEnabled === "true";
 }
 
 /** Session flag: TV D-pad mode is on for this page (requires setting enabled). */

@@ -118,8 +118,9 @@ export function PlayerSettingsTab({ settings, updateSettings, updateLocalSetting
           <div className="min-w-0">
             <SectionTitle>ТВ-режим управления</SectionTitle>
             <SectionHint>
-              Локально для этого устройства. Когда выключено, стрелки не переключают фокус по
-              карточкам сайта.
+              Локально для этого устройства, по умолчанию выключен (на ПК стрелки иначе ломают
+              интерфейс). Нужен для пульта / Android TV — приложение для ТВ включает его само.
+              Когда выключено, стрелки не переключают фокус по карточкам сайта.
             </SectionHint>
           </div>
           <label className="flex shrink-0 cursor-pointer items-center gap-2 text-sm font-medium text-foreground">
