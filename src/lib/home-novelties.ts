@@ -158,7 +158,6 @@ async function queryHomeNoveltiesUncached(limit: number): Promise<ReleaseItem[]>
           -- если в релизах уже серия N, порог «≤5» должен видеть хотя бы N.
           GREATEST(
             COALESCE(
-              ac."episodesAired",
               CASE
                 WHEN (m."materialData"->>'episodes_aired') ~ '^[0-9]+$'
                   THEN NULLIF((m."materialData"->>'episodes_aired')::int, 0)
@@ -169,12 +168,12 @@ async function queryHomeNoveltiesUncached(limit: number): Promise<ReleaseItem[]>
                   THEN NULLIF((m."materialData"->'anime_full'->>'episodes_aired')::int, 0)
                 ELSE NULL
               END,
+              ac."episodesAired",
               0
             ),
             r."episodeNumber"
           ) AS episodes_aired_proxy,
           CASE
-            WHEN ac."airedOn" IS NOT NULL THEN ac."airedOn"::date
             WHEN COALESCE(
               NULLIF(m."materialData"->>'aired_at', ''),
               NULLIF(m."materialData"->>'aired_on', ''),
@@ -187,6 +186,7 @@ async function queryHomeNoveltiesUncached(limit: number): Promise<ReleaseItem[]>
                 NULLIF(m."materialData"->'anime_full'->>'aired_on', ''),
                 NULLIF(m."materialData"->'anime_full'->>'aired_at', '')
               )::date
+            WHEN ac."airedOn" IS NOT NULL THEN ac."airedOn"::date
             ELSE NULL
           END AS anime_aired_on
         FROM "KodikEpisodeRelease" r

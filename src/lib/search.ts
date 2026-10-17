@@ -400,12 +400,20 @@ const SEARCH_META_CTE = Prisma.sql`
       MAX(
         COALESCE(
           CASE
-            WHEN TRIM(COALESCE(ac.score, '')) ~ '^[0-9]+(\\.[0-9]+)?$'
-              THEN TRIM(ac.score)::numeric
+            WHEN NULLIF(TRIM(ac.score), '') ~ '^[0-9]+([.][0-9]+)?$'
+              THEN NULLIF(TRIM(ac.score), '')::numeric
             ELSE NULL
           END,
-          NULLIF(TRIM(m."materialData"->>'shikimori_rating'), '')::numeric,
-          NULLIF(TRIM(m."materialData"->>'shikimori_score'), '')::numeric
+          CASE
+            WHEN NULLIF(TRIM(m."materialData"->>'shikimori_rating'), '') ~ '^[0-9]+([.][0-9]+)?$'
+              THEN NULLIF(TRIM(m."materialData"->>'shikimori_rating'), '')::numeric
+            ELSE NULL
+          END,
+          CASE
+            WHEN NULLIF(TRIM(m."materialData"->>'shikimori_score'), '') ~ '^[0-9]+([.][0-9]+)?$'
+              THEN NULLIF(TRIM(m."materialData"->>'shikimori_score'), '')::numeric
+            ELSE NULL
+          END
         )
       ) AS score
     FROM matched m

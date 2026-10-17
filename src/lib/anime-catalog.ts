@@ -261,6 +261,33 @@ function preferLonger(a: string | null | undefined, b: string | null | undefined
   return right.length >= left.length ? right : left;
 }
 
+function hasCyrillic(value: string): boolean {
+  return /[а-яё]/i.test(value);
+}
+
+/** Название: не затирать RU более длинным EN/мусором озвучки. */
+function preferCatalogTitle(
+  existing: string | null | undefined,
+  incoming: string | null | undefined,
+): string {
+  const left = existing?.trim() || null;
+  const right = incoming?.trim() || null;
+  if (!left) return right || "Без названия";
+  if (!right) return left;
+  if (left === "Без названия") return right;
+  if (hasCyrillic(left) && !hasCyrillic(right)) return left;
+  if (!hasCyrillic(left) && hasCyrillic(right)) return right;
+  return left;
+}
+
+function normalizeScoreString(value: string | null | undefined): string | null {
+  const raw = value?.trim();
+  if (!raw) return null;
+  const normalized = raw.replace(",", ".");
+  if (!/^[0-9]+([.][0-9]+)?$/.test(normalized)) return null;
+  return normalized;
+}
+
 function preferNumberMax(a: number | null | undefined, b: number | null | undefined): number | null {
   if (a == null) return b ?? null;
   if (b == null) return a;
@@ -300,14 +327,14 @@ export async function upsertAnimeCatalog(
     },
   });
 
-  const title = preferLonger(existing?.title, input.title) ?? input.title;
+  const title = preferCatalogTitle(existing?.title, input.title);
   const data = {
     title,
     titleOrig: preferLonger(existing?.titleOrig, input.titleOrig ?? null),
     description: preferLonger(existing?.description, input.description ?? null),
     status: readString(input.status) ?? existing?.status ?? null,
     kind: readString(input.kind) ?? existing?.kind ?? null,
-    score: readString(input.score) ?? existing?.score ?? null,
+    score: normalizeScoreString(input.score) ?? normalizeScoreString(existing?.score) ?? null,
     year: input.year ?? existing?.year ?? null,
     episodesTotal: preferNumberMax(existing?.episodesTotal, input.episodesTotal ?? null),
     episodesAired: preferNumberMax(existing?.episodesAired, input.episodesAired ?? null),
