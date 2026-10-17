@@ -52,6 +52,7 @@ import {
   taPlusTilePreviewStyle,
   type TaPlusTiles,
 } from "@/lib/ta-plus-tiles";
+import type { TaPlusVideoFit } from "@/lib/ta-plus-video-fit-preferences";
 
 export type KodikPlayerBetaTheaterMode = "normal" | "height";
 
@@ -114,6 +115,12 @@ type Props = {
   ambientGlowAvailable?: boolean;
   ambientGlowSettings?: PlayerAmbientGlowSettings;
   onAmbientGlowSettingsChange?: (patch: Partial<PlayerAmbientGlowSettings>) => void;
+  /** TA Plus video fit (contain/cover) — hidden for Kodik iframe. */
+  videoFitAvailable?: boolean;
+  videoFit?: TaPlusVideoFit;
+  /** When ambient glow is runtime-active, cover would hide pillarbox glow. */
+  videoFitDisabled?: boolean;
+  onVideoFitToggle?: () => void;
 };
 
 type RangeStyle = CSSProperties & {
@@ -200,6 +207,20 @@ function IconTheater({ mode }: { mode: KodikPlayerBetaTheaterMode }) {
         <path d="M5 3h14v18H5V3zm2 5v8h10V8H7z" />
       ) : (
         <path d="M4 7h16v10H4V7zm2 2v6h12V9H6zm1-6h10v2H7V3zm0 16h10v2H7v-2z" />
+      )}
+    </svg>
+  );
+}
+
+function IconVideoFit({ fit }: { fit: TaPlusVideoFit }) {
+  return (
+    <svg viewBox="0 0 24 24" className="h-5 w-5 fill-current" aria-hidden>
+      {fit === "cover" ? (
+        /* Fill frame — arrows outward from inner rect */
+        <path d="M7 7h10v10H7V7zm2 2v6h6V9H9zM3 8h2v8H3V8zm16 0h2v8h-2V8zM8 3h8v2H8V3zm0 16h8v2H8v-2z" />
+      ) : (
+        /* Fit inside — arrows inward */
+        <path d="M5 5h14v14H5V5zm2 2v10h10V7H7zM3 9h2v6H3V9zm16 0h2v6h-2V9zM9 3h6v2H9V3zm0 16h6v2H9v-2z" />
       )}
     </svg>
   );
@@ -437,6 +458,10 @@ export function KodikPlayerBetaControls({
   ambientGlowAvailable = false,
   ambientGlowSettings,
   onAmbientGlowSettingsChange,
+  videoFitAvailable = false,
+  videoFit = "contain",
+  videoFitDisabled = false,
+  onVideoFitToggle,
 }: Props) {
   const duration = Math.max(playback.durationSeconds, 0);
   const position = Math.min(Math.max(playback.positionSeconds, 0), duration || playback.positionSeconds);
@@ -588,6 +613,11 @@ export function KodikPlayerBetaControls({
     theaterMode === "normal"
       ? "По высоте экрана"
       : "Обычный размер";
+  const videoFitLabel = videoFitDisabled
+    ? "Недоступно при подсветке"
+    : videoFit === "contain"
+      ? "Заполнить кадр"
+      : "Вписать в кадр";
   const dragDeltaSeconds =
     dragPosition == null ? 0 : Math.round(dragPosition - dragStartPositionRef.current);
   const dragPositionLabel = formatWatchPosition(displayedPosition);
@@ -1092,6 +1122,18 @@ export function KodikPlayerBetaControls({
               </div>
             ) : null}
           </div>
+        ) : null}
+
+        {videoFitAvailable && onVideoFitToggle ? (
+          <ControlButton
+            label={videoFitLabel}
+            disabled={disabled || videoFitDisabled}
+            pressed={videoFit === "cover"}
+            onClick={onVideoFitToggle}
+            className="kodik-player-beta-video-fit-button"
+          >
+            <IconVideoFit fit={videoFit} />
+          </ControlButton>
         ) : null}
 
         <ControlButton

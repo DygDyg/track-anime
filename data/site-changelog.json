@@ -3,10 +3,14 @@
   "entries": [
     {
       "id": "2026-10-17",
-      "recordedAt": "2026-10-17T12:05:00.000Z",
-      "gitSha": "f413c2a",
+      "recordedAt": "2026-10-17T15:20:00.000Z",
+      "gitSha": "3a4f5a8",
       "title": "TA Plus и changelog",
       "items": [
+        {
+          "kind": "feature",
+          "text": "В TA Plus кнопка: вписать видео в кадр или заполнить его без растягивания."
+        },
         {
           "kind": "improvement",
           "text": "Поиск лучше находит тайтлы по альтернативным и русским названиям."

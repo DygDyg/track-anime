@@ -62,6 +62,12 @@ import {
   type PlayerAmbientGlowSettings,
 } from "@/lib/player-ambient-glow";
 import {
+  readTaPlusVideoFitPreference,
+  TA_PLUS_VIDEO_FIT_DEFAULT,
+  writeTaPlusVideoFitPreference,
+  type TaPlusVideoFit,
+} from "@/lib/ta-plus-video-fit-preferences";
+import {
   applyPlayerStreamVolume,
   clampPlayerStreamVolume,
   hasNativePlayerStreamVolume,
@@ -279,6 +285,7 @@ export function KodikPlayerBetaViewport({
   const [ambientGlowSettings, setAmbientGlowSettings] = useState<PlayerAmbientGlowSettings>(
     () => ({ ...DEFAULT_PLAYER_AMBIENT_GLOW_SETTINGS }),
   );
+  const [videoFit, setVideoFit] = useState<TaPlusVideoFit>(TA_PLUS_VIDEO_FIT_DEFAULT);
   const [displayWiderThan16x9, setDisplayWiderThan16x9] = useState(false);
   const [prefersReducedMotion, setPrefersReducedMotion] = useState(false);
   /** Scrub position while HLS is not mounted yet. */
@@ -441,6 +448,7 @@ export function KodikPlayerBetaViewport({
 
   useEffect(() => {
     setAmbientGlowSettings(readPlayerAmbientGlowSettings());
+    setVideoFit(readTaPlusVideoFitPreference());
     const syncWide = () => setDisplayWiderThan16x9(isDisplayWiderThan16x9());
     syncWide();
     window.addEventListener("resize", syncWide);
@@ -757,6 +765,15 @@ export function KodikPlayerBetaViewport({
     },
     [revealUi],
   );
+
+  const handleVideoFitToggle = useCallback(() => {
+    setVideoFit((prev) => {
+      const next: TaPlusVideoFit = prev === "contain" ? "cover" : "contain";
+      writeTaPlusVideoFitPreference(next);
+      return next;
+    });
+    revealUi();
+  }, [revealUi]);
 
   useEffect(() => {
     if (!isTaPlus) {
@@ -1414,26 +1431,49 @@ export function KodikPlayerBetaViewport({
     [],
   );
 
+  /**
+   * Finish volume/brightness/seek locked by preventDefault touchmove.
+   * Must run from native shell/window listeners — React onTouchEnd often never fires
+   * after non-passive preventDefault on Android WebView / Chrome.
+   */
+  const endLockedTouchGesture = useCallback(
+    (applySeek: boolean): boolean => {
+      const gesture = touchGestureRef.current;
+      if (!gesture) return false;
+      if (
+        gesture.mode !== "seek" &&
+        gesture.mode !== "brightness" &&
+        gesture.mode !== "volume"
+      ) {
+        return false;
+      }
+      touchGestureRef.current = null;
+      suppressClickAfterGestureRef.current = true;
+      if (gesture.mode === "seek") {
+        setSeekGuide(null);
+        const total = gesture.lastSeekSteps * MOBILE_DOUBLE_TAP_SEEK_SECONDS;
+        if (applySeek) {
+          if (total !== 0) applySeekSkipDelta(total);
+          armSeekFeedbackFade();
+        } else {
+          setSeekGestureHud(0, 0);
+        }
+      }
+      return true;
+    },
+    [applySeekSkipDelta, armSeekFeedbackFade, setSeekGestureHud],
+  );
+  const endLockedTouchGestureRef = useRef(endLockedTouchGesture);
+  endLockedTouchGestureRef.current = endLockedTouchGesture;
+
   const handleTouchEnd = useCallback(
     (event: ReactTouchEvent<HTMLDivElement>) => {
+      if (endLockedTouchGesture(true)) return;
+
       const gesture = touchGestureRef.current;
       touchGestureRef.current = null;
       const touch = event.changedTouches[0];
       if (!gesture || !touch) return;
-
-      if (gesture.mode === "brightness" || gesture.mode === "volume") {
-        suppressClickAfterGestureRef.current = true;
-        return;
-      }
-
-      if (gesture.mode === "seek") {
-        suppressClickAfterGestureRef.current = true;
-        setSeekGuide(null);
-        const total = gesture.lastSeekSteps * MOBILE_DOUBLE_TAP_SEEK_SECONDS;
-        if (total !== 0) applySeekSkipDelta(total);
-        armSeekFeedbackFade();
-        return;
-      }
 
       if (!gesture.startedNearBottom || fullscreenTranslationsOpen) return;
 
@@ -1446,12 +1486,7 @@ export function KodikPlayerBetaViewport({
         onFullscreenTranslationsIntent?.(true);
       }
     },
-    [
-      applySeekSkipDelta,
-      armSeekFeedbackFade,
-      fullscreenTranslationsOpen,
-      onFullscreenTranslationsIntent,
-    ],
+    [endLockedTouchGesture, fullscreenTranslationsOpen, onFullscreenTranslationsIntent],
   );
 
   // Non-passive listeners: React's synthetic touchmove is often passive, so preventDefault
@@ -1555,8 +1590,26 @@ export function KodikPlayerBetaViewport({
       }
     };
 
+    const onTouchEndOrCancel = (event: TouchEvent) => {
+      // Still touching with another finger — keep the gesture.
+      if (event.touches.length > 0) return;
+      // Apply seek on cancel too: after preventDefault, Android often sends
+      // touchcancel instead of touchend, and React onTouchEnd may never run.
+      endLockedTouchGestureRef.current(true);
+    };
+
     shell.addEventListener("touchmove", onTouchMove, { passive: false, capture: true });
-    return () => shell.removeEventListener("touchmove", onTouchMove, true);
+    shell.addEventListener("touchend", onTouchEndOrCancel, { capture: true });
+    shell.addEventListener("touchcancel", onTouchEndOrCancel, { capture: true });
+    window.addEventListener("touchend", onTouchEndOrCancel, true);
+    window.addEventListener("touchcancel", onTouchEndOrCancel, true);
+    return () => {
+      shell.removeEventListener("touchmove", onTouchMove, true);
+      shell.removeEventListener("touchend", onTouchEndOrCancel, true);
+      shell.removeEventListener("touchcancel", onTouchEndOrCancel, true);
+      window.removeEventListener("touchend", onTouchEndOrCancel, true);
+      window.removeEventListener("touchcancel", onTouchEndOrCancel, true);
+    };
   }, [
     clearClickTimer,
     clearPendingMobileSeekTimer,
@@ -2111,9 +2164,9 @@ export function KodikPlayerBetaViewport({
   const taPlusCatcherInteractive = !controlsDisabled && !passThroughHits;
   /**
    * YouTube-style center play/pause while chrome is up.
-   * Hit zone ≈ 80% × 65% of the frame (large center rectangle); left/right margins
-   * stay free for UI toggle and double-tap ±seek. Visible icon stays compact;
-   * while playing the glyph is opacity-0 until hover/focus over the hit zone.
+   * Hit zone ≈ 45% × 45% of the frame; edges stay free for UI toggle and
+   * double-tap ±seek. Visible icon stays compact; while playing the glyph is
+   * opacity-0 until hover/focus over the hit zone.
    * Below chrome (z-20) and Continue/Skip (z-40) so those stay clickable on top.
    */
   const showTaPlusCenterPlay =
@@ -2158,6 +2211,13 @@ export function KodikPlayerBetaViewport({
     bufferedRatio != null && Number.isFinite(bufferedRatio)
       ? `${Math.min(100, Math.max(0, bufferedRatio * 100))}%`
       : null;
+
+  const ambientGlowActive =
+    isTaPlus &&
+    ambientGlowSettings.enabled &&
+    displayWiderThan16x9 &&
+    fullscreenActive &&
+    !prefersReducedMotion;
 
   const controlsNode = (
     <KodikPlayerBetaControls
@@ -2216,6 +2276,10 @@ export function KodikPlayerBetaViewport({
           ? handleAmbientGlowSettingsChange
           : undefined
       }
+      videoFitAvailable={isTaPlus}
+      videoFit={videoFit}
+      videoFitDisabled={ambientGlowActive}
+      onVideoFitToggle={isTaPlus ? handleVideoFitToggle : undefined}
       tvBarPlayPrimary={!continueAction}
     />
   );
@@ -2286,18 +2350,7 @@ export function KodikPlayerBetaViewport({
       onTouchStart={kodikUiAccess ? undefined : handleTouchStart}
       onTouchMove={kodikUiAccess ? undefined : handleTouchMove}
       onTouchEnd={kodikUiAccess ? undefined : handleTouchEnd}
-      onTouchCancel={
-        kodikUiAccess
-          ? undefined
-          : () => {
-              const gesture = touchGestureRef.current;
-              touchGestureRef.current = null;
-              if (gesture?.mode === "seek") {
-                setSeekGuide(null);
-                setSeekGestureHud(0, 0);
-              }
-            }
-      }
+      onTouchCancel={kodikUiAccess ? undefined : () => endLockedTouchGesture(true)}
       onFocusCapture={kodikUiAccess ? undefined : revealUi}
     >
       <div
@@ -2328,12 +2381,7 @@ export function KodikPlayerBetaViewport({
                 seasonNumber={seasonNumber}
                 episodeNumber={currentEpisode}
                 initialResume={initialResume}
-                ambientGlowActive={
-                  ambientGlowSettings.enabled &&
-                  displayWiderThan16x9 &&
-                  fullscreenActive &&
-                  !prefersReducedMotion
-                }
+                ambientGlowActive={ambientGlowActive}
                 ambientGlowSettings={{
                   blur: ambientGlowSettings.blur,
                   opacity: ambientGlowSettings.opacity,
@@ -2343,6 +2391,7 @@ export function KodikPlayerBetaViewport({
                   downscale: ambientGlowSettings.downscale,
                   updateIntervalMs: ambientGlowSettings.updateIntervalMs,
                 }}
+                videoFit={videoFit}
                 onReady={handleTaPlusReady}
                 onProgress={onProgress}
                 onPause={onPause}
@@ -2688,8 +2737,8 @@ export function KodikPlayerBetaViewport({
               revealUi();
             }}
             className={[
-              // Hit target ≈ red mockup: ~80% × 65% centered; under chrome / Continue / Skip.
-              "group absolute left-1/2 top-1/2 z-[15] flex h-[65%] w-[80%] -translate-x-1/2 -translate-y-1/2",
+              // Hit target ≈ 45% × 45% centered; under chrome / Continue / Skip.
+              "group absolute left-1/2 top-1/2 z-[15] flex h-[45%] w-[45%] -translate-x-1/2 -translate-y-1/2",
               "items-center justify-center bg-transparent",
               "disabled:cursor-wait",
               "touch-manipulation select-none [-webkit-tap-highlight-color:transparent]",

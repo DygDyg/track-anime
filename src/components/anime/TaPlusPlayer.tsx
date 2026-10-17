@@ -30,6 +30,10 @@ import {
   canUseTaPlusSafeMode,
   toTaPlusSafeModeUrl,
 } from "@/lib/ta-plus-safe-mode";
+import {
+  TA_PLUS_VIDEO_FIT_DEFAULT,
+  type TaPlusVideoFit,
+} from "@/lib/ta-plus-video-fit-preferences";
 
 export type TaPlusPlayerProgressPayload = KodikPlayerProgressPayload & {
   durationSeconds: number;
@@ -89,6 +93,11 @@ type Props = {
     downscale: number;
     updateIntervalMs: number;
   } | null;
+  /**
+   * How the video fills the frame without distortion.
+   * When ambient glow is active, contain is forced so pillarbox stays transparent for the glow.
+   */
+  videoFit?: TaPlusVideoFit;
 };
 
 const DEFAULT_PLAYBACK: KodikPlayerPlaybackState = {
@@ -173,6 +182,7 @@ export const TaPlusPlayer = forwardRef<TaPlusPlayerHandle, Props>(function TaPlu
     onActiveQualityChange,
     ambientGlowActive = false,
     ambientGlowSettings = null,
+    videoFit = TA_PLUS_VIDEO_FIT_DEFAULT,
   },
   ref,
 ) {
@@ -834,6 +844,8 @@ export const TaPlusPlayer = forwardRef<TaPlusPlayerHandle, Props>(function TaPlu
   }, [onEnded, onPause, onPlaying, onProgress]);
 
   const fillViewport = sizeMode === "viewport";
+  /** Cover would paint over pillarbox and hide ambient glow — force contain while glow is on. */
+  const effectiveVideoFit: TaPlusVideoFit = ambientGlowActive ? "contain" : videoFit;
 
   /** Lift above viewport chrome / center play (z-15…40) so the offer isn’t covered. */
   const modalAboveChrome = Boolean(safeModeOffer || error);
@@ -866,7 +878,8 @@ export const TaPlusPlayer = forwardRef<TaPlusPlayerHandle, Props>(function TaPlu
           }}
           className={[
             /* Transparent letterbox when glow is on — otherwise bg-black covers VideoAmbientGlow. */
-            "absolute inset-0 h-full w-full object-contain [color-scheme:dark]",
+            "absolute inset-0 h-full w-full [color-scheme:dark]",
+            effectiveVideoFit === "cover" ? "object-cover" : "object-contain",
             ambientGlowActive ? "bg-transparent" : "bg-black",
           ].join(" ")}
           controls={false}
