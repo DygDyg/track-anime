@@ -253,15 +253,23 @@ async function findFuzzySearchShikimoriIds(
 
   const scoreTitle = mode === "partial" ? partialFuzzyTitleScore : fuzzyTitleScore;
 
+  // Fuzzy только по каталогу/алиасам (не по всем озвучкам KodikMaterial).
   const candidates = await prisma.$queryRaw<FuzzySearchCandidateRow[]>`
     SELECT
-      m."shikimoriId",
-      m.title,
-      m."titleOrig",
-      m."otherTitle",
-      m."materialData"->>'anime_title' AS "animeTitle"
-    FROM "KodikMaterial" m
-    WHERE m."shikimoriId" IS NOT NULL
+      a."shikimoriId",
+      a.title,
+      NULL::text AS "titleOrig",
+      NULL::text AS "otherTitle",
+      NULL::text AS "animeTitle"
+    FROM "AnimeTitleAlias" a
+    UNION ALL
+    SELECT
+      c."shikimoriId",
+      c.title,
+      c."titleOrig",
+      NULL::text AS "otherTitle",
+      c.title AS "animeTitle"
+    FROM "AnimeCatalog" c
   `;
 
   const bestById = new Map<number, { score: number; title: string }>();
@@ -328,6 +336,7 @@ const SEARCH_META_CTE = Prisma.sql`
     SELECT
       m."shikimoriId",
       COALESCE(
+        MAX(ac.year),
         MAX(m.year),
         MAX(NULLIF(TRIM(m."materialData"->>'year'), '')::int),
         MAX(
@@ -346,6 +355,7 @@ const SEARCH_META_CTE = Prisma.sql`
       (
         array_agg(
           COALESCE(
+            NULLIF(TRIM(ac.status), ''),
             NULLIF(TRIM(m."materialData"->>'anime_status'), ''),
             NULLIF(TRIM(m."materialData"->>'all_status'), ''),
             NULLIF(TRIM(m."materialData"->'anime_full'->>'status'), '')
@@ -353,6 +363,7 @@ const SEARCH_META_CTE = Prisma.sql`
           ORDER BY m."kodikUpdatedAt" DESC NULLS LAST
         ) FILTER (
           WHERE COALESCE(
+            NULLIF(TRIM(ac.status), ''),
             NULLIF(TRIM(m."materialData"->>'anime_status'), ''),
             NULLIF(TRIM(m."materialData"->>'all_status'), ''),
             NULLIF(TRIM(m."materialData"->'anime_full'->>'status'), '')
@@ -362,12 +373,14 @@ const SEARCH_META_CTE = Prisma.sql`
       (
         array_agg(
           COALESCE(
+            NULLIF(TRIM(ac.kind), ''),
             NULLIF(TRIM(m."materialData"->>'anime_kind'), ''),
             NULLIF(TRIM(m."materialData"->'anime_full'->>'kind'), '')
           )
           ORDER BY m."kodikUpdatedAt" DESC NULLS LAST
         ) FILTER (
           WHERE COALESCE(
+            NULLIF(TRIM(ac.kind), ''),
             NULLIF(TRIM(m."materialData"->>'anime_kind'), ''),
             NULLIF(TRIM(m."materialData"->'anime_full'->>'kind'), '')
           ) IS NOT NULL
@@ -375,6 +388,7 @@ const SEARCH_META_CTE = Prisma.sql`
       )[1] AS kind,
       NULLIF(
         GREATEST(
+          COALESCE(MAX(ac."episodesTotal"), 0),
           COALESCE(MAX(m."episodesCount"), 0),
           COALESCE(MAX(m."lastEpisode"), 0),
           COALESCE(MAX(NULLIF(TRIM(m."materialData"->>'episodes_total'), '')::int), 0),
@@ -385,14 +399,86 @@ const SEARCH_META_CTE = Prisma.sql`
       ) AS episodes,
       MAX(
         COALESCE(
+          CASE
+            WHEN TRIM(COALESCE(ac.score, '')) ~ '^[0-9]+(\\.[0-9]+)?$'
+              THEN TRIM(ac.score)::numeric
+            ELSE NULL
+          END,
           NULLIF(TRIM(m."materialData"->>'shikimori_rating'), '')::numeric,
           NULLIF(TRIM(m."materialData"->>'shikimori_score'), '')::numeric
         )
       ) AS score
     FROM matched m
+    LEFT JOIN "AnimeCatalog" ac ON ac."shikimoriId" = m."shikimoriId"
     GROUP BY m."shikimoriId"
   )
 `;
+
+/** Быстрый title-match через каталог + алиасы (+ legacy material как fallback). */
+function buildCatalogTitleMatchFilterSql(
+  trimmed: string,
+  options?: { includeMaterialFallback?: boolean },
+): Prisma.Sql {
+  const pattern = `%${escapeIlikePattern(trimmed)}%`;
+  const shikimoriIdMatch = /^\d+$/.test(trimmed) ? Number(trimmed) : null;
+  const shikimoriFilter =
+    shikimoriIdMatch !== null
+      ? Prisma.sql`OR m."shikimoriId" = ${shikimoriIdMatch}`
+      : Prisma.empty;
+  const materialFallback =
+    options?.includeMaterialFallback === false
+      ? Prisma.empty
+      : Prisma.sql`
+          OR m.title ILIKE ${pattern}
+          OR COALESCE(m."titleOrig", '') ILIKE ${pattern}
+          OR COALESCE(m."otherTitle", '') ILIKE ${pattern}
+          OR COALESCE(m."materialData"->>'anime_title', '') ILIKE ${pattern}
+        `;
+
+  return Prisma.sql`
+    AND (
+      EXISTS (
+        SELECT 1
+        FROM "AnimeTitleAlias" a
+        WHERE a."shikimoriId" = m."shikimoriId"
+          AND a.title ILIKE ${pattern}
+      )
+      OR EXISTS (
+        SELECT 1
+        FROM "AnimeCatalog" c
+        WHERE c."shikimoriId" = m."shikimoriId"
+          AND (
+            c.title ILIKE ${pattern}
+            OR COALESCE(c."titleOrig", '') ILIKE ${pattern}
+            OR COALESCE(c."animeLicenseName", '') ILIKE ${pattern}
+          )
+      )
+      ${materialFallback}
+      ${shikimoriFilter}
+    )
+  `;
+}
+
+function buildGenreMatchFilterSql(genre: string): Prisma.Sql {
+  const genreKey = normalizeKodikGenreKey(genre);
+  const pattern = `%${escapeIlikePattern(genreKey)}%`;
+  return Prisma.sql`
+    AND (
+      EXISTS (
+        SELECT 1
+        FROM "AnimeGenre" ag
+        WHERE ag."shikimoriId" = m."shikimoriId"
+          AND (ag."genreKey" = ${genreKey} OR ag."genreKey" ILIKE ${pattern})
+      )
+      OR EXISTS (
+        SELECT 1
+        FROM "KodikMaterialGenre" genre
+        WHERE genre."materialId" = m."kodikId"
+          AND (genre."genreKey" = ${genreKey} OR genre."genreKey" ILIKE ${pattern})
+      )
+    )
+  `;
+}
 
 async function countSearchMatches(filterSql: Prisma.Sql): Promise<number> {
   const rows = await prisma.$queryRaw<Array<{ count: bigint }>>`
@@ -426,10 +512,11 @@ async function fetchSearchRows(
       SELECT
         m."shikimoriId",
         MIN(${candidateRankExpr}) AS rank,
-        MIN(COALESCE(m."materialData"->>'anime_title', m.title)) AS sort_title,
+        MIN(COALESCE(ac.title, m."materialData"->>'anime_title', m.title)) AS sort_title,
         MAX(m."animeReleasedAt") AS sort_date,
         MAX(
           COALESCE(
+            ac.year,
             m.year,
             NULLIF(TRIM(m."materialData"->>'year'), '')::int,
             NULLIF(
@@ -445,6 +532,7 @@ async function fetchSearchRows(
           )
         ) AS sort_year
       FROM "KodikMaterial" m
+      LEFT JOIN "AnimeCatalog" ac ON ac."shikimoriId" = m."shikimoriId"
       WHERE m."shikimoriId" IS NOT NULL
         ${filterSql}
       GROUP BY m."shikimoriId"
@@ -460,10 +548,10 @@ async function fetchSearchRows(
     ranked AS (
       SELECT DISTINCT ON (m."shikimoriId")
         m."shikimoriId",
-        COALESCE(m."materialData"->>'anime_title', m.title) AS title,
-        NULLIF(m."titleOrig", '') AS "titleOriginal",
+        COALESCE(ac.title, m."materialData"->>'anime_title', m.title) AS title,
+        COALESCE(NULLIF(ac."titleOrig", ''), NULLIF(m."titleOrig", '')) AS "titleOriginal",
         meta.year,
-        NULLIF(m."materialData"->>'anime_poster_url', '') AS "posterFromMaterial",
+        COALESCE(NULLIF(ac."posterUrl", ''), NULLIF(m."materialData"->>'anime_poster_url', '')) AS "posterFromMaterial",
         NULLIF(m."materialData"->>'poster_url', '') AS "posterUrlFromMaterial",
         NULLIF(m."materialData"->>'worldart_poster_url', '') AS "worldartPosterFromMaterial",
         NULLIF(m."materialData"->>'worldart_link', '') AS "worldartLinkFromMaterial",
@@ -475,6 +563,7 @@ async function fetchSearchRows(
         m."kodikUpdatedAt"
       FROM matched m
       INNER JOIN meta ON meta."shikimoriId" = m."shikimoriId"
+      LEFT JOIN "AnimeCatalog" ac ON ac."shikimoriId" = m."shikimoriId"
       ORDER BY m."shikimoriId", m."kodikUpdatedAt" DESC NULLS LAST
     ),
     ordered AS (
@@ -554,7 +643,13 @@ function buildDescriptionMatchFilterSql(query: string | undefined): Prisma.Sql |
   const pattern = `%${escapeIlikePattern(trimmed)}%`;
   return Prisma.sql`
     AND (
-      COALESCE(m."materialData"->>'anime_description', '') ILIKE ${pattern}
+      EXISTS (
+        SELECT 1
+        FROM "AnimeCatalog" c
+        WHERE c."shikimoriId" = m."shikimoriId"
+          AND COALESCE(c.description, '') ILIKE ${pattern}
+      )
+      OR COALESCE(m."materialData"->>'anime_description', '') ILIKE ${pattern}
       OR COALESCE(m."materialData"->>'description', '') ILIKE ${pattern}
       OR COALESCE(m."materialData"->'anime_full'->>'description', '') ILIKE ${pattern}
     )
@@ -579,23 +674,12 @@ function buildDescriptionSupplementFilterSql(
 function buildAdvancedFilterSql(filters: AdvancedSearchFilters): Prisma.Sql | null {
   const parts: Prisma.Sql[] = [];
 
-  const addIlike = (column: Prisma.Sql, value: string | undefined) => {
-    const trimmed = value?.trim();
-    if (!trimmed) return;
-    parts.push(Prisma.sql`AND ${column} ILIKE ${`%${escapeIlikePattern(trimmed)}%`}`);
-  };
-
-  addIlike(Prisma.sql`COALESCE(m."materialData"->>'anime_title', '')`, filters.animeTitle);
+  if (filters.animeTitle?.trim()) {
+    parts.push(buildCatalogTitleMatchFilterSql(filters.animeTitle.trim()));
+  }
 
   if (filters.title?.trim()) {
-    const pattern = `%${escapeIlikePattern(filters.title.trim())}%`;
-    parts.push(Prisma.sql`
-      AND (
-        m.title ILIKE ${pattern}
-        OR COALESCE(m."titleOrig", '') ILIKE ${pattern}
-        OR COALESCE(m."otherTitle", '') ILIKE ${pattern}
-      )
-    `);
+    parts.push(buildCatalogTitleMatchFilterSql(filters.title.trim()));
   }
 
   const descriptionFilter = buildDescriptionMatchFilterSql(filters.description);
@@ -603,16 +687,7 @@ function buildAdvancedFilterSql(filters: AdvancedSearchFilters): Prisma.Sql | nu
 
   if (parseGenreList(filters.genre).length > 0) {
     for (const genre of parseGenreList(filters.genre)) {
-      const genreKey = normalizeKodikGenreKey(genre);
-      const pattern = `%${escapeIlikePattern(genreKey)}%`;
-      parts.push(Prisma.sql`
-        AND EXISTS (
-          SELECT 1
-          FROM "KodikMaterialGenre" genre
-          WHERE genre."materialId" = m."kodikId"
-            AND (genre."genreKey" = ${genreKey} OR genre."genreKey" ILIKE ${pattern})
-        )
-      `);
+      parts.push(buildGenreMatchFilterSql(genre));
     }
   }
 
@@ -932,37 +1007,13 @@ async function searchAnimesQuickCore(
         AND m."shikimoriId" IN (${Prisma.join(fuzzyShikimoriIds)})
       `);
     } else {
-      const pattern = `%${escapeIlikePattern(trimmed)}%`;
-      const shikimoriIdMatch = /^\d+$/.test(trimmed) ? Number(trimmed) : null;
-      const shikimoriFilter =
-        shikimoriIdMatch !== null
-          ? Prisma.sql`OR m."shikimoriId" = ${shikimoriIdMatch}`
-          : Prisma.empty;
-
-      parts.push(Prisma.sql`
-        AND (
-          m.title ILIKE ${pattern}
-          OR COALESCE(m."titleOrig", '') ILIKE ${pattern}
-          OR COALESCE(m."otherTitle", '') ILIKE ${pattern}
-          OR COALESCE(m."materialData"->>'anime_title', '') ILIKE ${pattern}
-          ${shikimoriFilter}
-        )
-      `);
+      parts.push(buildCatalogTitleMatchFilterSql(trimmed));
     }
   }
 
   if (hasGenres) {
     for (const genre of genres) {
-      const genreKey = normalizeKodikGenreKey(genre);
-      const pattern = `%${escapeIlikePattern(genreKey)}%`;
-      parts.push(Prisma.sql`
-        AND EXISTS (
-          SELECT 1
-          FROM "KodikMaterialGenre" genre
-          WHERE genre."materialId" = m."kodikId"
-            AND (genre."genreKey" = ${genreKey} OR genre."genreKey" ILIKE ${pattern})
-        )
-      `);
+      parts.push(buildGenreMatchFilterSql(genre));
     }
   }
 
@@ -976,14 +1027,32 @@ async function searchAnimesQuickCore(
       ? Prisma.sql`${fuzzyRank}`
       : Prisma.sql`
         CASE
-          WHEN lower(COALESCE(m."materialData"->>'anime_title', m.title)) = lower(${trimmed}) THEN 0
-          WHEN COALESCE(m."materialData"->>'anime_title', m.title) ILIKE ${prefixPattern} THEN 1
-          WHEN COALESCE(m."titleOrig", '') ILIKE ${prefixPattern} THEN 2
+          WHEN EXISTS (
+            SELECT 1 FROM "AnimeCatalog" c
+            WHERE c."shikimoriId" = m."shikimoriId" AND lower(c.title) = lower(${trimmed})
+          )
+            OR lower(COALESCE(m."materialData"->>'anime_title', m.title)) = lower(${trimmed})
+            THEN 0
+          WHEN EXISTS (
+            SELECT 1 FROM "AnimeTitleAlias" a
+            WHERE a."shikimoriId" = m."shikimoriId" AND a.title ILIKE ${prefixPattern}
+          )
+            OR COALESCE(m."materialData"->>'anime_title', m.title) ILIKE ${prefixPattern}
+            THEN 1
+          WHEN EXISTS (
+            SELECT 1 FROM "AnimeCatalog" c
+            WHERE c."shikimoriId" = m."shikimoriId"
+              AND (
+                c.title ILIKE ${prefixPattern}
+                OR COALESCE(c."titleOrig", '') ILIKE ${prefixPattern}
+              )
+          )
+            OR COALESCE(m."titleOrig", '') ILIKE ${prefixPattern}
+            THEN 2
           ELSE 3
         END
       `
     : Prisma.sql`0`;
-
   const rowsPromise = fetchSearchRows(filterSql, candidateRankExpr, safePageSize, offset, sort);
   const totalPromise = includeTotal ? countSearchMatches(filterSql) : Promise.resolve(undefined);
   const [rows, total] = await Promise.all([rowsPromise, totalPromise]);

@@ -115,9 +115,10 @@ async function queryHomeNoveltiesUncached(limit: number): Promise<ReleaseItem[]>
             ELSE r."materialId"
           END AS title_key,
           r."materialId",
-          r."animeTitle",
+          COALESCE(NULLIF(ac.title, ''), r."animeTitle") AS "animeTitle",
           COALESCE(
             NULLIF(r."posterUrl", ''),
+            NULLIF(ac."posterUrl", ''),
             NULLIF(m."materialData"->>'anime_poster_url', ''),
             NULLIF(m."materialData"->>'poster_url', ''),
             NULLIF(m."materialData"->>'worldart_poster_url', '')
@@ -130,6 +131,7 @@ async function queryHomeNoveltiesUncached(limit: number): Promise<ReleaseItem[]>
           COALESCE(m."shikimoriId", r."shikimoriId") AS "shikimoriId",
           r."releasedAt" AS "releasedAt",
           COALESCE(
+            ac.description,
             m."materialData"->>'anime_description',
             m."materialData"->>'description'
           ) AS description,
@@ -139,12 +141,14 @@ async function queryHomeNoveltiesUncached(limit: number): Promise<ReleaseItem[]>
             m."materialData"->'genres',
             '[]'::jsonb
           ) AS genres,
-          NULLIF(m."materialData"->>'anime_status', '') AS status,
+          COALESCE(NULLIF(ac.status, ''), NULLIF(m."materialData"->>'anime_status', '')) AS status,
           NULLIF(TRIM(COALESCE(
+            ac.score,
             m."materialData"->>'shikimori_rating',
             m."materialData"->>'shikimori_score'
           )), '') AS score,
           NULLIF(TRIM(COALESCE(
+            ac.kind,
             m."materialData"->>'anime_kind',
             m."materialData"->'anime_full'->>'kind'
           )), '') AS kind,
@@ -154,6 +158,7 @@ async function queryHomeNoveltiesUncached(limit: number): Promise<ReleaseItem[]>
           -- если в релизах уже серия N, порог «≤5» должен видеть хотя бы N.
           GREATEST(
             COALESCE(
+              ac."episodesAired",
               CASE
                 WHEN (m."materialData"->>'episodes_aired') ~ '^[0-9]+$'
                   THEN NULLIF((m."materialData"->>'episodes_aired')::int, 0)
@@ -169,6 +174,7 @@ async function queryHomeNoveltiesUncached(limit: number): Promise<ReleaseItem[]>
             r."episodeNumber"
           ) AS episodes_aired_proxy,
           CASE
+            WHEN ac."airedOn" IS NOT NULL THEN ac."airedOn"::date
             WHEN COALESCE(
               NULLIF(m."materialData"->>'aired_at', ''),
               NULLIF(m."materialData"->>'aired_on', ''),
@@ -185,6 +191,7 @@ async function queryHomeNoveltiesUncached(limit: number): Promise<ReleaseItem[]>
           END AS anime_aired_on
         FROM "KodikEpisodeRelease" r
         INNER JOIN "KodikMaterial" m ON m."kodikId" = r."materialId"
+        LEFT JOIN "AnimeCatalog" ac ON ac."shikimoriId" = COALESCE(m."shikimoriId", r."shikimoriId")
         LEFT JOIN "KodikEpisode" e ON e."materialId" = r."materialId"
           AND e."seasonNumber" = r."seasonNumber"
           AND e."episodeNumber" = r."episodeNumber"

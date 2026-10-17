@@ -143,8 +143,9 @@ Calendar: `/calendar` → calendar.ts → local Kodik DB or Shikimori `/api/cale
 | Kodik video freezes, audio continues | GPU pressure from page chrome (screenshot `blur-md`, pattern parallax, companion RAF) or React thrash on `time_update`. Playback sets `data-player-playing`; panel skips position-only state updates (timeline in beta viewport; skip clock from `liveProgressRef`); focus reclaim is event-driven not polling; refresh / «Перезапустить плеер» remounts iframe |
 | Legacy Kodik iframe has no episode list | Embed is `/seria/` (single episode). Legacy mode must stay on `/serial/`/`/season/` — see `allowSeriaRemount` in `player-url.ts` / `AnimeWatchPanel` |
 | TV search opens IME on focus | HeaderSearch idle uses wrapper `data-tv-focus`; OK/Enter required to edit |
-| Title search miss on synonym/описка | Primary is ILIKE only; empty then layout → strict fuzzy → partial-token fuzzy in `search.ts` |
-| Search hangs / «Расширение территории» | Fuzzy used to full-scan `KodikMaterial` on every query; now only on empty ILIKE |
+| Title search miss on synonym/описка | ILIKE по `AnimeTitleAlias`/`AnimeCatalog`; empty → layout → strict/partial fuzzy по алиасам |
+| Search hangs / «Расширение территории» | Fuzzy только при пустом ILIKE; кандидаты из каталога, не full-scan озвучек |
+| Catalog gaps after deploy | `npm run anime-catalog:backfill:status` — `catalogGaps` должен быть 0 |
 | App settings dialog ignores D-pad | Native dialog needs focus drawables + `requestFocus` — see `showAppSettings` |
 | TV player arrows move focus instead of seek | Center Play has `data-tv-player-seek-keys`; arrows seek / jump chrome — see `KodikPlayerBetaViewport` |
 | TA Plus bottom bar before play | Idle hides bottom controls (no synthetic scrub); episode strip + Continue/play stay until HLS mounts |

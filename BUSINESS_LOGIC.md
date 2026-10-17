@@ -160,15 +160,15 @@ Shikimori anime.id  ===  Kodik shikimori_id  ===  URL /anime/[shikimoriId]
 
 ### 8.1. Anime catalog (подготовка)
 
-Параллельно с `KodikMaterial.materialData` вводятся таблицы **`AnimeCatalog`** (1× `shikimoriId`), **`AnimeTitleAlias`**, **`AnimeGenre`**. Dual-write при save-material / Shikimori cache. Backfill: `npm run anime-catalog:backfill` (+ `:status`). Поиск пока ещё читает materials; переключение на каталог — отдельный cutover. Мониторинг: `AnimeCatalogBackfillJob`, админ `GET /api/admin/anime-catalog/backfill`, промпт для бота — `docs/migration/GROK_ANIME_CATALOG_BACKFILL_PROMPT.md`.
+Параллельно с `KodikMaterial.materialData` — таблицы **`AnimeCatalog`** (1× `shikimoriId`), **`AnimeTitleAlias`**, **`AnimeGenre`**. Dual-write при save-material / Shikimori cache. Backfill: `npm run anime-catalog:backfill` (+ `:status`). Мониторинг: `AnimeCatalogBackfillJob`, админ `GET /api/admin/anime-catalog/backfill`, промпт — `docs/migration/GROK_ANIME_CATALOG_BACKFILL_PROMPT.md`.
 
 ### 9. Search
 
-**Источник:** локальная БД `KodikMaterial` (raw SQL в `search.ts`).
+**Источник:** local DB. Title-match и fuzzy — через **`AnimeTitleAlias` / `AnimeCatalog`** (fallback на поля material). Карточки и «Новинки» предпочитают мету каталога; озвучки/серии — по-прежнему `KodikMaterial`.
 
 **Не ищет** напрямую в Shikimori/Kodik API — только по импортированным данным.
 
-Быстрый поиск по названию сначала делает быстрый SQL `ILIKE` (точные / префиксные / подстрочные совпадения). Тяжёлый fuzzy (Levenshtein по токенам по всем локальным названиям) **не** крутится на каждый запрос: только если `ILIKE` пуст — сначала альтернативная раскладка клавиатуры, затем строгий fuzzy (все сильные токены), затем **частичный** fuzzy (≥2 токенов / большинство), чтобы поймать описку вроде «ателье ведьминских колпаков» → «Ателье колдовских колпаков». В шапке при малом числе title-совпадений дополнительно подмешивается поиск по описанию («Расширение территории…»). На странице `/search` доступна сортировка `sort=relevance` (по умолчанию) или `sort=date` (сначала новые по `animeReleasedAt` / году). Подсказки в шапке отправляют запрос с задержкой после набора; задержка хранится в `SearchSettings` и настраивается в админке.
+Быстрый поиск: SQL `ILIKE` по алиасам/каталогу. Fuzzy (Levenshtein) — только при пустой выдаче (раскладка → strict → partial), по строкам каталога/алиасов, не по всем озвучкам. В шапке при малом числе title-хитов — добор по описанию («Расширение территории…»), включая `AnimeCatalog.description`. Сортировка `/search`: `relevance` | `date`. Debounce шапки — `SearchSettings`.
 
 ### 10. Cover/Poster Resolution
 
