@@ -2,6 +2,7 @@ import fs from "node:fs/promises";
 import path from "node:path";
 import "server-only";
 import type {
+  SiteChangelogAudience,
   SiteChangelogEntry,
   SiteChangelogFile,
   SiteChangelogItem,
@@ -9,6 +10,7 @@ import type {
 } from "@/lib/site-changelog-types";
 
 export type {
+  SiteChangelogAudience,
   SiteChangelogEntry,
   SiteChangelogFile,
   SiteChangelogItem,
@@ -33,6 +35,8 @@ const KINDS = new Set<SiteChangelogItemKind>([
   "fix",
 ]);
 
+const AUDIENCES = new Set<SiteChangelogAudience>(["public", "admin"]);
+
 function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === "object" && value !== null && !Array.isArray(value);
 }
@@ -44,7 +48,34 @@ function normalizeItem(raw: unknown): SiteChangelogItem | null {
   if (typeof kind !== "string" || !KINDS.has(kind as SiteChangelogItemKind) || !text) {
     return null;
   }
-  return { kind: kind as SiteChangelogItemKind, text };
+  const item: SiteChangelogItem = { kind: kind as SiteChangelogItemKind, text };
+  if (typeof raw.audience === "string" && AUDIENCES.has(raw.audience as SiteChangelogAudience)) {
+    item.audience = raw.audience as SiteChangelogAudience;
+  }
+  return item;
+}
+
+/** True when item is visible to end users (omitted audience = public). */
+export function isPublicChangelogItem(item: Pick<SiteChangelogItem, "audience">): boolean {
+  return item.audience !== "admin";
+}
+
+/**
+ * Strip admin-only items; drop days with no remaining public items.
+ * Used by public API / «Что нового».
+ */
+export function toPublicChangelogEntries(entries: SiteChangelogEntry[]): SiteChangelogEntry[] {
+  const out: SiteChangelogEntry[] = [];
+  for (const entry of entries) {
+    const items = entry.items.filter(isPublicChangelogItem).map((item) => {
+      const next: SiteChangelogItem = { kind: item.kind, text: item.text };
+      if (item.audience === "public") next.audience = "public";
+      return next;
+    });
+    if (items.length === 0) continue;
+    out.push({ ...entry, items });
+  }
+  return out;
 }
 
 function normalizeEntry(raw: unknown): SiteChangelogEntry | null {
@@ -115,7 +146,14 @@ export function mergeChangelogItems(
     const key = normalizeChangelogItemText(item.text);
     if (!key || seen.has(key)) continue;
     seen.add(key);
-    out.push({ kind: item.kind, text: item.text.trim().replace(/\s+/g, " ") });
+    const next: SiteChangelogItem = {
+      kind: item.kind,
+      text: item.text.trim().replace(/\s+/g, " "),
+    };
+    if (item.audience === "admin" || item.audience === "public") {
+      next.audience = item.audience;
+    }
+    out.push(next);
   }
   return out;
 }
@@ -208,13 +246,18 @@ export async function listSiteChangelogEntries(limit?: number): Promise<SiteChan
 /**
  * Entries whose Moscow calendar day is already over (not "today").
  * Today's daily entry is still being collected and must not auto-show.
+ * By default returns the **public** slice (admin-only items stripped; empty days dropped).
+ * Pass `{ audience: "all" }` for admin preview of completed days including admin items.
  */
 export async function listCompletedSiteChangelogEntries(
   limit?: number,
   when: string | Date = new Date(),
+  options?: { audience?: "public" | "all" },
 ): Promise<SiteChangelogEntry[]> {
   const { entries } = await getSiteChangelog();
   const completed = entries.filter((entry) => !isSameChangelogDay(entry, when));
-  if (limit == null || limit <= 0) return completed;
-  return completed.slice(0, limit);
+  const sliced =
+    options?.audience === "all" ? completed : toPublicChangelogEntries(completed);
+  if (limit == null || limit <= 0) return sliced;
+  return sliced.slice(0, limit);
 }

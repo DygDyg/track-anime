@@ -1,5 +1,5 @@
 /**
- * Kodik-style «безопасный режим»: progressive MP4 without HLS suffix / query.
+ * Safe mode: progressive MP4 without HLS suffix / query.
  * Example: `…/720.mp4:hls:manifest.m3u8` → `…/720.mp4`
  */
 export function toTaPlusSafeModeUrl(url: string | null | undefined): string | null {

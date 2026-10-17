@@ -37,7 +37,7 @@ Always:
 - prefer minimal targeted changes
 - keep project documentation consistent with behavior changes
 - verify with `npx tsc --noEmit` and/or `npm run build` when the change can affect TypeScript/runtime behavior
-- when the user asks to deploy production: first update `data/site-changelog.json` with user-facing changes/new features when applicable (daily merge Europe/Moscow — see `AI_RULES.md` § Deploy changelog; skip if nothing user-visible); then run `npm run deploy:smart` (auto-commit local changes, then prefers SSH git when available, else webhook / tar / Actions); do not ask which channel unless all fail
+- when the user asks to deploy production: first update `data/site-changelog.json` (public and/or `audience: "admin"` items; daily merge Europe/Moscow — see `AI_RULES.md` § Deploy changelog; skip if nothing for users or admins); then run `npm run deploy:smart` (auto-commit local changes, then prefers SSH git when available, else webhook / tar / Actions); do not ask which channel unless all fail
 
 Before changing code:
 

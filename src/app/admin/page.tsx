@@ -24,7 +24,7 @@ export default async function AdminDashboardPage() {
 
       <p className="text-sm">
         <Link href="/admin/changelog" className={adminClass.textLink}>
-          Changelog для пользователей (превью) →
+          Changelog для пользователей →
         </Link>
       </p>
 

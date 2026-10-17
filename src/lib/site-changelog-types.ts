@@ -1,12 +1,20 @@
-/** User-facing site changelog (shown later in UI). Not a git/commit dump. */
+/** Site changelog (public «Что нового» + admin-only notes). Not a git/commit dump. */
 
 export type SiteChangelogItemKind = "feature" | "improvement" | "change" | "fix";
 
+/** Who can see the item. Omitted / `public` = end users; `admin` = admin panel only. */
+export type SiteChangelogAudience = "public" | "admin";
+
 export type SiteChangelogItem = {
-  /** feature | improvement | change | fix (only user-noticeable fixes) */
+  /** feature | improvement | change | fix (only user-noticeable fixes when public) */
   kind: SiteChangelogItemKind;
-  /** Russian text for end users — what changed for them, not how it was coded */
+  /** Russian text — for public: what changed for users; for admin: may be more technical */
   text: string;
+  /**
+   * Visibility. Default `public` when omitted (backward compatible).
+   * `admin` items are hidden from `/api/site-changelog` and user UI; shown in `/admin/changelog` with «A» mark.
+   */
+  audience?: SiteChangelogAudience;
 };
 
 export type SiteChangelogEntry = {

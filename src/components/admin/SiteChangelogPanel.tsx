@@ -21,7 +21,10 @@ const KIND_BADGE: Record<SiteChangelogItemKind, string> = {
   fix: adminClass.badgeError,
 };
 
-/** Demo payload so empty file still shows how users might see it. */
+const ADMIN_MARK_CLASS =
+  "inline-flex h-5 w-5 shrink-0 items-center justify-center self-start rounded-md bg-violet-500/20 text-[11px] font-semibold text-violet-300 ring-1 ring-inset ring-violet-500/40";
+
+/** Demo payload so empty file still shows public + admin-only items. */
 const DEMO_ENTRIES: SiteChangelogEntry[] = [
   {
     id: "2026-10-11",
@@ -41,6 +44,11 @@ const DEMO_ENTRIES: SiteChangelogEntry[] = [
       {
         kind: "fix",
         text: "Исправлено зависание картинки при смене серии в TA Plus.",
+      },
+      {
+        kind: "fix",
+        audience: "admin",
+        text: "В админке починен фильтр списка pending Kodik-материалов.",
       },
     ],
   },
@@ -97,6 +105,11 @@ function ChangelogEntryCard({ entry }: { entry: SiteChangelogEntry }) {
             >
               {KIND_LABEL[item.kind]}
             </span>
+            {item.audience === "admin" ? (
+              <span className={ADMIN_MARK_CLASS} title="Только для админа" aria-label="Только для админа">
+                A
+              </span>
+            ) : null}
             <span>{item.text}</span>
           </li>
         ))}
@@ -124,13 +137,12 @@ export function SiteChangelogPanel({
       <section className={`${adminClass.panel} space-y-3`}>
         <div className="flex flex-wrap items-start justify-between gap-3">
           <div>
-            <h2 className="text-lg font-semibold text-foreground">Changelog для пользователей</h2>
+            <h2 className="text-lg font-semibold text-foreground">
+              Changelog для пользователей
+            </h2>
             <p className="mt-1 max-w-2xl text-sm text-muted">
-              Черновик будущего блока «Что нового». Данные из{" "}
-              <code className={adminClass.code}>data/site-changelog.json</code>
-              — не дамп коммитов, а нововведения и заметные изменения. Одна карточка на
-              календарный день (Europe/Moscow); несколько деплоев за день мержатся в запись
-              крайнего билда. Сейчас только превью в админке.
+              Превью блока «Что нового». Значок A — только для админов, на сайте не
+              показывается.
             </p>
           </div>
           <div className="flex flex-wrap gap-2">
@@ -151,30 +163,34 @@ export function SiteChangelogPanel({
           </div>
         </div>
 
-        <div className="flex flex-wrap gap-2 text-xs">
+        <div className="flex flex-wrap items-center gap-2 text-xs">
           {(Object.keys(KIND_LABEL) as SiteChangelogItemKind[]).map((kind) => (
             <span key={kind} className={KIND_BADGE[kind]}>
               {KIND_LABEL[kind]}
             </span>
           ))}
+          <span className="inline-flex items-center gap-1.5 text-muted">
+            <span className={ADMIN_MARK_CLASS} title="Только для админа" aria-hidden>
+              A
+            </span>
+            только для админа (не показывается пользователям)
+          </span>
         </div>
       </section>
 
       <section className="space-y-3">
         <div className="flex flex-wrap items-baseline justify-between gap-2">
           <h3 className="text-base font-semibold text-foreground">
-            {mode === "demo" ? "Как может выглядеть у пользователей" : "Записи из файла"}
+            {mode === "demo" ? "Пример превью" : "Записи"}
           </h3>
           {mode === "demo" ? (
-            <p className="text-xs text-muted">Демо-данные, в файл не пишутся</p>
+            <p className="text-xs text-muted">Демо, не из файла</p>
           ) : null}
         </div>
 
         {entries.length === 0 ? (
           <p className="rounded-lg border border-border bg-background p-4 text-sm text-muted">
-            Пока пусто. Перед деплоем агент дополнит дневную запись в{" "}
-            <code className={adminClass.code}>data/site-changelog.json</code>, либо открой
-            «Пример превью».
+            Пока записей нет. Можно открыть пример превью.
           </p>
         ) : (
           <div className="space-y-3">

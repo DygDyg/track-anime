@@ -87,14 +87,39 @@ const MOBILE_TRANSLATIONS_SWIPE_ZONE_PX = 96;
 const MOBILE_TRANSLATIONS_SWIPE_THRESHOLD_PX = 56;
 const BRIGHTNESS_GESTURE_ACTIVATE_PX = 8;
 const VOLUME_GESTURE_ACTIVATE_PX = 8;
+/** Ignore volume/brightness if touch started near top (Android notification shade). */
+const VOLUME_BRIGHTNESS_TOP_IGNORE_PX = 72;
 /** Horizontal swipe seek: lock axis after this distance. */
 const SEEK_GESTURE_ACTIVATE_PX = 24;
 /** Ignore horizontal seek if touch started near left/right edge (system back). */
 const SEEK_GESTURE_EDGE_IGNORE_PX = 20;
-/** Minimum px per ±10s step; also uses 12% of shell width. */
-const SEEK_GESTURE_STEP_MIN_PX = 56;
+/** Horizontal swipe seek: ±10s per this fraction of shell width. */
+const SEEK_GESTURE_STEP_RATIO = 0.05;
+/** Guide circles at ±(steps × 10s) from gesture origin (9 × 10 = ±90). */
+const SEEK_GESTURE_GUIDE_STEPS = 9;
+const SEEK_GESTURE_GUIDE_SIZE_PX = 40;
 const BRIGHTNESS_HUD_MS = 900;
 const VOLUME_HUD_MS = 900;
+
+function clampSeekGuideCoord(ideal: number, shellSize: number, half: number): number {
+  if (shellSize <= half * 2) return shellSize / 2;
+  return Math.min(Math.max(ideal, half), shellSize - half);
+}
+
+function seekGuideMarkerStyle(
+  idealX: number,
+  idealY: number,
+  shellWidth: number,
+  shellHeight: number,
+): { left: number; top: number; opacity: number } {
+  const half = SEEK_GESTURE_GUIDE_SIZE_PX / 2;
+  const left = clampSeekGuideCoord(idealX, shellWidth, half);
+  const top = clampSeekGuideCoord(idealY, shellHeight, half);
+  const drift = Math.hypot(left - idealX, top - idealY);
+  const fadeSpan = Math.max(shellWidth * 0.25, 48);
+  const opacity = Math.max(0.35, 1 - drift / fadeSpan);
+  return { left, top, opacity };
+}
 const KODIK_NATIVE_SKIP_PASSTHROUGH_WIDTH = "min(18rem, 44vw)";
 const KODIK_NATIVE_SKIP_PASSTHROUGH_HEIGHT = "3.75rem";
 const KODIK_NATIVE_SKIP_PASSTHROUGH_RIGHT = "0.5rem";
@@ -284,6 +309,14 @@ export function KodikPlayerBetaViewport({
   const [tvChromePinned, setTvChromePinned] = useState(false);
   const primaryFocusDoneRef = useRef(false);
   const [seekFeedback, setSeekFeedback] = useState({ backward: 0, forward: 0 });
+  /** ±90s drag targets while horizontal seek swipe is active. */
+  const [seekGuide, setSeekGuide] = useState<{
+    originX: number;
+    originY: number;
+    stepPx: number;
+    shellWidth: number;
+    shellHeight: number;
+  } | null>(null);
   /** Brief center icon when playback starts/pauses (`key` restarts CSS animation). */
   const [playPauseFlash, setPlayPauseFlash] = useState<"play" | "pause" | null>(null);
   const [playPauseFlashKey, setPlayPauseFlashKey] = useState(0);
@@ -327,6 +360,7 @@ export function KodikPlayerBetaViewport({
   const touchGestureRef = useRef<{
     startX: number;
     startY: number;
+    startedNearTop: boolean;
     startedNearBottom: boolean;
     startedNearHorizontalEdge: boolean;
     startedOnRight: boolean;
@@ -1351,6 +1385,8 @@ export function KodikPlayerBetaViewport({
       touchGestureRef.current = {
         startX: touch.clientX,
         startY: touch.clientY,
+        startedNearTop:
+          fullscreenActive && touch.clientY - rect.top <= VOLUME_BRIGHTNESS_TOP_IGNORE_PX,
         startedNearBottom:
           fullscreenActive && rect.bottom - touch.clientY <= MOBILE_TRANSLATIONS_SWIPE_ZONE_PX,
         startedNearHorizontalEdge:
@@ -1392,6 +1428,7 @@ export function KodikPlayerBetaViewport({
 
       if (gesture.mode === "seek") {
         suppressClickAfterGestureRef.current = true;
+        setSeekGuide(null);
         const total = gesture.lastSeekSteps * MOBILE_DOUBLE_TAP_SEEK_SECONDS;
         if (total !== 0) applySeekSkipDelta(total);
         armSeekFeedbackFade();
@@ -1443,6 +1480,7 @@ export function KodikPlayerBetaViewport({
           fullscreenActive &&
           gesture.startedOnRight &&
           !gesture.startedNearBottom &&
+          !gesture.startedNearTop &&
           Math.abs(deltaY) >= BRIGHTNESS_GESTURE_ACTIVATE_PX &&
           Math.abs(deltaY) > Math.abs(deltaX) * 1.2
         ) {
@@ -1454,6 +1492,7 @@ export function KodikPlayerBetaViewport({
           fullscreenActive &&
           gesture.startedOnLeft &&
           !gesture.startedNearBottom &&
+          !gesture.startedNearTop &&
           Math.abs(deltaY) >= VOLUME_GESTURE_ACTIVATE_PX &&
           Math.abs(deltaY) > Math.abs(deltaX) * 1.2
         ) {
@@ -1475,6 +1514,15 @@ export function KodikPlayerBetaViewport({
           pendingMobileSeekDeltaRef.current = 0;
           suppressClickAfterGestureRef.current = true;
           setUiVisible(false);
+          const rect = shell.getBoundingClientRect();
+          const stepPx = gesture.shellWidth * SEEK_GESTURE_STEP_RATIO;
+          setSeekGuide({
+            originX: gesture.startX - rect.left,
+            originY: gesture.startY - rect.top,
+            stepPx,
+            shellWidth: gesture.shellWidth,
+            shellHeight: gesture.shellHeight,
+          });
         }
       }
 
@@ -1488,7 +1536,7 @@ export function KodikPlayerBetaViewport({
         setVolumeFromGesture(gesture.startVolume - deltaY / span);
       } else if (gesture.mode === "seek") {
         event.preventDefault();
-        const stepPx = Math.max(gesture.shellWidth * 0.12, SEEK_GESTURE_STEP_MIN_PX);
+        const stepPx = gesture.shellWidth * SEEK_GESTURE_STEP_RATIO;
         const rawSteps = Math.trunc(deltaX / stepPx);
         if (rawSteps !== gesture.lastSeekSteps) {
           gesture.lastSeekSteps = rawSteps;
@@ -2172,6 +2220,33 @@ export function KodikPlayerBetaViewport({
     />
   );
 
+  const seekGuideSeconds = SEEK_GESTURE_GUIDE_STEPS * MOBILE_DOUBLE_TAP_SEEK_SECONDS;
+  const seekGuideMarkers = seekGuide
+    ? (() => {
+        const offset = SEEK_GESTURE_GUIDE_STEPS * seekGuide.stepPx;
+        return {
+          backward: {
+            ...seekGuideMarkerStyle(
+              seekGuide.originX - offset,
+              seekGuide.originY,
+              seekGuide.shellWidth,
+              seekGuide.shellHeight,
+            ),
+            reached: seekFeedback.backward >= seekGuideSeconds,
+          },
+          forward: {
+            ...seekGuideMarkerStyle(
+              seekGuide.originX + offset,
+              seekGuide.originY,
+              seekGuide.shellWidth,
+              seekGuide.shellHeight,
+            ),
+            reached: seekFeedback.forward >= seekGuideSeconds,
+          },
+        };
+      })()
+    : null;
+
   const bottomStackNode = isTaPlus ? null : (
     <div className="kodik-player-beta-bottom-stack pointer-events-none space-y-1 px-2 pb-1 sm:space-y-2 sm:px-3">
       <div className="flex items-center justify-between gap-2">
@@ -2218,6 +2293,7 @@ export function KodikPlayerBetaViewport({
               const gesture = touchGestureRef.current;
               touchGestureRef.current = null;
               if (gesture?.mode === "seek") {
+                setSeekGuide(null);
                 setSeekGestureHud(0, 0);
               }
             }
@@ -2541,6 +2617,46 @@ export function KodikPlayerBetaViewport({
             {/* Keep skip clickable even when chrome auto-hides / Android passThrough. */}
             <div className="pointer-events-auto">{skipAction}</div>
           </div>
+        ) : null}
+        {seekGuideMarkers ? (
+          <>
+            <div
+              className={[
+                "pointer-events-none absolute z-[28] flex -translate-x-1/2 -translate-y-1/2 items-center justify-center rounded-full text-[11px] font-semibold tabular-nums text-white shadow-lg shadow-black/30 backdrop-blur-sm",
+                seekGuideMarkers.backward.reached
+                  ? "border border-white/55 bg-white/25"
+                  : "border border-white/25 bg-black/45",
+              ].join(" ")}
+              style={{
+                left: seekGuideMarkers.backward.left,
+                top: seekGuideMarkers.backward.top,
+                width: SEEK_GESTURE_GUIDE_SIZE_PX,
+                height: SEEK_GESTURE_GUIDE_SIZE_PX,
+                opacity: seekGuideMarkers.backward.opacity,
+              }}
+              aria-hidden
+            >
+              −{seekGuideSeconds}
+            </div>
+            <div
+              className={[
+                "pointer-events-none absolute z-[28] flex -translate-x-1/2 -translate-y-1/2 items-center justify-center rounded-full text-[11px] font-semibold tabular-nums text-white shadow-lg shadow-black/30 backdrop-blur-sm",
+                seekGuideMarkers.forward.reached
+                  ? "border border-white/55 bg-white/25"
+                  : "border border-white/25 bg-black/45",
+              ].join(" ")}
+              style={{
+                left: seekGuideMarkers.forward.left,
+                top: seekGuideMarkers.forward.top,
+                width: SEEK_GESTURE_GUIDE_SIZE_PX,
+                height: SEEK_GESTURE_GUIDE_SIZE_PX,
+                opacity: seekGuideMarkers.forward.opacity,
+              }}
+              aria-hidden
+            >
+              +{seekGuideSeconds}
+            </div>
+          </>
         ) : null}
         {seekFeedback.backward > 0 ? (
           <div className="pointer-events-none absolute left-[12%] top-1/2 z-30 flex -translate-y-1/2 flex-col items-center gap-1.5 sm:left-[16%]">

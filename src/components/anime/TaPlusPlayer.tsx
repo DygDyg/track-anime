@@ -46,7 +46,7 @@ export type TaPlusPlayerHandle = KodikPlayerHandle & {
 
 type Props = {
   src: string | null;
-  /** Match KodikPlayer: `viewport` fills theater/fullscreen host. */
+  /** `viewport` fills theater/fullscreen host. */
   sizeMode?: "default" | "viewport";
   /** All /ftor quality URLs; `auto` plays the highest available key. */
   qualities?: Record<string, string>;
@@ -104,7 +104,7 @@ const DEFAULT_PLAYBACK: KodikPlayerPlaybackState = {
 const MAX_HLS_RECOVERIES = 2;
 /** Avoid flicker on tiny stalls; show spinner only if still waiting. */
 const STALL_SPINNER_DELAY_MS = 320;
-/** After spinner is visible this long, offer Kodik-style progressive MP4 fallback. */
+/** After spinner is visible this long, offer progressive MP4 fallback. */
 const SAFE_MODE_OFFER_AFTER_MS = 5000;
 /**
  * Optimistic initial throughput so Auto does not immediately drop from startLevel
@@ -202,7 +202,7 @@ export const TaPlusPlayer = forwardRef<TaPlusPlayerHandle, Props>(function TaPlu
   /** Mid-playback rebuffer / hang — center spinner after a short delay. */
   const [stallSpinner, setStallSpinner] = useState(false);
   const stallSpinnerTimerRef = useRef<number | null>(null);
-  /** Progressive MP4 fallback (URL cut at `.mp4`), like Kodik «безопасный режим». */
+  /** Progressive MP4 fallback (URL cut at `.mp4`). */
   const [safeMode, setSafeMode] = useState(false);
   const [safeModeOffer, setSafeModeOffer] = useState(false);
   const safeModeRef = useRef(false);
@@ -591,7 +591,7 @@ export const TaPlusPlayer = forwardRef<TaPlusPlayerHandle, Props>(function TaPlu
       if (height != null) onActiveQualityChangeRef.current?.(height);
     };
 
-    // Progressive MP4 (Kodik-style safe mode) — no HLS.js.
+    // Progressive MP4 safe mode — no HLS.js.
     if (safeMode && safeUrl) {
       video.src = safeUrl;
       video.addEventListener("loadedmetadata", preparePlayback, { once: true });
@@ -900,8 +900,7 @@ export const TaPlusPlayer = forwardRef<TaPlusPlayerHandle, Props>(function TaPlu
             <div className="max-w-sm rounded-xl bg-black/90 px-4 py-3 text-center text-sm text-white shadow-lg ring-1 ring-white/15">
               <p className="mb-1 font-medium">Видео зависло?</p>
               <p className="mb-3 text-xs leading-relaxed text-white/70">
-                Можно перейти в безопасный режим — упрощённая загрузка без HLS, как в плеере
-                Kodik.
+                Можно перейти в безопасный режим — упрощённая загрузка без HLS.
               </p>
               <div className="flex flex-wrap items-center justify-center gap-2">
                 <button

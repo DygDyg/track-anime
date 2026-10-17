@@ -213,13 +213,13 @@ Git deploy webhook (HMAC, no session): `api/deploy/webhook` (POST)
 | `kodik-ftor.ts` | Серверный вызов PHP-парсера `/ftor` + ROT18/base64 decode HLS `src` для TA Plus |
 | `kodik-parser-skip.ts` | Разбор `skip_timings` / `skip_raw` из ответа парсера → OP/ED для TA Plus |
 | `ta-plus-tiles.ts` | Client-safe storyboard tiles; `{index}` = 1-based `padStart(4,"0")` (`0001`…) для scrub-preview TA Plus |
-| `ta-plus-safe-mode.ts` | Kodik-style safe mode: truncate `/ftor` URL at `.mp4` for progressive fallback |
+| `ta-plus-safe-mode.ts` | Safe mode: truncate `/ftor` URL at `.mp4` for progressive fallback |
 | `ta-plus-previews.ts` | Idle `previews`: скриншоты серии + derived `thumb001…005` + display proxy |
 | `kodik-ensure-materials.ts` | On-demand Kodik materials by shikimoriId when page has none |
 | `releases.ts` | Home feed queries (SQL builders + page API) |
 | `home-feed-cache.ts` | Materialized home feed (`HomeFeedItem` / meta, head+full rebuild) |
 | `home-novelties.ts` | Home «Новинки» block (shared 24h cache) |
-| `site-changelog.ts`, `site-changelog-types.ts` | User-facing deploy changelog → `data/site-changelog.json` (daily merge Europe/Moscow via `upsertDailyChangelogEntry`); `listCompletedSiteChangelogEntries` excludes today's Moscow day; public `GET /api/site-changelog`; UI: `SiteChangelogWhatsNewModal`, `SiteChangelogEntries`, settings tab `ChangelogSettingsTab`; admin preview `/admin/changelog` (`SiteChangelogPanel`) |
+| `site-changelog.ts`, `site-changelog-types.ts` | Deploy changelog → `data/site-changelog.json` (daily merge Europe/Moscow via `upsertDailyChangelogEntry`); item `audience?: "public" \| "admin"`; `toPublicChangelogEntries` strips admin; `listCompletedSiteChangelogEntries` excludes today's Moscow day (+ public filter by default); public `GET /api/site-changelog`; UI: `SiteChangelogWhatsNewModal`, `SiteChangelogEntries`, settings tab `ChangelogSettingsTab`; admin preview `/admin/changelog` (`SiteChangelogPanel`, «A» mark on admin items) |
 | `search.ts` | DB search (server-only) |
 | `search-settings.ts` | Search UI settings |
 | `favorites-page.ts` | Favorites page data |

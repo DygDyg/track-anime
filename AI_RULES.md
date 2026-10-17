@@ -76,17 +76,19 @@ Shared rules for Codex, Cursor, Hermes, and local model workflows. Codex should 
 * предпочитай raw code вместо пересказа
 * не переходи в generic assistant mode
 
-## Deploy changelog (user-facing)
+## Deploy changelog (user-facing + admin)
 
-Перед каждым prod-деплоем (`deploy:smart` / «задеплой») обновляй `data/site-changelog.json`, если в выкладке есть **заметные для пользователей** изменения или нововведения.
+Перед каждым prod-деплоем (`deploy:smart` / «задеплой») обновляй `data/site-changelog.json`.
 
-- Читалка / merge: `src/lib/site-changelog.ts` (`upsertDailyChangelogEntry`); типы: `src/lib/site-changelog-types.ts`
-- Превью: `/admin/changelog`
+- Читалка / merge: `src/lib/site-changelog.ts` (`upsertDailyChangelogEntry`, `toPublicChangelogEntries`); типы: `src/lib/site-changelog-types.ts`
+- Превью: `/admin/changelog` (у `audience: "admin"` — значок «A»)
+- Публично: `/api/site-changelog` и «Что нового» без admin-пунктов
 - Cursor: `.cursor/rules/deploy-changelog.mdc` (+ шаг в `deploy-smart.mdc`)
 - **Суточная группировка** (Europe/Moscow): одна запись на календарный день (`id: YYYY-MM-DD`). Если top-entry уже за сегодня — мержить новые `items` (дедуп по тексту), обновить `recordedAt` / `gitSha` / опционально `title` / `buildNumber`; не создавать вторую карточку за день
-- Пиши по-русски, кратко; `kind`: `feature` | `improvement` | `change` | `fix` (fix — только заметные сбои)
-- Не включать: рефакторинг, CI, docs-only, чисто админское, дамп commit messages
-- Если нечего показать пользователям — не создавай пустую запись
+- Пиши по-русски, кратко; `kind`: `feature` | `improvement` | `change` | `fix` (публичный fix — только заметные сбои)
+- `audience`: omit/`public` для пользователей; `"admin"` для админки/внутреннего (след в логе, скрыто на сайте); опционально одна публичная «Небольшие фиксы и исправления»
+- Не писать: рефакторинг, CI, docs-only, дамп commit messages; не эхо ТЗ («как на ютубе») и не очевидные лекции — см. `.cursor/rules/natural-product-copy.mdc`
+- Если нечего ни для пользователей, ни для админов — не создавай запись
 
 Подробности: `docs/DEPLOY.md` § Site changelog.
 
