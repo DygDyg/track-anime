@@ -101,8 +101,13 @@ const SEEK_GESTURE_ACTIVATE_PX = 24;
 const SEEK_GESTURE_EDGE_IGNORE_PX = 20;
 /** Horizontal swipe seek: ±10s per this fraction of shell width. */
 const SEEK_GESTURE_STEP_RATIO = 0.05;
-/** Guide circles at ±(steps × 10s) from gesture origin (9 × 10 = ±90). */
+/** Guide label/target: ±(steps × 10s) from gesture origin (9 × 10 = ±90). */
 const SEEK_GESTURE_GUIDE_STEPS = 9;
+/**
+ * Place markers slightly past the trunc boundary (9.5 × step ≈ ±95s distance)
+ * so the finger on the circle already yields ±90 (`Math.trunc`), not ±80.
+ */
+const SEEK_GESTURE_GUIDE_PLACE_STEPS = 9.5;
 const SEEK_GESTURE_GUIDE_SIZE_PX = 40;
 const BRIGHTNESS_HUD_MS = 900;
 const VOLUME_HUD_MS = 900;
@@ -2287,7 +2292,7 @@ export function KodikPlayerBetaViewport({
   const seekGuideSeconds = SEEK_GESTURE_GUIDE_STEPS * MOBILE_DOUBLE_TAP_SEEK_SECONDS;
   const seekGuideMarkers = seekGuide
     ? (() => {
-        const offset = SEEK_GESTURE_GUIDE_STEPS * seekGuide.stepPx;
+        const offset = SEEK_GESTURE_GUIDE_PLACE_STEPS * seekGuide.stepPx;
         return {
           backward: {
             ...seekGuideMarkerStyle(
