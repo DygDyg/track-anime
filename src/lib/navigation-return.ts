@@ -200,13 +200,22 @@ export function restoreScrollY(scrollY: number): void {
   window.setTimeout(scroll, 200);
 }
 
+/** Previous entry in this tab. A new tab keeps `document.referrer` but has nothing to go back to. */
+function canGoBackInTab(): boolean {
+  const navigation = (window as Window & { navigation?: { canGoBack?: boolean } }).navigation;
+  if (typeof navigation?.canGoBack === "boolean") return navigation.canGoBack;
+  return window.history.length > 1;
+}
+
 export function canReturnInApp(): boolean {
   if (typeof window === "undefined") return false;
+  if (!canGoBackInTab()) return false;
+
   const referrer = document.referrer;
-  if (!referrer) return window.history.length > 1;
+  if (!referrer) return true;
   try {
     return new URL(referrer).origin === window.location.origin;
   } catch {
-    return window.history.length > 1;
+    return true;
   }
 }

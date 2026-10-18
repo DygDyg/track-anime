@@ -9,8 +9,8 @@ import { FavoriteRewatchBadge } from "@/components/favorites/FavoriteRewatchBadg
 import { useUserListStatus } from "@/components/favorites/UserListStatusProvider";
 import { ReleaseCardGenresRow, ReleaseCardMetaRow } from "@/components/ReleaseCardPreviewMeta";
 import { ReleaseCardQuickActions } from "@/components/ReleaseCardQuickActions";
+import { ReleaseCardWatchHistoryAction } from "@/components/ReleaseCardWatchHistoryAction";
 import { TranslationBadge } from "@/components/TranslationBadge";
-import { LoadingSpinner } from "@/components/ui/LoadingSpinner";
 import type { HoverPanelReleaseInput } from "@/lib/hover-panel-release";
 
 const SWIPE_CLOSE_PX = 80;
@@ -236,27 +236,15 @@ export function ReleaseCardMobileSheet({
               </a>
             )}
 
-            {onDeleteFromHistory ? (
-              <button
-                type="button"
-                onClick={(event) => {
-                  event.preventDefault();
-                  event.stopPropagation();
-                  void onDeleteFromHistory();
-                }}
-                disabled={deletingFromHistory}
-                aria-busy={deletingFromHistory}
-                className="flex w-full items-center justify-center gap-2 rounded-full border border-red-500/30 bg-surface-dim px-4 py-2.5 text-sm font-medium text-red-400 transition hover:border-red-500 hover:bg-red-500 hover:text-white disabled:cursor-wait disabled:opacity-60"
-              >
-                {deletingFromHistory ? (
-                  <LoadingSpinner size="xs" />
-                ) : (
-                  <svg viewBox="0 0 24 24" className="h-4 w-4 shrink-0" fill="none" stroke="currentColor" strokeWidth="2" aria-hidden>
-                    <path d="M3 6h18M8 6V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2m3 0v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6h14M10 11v6M14 11v6" strokeLinecap="round" strokeLinejoin="round" />
-                  </svg>
-                )}
-                {deletingFromHistory ? "Удаление…" : "Удалить из истории"}
-              </button>
+            {release.shikimoriId ? (
+              <ReleaseCardWatchHistoryAction
+                shikimoriId={release.shikimoriId}
+                animeTitle={release.animeTitle}
+                kodikId={release.materialId ?? null}
+                active={open}
+                onDeleteFromHistory={onDeleteFromHistory}
+                deletingFromHistory={deletingFromHistory}
+              />
             ) : null}
 
             {release.shikimoriId ? <ReleaseCardQuickActions shikimoriId={release.shikimoriId} /> : null}
