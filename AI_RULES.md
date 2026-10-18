@@ -84,7 +84,8 @@ Shared rules for Codex, Cursor, Hermes, and local model workflows. Codex should 
 - Превью: `/admin/changelog` (у `audience: "admin"` — значок «A»)
 - Публично: `/api/site-changelog` и «Что нового» без admin-пунктов
 - Cursor: `.cursor/rules/deploy-changelog.mdc` (+ шаг в `deploy-smart.mdc`)
-- **Суточная группировка** (Europe/Moscow): одна запись на календарный день (`id: YYYY-MM-DD`). Если top-entry уже за сегодня — мержить новые `items` (дедуп по тексту), обновить `recordedAt` / `gitSha` / опционально `title` / `buildNumber`; не создавать вторую карточку за день
+- **Суточная группировка** (Europe/Moscow): одна запись на календарный день (`id: YYYY-MM-DD`). Если top-entry уже за сегодня — мержить новые `items`, обновить `recordedAt` / `gitSha` / опционально `title` / `buildNumber`; не создавать вторую карточку за день
+- **Тематическое схлопывание**: перед добавлением прочитай сегодняшние `items`. Та же функция / замена результата прошлого → обобщи или замени один пункт, не копи итерации. Опционально `topic` (slug): тот же topic при merge **заменяет** старый пункт (`mergeChangelogItems`)
 - Пиши по-русски, кратко; `kind`: `feature` | `improvement` | `change` | `fix` (публичный fix — только заметные сбои)
 - `audience`: omit/`public` для пользователей; `"admin"` для админки/внутреннего (след в логе, скрыто на сайте); опционально одна публичная «Небольшие фиксы и исправления»
 - Не писать: рефакторинг, CI, docs-only, дамп commit messages; не эхо ТЗ («как на ютубе») и не очевидные лекции — см. `.cursor/rules/natural-product-copy.mdc`

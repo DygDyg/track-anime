@@ -41,6 +41,18 @@ function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === "object" && value !== null && !Array.isArray(value);
 }
 
+/** Stable topic key for same-day supersede (trim, lower, kebab-ish). */
+export function normalizeChangelogTopic(topic: string | undefined | null): string {
+  if (typeof topic !== "string") return "";
+  return topic
+    .trim()
+    .toLocaleLowerCase("en")
+    .replace(/\s+/g, "-")
+    .replace(/[^a-z0-9._-]+/g, "")
+    .replace(/-+/g, "-")
+    .replace(/^[-.]+|[-.]+$/g, "");
+}
+
 function normalizeItem(raw: unknown): SiteChangelogItem | null {
   if (!isRecord(raw)) return null;
   const kind = raw.kind;
@@ -52,6 +64,10 @@ function normalizeItem(raw: unknown): SiteChangelogItem | null {
   if (typeof raw.audience === "string" && AUDIENCES.has(raw.audience as SiteChangelogAudience)) {
     item.audience = raw.audience as SiteChangelogAudience;
   }
+  const topic = normalizeChangelogTopic(
+    typeof raw.topic === "string" ? raw.topic : undefined,
+  );
+  if (topic) item.topic = topic;
   return item;
 }
 
@@ -70,6 +86,7 @@ export function toPublicChangelogEntries(entries: SiteChangelogEntry[]): SiteCha
     const items = entry.items.filter(isPublicChangelogItem).map((item) => {
       const next: SiteChangelogItem = { kind: item.kind, text: item.text };
       if (item.audience === "public") next.audience = "public";
+      // `topic` is an internal same-day merge key — keep out of public API
       return next;
     });
     if (items.length === 0) continue;
@@ -135,27 +152,71 @@ export function normalizeChangelogItemText(text: string): string {
   return text.trim().replace(/\s+/g, " ").toLocaleLowerCase("ru");
 }
 
-/** Append incoming items; skip duplicates by normalized text (keep first / existing). */
+function cloneChangelogItem(item: SiteChangelogItem): SiteChangelogItem | null {
+  const text = item.text.trim().replace(/\s+/g, " ");
+  if (!text) return null;
+  const next: SiteChangelogItem = { kind: item.kind, text };
+  if (item.audience === "admin" || item.audience === "public") {
+    next.audience = item.audience;
+  }
+  const topic = normalizeChangelogTopic(item.topic);
+  if (topic) next.topic = topic;
+  return next;
+}
+
+/**
+ * Merge same-day items:
+ * - same normalized `text` → keep first (existing wins over duplicate incoming);
+ * - same `topic` → **incoming replaces** the earlier item (supersede / generalize in place);
+ * - otherwise append.
+ */
 export function mergeChangelogItems(
   existing: SiteChangelogItem[],
   incoming: SiteChangelogItem[],
 ): SiteChangelogItem[] {
-  const seen = new Set<string>();
-  const out: SiteChangelogItem[] = [];
-  for (const item of [...existing, ...incoming]) {
-    const key = normalizeChangelogItemText(item.text);
-    if (!key || seen.has(key)) continue;
-    seen.add(key);
-    const next: SiteChangelogItem = {
-      kind: item.kind,
-      text: item.text.trim().replace(/\s+/g, " "),
-    };
-    if (item.audience === "admin" || item.audience === "public") {
-      next.audience = item.audience;
+  type Slot = { item: SiteChangelogItem; textKey: string; topicKey: string };
+  const slots: Slot[] = [];
+  const byText = new Map<string, number>();
+  const byTopic = new Map<string, number>();
+
+  const place = (raw: SiteChangelogItem, mode: "keep" | "replace") => {
+    const item = cloneChangelogItem(raw);
+    if (!item) return;
+    const textKey = normalizeChangelogItemText(item.text);
+    const topicKey = normalizeChangelogTopic(item.topic);
+
+    if (topicKey && byTopic.has(topicKey)) {
+      if (mode === "keep") return;
+      const idx = byTopic.get(topicKey)!;
+      const prev = slots[idx]!;
+      byText.delete(prev.textKey);
+      slots[idx] = { item, textKey, topicKey };
+      byText.set(textKey, idx);
+      return;
     }
-    out.push(next);
-  }
-  return out;
+
+    if (byText.has(textKey)) {
+      if (mode === "replace" && topicKey) {
+        const idx = byText.get(textKey)!;
+        const prev = slots[idx]!;
+        if (!prev.topicKey) {
+          prev.item.topic = topicKey;
+          prev.topicKey = topicKey;
+          byTopic.set(topicKey, idx);
+        }
+      }
+      return;
+    }
+
+    const idx = slots.length;
+    slots.push({ item, textKey, topicKey });
+    byText.set(textKey, idx);
+    if (topicKey) byTopic.set(topicKey, idx);
+  };
+
+  for (const item of existing) place(item, "keep");
+  for (const item of incoming) place(item, "replace");
+  return slots.map((slot) => slot.item);
 }
 
 /** True if entry belongs to the same Moscow calendar day as `when`. */

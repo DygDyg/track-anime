@@ -108,7 +108,7 @@ Update only affected sections. Keep docs factual and synced to real code. If no 
 
 ## Deploy changelog
 
-Before every production deploy: update `data/site-changelog.json` (Russian; not a bugfix dump). Public items for users; admin-only with `audience: "admin"` (hidden from users, «A» in admin). **Daily grouping** (Europe/Moscow): one entry per calendar day — merge into today's top entry instead of prepending duplicates. Rule: `.cursor/rules/deploy-changelog.mdc`. Then deploy via `deploy:smart`. Skip if nothing for users or admins.
+Before every production deploy: update `data/site-changelog.json` (Russian; not a bugfix dump). Public items for users; admin-only with `audience: "admin"` (hidden from users, «A» in admin). **Daily grouping** (Europe/Moscow): one entry per calendar day — merge into today's top entry; **same-feature items that day → generalize or replace**, optional `topic` slug for mechanical supersede. Rule: `.cursor/rules/deploy-changelog.mdc`. Then deploy via `deploy:smart`. Skip if nothing for users or admins.
 
 ## Multi-topic requests
 

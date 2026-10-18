@@ -15,6 +15,12 @@ export type SiteChangelogItem = {
    * `admin` items are hidden from `/api/site-changelog` and user UI; shown in `/admin/changelog` with «A» mark.
    */
   audience?: SiteChangelogAudience;
+  /**
+   * Optional same-day merge key (kebab / short slug), e.g. `ta-plus-swipe-seek`.
+   * Later items with the same `topic` replace earlier ones (supersede / generalize).
+   * Not shown in UI; stripped from public API.
+   */
+  topic?: string;
 };
 
 export type SiteChangelogEntry = {
