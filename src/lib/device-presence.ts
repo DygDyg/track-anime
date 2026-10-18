@@ -31,12 +31,19 @@ export function normalizeDeviceKey(raw: unknown): string | null {
   return key;
 }
 
+/** Only anime title pages: `/anime/{shikimoriId}` (+ optional query). */
+export function isAnimePresencePath(pathWithSearch: string): boolean {
+  const pathOnly = pathWithSearch.split("?")[0] ?? "";
+  return /^\/anime\/\d+$/.test(pathOnly);
+}
+
 export function normalizeLastPath(raw: unknown): string | null {
   if (typeof raw !== "string") return null;
   const trimmed = raw.trim();
   if (!trimmed.startsWith("/")) return null;
   if (trimmed.length > MAX_PATH_LENGTH) return null;
   if (trimmed.includes("://") || trimmed.includes("\\")) return null;
+  if (!isAnimePresencePath(trimmed)) return null;
   return trimmed;
 }
 
@@ -77,6 +84,17 @@ async function purgeExpiredForUser(userId: string, ttlHours: number): Promise<vo
   });
 }
 
+/** Drop legacy rows that are not anime title pages. */
+async function purgeNonAnimeForUser(userId: string): Promise<void> {
+  const rows = await prisma.userDevicePresence.findMany({
+    where: { userId },
+    select: { id: true, lastPath: true },
+  });
+  const staleIds = rows.filter((row) => !isAnimePresencePath(row.lastPath)).map((row) => row.id);
+  if (staleIds.length === 0) return;
+  await prisma.userDevicePresence.deleteMany({ where: { id: { in: staleIds } } });
+}
+
 function toDto(
   row: {
     id: string;
@@ -108,6 +126,7 @@ export async function listUserDevices(
 ): Promise<DevicePresenceDto[]> {
   const ttlHours = await getDevicePresenceTtlHours();
   await purgeExpiredForUser(userId, ttlHours);
+  await purgeNonAnimeForUser(userId);
 
   const rows = await prisma.userDevicePresence.findMany({
     where: {
@@ -117,7 +136,9 @@ export async function listUserDevices(
     orderBy: { lastOpenedAt: "desc" },
   });
 
-  return rows.map((row) => toDto(row, currentDeviceKey));
+  return rows
+    .filter((row) => isAnimePresencePath(row.lastPath))
+    .map((row) => toDto(row, currentDeviceKey));
 }
 
 export async function upsertDevicePresence(
@@ -184,5 +205,19 @@ export async function renameCurrentDevice(
     return toDto(row, deviceKey);
   } catch {
     return null;
+  }
+}
+
+export async function deleteUserDevice(
+  userId: string,
+  deviceKey: string,
+): Promise<boolean> {
+  try {
+    await prisma.userDevicePresence.delete({
+      where: { userId_deviceKey: { userId, deviceKey } },
+    });
+    return true;
+  } catch {
+    return false;
   }
 }

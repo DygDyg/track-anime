@@ -6,6 +6,7 @@ import { useRouter } from "next/navigation";
 import type { DevicePresenceDto } from "@/lib/device-presence";
 import {
   clientKindLabel,
+  deleteDeviceByKey,
   fetchUserDevices,
   getOrCreateDeviceKey,
   renameThisDevice,
@@ -24,6 +25,11 @@ function formatOpenedAt(iso: string): string {
   }
 }
 
+function displayTitle(device: DevicePresenceDto): string {
+  if (device.lastTitle?.trim()) return device.lastTitle.trim();
+  return device.lastPath;
+}
+
 export function DevicePresenceModal({
   open,
   onClose,
@@ -38,6 +44,8 @@ export function DevicePresenceModal({
   const [nameInput, setNameInput] = useState("");
   const [savingName, setSavingName] = useState(false);
   const [nameMessage, setNameMessage] = useState<string | null>(null);
+  const [pendingDelete, setPendingDelete] = useState<DevicePresenceDto | null>(null);
+  const [deleting, setDeleting] = useState(false);
 
   useEffect(() => {
     setMounted(true);
@@ -48,8 +56,10 @@ export function DevicePresenceModal({
     try {
       const list = await fetchUserDevices();
       setDevices(list);
-      const current = list.find((d) => d.isCurrent) ?? list.find((d) => d.deviceKey === getOrCreateDeviceKey());
+      const current =
+        list.find((d) => d.isCurrent) ?? list.find((d) => d.deviceKey === getOrCreateDeviceKey());
       if (current) setNameInput(current.displayName);
+      else setNameInput("");
     } finally {
       setLoading(false);
     }
@@ -57,6 +67,7 @@ export function DevicePresenceModal({
 
   useEffect(() => {
     if (!open) return;
+    setPendingDelete(null);
     void refresh();
   }, [open, refresh]);
 
@@ -64,7 +75,13 @@ export function DevicePresenceModal({
     if (!open) return;
 
     const onKeyDown = (event: KeyboardEvent) => {
-      if (event.key === "Escape") onClose();
+      if (event.key === "Escape") {
+        if (pendingDelete) {
+          setPendingDelete(null);
+          return;
+        }
+        onClose();
+      }
     };
 
     document.body.style.overflow = "hidden";
@@ -73,7 +90,7 @@ export function DevicePresenceModal({
       document.body.style.overflow = "";
       document.removeEventListener("keydown", onKeyDown);
     };
-  }, [open, onClose]);
+  }, [open, onClose, pendingDelete]);
 
   async function saveName() {
     setSavingName(true);
@@ -81,7 +98,7 @@ export function DevicePresenceModal({
     try {
       const device = await renameThisDevice(nameInput);
       if (!device) {
-        setNameMessage("Не удалось сохранить. Откройте любую страницу и попробуйте снова.");
+        setNameMessage("Не удалось сохранить. Откройте страницу аниме и попробуйте снова.");
         return;
       }
       setNameMessage("Имя сохранено");
@@ -98,6 +115,24 @@ export function DevicePresenceModal({
     onClose();
     if (device.isCurrent) return;
     router.push(device.lastPath);
+  }
+
+  async function confirmDelete() {
+    if (!pendingDelete) return;
+    setDeleting(true);
+    try {
+      const ok = await deleteDeviceByKey(pendingDelete.deviceKey);
+      if (!ok) {
+        setNameMessage("Не удалось удалить устройство");
+        return;
+      }
+      setPendingDelete(null);
+      void refresh();
+    } catch {
+      setNameMessage("Ошибка сети");
+    } finally {
+      setDeleting(false);
+    }
   }
 
   if (!mounted || !open) return null;
@@ -123,7 +158,7 @@ export function DevicePresenceModal({
               Устройства
             </h2>
             <p className="mt-1 text-sm text-muted">
-              Последние вкладки на ваших устройствах. Можно открыть вкладку с другого устройства.
+              Последний открытый тайтл на ваших устройствах. Можно открыть его здесь.
             </p>
           </div>
           <button
@@ -171,17 +206,17 @@ export function DevicePresenceModal({
               <p className="text-sm text-muted">Загрузка…</p>
             ) : devices.length === 0 ? (
               <p className="text-sm text-muted">
-                Пока нет устройств. Откройте несколько страниц на этом или другом клиенте под тем же
+                Пока нет устройств. Откройте страницу аниме на этом или другом клиенте под тем же
                 аккаунтом.
               </p>
             ) : (
               <ul className="divide-y divide-border/70 rounded-xl border border-border/80">
                 {devices.map((device) => (
-                  <li key={device.id}>
+                  <li key={device.id} className="flex items-stretch gap-1">
                     <button
                       type="button"
                       onClick={() => openDevice(device)}
-                      className="flex w-full flex-col gap-0.5 px-3 py-3 text-left transition hover:bg-foreground/[0.04]"
+                      className="flex min-w-0 flex-1 flex-col gap-0.5 px-3 py-3 text-left transition hover:bg-foreground/[0.04]"
                     >
                       <div className="flex items-center justify-between gap-2">
                         <span className="truncate font-medium text-foreground">
@@ -194,10 +229,19 @@ export function DevicePresenceModal({
                           {clientKindLabel(device.clientKind)}
                         </span>
                       </div>
-                      <span className="truncate text-sm text-muted">
-                        {device.lastTitle || device.lastPath}
-                      </span>
+                      <span className="truncate text-sm text-muted">{displayTitle(device)}</span>
                       <span className="text-xs text-muted/80">{formatOpenedAt(device.lastOpenedAt)}</span>
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => setPendingDelete(device)}
+                      className="m-2 shrink-0 self-center rounded-lg p-2 text-muted transition hover:bg-red-500/15 hover:text-red-300"
+                      aria-label={`Удалить ${device.displayName}`}
+                      title="Удалить"
+                    >
+                      <svg viewBox="0 0 24 24" className="h-4 w-4" fill="none" stroke="currentColor" strokeWidth="2">
+                        <path d="M6 6l12 12M18 6L6 18" strokeLinecap="round" />
+                      </svg>
                     </button>
                   </li>
                 ))}
@@ -205,6 +249,43 @@ export function DevicePresenceModal({
             )}
           </section>
         </div>
+
+        {pendingDelete ? (
+          <div className="absolute inset-0 z-10 flex items-center justify-center bg-black/50 p-4">
+            <div
+              role="alertdialog"
+              aria-labelledby="device-delete-title"
+              aria-describedby="device-delete-desc"
+              className="w-full max-w-sm rounded-2xl border border-border bg-card p-4 shadow-xl"
+            >
+              <h3 id="device-delete-title" className="text-base font-semibold text-foreground">
+                Удалить устройство?
+              </h3>
+              <p id="device-delete-desc" className="mt-2 text-sm text-muted">
+                «{pendingDelete.displayName}» исчезнет из списка. При следующем открытии аниме на этом
+                клиенте оно появится снова.
+              </p>
+              <div className="mt-4 flex flex-wrap justify-end gap-2">
+                <button
+                  type="button"
+                  disabled={deleting}
+                  onClick={() => setPendingDelete(null)}
+                  className="rounded-lg border border-border px-3 py-2 text-sm text-foreground transition hover:bg-foreground/5"
+                >
+                  Отмена
+                </button>
+                <button
+                  type="button"
+                  disabled={deleting}
+                  onClick={() => void confirmDelete()}
+                  className="rounded-lg bg-red-600 px-3 py-2 text-sm font-medium text-white transition hover:bg-red-500 disabled:opacity-50"
+                >
+                  {deleting ? "Удаление…" : "Удалить"}
+                </button>
+              </div>
+            </div>
+          </div>
+        ) : null}
       </div>
     </div>,
     document.body,

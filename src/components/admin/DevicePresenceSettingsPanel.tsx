@@ -81,7 +81,7 @@ export function DevicePresenceSettingsPanel({
       <section className={adminClass.panel}>
         <h2 className="text-lg font-semibold text-foreground">Устройства</h2>
         <p className="mt-2 text-sm text-muted">
-          В меню профиля у пользователя есть список устройств с последней открытой вкладкой. Устройства без
+          В меню профиля — список устройств с последним открытым тайтлом (`/anime/…`). Устройства без
           активности дольше указанного срока скрываются из списка.
         </p>
       </section>

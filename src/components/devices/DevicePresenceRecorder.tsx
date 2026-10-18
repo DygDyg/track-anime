@@ -8,9 +8,7 @@ import { postDevicePresence } from "@/lib/device-presence-client";
 const DEBOUNCE_MS = 1500;
 
 function shouldRecordPath(pathname: string): boolean {
-  if (!pathname.startsWith("/")) return false;
-  if (pathname.startsWith("/api")) return false;
-  return true;
+  return /^\/anime\/\d+$/.test(pathname);
 }
 
 export function DevicePresenceRecorder() {

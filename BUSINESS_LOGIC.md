@@ -90,7 +90,7 @@ Shikimori anime.id  ===  Kodik shikimori_id  ===  URL /anime/[shikimoriId]
 
 ### 3.0 Devices (last tab handoff)
 
-Залогиненный клиент (браузер / Android APK / Windows-оболочка) пишет в `UserDevicePresence` последнюю вкладку сайта (`path` + `query`, заголовок). Стабильный `deviceKey` в `localStorage` (`ta.deviceKey`). В меню профиля → «Устройства»: список устройств с вкладкой и временем; клик открывает вкладку на текущем клиенте; можно переименовать это устройство. TTL по умолчанию 24 ч (`DevicePresenceSettings.ttlHours`, админка `/admin/device-presence`, 1–168 ч); просроченные скрываются и чистятся при list/upsert. Не путать с «Недавние» (`UserRecentAnimeOpen`).
+Залогиненный клиент (браузер / Android APK / Windows-оболочка) пишет в `UserDevicePresence` только страницы тайтла `/anime/{shikimoriId}` (+ query, заголовок); остальные пути не учитываются. Стабильный `deviceKey` в `localStorage` (`ta.deviceKey`). В меню профиля → «Устройства»: список устройств с последним тайтлом и временем; клик открывает тайтл; можно переименовать это устройство или удалить запись (с подтверждением). TTL по умолчанию 24 ч (`DevicePresenceSettings.ttlHours`, админка `/admin/device-presence`, 1–168 ч); просроченные и не-anime записи чистятся при list/upsert. Не путать с «Недавние» (`UserRecentAnimeOpen`).
 
 ### 3.1 Audience analytics (admin)
 

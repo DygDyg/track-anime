@@ -74,3 +74,12 @@ export async function renameThisDevice(displayName: string): Promise<DevicePrese
   const data = (await res.json()) as { device?: DevicePresenceDto };
   return data.device ?? null;
 }
+
+export async function deleteDeviceByKey(deviceKey: string): Promise<boolean> {
+  const res = await fetch("/api/user/devices", {
+    method: "DELETE",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ deviceKey }),
+  });
+  return res.ok;
+}
