@@ -19,6 +19,11 @@ type Props = {
    */
   onDeleteFromHistory?: () => void | Promise<void>;
   deletingFromHistory?: boolean;
+  /**
+   * `compact` — иконка рядом со «Смотреть» (экономия высоты hover).
+   * `full` — полная кнопка с подписью (mobile sheet).
+   */
+  variant?: "full" | "compact";
 };
 
 function dispatchHistoryUpdated(shikimoriId: number, progress: WatchProgressDto | null) {
@@ -29,11 +34,38 @@ function dispatchHistoryUpdated(shikimoriId: number, progress: WatchProgressDto 
   );
 }
 
-const deleteButtonClassName =
-  "flex w-full items-center justify-center gap-2 rounded-full border border-red-500/30 bg-surface-dim px-4 py-2.5 text-sm font-medium text-red-400 transition hover:border-red-500 hover:bg-red-500 hover:text-white disabled:cursor-wait disabled:opacity-60";
+function TrashIcon({ className = "h-4 w-4" }: { className?: string }) {
+  return (
+    <svg viewBox="0 0 24 24" className={`shrink-0 ${className}`} fill="none" stroke="currentColor" strokeWidth="2" aria-hidden>
+      <path
+        d="M3 6h18M8 6V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2m3 0v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6h14M10 11v6M14 11v6"
+        strokeLinecap="round"
+        strokeLinejoin="round"
+      />
+    </svg>
+  );
+}
 
-const addButtonClassName =
-  "flex w-full items-center justify-center gap-2 rounded-full border border-border bg-background/70 px-4 py-2.5 text-sm font-medium text-foreground transition hover:border-accent/40 hover:bg-surface-dim disabled:cursor-wait disabled:opacity-60";
+function HistoryPlusIcon({ className = "h-4 w-4" }: { className?: string }) {
+  return (
+    <svg viewBox="0 0 24 24" className={`shrink-0 ${className}`} fill="none" stroke="currentColor" strokeWidth="2" aria-hidden>
+      <circle cx="12" cy="12" r="9" />
+      <path d="M12 8v8M8 12h8" strokeLinecap="round" />
+    </svg>
+  );
+}
+
+const deleteFullClassName =
+  "flex w-full items-center justify-center gap-2 rounded-full border border-red-500/30 bg-surface-dim px-4 py-2 text-sm font-medium text-red-400 transition hover:border-red-500 hover:bg-red-500 hover:text-white disabled:cursor-wait disabled:opacity-60";
+
+const addFullClassName =
+  "flex w-full items-center justify-center gap-2 rounded-full border border-border bg-background/70 px-4 py-2 text-sm font-medium text-foreground transition hover:border-accent/40 hover:bg-surface-dim disabled:cursor-wait disabled:opacity-60";
+
+const deleteCompactClassName =
+  "inline-flex h-10 w-10 shrink-0 items-center justify-center rounded-full border border-red-500/30 bg-surface-dim text-red-400 transition hover:border-red-500 hover:bg-red-500 hover:text-white disabled:cursor-wait disabled:opacity-60";
+
+const addCompactClassName =
+  "inline-flex h-10 w-10 shrink-0 items-center justify-center rounded-full border border-border bg-background/70 text-foreground transition hover:border-accent/40 hover:bg-surface-dim disabled:cursor-wait disabled:opacity-60";
 
 /** Add / remove watch history из hover-панели и mobile sheet. */
 export function ReleaseCardWatchHistoryAction({
@@ -43,9 +75,11 @@ export function ReleaseCardWatchHistoryAction({
   active,
   onDeleteFromHistory,
   deletingFromHistory = false,
+  variant = "full",
 }: Props) {
   const { user } = useAuth();
   const parentOwnsDelete = Boolean(onDeleteFromHistory);
+  const compact = variant === "compact";
   const [hasProgress, setHasProgress] = useState<boolean | undefined>(
     parentOwnsDelete ? true : undefined,
   );
@@ -142,6 +176,7 @@ export function ReleaseCardWatchHistoryAction({
   const busy = pending || deletingFromHistory;
 
   if (parentOwnsDelete || hasProgress === true) {
+    const label = busy ? "Удаление…" : "Удалить из истории";
     return (
       <button
         type="button"
@@ -152,20 +187,12 @@ export function ReleaseCardWatchHistoryAction({
         }}
         disabled={busy}
         aria-busy={busy}
-        className={deleteButtonClassName}
+        aria-label={label}
+        title={label}
+        className={compact ? deleteCompactClassName : deleteFullClassName}
       >
-        {busy ? (
-          <LoadingSpinner size="xs" />
-        ) : (
-          <svg viewBox="0 0 24 24" className="h-4 w-4 shrink-0" fill="none" stroke="currentColor" strokeWidth="2" aria-hidden>
-            <path
-              d="M3 6h18M8 6V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2m3 0v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6h14M10 11v6M14 11v6"
-              strokeLinecap="round"
-              strokeLinejoin="round"
-            />
-          </svg>
-        )}
-        {busy ? "Удаление…" : "Удалить из истории"}
+        {busy ? <LoadingSpinner size="xs" /> : <TrashIcon />}
+        {compact ? null : label}
       </button>
     );
   }
@@ -173,6 +200,7 @@ export function ReleaseCardWatchHistoryAction({
   if (hasProgress === undefined) return null;
   if (!kodikId) return null;
 
+  const addLabel = pending ? "Сохранение…" : "Добавить в историю";
   return (
     <button
       type="button"
@@ -183,10 +211,12 @@ export function ReleaseCardWatchHistoryAction({
       }}
       disabled={pending}
       aria-busy={pending}
+      aria-label={addLabel}
       title="Сохранить в историю, чтобы продолжить на другом устройстве"
-      className={addButtonClassName}
+      className={compact ? addCompactClassName : addFullClassName}
     >
-      {pending ? "Сохранение…" : "Добавить в историю"}
+      {pending ? <LoadingSpinner size="xs" /> : compact ? <HistoryPlusIcon /> : null}
+      {compact ? null : addLabel}
     </button>
   );
 }

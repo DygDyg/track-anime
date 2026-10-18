@@ -3,7 +3,7 @@ import type { CSSProperties } from "react";
 export const HOVER_PORTAL_MARGIN = 12;
 export const HOVER_PORTAL_GAP = 8;
 /** Оценка высоты hover-панели (2 ряда quick-actions + контент) до первого measure */
-export const HOVER_PORTAL_ESTIMATED_HEIGHT = 610;
+export const HOVER_PORTAL_ESTIMATED_HEIGHT = 580;
 
 export function computeHoverPanelOffsetX(
   rect: DOMRect,

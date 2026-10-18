@@ -38,6 +38,7 @@ const sections = [
       { href: "/admin/watch-party", label: "Совместный просмотр" },
       { href: "/admin/intro-offsets", label: "Интро озвучек" },
       { href: "/admin/watch-history", label: "История" },
+      { href: "/admin/device-presence", label: "Устройства" },
     ],
   },
   {

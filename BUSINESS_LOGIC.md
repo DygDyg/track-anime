@@ -88,6 +88,10 @@ Shikimori anime.id  ===  Kodik shikimori_id  ===  URL /anime/[shikimoriId]
 
 **OAuth state:** cookie + fallback `OAuthState` table (если cookies потерялись между редиректами).
 
+### 3.0 Devices (last tab handoff)
+
+Залогиненный клиент (браузер / Android APK / Windows-оболочка) пишет в `UserDevicePresence` последнюю вкладку сайта (`path` + `query`, заголовок). Стабильный `deviceKey` в `localStorage` (`ta.deviceKey`). В меню профиля → «Устройства»: список устройств с вкладкой и временем; клик открывает вкладку на текущем клиенте; можно переименовать это устройство. TTL по умолчанию 24 ч (`DevicePresenceSettings.ttlHours`, админка `/admin/device-presence`, 1–168 ч); просроченные скрываются и чистятся при list/upsert. Не путать с «Недавние» (`UserRecentAnimeOpen`).
+
 ### 3.1 Audience analytics (admin)
 
 **Сбор:** клиентский `SiteAnalyticsBeacon` шлёт `POST /api/analytics/beacon` при смене пути (без `/admin`). Cookie `ta.vid` (httpOnly, ~1 год) идентифицирует браузер/устройство. IP **не** хранится и **не** используется для склейки — люди за одним VPN остаются разными.

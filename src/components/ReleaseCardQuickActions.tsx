@@ -26,7 +26,7 @@ const QUICK_LIST_ACTIONS: ShikimoriListStatus[] = [
 
 function quickActionClass(theme: FavoritesTabTheme, active: boolean): string {
   const layout =
-    "flex h-10 w-full items-center justify-center rounded-lg transition active:scale-[0.98]";
+    "flex h-9 w-full items-center justify-center rounded-lg transition active:scale-[0.98]";
   return `${layout} ${active ? theme.tabActive : theme.tabInactive}`;
 }
 
@@ -153,7 +153,7 @@ export function ReleaseCardQuickActions({ shikimoriId }: { shikimoriId: number }
   };
 
   return (
-    <div className="grid grid-cols-3 gap-1.5 border-t border-border/80 pt-2">
+    <div className="grid grid-cols-3 gap-1 border-t border-border/80 pt-1.5">
       {QUICK_LIST_ACTIONS.map((status) => {
         const theme = FAVORITES_TAB_THEMES[status];
         const active = listInfo?.listStatus === status;

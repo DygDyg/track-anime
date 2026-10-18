@@ -75,6 +75,8 @@ Play Store не нужен. Для баннеров при закрытом пр
 
 OAuth redirect URI основного домена: `https://track-anime.dygdyg.ru/api/auth/callback/shikimori`.
 
+Кросс-устройство «продолжить вкладку» на сайте — своё (меню профиля → «Устройства»), без Phone Link / Microsoft Resume. См. `BUSINESS_LOGIC.md` / `DevicePresenceRecorder`.
+
 ## AdBlocker
 
 | Файл | Роль |

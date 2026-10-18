@@ -232,6 +232,13 @@ model WatchHistorySettings {
   updatedAt                   DateTime @updatedAt
 }
 
+/// TTL списка «Устройства» (последняя вкладка на клиенте)
+model DevicePresenceSettings {
+  id       String   @id @default("default")
+  ttlHours Int      @default(24)
+  updatedAt DateTime @updatedAt
+}
+
 /// Глобальные настройки совместного просмотра TA-плеера
 model WatchPartySettings {
   id          String   @id @default("default")
@@ -535,9 +542,28 @@ model User {
   notificationLink        UserNotificationLink?
   pushSubscriptions       PushSubscription[]
   fcmDeviceTokens         FcmDeviceToken[]
+  devicePresences         UserDevicePresence[]
   approvedQrLogins        QrLoginRequest[] @relation("QrLoginApprover")
   siteVisitors            SiteVisitor[]
   watchShareEvents        AnimeWatchShareEvent[]
+}
+
+/// Последняя открытая вкладка сайта на устройстве пользователя (кросс-клиент handoff)
+model UserDevicePresence {
+  id           String   @id @default(cuid())
+  userId       String
+  user         User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  deviceKey    String
+  displayName  String
+  clientKind   String
+  lastPath     String
+  lastTitle    String?
+  lastOpenedAt DateTime
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+
+  @@unique([userId, deviceKey])
+  @@index([userId, lastOpenedAt])
 }
 
 /// Нормализованные жанры материала для индексируемого публичного поиска.

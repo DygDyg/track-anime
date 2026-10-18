@@ -20,6 +20,7 @@ import { userProfilePath } from "@/lib/public-user";
 import { QrCodeScanner } from "@/components/auth/QrCodeScanner";
 import { QrLoginApprovalDialog } from "@/components/auth/QrLoginApprovalDialog";
 import { ProfileMenuItems } from "@/components/auth/ProfileMenuItems";
+import { DevicePresenceModal } from "@/components/devices/DevicePresenceModal";
 
 
 
@@ -51,6 +52,7 @@ export function BottomNavProfileFab() {
 
   const [open, setOpen] = useState(false);
   const [scannerOpen, setScannerOpen] = useState(false);
+  const [devicesOpen, setDevicesOpen] = useState(false);
   const [approvalCode, setApprovalCode] = useState<string | null>(null);
 
   const [menuPos, setMenuPos] = useState<{ left: number; bottom: number } | null>(null);
@@ -219,6 +221,10 @@ export function BottomNavProfileFab() {
                 setOpen(false);
                 setScannerOpen(true);
               }}
+              onOpenDevices={() => {
+                setOpen(false);
+                setDevicesOpen(true);
+              }}
             />
 
           </div>,
@@ -323,6 +329,7 @@ export function BottomNavProfileFab() {
         />
       ) : null}
       {approvalCode ? <QrLoginApprovalDialog code={approvalCode} onClose={() => setApprovalCode(null)} /> : null}
+      <DevicePresenceModal open={devicesOpen} onClose={() => setDevicesOpen(false)} />
 
     </div>
 

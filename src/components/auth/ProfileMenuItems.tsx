@@ -26,10 +26,16 @@ type ProfileMenuItemsProps = {
   centered?: boolean;
   onNavigate: () => void;
   onScanQr: () => void;
+  onOpenDevices: () => void;
 };
 
 /** Shared profile-menu actions for desktop and the mobile navigation. */
-export function ProfileMenuItems({ centered = false, onNavigate, onScanQr }: ProfileMenuItemsProps) {
+export function ProfileMenuItems({
+  centered = false,
+  onNavigate,
+  onScanQr,
+  onOpenDevices,
+}: ProfileMenuItemsProps) {
   const { user, logout, loggingOut } = useAuth();
   const pathname = usePathname();
   const [nativeApp, setNativeApp] = useState(false);
@@ -64,6 +70,14 @@ export function ProfileMenuItems({ centered = false, onNavigate, onScanQr }: Pro
       </NavLink>
       {user.isAdmin ? <NavLink href="/admin" role="menuitem" className={profileMenuItemClass(pathname.startsWith("/admin"), centered)} onClick={onNavigate}>Админ</NavLink> : null}
       <div className="my-1 border-t border-border/80" />
+      <button
+        type="button"
+        role="menuitem"
+        className={profileMenuItemClass(false, centered)}
+        onClick={onOpenDevices}
+      >
+        Устройства
+      </button>
       <button type="button" role="menuitem" className={profileMenuItemClass(false, centered)} onClick={onScanQr}>
         Сканировать QR-код
       </button>

@@ -211,10 +211,17 @@ export function ReleaseCardHoverPanel({
 
     updatePosition();
     const raf = window.requestAnimationFrame(updatePosition);
+    const panelEl = panelRef?.current;
+    const resizeObserver =
+      panelEl && typeof ResizeObserver !== "undefined"
+        ? new ResizeObserver(() => updatePosition())
+        : null;
+    if (panelEl && resizeObserver) resizeObserver.observe(panelEl);
     window.addEventListener("scroll", updatePosition, true);
     window.addEventListener("resize", updatePosition);
     return () => {
       window.cancelAnimationFrame(raf);
+      resizeObserver?.disconnect();
       window.removeEventListener("scroll", updatePosition, true);
       window.removeEventListener("resize", updatePosition);
     };
@@ -437,7 +444,7 @@ export function ReleaseCardHoverPanel({
       style={portal ? portalStyle : ({ "--hover-panel-x": `${panelOffsetX}px` } as CSSProperties)}
       aria-hidden={!visible}
     >
-      <div className="flex flex-col overflow-hidden rounded-xl border border-border bg-card shadow-2xl shadow-black/70 ring-1 ring-white/5 max-h-[inherit]">
+      <div className="flex max-h-[inherit] flex-col overflow-hidden rounded-xl border border-border bg-card shadow-2xl shadow-black/70 ring-1 ring-white/5">
         <div className="relative aspect-video w-full shrink-0 overflow-hidden bg-surface-dim">
           {playingTrailer ? (
             <div className={previewWrapperClass}>{previewInner}</div>
@@ -493,7 +500,7 @@ export function ReleaseCardHoverPanel({
           ) : null}
         </div>
 
-        <div className="relative space-y-2 bg-card p-3">
+        <div className="relative min-h-0 flex-1 space-y-1.5 overflow-y-auto overscroll-contain bg-card p-3">
           {animeHref ? (
             <AnimeLink href={animeHref} className="block text-sm font-semibold leading-snug text-foreground hover:text-accent">
               {release.animeTitle}
@@ -511,42 +518,45 @@ export function ReleaseCardHoverPanel({
           <ReleaseCardGenresRow genres={release.genres} />
 
           {description ? (
-            <p className="line-clamp-3 text-xs leading-relaxed text-foreground/90">{description}</p>
+            <p className="line-clamp-2 text-xs leading-relaxed text-foreground/90">{description}</p>
           ) : (
             <p className="text-xs text-muted">Описание пока недоступно.</p>
           )}
 
-          {animeHref ? (
-            <AnimeLink
-              href={watchHref}
-              className="flex w-full items-center justify-center gap-2 rounded-full bg-accent px-4 py-2.5 text-sm font-semibold text-white shadow-md shadow-accent/25 transition hover:bg-accent/90"
-            >
-              <svg viewBox="0 0 20 20" className="h-4 w-4" fill="currentColor" aria-hidden>
-                <path d="M7 5.5v9l7-4.5-7-4.5z" />
-              </svg>
-              Смотреть онлайн
-            </AnimeLink>
-          ) : (
-            <a
-              href={watchHref}
-              target="_blank"
-              rel="noopener noreferrer"
-              className="flex w-full items-center justify-center gap-2 rounded-full bg-accent px-4 py-2.5 text-sm font-semibold text-white shadow-md shadow-accent/25 transition hover:bg-accent/90"
-            >
-              Смотреть онлайн
-            </a>
-          )}
+          <div className="flex items-stretch gap-1.5">
+            {animeHref ? (
+              <AnimeLink
+                href={watchHref}
+                className="flex min-w-0 flex-1 items-center justify-center gap-2 rounded-full bg-accent px-3 py-2 text-sm font-semibold text-white shadow-md shadow-accent/25 transition hover:bg-accent/90"
+              >
+                <svg viewBox="0 0 20 20" className="h-4 w-4 shrink-0" fill="currentColor" aria-hidden>
+                  <path d="M7 5.5v9l7-4.5-7-4.5z" />
+                </svg>
+                Смотреть онлайн
+              </AnimeLink>
+            ) : (
+              <a
+                href={watchHref}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="flex min-w-0 flex-1 items-center justify-center gap-2 rounded-full bg-accent px-3 py-2 text-sm font-semibold text-white shadow-md shadow-accent/25 transition hover:bg-accent/90"
+              >
+                Смотреть онлайн
+              </a>
+            )}
 
-          {release.shikimoriId ? (
-            <ReleaseCardWatchHistoryAction
-              shikimoriId={release.shikimoriId}
-              animeTitle={release.animeTitle}
-              kodikId={release.materialId ?? null}
-              active={visible}
-              onDeleteFromHistory={onDeleteFromHistory}
-              deletingFromHistory={deletingFromHistory}
-            />
-          ) : null}
+            {release.shikimoriId ? (
+              <ReleaseCardWatchHistoryAction
+                shikimoriId={release.shikimoriId}
+                animeTitle={release.animeTitle}
+                kodikId={release.materialId ?? null}
+                active={visible}
+                onDeleteFromHistory={onDeleteFromHistory}
+                deletingFromHistory={deletingFromHistory}
+                variant="compact"
+              />
+            ) : null}
+          </div>
 
           {release.shikimoriId ? (
             <ReleaseCardQuickActions shikimoriId={release.shikimoriId} />

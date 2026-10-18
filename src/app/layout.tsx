@@ -20,6 +20,7 @@ import { PwaProvider } from "@/components/PwaProvider";
 import { InAppNotificationsListener } from "@/components/InAppNotificationsListener";
 import { TodayFromHistoryToastListener } from "@/components/TodayFromHistoryToastListener";
 import { RecentAnimeOpensSync } from "@/components/anime/RecentAnimeOpensSync";
+import { DevicePresenceRecorder } from "@/components/devices/DevicePresenceRecorder";
 import { NotificationUiLayer } from "@/components/NotificationUiLayer";
 import { ScrollToTopButton } from "@/components/ScrollToTopButton";
 import { AquaCoderCompanion } from "@/components/companion/AquaCoderCompanion";
@@ -123,6 +124,9 @@ export default async function RootLayout({ children }: { children: React.ReactNo
             <AuthProvider>
               <SiteAnalyticsBeacon />
               <RecentAnimeOpensSync />
+              <Suspense fallback={null}>
+                <DevicePresenceRecorder />
+              </Suspense>
               <InAppNotificationsListener />
               <TodayFromHistoryToastListener />
               <SiteSettingsProvider defaults={siteSettingsDefaults}>

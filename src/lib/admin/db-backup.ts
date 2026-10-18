@@ -41,6 +41,8 @@ const TABLE_LABELS: Record<string, string> = {
   UserWatchProgress: "Прогресс просмотра",
   UserListSync: "Синхронизация списков",
   UserRecentAnimeOpen: "Недавние открытия",
+  UserDevicePresence: "Устройства (последние вкладки)",
+  DevicePresenceSettings: "Настройки устройств",
   UserNotificationPreferences: "Настройки уведомлений пользователей",
   UserNotificationLink: "Привязки уведомлений",
   PushSubscription: "Web Push подписки",
