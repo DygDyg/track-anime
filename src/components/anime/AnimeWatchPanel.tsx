@@ -493,6 +493,8 @@ function unlockScreenOrientation(): void {
 type PendingAutoSkip = {
   key: string;
   skipTime: DisplaySkipTimeDto;
+  /** Position (seconds) at which pending auto-skip seeks to endTime. */
+  fireAtSeconds: number;
 };
 
 type SkipTimesDto = {
@@ -573,8 +575,18 @@ function formatKodikSeasonsBadge(seasons: Array<{ seasonNumber: number }>): stri
 }
 
 function isSkipTimeAutoSkipPending(skipTime: DisplaySkipTimeDto, positionSeconds: number): boolean {
-  if (positionSeconds >= skipTime.startTime) return false;
-  return positionSeconds >= Math.max(0, skipTime.startTime - AUTO_SKIP_CANCEL_SECONDS);
+  if (positionSeconds >= skipTime.endTime) return false;
+  const windowStart = Math.max(0, skipTime.startTime - AUTO_SKIP_CANCEL_SECONDS);
+  const windowEnd = skipTime.startTime + AUTO_SKIP_CANCEL_SECONDS;
+  return positionSeconds >= windowStart && positionSeconds < windowEnd;
+}
+
+/** When already inside OP/ED, fire after the post-start grace; otherwise at interval start. */
+function autoSkipFireAtSeconds(skipTime: DisplaySkipTimeDto, positionSeconds: number): number {
+  if (positionSeconds >= skipTime.startTime) {
+    return skipTime.startTime + AUTO_SKIP_CANCEL_SECONDS;
+  }
+  return skipTime.startTime;
 }
 
 function isOpeningOrEndingSkipTime(skipTime: DisplaySkipTimeDto): boolean {
@@ -2363,6 +2375,7 @@ export function AnimeWatchPanel({
     setPendingAutoSkip({
       key,
       skipTime,
+      fireAtSeconds: autoSkipFireAtSeconds(skipTime, skipClockSeconds),
     });
   }, [
     pendingAutoSkipTimes,
@@ -2371,6 +2384,7 @@ export function AnimeWatchPanel({
     seekSkipDisabled,
     selectedId,
     selectedAutoSkipRuntimeEnabled,
+    skipClockSeconds,
   ]);
 
   useEffect(() => {
@@ -2383,12 +2397,16 @@ export function AnimeWatchPanel({
       setPendingAutoSkip(null);
       return;
     }
-    if (skipClockSeconds < Math.max(0, pendingAutoSkip.skipTime.startTime - AUTO_SKIP_CANCEL_SECONDS)) {
+    const windowStart = Math.max(
+      0,
+      pendingAutoSkip.skipTime.startTime - AUTO_SKIP_CANCEL_SECONDS,
+    );
+    if (skipClockSeconds < windowStart) {
       setPendingAutoSkip(null);
       return;
     }
 
-    if (skipClockSeconds >= pendingAutoSkip.skipTime.startTime) {
+    if (skipClockSeconds >= pendingAutoSkip.fireAtSeconds) {
       autoSkippedIntervalsRef.current.add(pendingAutoSkip.key);
       playerRef.current?.seekToPosition(pendingAutoSkip.skipTime.endTime);
       if (watchParty.isConnected && watchParty.isMaster && !applyingWatchPartyCommandRef.current) {
@@ -3925,7 +3943,7 @@ export function AnimeWatchPanel({
     continueProgress.positionSeconds >= MIN_SAVE_POSITION_SECONDS &&
     playable.some((tr) => tr.kodikId === continueProgress.kodikId);
   const pendingAutoSkipRemainingSeconds = pendingAutoSkip
-    ? Math.max(0, Math.ceil(pendingAutoSkip.skipTime.startTime - skipClockSeconds))
+    ? Math.max(0, Math.ceil(pendingAutoSkip.fireAtSeconds - skipClockSeconds))
     : 0;
 
   const betaContinueAction =

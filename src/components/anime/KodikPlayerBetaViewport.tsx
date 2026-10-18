@@ -109,6 +109,9 @@ const SEEK_GESTURE_GUIDE_STEPS = 9;
  */
 const SEEK_GESTURE_GUIDE_PLACE_STEPS = 9.5;
 const SEEK_GESTURE_GUIDE_SIZE_PX = 40;
+/** Intermediate notch height (px); ends use the round ±90 caps. */
+const SEEK_GESTURE_GUIDE_TICK_H_PX = 12;
+const SEEK_GESTURE_GUIDE_TICK_W_PX = 2;
 const BRIGHTNESS_HUD_MS = 900;
 const VOLUME_HUD_MS = 900;
 
@@ -117,13 +120,13 @@ function clampSeekGuideCoord(ideal: number, shellSize: number, half: number): nu
   return Math.min(Math.max(ideal, half), shellSize - half);
 }
 
-function seekGuideMarkerStyle(
+function seekGuidePointStyle(
   idealX: number,
   idealY: number,
   shellWidth: number,
   shellHeight: number,
+  half: number,
 ): { left: number; top: number; opacity: number } {
-  const half = SEEK_GESTURE_GUIDE_SIZE_PX / 2;
   const left = clampSeekGuideCoord(idealX, shellWidth, half);
   const top = clampSeekGuideCoord(idealY, shellHeight, half);
   const drift = Math.hypot(left - idealX, top - idealY);
@@ -2290,28 +2293,102 @@ export function KodikPlayerBetaViewport({
   );
 
   const seekGuideSeconds = SEEK_GESTURE_GUIDE_STEPS * MOBILE_DOUBLE_TAP_SEEK_SECONDS;
-  const seekGuideMarkers = seekGuide
+  const seekGuideRuler = seekGuide
     ? (() => {
-        const offset = SEEK_GESTURE_GUIDE_PLACE_STEPS * seekGuide.stepPx;
+        const { originX, originY, stepPx, shellWidth, shellHeight } = seekGuide;
+        const placeOffset = SEEK_GESTURE_GUIDE_PLACE_STEPS * stepPx;
+        const endHalf = SEEK_GESTURE_GUIDE_SIZE_PX / 2;
+        const tickHalf = SEEK_GESTURE_GUIDE_TICK_W_PX / 2;
+        const center = seekGuidePointStyle(originX, originY, shellWidth, shellHeight, 10);
+        const backward = {
+          ...seekGuidePointStyle(
+            originX - placeOffset,
+            originY,
+            shellWidth,
+            shellHeight,
+            endHalf,
+          ),
+          reached: seekFeedback.backward >= seekGuideSeconds,
+        };
+        const forward = {
+          ...seekGuidePointStyle(
+            originX + placeOffset,
+            originY,
+            shellWidth,
+            shellHeight,
+            endHalf,
+          ),
+          reached: seekFeedback.forward >= seekGuideSeconds,
+        };
+        const lineLeft = Math.min(backward.left, forward.left);
+        const lineRight = Math.max(backward.left, forward.left);
+        const activeBackwardSteps = Math.floor(
+          seekFeedback.backward / MOBILE_DOUBLE_TAP_SEEK_SECONDS,
+        );
+        const activeForwardSteps = Math.floor(
+          seekFeedback.forward / MOBILE_DOUBLE_TAP_SEEK_SECONDS,
+        );
+        const ticks: Array<{
+          key: string;
+          left: number;
+          top: number;
+          opacity: number;
+          active: boolean;
+        }> = [];
+        for (let i = 1; i <= SEEK_GESTURE_GUIDE_STEPS - 1; i++) {
+          const back = seekGuidePointStyle(
+            originX - i * stepPx,
+            originY,
+            shellWidth,
+            shellHeight,
+            tickHalf,
+          );
+          const fwd = seekGuidePointStyle(
+            originX + i * stepPx,
+            originY,
+            shellWidth,
+            shellHeight,
+            tickHalf,
+          );
+          ticks.push({
+            key: `b${i}`,
+            ...back,
+            active: activeBackwardSteps >= i,
+          });
+          ticks.push({
+            key: `f${i}`,
+            ...fwd,
+            active: activeForwardSteps >= i,
+          });
+        }
+        const activeLine =
+          activeForwardSteps > 0
+            ? {
+                left: center.left,
+                width: Math.max(0, forward.left - center.left) *
+                  Math.min(1, activeForwardSteps / SEEK_GESTURE_GUIDE_PLACE_STEPS),
+              }
+            : activeBackwardSteps > 0
+              ? {
+                  left:
+                    center.left -
+                    Math.max(0, center.left - backward.left) *
+                      Math.min(1, activeBackwardSteps / SEEK_GESTURE_GUIDE_PLACE_STEPS),
+                  width:
+                    Math.max(0, center.left - backward.left) *
+                    Math.min(1, activeBackwardSteps / SEEK_GESTURE_GUIDE_PLACE_STEPS),
+                }
+              : null;
         return {
-          backward: {
-            ...seekGuideMarkerStyle(
-              seekGuide.originX - offset,
-              seekGuide.originY,
-              seekGuide.shellWidth,
-              seekGuide.shellHeight,
-            ),
-            reached: seekFeedback.backward >= seekGuideSeconds,
-          },
-          forward: {
-            ...seekGuideMarkerStyle(
-              seekGuide.originX + offset,
-              seekGuide.originY,
-              seekGuide.shellWidth,
-              seekGuide.shellHeight,
-            ),
-            reached: seekFeedback.forward >= seekGuideSeconds,
-          },
+          center,
+          backward,
+          forward,
+          ticks,
+          lineLeft,
+          lineWidth: Math.max(0, lineRight - lineLeft),
+          lineTop: center.top,
+          lineOpacity: Math.min(center.opacity, backward.opacity, forward.opacity),
+          activeLine,
         };
       })()
     : null;
@@ -2672,45 +2749,92 @@ export function KodikPlayerBetaViewport({
             <div className="pointer-events-auto">{skipAction}</div>
           </div>
         ) : null}
-        {seekGuideMarkers ? (
-          <>
+        {seekGuideRuler ? (
+          <div className="pointer-events-none absolute inset-0 z-[28]" aria-hidden>
+            <div
+              className="absolute h-0.5 -translate-y-1/2 rounded-full bg-white/25"
+              style={{
+                left: seekGuideRuler.lineLeft,
+                top: seekGuideRuler.lineTop,
+                width: seekGuideRuler.lineWidth,
+                opacity: seekGuideRuler.lineOpacity,
+              }}
+            />
+            {seekGuideRuler.activeLine && seekGuideRuler.activeLine.width > 0 ? (
+              <div
+                className="absolute h-0.5 -translate-y-1/2 rounded-full bg-white/70"
+                style={{
+                  left: seekGuideRuler.activeLine.left,
+                  top: seekGuideRuler.lineTop,
+                  width: seekGuideRuler.activeLine.width,
+                  opacity: seekGuideRuler.lineOpacity,
+                }}
+              />
+            ) : null}
+            {seekGuideRuler.ticks.map((tick) => (
+              <div
+                key={tick.key}
+                className={[
+                  "absolute -translate-x-1/2 -translate-y-1/2 rounded-sm",
+                  tick.active ? "bg-white/85" : "bg-white/35",
+                ].join(" ")}
+                style={{
+                  left: tick.left,
+                  top: tick.top,
+                  width: SEEK_GESTURE_GUIDE_TICK_W_PX,
+                  height: SEEK_GESTURE_GUIDE_TICK_H_PX,
+                  opacity: tick.opacity,
+                }}
+              />
+            ))}
+            <div
+              className="absolute -translate-x-1/2"
+              style={{
+                left: seekGuideRuler.center.left,
+                top: seekGuideRuler.center.top,
+                opacity: seekGuideRuler.center.opacity,
+              }}
+            >
+              <div className="absolute left-1/2 top-0 h-3.5 w-0.5 -translate-x-1/2 -translate-y-1/2 rounded-sm bg-white/70" />
+              <span className="absolute left-1/2 top-2.5 -translate-x-1/2 rounded bg-black/45 px-1 text-[10px] font-semibold tabular-nums leading-none text-white/90 ring-1 ring-white/20">
+                0
+              </span>
+            </div>
             <div
               className={[
-                "pointer-events-none absolute z-[28] flex -translate-x-1/2 -translate-y-1/2 items-center justify-center rounded-full text-[11px] font-semibold tabular-nums text-white shadow-lg shadow-black/30 backdrop-blur-sm",
-                seekGuideMarkers.backward.reached
+                "absolute flex -translate-x-1/2 -translate-y-1/2 items-center justify-center rounded-full text-[11px] font-semibold tabular-nums text-white shadow-lg shadow-black/30 backdrop-blur-sm",
+                seekGuideRuler.backward.reached
                   ? "border border-white/55 bg-white/25"
                   : "border border-white/25 bg-black/45",
               ].join(" ")}
               style={{
-                left: seekGuideMarkers.backward.left,
-                top: seekGuideMarkers.backward.top,
+                left: seekGuideRuler.backward.left,
+                top: seekGuideRuler.backward.top,
                 width: SEEK_GESTURE_GUIDE_SIZE_PX,
                 height: SEEK_GESTURE_GUIDE_SIZE_PX,
-                opacity: seekGuideMarkers.backward.opacity,
+                opacity: seekGuideRuler.backward.opacity,
               }}
-              aria-hidden
             >
               −{seekGuideSeconds}
             </div>
             <div
               className={[
-                "pointer-events-none absolute z-[28] flex -translate-x-1/2 -translate-y-1/2 items-center justify-center rounded-full text-[11px] font-semibold tabular-nums text-white shadow-lg shadow-black/30 backdrop-blur-sm",
-                seekGuideMarkers.forward.reached
+                "absolute flex -translate-x-1/2 -translate-y-1/2 items-center justify-center rounded-full text-[11px] font-semibold tabular-nums text-white shadow-lg shadow-black/30 backdrop-blur-sm",
+                seekGuideRuler.forward.reached
                   ? "border border-white/55 bg-white/25"
                   : "border border-white/25 bg-black/45",
               ].join(" ")}
               style={{
-                left: seekGuideMarkers.forward.left,
-                top: seekGuideMarkers.forward.top,
+                left: seekGuideRuler.forward.left,
+                top: seekGuideRuler.forward.top,
                 width: SEEK_GESTURE_GUIDE_SIZE_PX,
                 height: SEEK_GESTURE_GUIDE_SIZE_PX,
-                opacity: seekGuideMarkers.forward.opacity,
+                opacity: seekGuideRuler.forward.opacity,
               }}
-              aria-hidden
             >
               +{seekGuideSeconds}
             </div>
-          </>
+          </div>
         ) : null}
         {seekFeedback.backward > 0 ? (
           <div className="pointer-events-none absolute left-[12%] top-1/2 z-30 flex -translate-y-1/2 flex-col items-center gap-1.5 sm:left-[16%]">

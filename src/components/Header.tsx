@@ -4,7 +4,7 @@ import Image from "next/image";
 import Link from "next/link";
 import { useLinkStatus } from "next/link";
 import { usePathname } from "next/navigation";
-import { useEffect, useState } from "react";
+import { useEffect, useState, type MouseEvent } from "react";
 import { useNavigationClick } from "@/components/NavigationProgress";
 import { HeaderSearch } from "@/components/search/HeaderSearch";
 import { HeaderAuth } from "@/components/auth/HeaderAuth";
@@ -81,6 +81,27 @@ function HeaderNavLink({
   );
 }
 
+function handleLogoHomeClick(event: MouseEvent<HTMLAnchorElement>) {
+  if (
+    event.button !== 0 ||
+    event.metaKey ||
+    event.ctrlKey ||
+    event.shiftKey ||
+    event.altKey ||
+    event.defaultPrevented
+  ) {
+    return;
+  }
+
+  event.preventDefault();
+  const url = new URL(window.location.href);
+  if (url.pathname === "/" && url.search === "" && url.hash === "") {
+    window.location.reload();
+    return;
+  }
+  window.location.assign("/");
+}
+
 function NavLinks({
   onNavigate,
   className,
@@ -118,7 +139,6 @@ export function Header({ logoSrc: initialLogoSrc = SITE_LOGO_PATH }: { logoSrc?:
   const [logoSrc, setLogoSrc] = useState(initialLogoSrc);
   const { settings } = useSiteSettings();
   const pathname = usePathname();
-  const handleHomeClick = useNavigationClick("/");
   const searchActive =
     mobileSearchOpen || pathname === "/search" || pathname.startsWith("/search/");
 
@@ -175,9 +195,9 @@ export function Header({ logoSrc: initialLogoSrc = SITE_LOGO_PATH }: { logoSrc?:
       />
       <div className="site-header-text relative flex h-14 items-center gap-2 px-3 sm:h-16 sm:gap-2.5 sm:px-6 lg:px-8">
         <div className="flex min-w-0 shrink-0 items-center gap-2 md:gap-2.5">
-          <Link
+          <a
             href="/"
-            onClick={handleHomeClick}
+            onClick={handleLogoHomeClick}
             className={`${headerControl.text} inline-flex shrink-0 items-center gap-2 font-semibold tracking-tight`}
           >
             <Image
@@ -190,7 +210,7 @@ export function Header({ logoSrc: initialLogoSrc = SITE_LOGO_PATH }: { logoSrc?:
               unoptimized
             />
             <span className="hidden truncate sm:inline">{SITE_NAME}</span>
-          </Link>
+          </a>
 
           <NavLinks
             className="hidden shrink-0 items-center gap-1.5 md:ml-2 md:flex"
