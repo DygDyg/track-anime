@@ -444,7 +444,7 @@ export function ReleaseCardHoverPanel({
       style={portal ? portalStyle : ({ "--hover-panel-x": `${panelOffsetX}px` } as CSSProperties)}
       aria-hidden={!visible}
     >
-      <div className="flex max-h-[inherit] flex-col overflow-hidden rounded-xl border border-border bg-card shadow-2xl shadow-black/70 ring-1 ring-white/5">
+      <div className="flex flex-col overflow-hidden rounded-xl border border-border bg-card shadow-2xl shadow-black/70 ring-1 ring-white/5">
         <div className="relative aspect-video w-full shrink-0 overflow-hidden bg-surface-dim">
           {playingTrailer ? (
             <div className={previewWrapperClass}>{previewInner}</div>
@@ -500,7 +500,7 @@ export function ReleaseCardHoverPanel({
           ) : null}
         </div>
 
-        <div className="relative min-h-0 flex-1 space-y-1.5 overflow-y-auto overscroll-contain bg-card p-3">
+        <div className="relative space-y-1.5 bg-card p-3">
           {animeHref ? (
             <AnimeLink href={animeHref} className="block text-sm font-semibold leading-snug text-foreground hover:text-accent">
               {release.animeTitle}
@@ -518,7 +518,7 @@ export function ReleaseCardHoverPanel({
           <ReleaseCardGenresRow genres={release.genres} />
 
           {description ? (
-            <p className="line-clamp-2 text-xs leading-relaxed text-foreground/90">{description}</p>
+            <p className="line-clamp-3 text-xs leading-relaxed text-foreground/90">{description}</p>
           ) : (
             <p className="text-xs text-muted">Описание пока недоступно.</p>
           )}

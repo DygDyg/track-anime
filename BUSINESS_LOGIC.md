@@ -169,11 +169,11 @@ Shikimori anime.id  ===  Kodik shikimori_id  ===  URL /anime/[shikimoriId]
 
 ### 9. Search
 
-**Источник:** local DB. Title-match и fuzzy — через **`AnimeTitleAlias` / `AnimeCatalog`** (fallback на поля material). Карточки и «Новинки» предпочитают мету каталога; озвучки/серии — по-прежнему `KodikMaterial`.
+**Источник:** local DB. Title-match и fuzzy — **id-first** через **`AnimeTitleAlias` / `AnimeCatalog`**; material title/description `ILIKE` — только если каталог вернул 0 id (гонка dual-write). Карточки поиска берут мету из `AnimeCatalog` (+ один row `KodikMaterial` для screenshots/poster fallback); озвучки/серии — по-прежнему `KodikMaterial`.
 
 **Не ищет** напрямую в Shikimori/Kodik API — только по импортированным данным.
 
-Быстрый поиск: SQL `ILIKE` по алиасам/каталогу. Fuzzy (Levenshtein) — только при пустой выдаче (раскладка → strict → partial), по строкам каталога/алиасов, не по всем озвучкам. В шапке при малом числе title-хитов — добор по описанию («Расширение территории…»), включая `AnimeCatalog.description`. Сортировка `/search`: `relevance` | `date`. Debounce шапки — `SearchSettings`.
+Быстрый поиск: SQL `ILIKE` по алиасам/каталогу → `shikimoriId IN (…)`, затем JOIN материалов с плеером. Индексы `pg_trgm` (GIN): `scripts/search-trgm-indexes.sql`. Fuzzy (Levenshtein) — только при пустой выдаче (раскладка → strict → partial), по SQL-суженным кандидатам каталога/алиасов, не full-scan и не по всем озвучкам. В шапке при малом числе title-хитов — добор по описанию («Расширение территории…»), сначала `AnimeCatalog.description`. Сортировка `/search`: `relevance` | `date`. Debounce шапки — `SearchSettings`.
 
 ### 10. Cover/Poster Resolution
 

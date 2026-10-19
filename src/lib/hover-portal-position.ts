@@ -27,11 +27,11 @@ export function computeHoverPortalStyle(
   const margin = HOVER_PORTAL_MARGIN;
   const viewportH = window.innerHeight;
   const anchorCenterX = anchorRect.left + anchorRect.width / 2;
-  const availableHeight = Math.max(160, viewportH - margin * 2);
-  const desiredHeight = Math.min(panelHeight, availableHeight);
+  /** Высота по контенту; maxHeight не ставим — окно растёт, без внутреннего скролла. */
+  const naturalHeight = Math.max(1, panelHeight);
   const top = Math.min(
     Math.max(anchorRect.top, margin),
-    Math.max(margin, viewportH - desiredHeight - margin),
+    Math.max(margin, viewportH - naturalHeight - margin),
   );
 
   return {
@@ -39,7 +39,7 @@ export function computeHoverPortalStyle(
     left: anchorCenterX,
     top,
     width: panelWidth,
-    maxHeight: desiredHeight,
+    height: "auto",
     zIndex: 200,
     transform: `translate(calc(-50% + ${panelOffsetX}px), 0)`,
     transition: "opacity 160ms ease-out, transform 160ms ease-out, visibility 160ms ease-out",

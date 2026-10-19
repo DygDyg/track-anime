@@ -522,6 +522,7 @@ sudo systemctl restart track-anime
 | `npm run docker:up` | PostgreSQL в Docker |
 | `npm run docker:down` | Остановить PostgreSQL |
 | `npm run db:push` | Применить схему Prisma к БД |
+| `scripts/search-trgm-indexes.sql` | GIN `pg_trgm` для ускорения поиска (ILIKE); после деплоя кода поиска, если индексов ещё нет |
 | `npm run db:generate` | Перегенерировать Prisma Client |
 | `npm run db:backup` | Сохранить dump локальной Docker/PostgreSQL БД в `backups/db` |
 | `npm run db:pull-prod` | Скачать dump production БД в `backups/db` |
