@@ -114,6 +114,7 @@ export function AdvancedSearchForm({
   const router = useRouter();
   const [isPending, startTransition] = useTransition();
   const [filters, setFilters] = useState<AdvancedSearchFilters>(() => initFilters(initialFilters));
+  const [onlyWithPlayer, setOnlyWithPlayer] = useState(initialPlayer === "with");
 
   const yearFrom = useMemo(
     () => Number(filters.yearFrom) || SEARCH_YEAR_MIN,
@@ -133,13 +134,19 @@ export function AdvancedSearchForm({
     event.preventDefault();
     startTransition(() => {
       router.push(
-        buildAdvancedSearchHref(filtersForSubmit(filters), undefined, initialSort, initialPlayer),
+        buildAdvancedSearchHref(
+          filtersForSubmit(filters),
+          undefined,
+          initialSort,
+          onlyWithPlayer ? "with" : "all",
+        ),
       );
     });
   };
 
   const handleReset = () => {
     setFilters(initFilters());
+    setOnlyWithPlayer(false);
     startTransition(() => {
       router.push("/search?tab=advanced");
     });
@@ -217,6 +224,16 @@ export function AdvancedSearchForm({
           className="sm:col-span-2 lg:col-span-6"
         />
       </div>
+
+      <label className="flex cursor-pointer items-start gap-2 text-sm text-foreground">
+        <input
+          type="checkbox"
+          checked={onlyWithPlayer}
+          onChange={(event) => setOnlyWithPlayer(event.target.checked)}
+          className="site-checkbox mt-0.5"
+        />
+        <span>Только с плеером</span>
+      </label>
 
       <div className="flex flex-wrap gap-2">
         <AsyncButton type="submit" loading={isPending} loadingLabel="Поиск…" className={siteClass.btnSmOn}>

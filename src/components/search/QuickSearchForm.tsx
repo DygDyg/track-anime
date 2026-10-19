@@ -31,6 +31,7 @@ export function QuickSearchForm({
   const [isPending, startTransition] = useTransition();
   const [query, setQuery] = useState(initialQuery);
   const [genre, setGenre] = useState(serializeGenreList(parseGenreList(initialGenre)));
+  const [onlyWithPlayer, setOnlyWithPlayer] = useState(initialPlayer === "with");
 
   const handleSubmit = (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault();
@@ -47,13 +48,13 @@ export function QuickSearchForm({
           q: hasQuery ? trimmedQuery : undefined,
           genre: hasGenres ? serializedGenres : undefined,
           sort: initialSort,
-          player: initialPlayer,
+          player: onlyWithPlayer ? "with" : "all",
         }),
       );
     });
   };
 
-  const hasValues = Boolean(query.trim() || parseGenreList(genre).length > 0);
+  const hasValues = Boolean(query.trim() || parseGenreList(genre).length > 0 || onlyWithPlayer);
 
   return (
     <form onSubmit={handleSubmit} className="space-y-4">
@@ -72,6 +73,16 @@ export function QuickSearchForm({
 
       <SearchGenreMultiSelect value={genre} onChange={setGenre} />
 
+      <label className="flex cursor-pointer items-start gap-2 text-sm text-foreground">
+        <input
+          type="checkbox"
+          checked={onlyWithPlayer}
+          onChange={(event) => setOnlyWithPlayer(event.target.checked)}
+          className="site-checkbox mt-0.5"
+        />
+        <span>Только с плеером</span>
+      </label>
+
       <div className="flex flex-wrap gap-2">
         <AsyncButton type="submit" loading={isPending} loadingLabel="Поиск…" className={siteClass.btnSmOn}>
           Найти
@@ -81,7 +92,10 @@ export function QuickSearchForm({
             Сбросить
           </Link>
         ) : null}
-        <Link href={buildAdvancedSearchHref({})} className={siteClass.btnSmOff}>
+        <Link
+          href={buildAdvancedSearchHref({}, undefined, undefined, onlyWithPlayer ? "with" : "all")}
+          className={siteClass.btnSmOff}
+        >
           Подробный поиск
         </Link>
       </div>

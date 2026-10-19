@@ -26,11 +26,6 @@ const SORT_OPTIONS: Array<{ value: SearchSortMode; label: string }> = [
   { value: "date", label: "По дате выхода" },
 ];
 
-const PLAYER_OPTIONS: Array<{ value: SearchPlayerFilter; label: string }> = [
-  { value: "all", label: "Все" },
-  { value: "with", label: "С плеером" },
-];
-
 function SearchTabs({ activeTab }: { activeTab: "quick" | "advanced" }) {
   return (
     <div className="mb-6 flex flex-wrap gap-2" role="tablist" aria-label="Режим поиска">
@@ -87,19 +82,6 @@ function sortHref(result: SearchPageData, sort: SearchSortMode): string {
   });
 }
 
-function playerHref(result: SearchPageData, player: SearchPlayerFilter): string {
-  const sort = result.sort ?? "relevance";
-  if (result.tab === "advanced") {
-    return buildAdvancedSearchHref(result.advancedFilters ?? {}, undefined, sort, player);
-  }
-  return buildSearchHref({
-    q: result.query || undefined,
-    genre: result.genre ?? undefined,
-    sort,
-    player,
-  });
-}
-
 function SearchSortToggle({ result }: { result: SearchPageData }) {
   const activeSort = result.sort ?? "relevance";
 
@@ -115,29 +97,6 @@ function SearchSortToggle({ result }: { result: SearchPageData }) {
           <Link
             key={option.value}
             href={sortHref(result, option.value)}
-            role="radio"
-            aria-checked={active}
-            className={active ? siteClass.btnSmOn : siteClass.btnSmOff}
-          >
-            {option.label}
-          </Link>
-        );
-      })}
-    </div>
-  );
-}
-
-function SearchPlayerToggle({ result }: { result: SearchPageData }) {
-  const activePlayer = resultPlayer(result);
-
-  return (
-    <div className="flex flex-wrap gap-2" role="radiogroup" aria-label="Фильтр плеера">
-      {PLAYER_OPTIONS.map((option) => {
-        const active = activePlayer === option.value;
-        return (
-          <Link
-            key={option.value}
-            href={playerHref(result, option.value)}
             role="radio"
             aria-checked={active}
             className={active ? siteClass.btnSmOn : siteClass.btnSmOff}
@@ -199,10 +158,7 @@ export function SearchResultsView({ result }: Props) {
         <section className={`${siteClass.panel} space-y-4`}>
           <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
             <h2 className={`${siteClass.sectionTitle} mb-0`}>Результаты</h2>
-            <div className="flex flex-col items-stretch gap-2 sm:items-end">
-              <SearchPlayerToggle result={result} />
-              <SearchSortToggle result={result} />
-            </div>
+            <SearchSortToggle result={result} />
           </div>
           <p className={siteClass.empty}>Ничего не найдено</p>
         </section>
@@ -210,10 +166,7 @@ export function SearchResultsView({ result }: Props) {
         <section className={`${siteClass.panel} space-y-6`}>
           <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
             <h2 className={`${siteClass.sectionTitle} mb-0`}>Результаты</h2>
-            <div className="flex flex-col items-stretch gap-2 sm:items-end">
-              <SearchPlayerToggle result={result} />
-              <SearchSortToggle result={result} />
-            </div>
+            <SearchSortToggle result={result} />
           </div>
           {result.layoutCorrectedQuery ? (
             <p className="text-sm text-foreground/80">
