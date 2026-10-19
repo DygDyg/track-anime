@@ -13,6 +13,7 @@ import {
 import {
   buildSearchHref,
   type SearchPage as SearchPageData,
+  type SearchPlayerFilter,
   type SearchSortMode,
 } from "@/lib/search-shared";
 
@@ -23,6 +24,11 @@ type Props = {
 const SORT_OPTIONS: Array<{ value: SearchSortMode; label: string }> = [
   { value: "relevance", label: "По релевантности" },
   { value: "date", label: "По дате выхода" },
+];
+
+const PLAYER_OPTIONS: Array<{ value: SearchPlayerFilter; label: string }> = [
+  { value: "all", label: "Все" },
+  { value: "with", label: "С плеером" },
 ];
 
 function SearchTabs({ activeTab }: { activeTab: "quick" | "advanced" }) {
@@ -64,14 +70,33 @@ function resultTitle(result: SearchPageData): string {
   return "Поиск аниме";
 }
 
+function resultPlayer(result: SearchPageData): SearchPlayerFilter {
+  return result.playerFilter === "with" ? "with" : "all";
+}
+
 function sortHref(result: SearchPageData, sort: SearchSortMode): string {
+  const player = resultPlayer(result);
   if (result.tab === "advanced") {
-    return buildAdvancedSearchHref(result.advancedFilters ?? {}, undefined, sort);
+    return buildAdvancedSearchHref(result.advancedFilters ?? {}, undefined, sort, player);
   }
   return buildSearchHref({
     q: result.query || undefined,
     genre: result.genre ?? undefined,
     sort,
+    player,
+  });
+}
+
+function playerHref(result: SearchPageData, player: SearchPlayerFilter): string {
+  const sort = result.sort ?? "relevance";
+  if (result.tab === "advanced") {
+    return buildAdvancedSearchHref(result.advancedFilters ?? {}, undefined, sort, player);
+  }
+  return buildSearchHref({
+    q: result.query || undefined,
+    genre: result.genre ?? undefined,
+    sort,
+    player,
   });
 }
 
@@ -102,9 +127,33 @@ function SearchSortToggle({ result }: { result: SearchPageData }) {
   );
 }
 
+function SearchPlayerToggle({ result }: { result: SearchPageData }) {
+  const activePlayer = resultPlayer(result);
+
+  return (
+    <div className="flex flex-wrap gap-2" role="radiogroup" aria-label="Фильтр плеера">
+      {PLAYER_OPTIONS.map((option) => {
+        const active = activePlayer === option.value;
+        return (
+          <Link
+            key={option.value}
+            href={playerHref(result, option.value)}
+            role="radio"
+            aria-checked={active}
+            className={active ? siteClass.btnSmOn : siteClass.btnSmOff}
+          >
+            {option.label}
+          </Link>
+        );
+      })}
+    </div>
+  );
+}
+
 export function SearchResultsView({ result }: Props) {
   const tab = result.tab ?? "quick";
   const sort = result.sort ?? "relevance";
+  const player = resultPlayer(result);
   const title = resultTitle(result);
   const hasSearchCriteria =
     tab === "advanced"
@@ -123,12 +172,17 @@ export function SearchResultsView({ result }: Props) {
       <section role="tabpanel" className={`${siteClass.panel} mb-6 overflow-visible`}>
         <h2 className={siteClass.sectionTitle}>{tab === "advanced" ? "Фильтры" : "Запрос"}</h2>
         {tab === "advanced" ? (
-          <AdvancedSearchForm initialFilters={result.advancedFilters} initialSort={sort} />
+          <AdvancedSearchForm
+            initialFilters={result.advancedFilters}
+            initialSort={sort}
+            initialPlayer={player}
+          />
         ) : (
           <QuickSearchForm
             initialQuery={result.query}
             initialGenre={result.genre ?? ""}
             initialSort={sort}
+            initialPlayer={player}
           />
         )}
       </section>
@@ -142,14 +196,24 @@ export function SearchResultsView({ result }: Props) {
           </p>
         </section>
       ) : result.items.length === 0 ? (
-        <section className={siteClass.empty}>
-          <p>Ничего не найдено</p>
+        <section className={`${siteClass.panel} space-y-4`}>
+          <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+            <h2 className={`${siteClass.sectionTitle} mb-0`}>Результаты</h2>
+            <div className="flex flex-col items-stretch gap-2 sm:items-end">
+              <SearchPlayerToggle result={result} />
+              <SearchSortToggle result={result} />
+            </div>
+          </div>
+          <p className={siteClass.empty}>Ничего не найдено</p>
         </section>
       ) : (
         <section className={`${siteClass.panel} space-y-6`}>
           <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
             <h2 className={`${siteClass.sectionTitle} mb-0`}>Результаты</h2>
-            <SearchSortToggle result={result} />
+            <div className="flex flex-col items-stretch gap-2 sm:items-end">
+              <SearchPlayerToggle result={result} />
+              <SearchSortToggle result={result} />
+            </div>
           </div>
           {result.layoutCorrectedQuery ? (
             <p className="text-sm text-foreground/80">
@@ -168,6 +232,7 @@ export function SearchResultsView({ result }: Props) {
             advancedFilters={result.advancedFilters}
             pageSize={result.pageSize}
             sort={sort}
+            player={player}
           />
         </section>
       )}

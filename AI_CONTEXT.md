@@ -147,6 +147,7 @@ Calendar: `/calendar` → calendar.ts → local Kodik DB or Shikimori `/api/cale
 | Title search miss on synonym/описка | Id-first ILIKE по `AnimeTitleAlias`/`AnimeCatalog`; empty → material fallback → layout → strict/partial fuzzy |
 | Search hangs / «Расширение территории» | Title id-first (не seq scan Kodik); fuzzy по SQL-seed кандидатам; добор description с catalog; trgm: `scripts/search-trgm-indexes.sql` |
 | Cold search still 5s+ after deploy | На Postgres не применён `scripts/search-trgm-indexes.sql` или catalogGaps > 0 |
+| Search «Нет плеера» / фильтр | `hasPlayer` = non-empty `KodikMaterial.playerLink`; URL `player=with` только с плеером |
 | Catalog gaps after deploy | `npm run anime-catalog:backfill:status` — `catalogGaps` должен быть 0 |
 | App settings dialog ignores D-pad | Native dialog needs focus drawables + `requestFocus` — see `showAppSettings` |
 | TV player arrows move focus instead of seek | Center Play has `data-tv-player-seek-keys`; arrows seek / jump chrome — see `KodikPlayerBetaViewport` |

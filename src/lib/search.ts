@@ -13,10 +13,17 @@ import {
   SEARCH_PAGE_SIZE,
   escapeIlikePattern,
   type SearchPage,
+  type SearchPlayerFilter,
   type SearchResult,
   type SearchResultDto,
   type SearchSortMode,
 } from "@/lib/search-shared";
+
+type SearchQueryOptions = {
+  includeTotal?: boolean;
+  sort?: SearchSortMode;
+  player?: SearchPlayerFilter;
+};
 import type { AdvancedSearchFilters } from "@/lib/search-fields";
 import {
   hasAdvancedFilters,
@@ -77,6 +84,7 @@ function emptySearchPage(
   tab: SearchPage["tab"] = "quick",
   advancedFilters: AdvancedSearchFilters = {},
   sort: SearchSortMode = "relevance",
+  playerFilter: SearchPlayerFilter = "all",
 ): SearchPage {
   return {
     items: [],
@@ -89,8 +97,18 @@ function emptySearchPage(
     tab,
     advancedFilters,
     sort,
+    playerFilter,
   };
 }
+
+const HAS_PLAYER_LINK_FILTER_SQL = Prisma.sql`
+  AND EXISTS (
+    SELECT 1
+    FROM "KodikMaterial" pm
+    WHERE pm."shikimoriId" = m."shikimoriId"
+      AND NULLIF(TRIM(pm."playerLink"), '') IS NOT NULL
+  )
+`;
 
 function searchCandidatePoolLimit(offset: number, pageSize: number): number {
   const needed = offset + pageSize + 20;
@@ -501,6 +519,7 @@ function buildSearchPage(
   advancedFilters: AdvancedSearchFilters = {},
   layoutCorrectedQuery?: string | null,
   sort: SearchSortMode = "relevance",
+  playerFilter: SearchPlayerFilter = "all",
 ): SearchPage {
   const total =
     totalOverride ?? (includeTotal ? (rows.length > 0 ? Number(rows[0]!.total ?? 0) : 0) : rows.length);
@@ -517,6 +536,7 @@ function buildSearchPage(
     advancedFilters,
     layoutCorrectedQuery: layoutCorrectedQuery ?? null,
     sort,
+    playerFilter,
   };
 }
 
@@ -576,7 +596,8 @@ async function fetchSearchRows(
         MIN(${candidateRankExpr}) AS rank,
         MIN(COALESCE(ac.title, m."materialData"->>'anime_title', m.title)) AS sort_title,
         MAX(m."animeReleasedAt") AS sort_date,
-        MAX(COALESCE(ac.year, m.year)) AS sort_year
+        MAX(COALESCE(ac.year, m.year)) AS sort_year,
+        BOOL_OR(NULLIF(TRIM(m."playerLink"), '') IS NOT NULL) AS has_player
       FROM "KodikMaterial" m
       LEFT JOIN "AnimeCatalog" ac ON ac."shikimoriId" = m."shikimoriId"
       WHERE m."shikimoriId" IS NOT NULL
@@ -631,6 +652,7 @@ async function fetchSearchRows(
             ELSE NULL
           END
         ) AS score,
+        c.has_player AS "hasPlayer",
         m."materialData"->'screenshots' AS "animeScreenshots",
         m."kodikUpdatedAt"
       FROM candidates c
@@ -653,6 +675,7 @@ async function fetchSearchRows(
         r.kind,
         r.episodes,
         r.score,
+        r."hasPlayer",
         r."animeScreenshots",
         c.rank,
         c.sort_date,
@@ -689,6 +712,7 @@ type RawSearchRow = {
   kind: string | null;
   episodes: number | null;
   score: number | string | null;
+  hasPlayer: boolean;
   animeScreenshots: unknown;
   rank?: number;
   total?: bigint;
@@ -847,6 +871,7 @@ function mapSearchRow(row: RawSearchRow): SearchResult {
     kind: row.kind,
     episodes: row.episodes,
     score: normalizeAnimeScore(row.score),
+    hasPlayer: Boolean(row.hasPlayer),
   };
 }
 
@@ -858,7 +883,7 @@ export async function searchAnimes(
   query: string,
   page = 1,
   pageSize = SEARCH_PAGE_SIZE,
-  options?: { includeTotal?: boolean; sort?: SearchSortMode },
+  options?: SearchQueryOptions,
 ): Promise<SearchPage> {
   return searchAnimesQuick(query, "", page, pageSize, options);
 }
@@ -868,25 +893,28 @@ async function searchAnimesByDescriptionUncached(
   page = 1,
   pageSize = SEARCH_PAGE_SIZE,
   excludeShikimoriIds: number[] = [],
-  options?: { includeTotal?: boolean; sort?: SearchSortMode },
+  options?: SearchQueryOptions,
 ): Promise<SearchPage> {
   const includeTotal = options?.includeTotal ?? true;
   const sort = options?.sort ?? "relevance";
+  const playerFilter = options?.player ?? "all";
   const trimmed = query.trim();
   const safePage = Number.isFinite(page) && page > 0 ? Math.floor(page) : 1;
   const safePageSize =
     Number.isFinite(pageSize) && pageSize > 0 ? Math.min(Math.floor(pageSize), 48) : SEARCH_PAGE_SIZE;
 
   if (trimmed.length < SEARCH_MIN_QUERY_LENGTH) {
-    return emptySearchPage(safePage, safePageSize, trimmed, null, "quick", {}, sort);
+    return emptySearchPage(safePage, safePageSize, trimmed, null, "quick", {}, sort, playerFilter);
   }
 
   const descriptionIds = await resolveDescriptionMatchShikimoriIds(trimmed, excludeShikimoriIds);
   if (descriptionIds.length === 0) {
-    return emptySearchPage(safePage, safePageSize, trimmed, null, "quick", {}, sort);
+    return emptySearchPage(safePage, safePageSize, trimmed, null, "quick", {}, sort, playerFilter);
   }
 
-  const filterSql = buildShikimoriIdsFilterSql(descriptionIds);
+  const parts: Prisma.Sql[] = [buildShikimoriIdsFilterSql(descriptionIds)];
+  if (playerFilter === "with") parts.push(HAS_PLAYER_LINK_FILTER_SQL);
+  const filterSql = Prisma.join(parts, " ");
   const offset = (safePage - 1) * safePageSize;
 
   const rowsPromise = fetchSearchRows(
@@ -912,6 +940,7 @@ async function searchAnimesByDescriptionUncached(
     {},
     null,
     sort,
+    playerFilter,
   );
 }
 
@@ -920,7 +949,7 @@ async function searchAnimesQuickUncached(
   genresParam: string,
   page = 1,
   pageSize = SEARCH_PAGE_SIZE,
-  options?: { includeTotal?: boolean; sort?: SearchSortMode },
+  options?: SearchQueryOptions,
 ): Promise<SearchPage> {
   const trimmed = query.trim();
   const result = await searchAnimesQuickCore(
@@ -1027,13 +1056,14 @@ async function searchAnimesQuickCore(
   genresParam: string,
   page = 1,
   pageSize = SEARCH_PAGE_SIZE,
-  options?: { includeTotal?: boolean; sort?: SearchSortMode },
+  options?: SearchQueryOptions,
   displayQuery = searchQuery,
   layoutCorrectedQuery?: string | null,
   fuzzyMode: FuzzySearchMode = "ilike",
 ): Promise<SearchPage> {
   const includeTotal = options?.includeTotal ?? true;
   const sort = options?.sort ?? "relevance";
+  const playerFilter = options?.player ?? "all";
   const trimmed = searchQuery.trim();
   const genres = parseGenreList(genresParam);
   const serializedGenres = serializeGenreList(genres);
@@ -1053,6 +1083,7 @@ async function searchAnimesQuickCore(
       "quick",
       {},
       sort,
+      playerFilter,
     );
   }
 
@@ -1070,6 +1101,7 @@ async function searchAnimesQuickCore(
           "quick",
           {},
           sort,
+          playerFilter,
         );
       }
       parts.push(buildShikimoriIdsFilterSql(fuzzyShikimoriIds));
@@ -1084,6 +1116,7 @@ async function searchAnimesQuickCore(
           "quick",
           {},
           sort,
+          playerFilter,
         );
       }
       parts.push(buildShikimoriIdsFilterSql(titleIds));
@@ -1094,6 +1127,10 @@ async function searchAnimesQuickCore(
     for (const genre of genres) {
       parts.push(buildGenreMatchFilterSql(genre));
     }
+  }
+
+  if (playerFilter === "with") {
+    parts.push(HAS_PLAYER_LINK_FILTER_SQL);
   }
 
   const filterSql = Prisma.join(parts, " ");
@@ -1122,6 +1159,7 @@ async function searchAnimesQuickCore(
     {},
     layoutCorrectedQuery,
     sort,
+    playerFilter,
   );
 }
 
@@ -1129,7 +1167,7 @@ export async function searchAnimesByGenre(
   genre: string,
   page = 1,
   pageSize = SEARCH_PAGE_SIZE,
-  options?: { includeTotal?: boolean; sort?: SearchSortMode },
+  options?: SearchQueryOptions,
 ): Promise<SearchPage> {
   return searchAnimesQuick("", genre, page, pageSize, options);
 }
@@ -1138,23 +1176,28 @@ async function searchAnimesAdvancedUncached(
   filters: AdvancedSearchFilters,
   page = 1,
   pageSize = SEARCH_PAGE_SIZE,
-  options?: { includeTotal?: boolean; sort?: SearchSortMode },
+  options?: SearchQueryOptions,
 ): Promise<SearchPage> {
   const includeTotal = options?.includeTotal ?? true;
   const sort = options?.sort ?? "relevance";
+  const playerFilter = options?.player ?? "all";
   const safePage = Number.isFinite(page) && page > 0 ? Math.floor(page) : 1;
   const safePageSize =
     Number.isFinite(pageSize) && pageSize > 0 ? Math.min(Math.floor(pageSize), 48) : SEARCH_PAGE_SIZE;
 
   if (!hasAdvancedFilters(filters)) {
-    return emptySearchPage(safePage, safePageSize, "", null, "advanced", filters, sort);
+    return emptySearchPage(safePage, safePageSize, "", null, "advanced", filters, sort, playerFilter);
   }
 
-  const filterSql = await buildAdvancedFilterSql(filters);
-  if (!filterSql) {
-    return emptySearchPage(safePage, safePageSize, "", null, "advanced", filters, sort);
+  const baseFilterSql = await buildAdvancedFilterSql(filters);
+  if (!baseFilterSql) {
+    return emptySearchPage(safePage, safePageSize, "", null, "advanced", filters, sort, playerFilter);
   }
 
+  const filterSql =
+    playerFilter === "with"
+      ? Prisma.join([baseFilterSql, HAS_PLAYER_LINK_FILTER_SQL], " ")
+      : baseFilterSql;
   const offset = (safePage - 1) * safePageSize;
   const candidateRankExpr = Prisma.sql`0`;
 
@@ -1175,6 +1218,7 @@ async function searchAnimesAdvancedUncached(
     filters,
     null,
     sort,
+    playerFilter,
   );
 }
 
@@ -1191,14 +1235,24 @@ export async function searchAnimesQuick(
   genresParam: string,
   page = 1,
   pageSize = SEARCH_PAGE_SIZE,
-  options?: { includeTotal?: boolean; sort?: SearchSortMode },
+  options?: SearchQueryOptions,
 ): Promise<SearchPage> {
   const includeTotal = options?.includeTotal ?? true;
   const sort = options?.sort ?? "relevance";
+  const player = options?.player ?? "all";
   const genres = serializeGenreList(parseGenreList(genresParam));
   return cachedPublicSearch(
-    ["quick", query.trim(), genres, String(page), String(pageSize), String(includeTotal), sort],
-    () => searchAnimesQuickUncached(query, genres, page, pageSize, { includeTotal, sort }),
+    [
+      "quick",
+      query.trim(),
+      genres,
+      String(page),
+      String(pageSize),
+      String(includeTotal),
+      sort,
+      player,
+    ],
+    () => searchAnimesQuickUncached(query, genres, page, pageSize, { includeTotal, sort, player }),
   );
 }
 
@@ -1207,10 +1261,11 @@ export async function searchAnimesByDescription(
   page = 1,
   pageSize = SEARCH_PAGE_SIZE,
   excludeShikimoriIds: number[] = [],
-  options?: { includeTotal?: boolean; sort?: SearchSortMode },
+  options?: SearchQueryOptions,
 ): Promise<SearchPage> {
   const includeTotal = options?.includeTotal ?? true;
   const sort = options?.sort ?? "relevance";
+  const player = options?.player ?? "all";
   return cachedPublicSearch(
     [
       "description",
@@ -1220,11 +1275,13 @@ export async function searchAnimesByDescription(
       excludeShikimoriIds.join(","),
       String(includeTotal),
       sort,
+      player,
     ],
     () =>
       searchAnimesByDescriptionUncached(query, page, pageSize, excludeShikimoriIds, {
         includeTotal,
         sort,
+        player,
       }),
   );
 }
@@ -1233,12 +1290,21 @@ export async function searchAnimesAdvanced(
   filters: AdvancedSearchFilters,
   page = 1,
   pageSize = SEARCH_PAGE_SIZE,
-  options?: { includeTotal?: boolean; sort?: SearchSortMode },
+  options?: SearchQueryOptions,
 ): Promise<SearchPage> {
   const includeTotal = options?.includeTotal ?? true;
   const sort = options?.sort ?? "relevance";
+  const player = options?.player ?? "all";
   return cachedPublicSearch(
-    ["advanced", JSON.stringify(filters), String(page), String(pageSize), String(includeTotal), sort],
-    () => searchAnimesAdvancedUncached(filters, page, pageSize, { includeTotal, sort }),
+    [
+      "advanced",
+      JSON.stringify(filters),
+      String(page),
+      String(pageSize),
+      String(includeTotal),
+      sort,
+      player,
+    ],
+    () => searchAnimesAdvancedUncached(filters, page, pageSize, { includeTotal, sort, player }),
   );
 }

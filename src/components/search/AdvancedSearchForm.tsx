@@ -26,10 +26,12 @@ import {
   type SearchFieldId,
   type SearchSortMode,
 } from "@/lib/search-fields";
+import type { SearchPlayerFilter } from "@/lib/search-shared";
 
 type Props = {
   initialFilters?: AdvancedSearchFilters;
   initialSort?: SearchSortMode;
+  initialPlayer?: SearchPlayerFilter;
 };
 
 type ComboboxFieldId = Exclude<SearchFieldId, "genre" | "kind" | "status">;
@@ -107,6 +109,7 @@ function SearchComboboxFilter({
 export function AdvancedSearchForm({
   initialFilters,
   initialSort = "relevance",
+  initialPlayer = "all",
 }: Props) {
   const router = useRouter();
   const [isPending, startTransition] = useTransition();
@@ -129,7 +132,9 @@ export function AdvancedSearchForm({
   const handleSubmit = (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault();
     startTransition(() => {
-      router.push(buildAdvancedSearchHref(filtersForSubmit(filters), undefined, initialSort));
+      router.push(
+        buildAdvancedSearchHref(filtersForSubmit(filters), undefined, initialSort, initialPlayer),
+      );
     });
   };
 

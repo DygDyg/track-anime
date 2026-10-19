@@ -3,6 +3,8 @@ import { getAnimeKindDescription } from "@/lib/anime-kind-descriptions";
 import { kindBadgeClass } from "@/lib/anime-kind-theme";
 
 export type SearchSortMode = "relevance" | "date";
+/** Дублирует SearchPlayerFilter из search-shared (без циклического импорта). */
+type SearchPlayerFilterParam = "all" | "with";
 
 export function parseSearchSort(value: string | null | undefined): SearchSortMode {
   return value === "date" ? "date" : "relevance";
@@ -241,6 +243,7 @@ export function buildAdvancedSearchParams(
   filters: AdvancedSearchFilters,
   page?: number,
   sort?: SearchSortMode,
+  player?: SearchPlayerFilterParam,
 ): URLSearchParams {
   const params = new URLSearchParams();
   params.set("tab", "advanced");
@@ -269,6 +272,7 @@ export function buildAdvancedSearchParams(
   }
 
   if (sort === "date") params.set("sort", "date");
+  if (player === "with") params.set("player", "with");
   if (page && page > 1) params.set("page", String(page));
 
   return params;
@@ -278,8 +282,9 @@ export function buildAdvancedSearchHref(
   filters: AdvancedSearchFilters,
   page?: number,
   sort?: SearchSortMode,
+  player?: SearchPlayerFilterParam,
 ): string {
-  const params = buildAdvancedSearchParams(filters, page, sort);
+  const params = buildAdvancedSearchParams(filters, page, sort, player);
   const serialized = params.toString();
   return serialized ? `/search?${serialized}` : "/search?tab=advanced";
 }
@@ -340,15 +345,22 @@ export function buildSearchApiParams(input: {
   pageSize?: number;
   includeTotal?: boolean;
   sort?: SearchSortMode;
+  player?: SearchPlayerFilterParam;
 }): URLSearchParams {
   const params = new URLSearchParams();
   params.set("page", String(input.page));
   if (input.pageSize) params.set("pageSize", String(input.pageSize));
   if (input.includeTotal === false) params.set("includeTotal", "0");
   if (input.sort === "date") params.set("sort", "date");
+  if (input.player === "with") params.set("player", "with");
 
   if (input.tab === "advanced" && input.advancedFilters) {
-    const built = buildAdvancedSearchParams(input.advancedFilters, input.page, input.sort);
+    const built = buildAdvancedSearchParams(
+      input.advancedFilters,
+      input.page,
+      input.sort,
+      input.player,
+    );
     built.forEach((value, key) => params.set(key, value));
     return params;
   }

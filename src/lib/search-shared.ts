@@ -10,6 +10,13 @@ export const MAX_HEADER_SEARCH_DEBOUNCE_MS = 5000;
 export const HEADER_DESCRIPTION_SUPPLEMENT_THRESHOLD = 10;
 
 export const SEARCH_SORT_PARAM = "sort";
+export const SEARCH_PLAYER_PARAM = "player";
+
+export type SearchPlayerFilter = "all" | "with";
+
+export function parseSearchPlayerFilter(value: string | null | undefined): SearchPlayerFilter {
+  return value === "with" ? "with" : "all";
+}
 
 export { parseSearchSort, type SearchSortMode } from "@/lib/search-fields";
 
@@ -46,6 +53,8 @@ export type SearchResult = {
   kind: string | null;
   episodes: number | null;
   score: string | null;
+  /** Есть хотя бы одна озвучка с непустым Kodik playerLink. */
+  hasPlayer: boolean;
 };
 
 export type SearchResultDto = SearchResult;
@@ -63,6 +72,7 @@ export type SearchPage = {
   tab?: "quick" | "advanced";
   advancedFilters?: AdvancedSearchFilters;
   sort?: SearchSortMode;
+  playerFilter?: SearchPlayerFilter;
 };
 
 export function buildSearchHref(input: {
@@ -71,6 +81,7 @@ export function buildSearchHref(input: {
   page?: number;
   tab?: "quick" | "advanced";
   sort?: SearchSortMode;
+  player?: SearchPlayerFilter;
 }): string {
   const params = new URLSearchParams();
   const tab = input.tab ?? "quick";
@@ -81,6 +92,7 @@ export function buildSearchHref(input: {
   if (genre) params.set("genre", genre);
   if (query) params.set("q", query);
   if (input.sort === "date") params.set(SEARCH_SORT_PARAM, "date");
+  if (input.player === "with") params.set(SEARCH_PLAYER_PARAM, "with");
 
   if (input.page && input.page > 1) params.set("page", String(input.page));
 

@@ -15,6 +15,7 @@ import {
   searchAnimesQuick,
 } from "@/lib/search";
 import { parseGenreList } from "@/lib/search-fields";
+import { parseSearchPlayerFilter } from "@/lib/search-shared";
 
 export const revalidate = 60;
 
@@ -75,6 +76,7 @@ export default async function SearchPage({ searchParams }: Props) {
   const page = Math.min(SEARCH_MAX_PAGE, Math.max(1, Number(params.page) || 1));
   const tab = parseSearchTab(params.tab);
   const sort = parseSearchSort(params.sort);
+  const player = parseSearchPlayerFilter(params.player);
   const trimmedGenre = params.genre?.trim() ?? "";
   const trimmedQuery = params.q?.trim() ?? "";
   const advancedFilters = parseAdvancedFiltersFromParams(params);
@@ -82,9 +84,12 @@ export default async function SearchPage({ searchParams }: Props) {
   let result;
 
   if (tab === "advanced") {
-    result = await searchAnimesAdvanced(advancedFilters, page, SEARCH_PAGE_SIZE, { sort });
+    result = await searchAnimesAdvanced(advancedFilters, page, SEARCH_PAGE_SIZE, { sort, player });
   } else if (trimmedQuery || parseGenreList(trimmedGenre).length > 0) {
-    result = await searchAnimesQuick(trimmedQuery, trimmedGenre, page, SEARCH_PAGE_SIZE, { sort });
+    result = await searchAnimesQuick(trimmedQuery, trimmedGenre, page, SEARCH_PAGE_SIZE, {
+      sort,
+      player,
+    });
     result = { ...result, tab: "quick" as const };
   } else {
     result = {
@@ -97,6 +102,7 @@ export default async function SearchPage({ searchParams }: Props) {
       genre: trimmedGenre || null,
       tab,
       sort,
+      playerFilter: player,
     };
   }
 

@@ -173,7 +173,7 @@ Shikimori anime.id  ===  Kodik shikimori_id  ===  URL /anime/[shikimoriId]
 
 **Не ищет** напрямую в Shikimori/Kodik API — только по импортированным данным.
 
-Быстрый поиск: SQL `ILIKE` по алиасам/каталогу → `shikimoriId IN (…)`, затем JOIN материалов с плеером. Индексы `pg_trgm` (GIN): `scripts/search-trgm-indexes.sql`. Fuzzy (Levenshtein) — только при пустой выдаче (раскладка → strict → partial), по SQL-суженным кандидатам каталога/алиасов, не full-scan и не по всем озвучкам. В шапке при малом числе title-хитов — добор по описанию («Расширение территории…»), сначала `AnimeCatalog.description`. Сортировка `/search`: `relevance` | `date`. Debounce шапки — `SearchSettings`.
+Быстрый поиск: SQL `ILIKE` по алиасам/каталогу → `shikimoriId IN (…)`, затем JOIN материалов с плеером. Индексы `pg_trgm` (GIN): `scripts/search-trgm-indexes.sql`. Fuzzy (Levenshtein) — только при пустой выдаче (раскладка → strict → partial), по SQL-суженным кандидатам каталога/алиасов, не full-scan и не по всем озвучкам. В шапке при малом числе title-хитов — добор по описанию («Расширение территории…»), сначала `AnimeCatalog.description`. Сортировка `/search`: `relevance` | `date`. Фильтр плеера: `player=all|with` (дефолт all); в карточке `hasPlayer` = есть material с непустым `playerLink`. Debounce шапки — `SearchSettings`.
 
 ### 10. Cover/Poster Resolution
 
