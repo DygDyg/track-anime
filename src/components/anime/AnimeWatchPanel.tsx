@@ -23,6 +23,8 @@ import {
 } from "@/components/anime/KodikPlayer";
 import { KodikPlayerBetaViewport } from "@/components/anime/KodikPlayerBetaViewport";
 import { KodikPlayerBetaEpisodeStrip } from "@/components/anime/KodikPlayerBetaEpisodeStrip";
+import { HentaiOceanPlayer } from "@/components/anime/HentaiOceanPlayer";
+import { AdultContentConsentModal } from "@/components/AdultContentConsentModal";
 import { OPEN_PLAYER_FULLSCREEN_EVENT } from "@/components/anime/AnimeWatchFullscreenButton";
 import { WATCH_HISTORY_UPDATED_EVENT } from "@/components/anime/AnimePosterWatchActions";
 import type {
@@ -181,6 +183,8 @@ type Props = {
   animeStatus?: string | null;
   translations: KodikTranslationDto[];
   episodesTotal?: number | null;
+  isHentaiContent?: boolean;
+  hentaiOceanEmbedUrl?: string | null;
 };
 
 type LockableScreenOrientation = ScreenOrientation & {
@@ -620,6 +624,8 @@ export function AnimeWatchPanel({
   animeStatus = null,
   translations,
   episodesTotal,
+  isHentaiContent = false,
+  hentaiOceanEmbedUrl = null,
 }: Props) {
   const { user } = useAuth();
   const listInfo = useUserListStatus(shikimoriId);
@@ -628,6 +634,7 @@ export function AnimeWatchPanel({
   const [playerBalancer, setPlayerBalancer] = useState<PlayerBalancer>("taplus");
   const [taPlusSeekSeconds, setTaPlusSeekSeconds] = useState<number | null>(null);
   const [shareLinkCopied, setShareLinkCopied] = useState(false);
+  const [adultConsentOpen, setAdultConsentOpen] = useState(false);
   const isTaPlus = playerBalancer === "taplus";
   const playerBalancerRef = useRef<PlayerBalancer>(playerBalancer);
   playerBalancerRef.current = playerBalancer;
@@ -3919,13 +3926,49 @@ export function AnimeWatchPanel({
   };
 
   if (playable.length === 0) {
+    const showOceanFallback = Boolean(isHentaiContent && hentaiOceanEmbedUrl);
+    const adultOk = settings.adultContentEnabled;
+
     return (
       <section
         id="player"
         className="scroll-mt-20 rounded-xl border border-border bg-card p-4 shadow-lg shadow-black/40 sm:p-5"
       >
         <h2 className="mb-2 text-lg font-semibold text-foreground">Смотреть</h2>
-        <p className="text-sm text-muted">В базе Kodik пока нет плеера для этого тайтла.</p>
+        {showOceanFallback && adultOk && hentaiOceanEmbedUrl ? (
+          <div className="space-y-3">
+            <p className="text-xs text-muted">Альтернативный плеер · контент 18+</p>
+            <HentaiOceanPlayer embedUrl={hentaiOceanEmbedUrl} title={animeTitle} />
+          </div>
+        ) : showOceanFallback && !adultOk ? (
+          <div className="space-y-3">
+            <p className="text-sm text-muted">
+              Для этого тайтла нет плеера Kodik. Доступен альтернативный источник — нужен доступ к
+              контенту 18+.
+            </p>
+            <button
+              type="button"
+              onClick={() => setAdultConsentOpen(true)}
+              className="rounded-lg bg-accent px-4 py-2.5 text-sm font-medium text-white transition hover:bg-accent/90"
+            >
+              Подтвердить возраст и смотреть
+            </button>
+            <AdultContentConsentModal
+              open={adultConsentOpen}
+              onAccept={() => {
+                updateSettings({ adultContentEnabled: true });
+                setAdultConsentOpen(false);
+              }}
+              onCancel={() => setAdultConsentOpen(false)}
+            />
+          </div>
+        ) : isHentaiContent ? (
+          <p className="text-sm text-muted">
+            В базе Kodik нет плеера для этого тайтла, и альтернативный источник не найден.
+          </p>
+        ) : (
+          <p className="text-sm text-muted">В базе Kodik пока нет плеера для этого тайтла.</p>
+        )}
       </section>
     );
   }

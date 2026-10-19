@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
+import { AdultContentConsentModal } from "@/components/AdultContentConsentModal";
 import { TranslationBadge } from "@/components/TranslationBadge";
 import { useSiteSettings } from "@/components/SiteSettingsProvider";
 import {
@@ -43,6 +44,7 @@ export function PlayerSettingsTab({ settings, updateSettings, updateLocalSetting
   const [names, setNames] = useState<string[]>([]);
   const [loading, setLoading] = useState(true);
   const [query, setQuery] = useState("");
+  const [adultConsentOpen, setAdultConsentOpen] = useState(false);
 
   useEffect(() => {
     let cancelled = false;
@@ -89,6 +91,42 @@ export function PlayerSettingsTab({ settings, updateSettings, updateLocalSetting
 
   return (
     <div className="space-y-4">
+      <section className="space-y-2 rounded-lg border border-border bg-background/60 p-3">
+        <div className="flex flex-wrap items-center justify-between gap-3">
+          <div className="min-w-0">
+            <SectionTitle>Включить 18+ контент</SectionTitle>
+            <SectionHint>
+              Нужно для просмотра хентай-тайтлов без плеера Kodik. Включение запросит подтверждение
+              возраста.
+            </SectionHint>
+          </div>
+          <label className="flex shrink-0 cursor-pointer items-center gap-2 text-sm font-medium text-foreground">
+            <input
+              type="checkbox"
+              checked={settings.adultContentEnabled}
+              onChange={(event) => {
+                if (event.target.checked) {
+                  setAdultConsentOpen(true);
+                  return;
+                }
+                updateSettings({ adultContentEnabled: false });
+              }}
+              className="h-4 w-4 rounded border-border accent-accent"
+            />
+            Включить
+          </label>
+        </div>
+      </section>
+
+      <AdultContentConsentModal
+        open={adultConsentOpen}
+        onAccept={() => {
+          updateSettings({ adultContentEnabled: true });
+          setAdultConsentOpen(false);
+        }}
+        onCancel={() => setAdultConsentOpen(false)}
+      />
+
       <section className="space-y-2 rounded-lg border border-amber-500/30 bg-amber-500/5 p-3">
         <div className="flex flex-wrap items-center justify-between gap-3">
           <div className="min-w-0">

@@ -20,7 +20,7 @@ Next.js anime streaming site with Shikimori OAuth + Kodik player. Data lives in 
 | Task | Start here |
 |------|------------|
 | Fix auth/login | `src/lib/auth/shikimori-oauth.ts`, `src/lib/auth/local-credentials.ts`, `src/lib/auth/qr-login.ts`, `src/app/api/auth/callback/shikimori/route.ts` |
-| Fix player | `src/components/anime/KodikPlayer.tsx`, `KodikPlayerBetaViewport.tsx`, `TaPlusPlayer.tsx`, `VideoAmbientGlow.tsx`, `src/lib/player-ambient-glow.ts`, `src/lib/kodik-player-api.ts`, `src/lib/kodik-ftor.ts`, `src/hooks/useTaPlusStream.ts`, `CvhWatchSection.tsx`, `src/lib/cvh-player.ts`, `src/lib/anime-watch-share.ts` |
+| Fix player | `src/components/anime/KodikPlayer.tsx`, `KodikPlayerBetaViewport.tsx`, `TaPlusPlayer.tsx`, `VideoAmbientGlow.tsx`, `src/lib/player-ambient-glow.ts`, `src/lib/kodik-player-api.ts`, `src/lib/kodik-ftor.ts`, `src/hooks/useTaPlusStream.ts`, `CvhWatchSection.tsx`, `src/lib/cvh-player.ts`, `src/lib/anime-watch-share.ts`, `HentaiOceanPlayer.tsx`, `src/lib/hentai-ocean.ts`, `AdultContentConsentModal.tsx` |
 | Fix watch party | `src/hooks/useWatchParty.ts`, `scripts/watch-party-server.mjs`, `scripts/watch-party-history.mjs`, `src/components/anime/AnimeWatchPanel.tsx`, `src/lib/admin/watch-party-history.ts` |
 | Fix home feed | `src/lib/releases.ts`, `src/lib/home-feed-cache.ts`, `src/components/ReleaseFeed.tsx`, `src/lib/home-novelties.ts`, `HomeNoveltiesSection.tsx` |
 | Fix release card / hover / mobile sheet | `ReleaseCard.tsx`, `AnimeCardHoverShell.tsx`, `ReleaseCardHoverPanel.tsx`, `ReleaseCardMobileSheet.tsx`, `ReleaseCardPreviewMeta.tsx`, `ReleaseCardQuickActions.tsx` — long-press sheet on any touch (incl. tablet desktop cards / finger-as-mouse); CSS blocks callout/select on poster; no `md:hidden` on sheet |
@@ -130,6 +130,7 @@ Calendar: `/calendar` → calendar.ts → local Kodik DB or Shikimori `/api/cale
 | 401 on list update | Expired Shikimori token — баннер «Связь с Shikimori истекла — переподключите» / `auth-client.ts` refresh |
 | Anime page 404 | Invalid shikimoriId or no Shikimori data |
 | No player | No KodikMaterial for shikimoriId — page auto-ensures via Kodik search; import/sync use `anime,anime-serial` (films are `type=anime`) |
+| Hentai / Rx no Kodik | If `rating=rx` or genre hentai and no `playerLink`, server resolves Hentai Ocean slug by title (`hentai-ocean.ts`); iframe only after `adultContentEnabled` (settings + consent modal) |
 | Rate limit errors | Shikimori/Kodik rate limiter — check `rate-limiter.ts` |
 | Poster missing | Fallback chain exhausted — check materialData, Shikimori cache |
 | Anime page poster ≠ lightbox | Страница должна быть `size="full"` на том же `/api/cover?id=` что lightbox; не `size=thumb` (разный browser cache). Cover без `immutable` |

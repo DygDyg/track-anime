@@ -280,6 +280,8 @@ export function AnimePageView({ anime }: { anime: AnimePageDto }) {
             animeStatus={anime.status}
             translations={anime.translations}
             episodesTotal={anime.episodes}
+            isHentaiContent={anime.isHentaiContent}
+            hentaiOceanEmbedUrl={anime.hentaiOceanEmbedUrl}
           />
 
           <RelatedAnimeSection shikimoriId={anime.shikimoriId} />

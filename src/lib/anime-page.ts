@@ -22,6 +22,7 @@ import { pickYoutubeTrailerId } from "@/lib/shikimori/trailer";
 import type { ShikimoriAnime, ShikimoriStudio } from "@/lib/shikimori/types";
 import { compareTranslationsByEpisodesAndPopular } from "@/lib/translation-sort";
 import { resolveMalIdForShikimoriId } from "@/lib/shikimori/mal-id";
+import { isHentaiAnime, resolveHentaiOceanEmbedUrl } from "@/lib/hentai-ocean";
 
 export type KodikTranslationDto = {
   kodikId: string;
@@ -61,6 +62,10 @@ export type AnimePageDto = {
   scoreCount: number | null;
   dubbers: string[];
   trailerYoutubeId: string | null;
+  /** Rx / жанр хентай — для fallback-плеера и 18+ гейта */
+  isHentaiContent: boolean;
+  /** Embed Hentai Ocean, если нет playable Kodik; иначе null */
+  hentaiOceanEmbedUrl: string | null;
 };
 
 function posterFromMaterialData(data: unknown): string | null {
@@ -370,6 +375,8 @@ function mapAnimeToDto(
     scoreCount: sumScoreVotes(anime?.rates_scores_stats),
     dubbers: collectDubbers(anime, translations),
     trailerYoutubeId: pickYoutubeTrailerId(anime?.videos),
+    isHentaiContent: false,
+    hentaiOceanEmbedUrl: null,
   };
 }
 
@@ -482,5 +489,22 @@ export const getAnimePageData = cache(async (shikimoriId: number): Promise<Anime
     }
   }
 
-  return { ...dto, malId };
+  const isHentaiContent = isHentaiAnime({ rating: dto.rating, genres: dto.genres });
+  let hentaiOceanEmbedUrl: string | null = null;
+  const hasPlayableKodik = translations.some((tr) => Boolean(tr.playerLink));
+  if (isHentaiContent && !hasPlayableKodik) {
+    const titles = [
+      dto.titleOriginal,
+      dto.title,
+      ...dto.synonyms,
+      ...(anime?.english ?? []),
+      ...(anime?.japanese ?? []),
+    ].filter((t): t is string => Boolean(t && t.trim()));
+    hentaiOceanEmbedUrl = await resolveHentaiOceanEmbedUrl({
+      shikimoriId,
+      titles,
+    });
+  }
+
+  return { ...dto, malId, isHentaiContent, hentaiOceanEmbedUrl };
 });

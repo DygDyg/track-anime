@@ -164,6 +164,11 @@ export type SiteSettings = {
   lastSeenChangelogDayId: string | null;
   /** Auto-show «Что нового» modal when a new completed day appears (default on). */
   showWhatsNewChangelog: boolean;
+  /**
+   * Согласие на 18+ (хентай / Rx без Kodik → Hentai Ocean).
+   * Синхронизируется с аккаунтом; default off.
+   */
+  adultContentEnabled: boolean;
 };
 
 /** Настройки, которые не синхронизируются с аккаунтом — только localStorage браузера. */
@@ -322,6 +327,7 @@ export const DEFAULT_SITE_SETTINGS: SiteSettings = {
   companionStaticAnimations: false,
   lastSeenChangelogDayId: null,
   showWhatsNewChangelog: true,
+  adultContentEnabled: false,
 };
 
 export const SITE_FONT_OPTIONS: { id: SiteFontFamily; label: string }[] = [
@@ -557,6 +563,7 @@ export function normalizeSiteSettings(raw: unknown): SiteSettings {
     companionStaticAnimations: raw.companionStaticAnimations === true,
     lastSeenChangelogDayId: parseLastSeenChangelogDayId(raw.lastSeenChangelogDayId),
     showWhatsNewChangelog: raw.showWhatsNewChangelog !== false,
+    adultContentEnabled: raw.adultContentEnabled === true,
   };
 }
 
