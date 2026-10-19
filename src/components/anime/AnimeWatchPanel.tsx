@@ -3962,12 +3962,16 @@ export function AnimeWatchPanel({
               onCancel={() => setAdultConsentOpen(false)}
             />
           </div>
-        ) : isHentaiContent ? (
-          <p className="text-sm text-muted">
-            В базе Kodik нет плеера для этого тайтла, и альтернативный источник не найден.
-          </p>
         ) : (
-          <p className="text-sm text-muted">В базе Kodik пока нет плеера для этого тайтла.</p>
+          <div className="space-y-3">
+            <p className="text-xs text-muted">Альтернативный плеер · VideoHUB</p>
+            <CvhWatchSection
+              shikimoriId={shikimoriId}
+              malId={malId}
+              animeTitle={animeTitle}
+              soloFallback
+            />
+          </div>
         )}
       </section>
     );

@@ -42,6 +42,11 @@ type Props = {
   onPause?: (payload: CvhPlayerProgressPayload) => void;
   /** When CVH voice is chosen, parent can sync Kodik translation / history */
   onVoiceStudioChange?: (studio: string) => void;
+  /**
+   * Only player on the page (no Kodik materials). Adjusts not-found copy;
+   * parent should not expect Kodik-linked watch history.
+   */
+  soloFallback?: boolean;
 };
 
 function CvhEpisodeStrip({
@@ -226,6 +231,7 @@ export function CvhWatchSection({
   onProgress,
   onPause,
   onVoiceStudioChange,
+  soloFallback = false,
 }: Props) {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -267,7 +273,11 @@ export function CvhWatchSection({
         if (controller.signal.aborted) return;
 
         if (!resolved) {
-          setError("В VideoHUB нет этого тайтла.");
+          setError(
+            soloFallback
+              ? "В базе Kodik нет плеера для этого тайтла, и в VideoHUB он тоже не найден."
+              : "В VideoHUB нет этого тайтла.",
+          );
           setLoading(false);
           return;
         }
@@ -294,7 +304,7 @@ export function CvhWatchSection({
     })();
 
     return () => controller.abort();
-  }, [shikimoriId, malId]);
+  }, [shikimoriId, malId, soloFallback]);
 
   useEffect(() => {
     if (loading || error || userTouchedRef.current) return;
@@ -415,12 +425,18 @@ export function CvhWatchSection({
     return (
       <div className="overflow-hidden rounded-lg border border-border bg-card">
         <div className="p-4">
-          <p className="mb-2 text-xs font-medium uppercase tracking-wide text-muted">Озвучка</p>
+          {soloFallback ? null : (
+            <p className="mb-2 text-xs font-medium uppercase tracking-wide text-muted">Озвучка</p>
+          )}
           <p className="text-sm text-muted">{error}</p>
-          <p className="mt-2 text-xs text-muted/80">Shikimori ID: {shikimoriId}</p>
-          {malId ? (
-            <p className="mt-1 text-xs text-muted/80">MAL ID: {malId}</p>
-          ) : null}
+          {soloFallback ? null : (
+            <>
+              <p className="mt-2 text-xs text-muted/80">Shikimori ID: {shikimoriId}</p>
+              {malId ? (
+                <p className="mt-1 text-xs text-muted/80">MAL ID: {malId}</p>
+              ) : null}
+            </>
+          )}
         </div>
       </div>
     );

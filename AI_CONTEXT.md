@@ -130,7 +130,7 @@ Calendar: `/calendar` → calendar.ts → local Kodik DB or Shikimori `/api/cale
 | 401 on list update | Expired Shikimori token — баннер «Связь с Shikimori истекла — переподключите» / `auth-client.ts` refresh |
 | Anime page 404 | Invalid shikimoriId or no Shikimori data |
 | No player | No KodikMaterial for shikimoriId — page auto-ensures via Kodik search; import/sync use `anime,anime-serial` (films are `type=anime`) |
-| Hentai / Rx no Kodik | If `rating=rx` or genre hentai and no `playerLink`, server resolves Hentai Ocean slug by title (`hentai-ocean.ts`); iframe only after `adultContentEnabled` (settings + consent modal) |
+| No Kodik player | No `playerLink`: 18+ → Hentai Ocean (`hentai-ocean.ts`, needs `adultContentEnabled`); else client mounts VideoHUB solo (`CvhWatchSection` / plapi). No Kodik → no `UserWatchProgress` from CVH |
 | Rate limit errors | Shikimori/Kodik rate limiter — check `rate-limiter.ts` |
 | Poster missing | Fallback chain exhausted — check materialData, Shikimori cache |
 | Anime page poster ≠ lightbox | Страница должна быть `size="full"` на том же `/api/cover?id=` что lightbox; не `size=thumb` (разный browser cache). Cover без `immutable` |

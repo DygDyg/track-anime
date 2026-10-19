@@ -3,8 +3,8 @@
   "entries": [
     {
       "id": "2026-10-19",
-      "recordedAt": "2026-10-19T01:54:00.000Z",
-      "gitSha": "5704eec",
+      "recordedAt": "2026-10-19T02:04:00.000Z",
+      "gitSha": "2e5a1fc",
       "title": "Устройства",
       "items": [
         {
@@ -29,8 +29,13 @@
         },
         {
           "kind": "feature",
-          "topic": "hentai-ocean-18plus",
-          "text": "У хентай-тайтлов без плеера Kodik — альтернативный плеер; в настройках плеера — «Включить 18+ контент» с подтверждением возраста."
+          "topic": "adult-content-consent",
+          "text": "В настройках плеера — «Включить 18+ контент» с подтверждением возраста."
+        },
+        {
+          "kind": "feature",
+          "topic": "cvh-solo-fallback",
+          "text": "Если у тайтла нет плеера Kodik, но есть VideoHUB — открывается VideoHUB."
         },
         {
           "kind": "feature",
