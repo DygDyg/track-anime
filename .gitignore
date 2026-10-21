@@ -16,6 +16,7 @@ tmp/
 temp/
 
 # Local scratch/design files
+/preview/
 .obsidian/
 body.txt
 public/companion/*копия*/

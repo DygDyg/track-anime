@@ -10,6 +10,8 @@ import { AvatarWithDecoration } from "@/components/profile/AvatarWithDecoration"
 import { useSiteSettings } from "@/components/SiteSettingsProvider";
 import { useThemeContext } from "@/components/ThemeProvider";
 import { parsePatternBackgroundId } from "@/lib/pattern-backgrounds";
+import { ProfileFramePreview } from "@/components/profile/ProfileFramePreview";
+import { PROFILE_FRAMES } from "@/lib/profile-frames";
 import {
   AVATAR_DECORATION_SCALE_MAX,
   AVATAR_DECORATION_SCALE_MIN,
@@ -545,6 +547,101 @@ function AvatarDecorationSection({
   );
 }
 
+function ProfileFrameSection({
+  settings,
+  updateSettings,
+  disabled,
+}: {
+  settings: SiteSettings;
+  updateSettings: (patch: Partial<SiteSettings>) => void;
+  disabled?: boolean;
+}) {
+  const { user } = useAuth();
+  const previewNickname = user?.nickname ?? "Вы";
+  const previewAvatar = user?.avatar ?? null;
+  const selectedId = settings.profileFrameId;
+  const selectedLabel =
+    PROFILE_FRAMES.find((frame) => frame.id === selectedId)?.label ?? "Без рамки";
+
+  return (
+    <section className="space-y-3">
+      <SectionTitle>Рамка профиля</SectionTitle>
+      <SectionHint>
+        Снаружи карточки на странице профиля. В шапке и у друзей не показывается.
+      </SectionHint>
+
+      <div className="rounded-xl border border-border bg-gradient-to-b from-surface-dim/80 to-card px-3 py-5 sm:px-5">
+        <div className="flex flex-col items-center gap-3">
+          <ProfileFramePreview
+            frameId={selectedId}
+            nickname={previewNickname}
+            avatar={previewAvatar}
+            size="hero"
+          />
+          <p className="text-center text-sm text-muted">{selectedLabel}</p>
+        </div>
+      </div>
+
+      <div className="grid grid-cols-2 gap-2 sm:grid-cols-3">
+        <button
+          type="button"
+          disabled={disabled}
+          onClick={() => updateSettings({ profileFrameId: null })}
+          className={[
+            "flex flex-col items-center gap-2 rounded-xl border px-2 pb-2 pt-3 text-center transition",
+            selectedId === null
+              ? "border-accent bg-accent/10 text-foreground ring-2 ring-accent/30"
+              : "border-border bg-card text-muted hover:border-accent/40 hover:text-foreground",
+            disabled ? "cursor-wait opacity-60" : "",
+          ].join(" ")}
+        >
+          <div className="flex min-h-[7.5rem] items-center justify-center">
+            <ProfileFramePreview
+              frameId={null}
+              nickname={previewNickname}
+              avatar={previewAvatar}
+              size="tile"
+            />
+          </div>
+          <span className="text-[11px] font-medium">Без рамки</span>
+        </button>
+
+        {PROFILE_FRAMES.map((frame) => {
+          const active = selectedId === frame.id;
+          return (
+            <button
+              key={frame.id}
+              type="button"
+              disabled={disabled}
+              title={frame.label}
+              onClick={() => updateSettings({ profileFrameId: frame.id })}
+              className={[
+                "flex flex-col items-center gap-2 rounded-xl border px-2 pb-2 pt-3 text-center transition",
+                active
+                  ? "border-accent bg-accent/10 text-foreground ring-2 ring-accent/30"
+                  : "border-border bg-card text-muted hover:border-accent/40 hover:text-foreground",
+                disabled ? "cursor-wait opacity-60" : "",
+              ].join(" ")}
+            >
+              <div className="flex min-h-[7.5rem] items-center justify-center">
+                <ProfileFramePreview
+                  frameId={frame.id}
+                  nickname={previewNickname}
+                  avatar={previewAvatar}
+                  size="tile"
+                />
+              </div>
+              <span className="line-clamp-2 text-[11px] font-medium text-foreground">
+                {frame.label}
+              </span>
+            </button>
+          );
+        })}
+      </div>
+    </section>
+  );
+}
+
 export function SiteSettingsAppearanceTab({
   settings,
   updateSettings,
@@ -630,11 +727,18 @@ export function SiteSettingsAppearanceTab({
       </section>
 
       {user ? (
-        <AvatarDecorationSection
-          settings={settings}
-          updateSettings={updateSettings}
-          disabled={settingsBusy}
-        />
+        <>
+          <AvatarDecorationSection
+            settings={settings}
+            updateSettings={updateSettings}
+            disabled={settingsBusy}
+          />
+          <ProfileFrameSection
+            settings={settings}
+            updateSettings={updateSettings}
+            disabled={settingsBusy}
+          />
+        </>
       ) : null}
 
       <BackgroundPickerSection settings={settings} updateSettings={updateSettings} />

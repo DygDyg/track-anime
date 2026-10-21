@@ -130,6 +130,94 @@ html.has-bottom-nav main {
   isolation: isolate;
 }
 
+/*
+ * Рамка профиля (как Discord custom-profile-frame).
+ * Важно: cqw нельзя считать на самом container-элементе — без предка
+ * 100cqw → viewport, и на широком мониторе margin сверху/снизу раздувается.
+ * margin оболочки — % от ширины колонки (max-w-2xl); scale/cqw — только у потомков.
+ */
+.profile-frame-shell {
+  position: relative;
+  container-type: inline-size;
+  margin-top: calc(
+    var(--profile-frame-overflow-top, 304) / var(--profile-frame-design-width, 1200) * 100%
+  );
+  margin-bottom: calc(
+    var(--profile-frame-overflow-bottom, 212) / var(--profile-frame-design-width, 1200) * 100%
+  );
+}
+
+.profile-frame-card {
+  position: relative;
+  z-index: 1;
+}
+
+.profile-frame {
+  --profile-frame-scale: calc(100cqw / var(--profile-frame-design-width, 1200));
+  --profile-frame-scaled-overflow-x: calc(
+    var(--profile-frame-overflow-x, 56) * var(--profile-frame-scale)
+  );
+  --profile-frame-scaled-overflow-top: calc(
+    var(--profile-frame-overflow-top, 304) * var(--profile-frame-scale)
+  );
+  --profile-frame-scaled-overflow-bottom: calc(
+    var(--profile-frame-overflow-bottom, 212) * var(--profile-frame-scale)
+  );
+  position: absolute;
+  top: 0;
+  height: 100%;
+  left: calc(var(--profile-frame-scaled-overflow-x) * -1);
+  width: calc(100% + var(--profile-frame-scaled-overflow-x) * 2);
+  pointer-events: none;
+}
+
+.profile-frame--back {
+  z-index: 0;
+}
+
+.profile-frame--front {
+  z-index: 2;
+}
+
+.profile-frame-layer {
+  position: absolute;
+  inset-inline: 0;
+  width: 100%;
+  max-width: none;
+  height: auto;
+  pointer-events: none;
+  user-select: none;
+}
+
+/* Чуть наезжаем на карточку, чтобы не было щели у кромки. */
+.profile-frame-layer--top {
+  top: calc(
+    var(--profile-frame-scaled-overflow-top) * -1 + var(--profile-frame-overlap, 10px)
+  );
+}
+
+.profile-frame-layer--bottom {
+  bottom: calc(
+    var(--profile-frame-scaled-overflow-bottom) * -1 + var(--profile-frame-overlap, 10px)
+  );
+}
+
+.profile-frame-layer--rail {
+  inset: 0;
+  height: 100%;
+  background-repeat: no-repeat;
+  background-position: center;
+  background-size: 100% auto;
+}
+
+.profile-frame-layer--stretch {
+  inset: 0;
+  height: 100%;
+  background-repeat: no-repeat;
+  background-position: center;
+  background-size: 100% 100%;
+}
+
 .mobile-top-search-input-bar {
   top: calc(
     var(--site-header-height) + var(--site-app-promo-banner-height) + env(safe-area-inset-top, 0px)

@@ -28,6 +28,7 @@ export type ResolvedProfile = {
   onTrackAnime: boolean;
   avatarDecorationId: string | null;
   avatarDecorationScale: number;
+  profileFrameId: string | null;
 };
 
 function emptyListCounts(): Record<string, number> {
@@ -111,6 +112,7 @@ export async function resolveUserProfile(
         onTrackAnime: true,
         avatarDecorationId: local.avatarDecorationId,
         avatarDecorationScale: local.avatarDecorationScale,
+        profileFrameId: local.profileFrameId,
       },
       shikimori: null,
     };
@@ -130,6 +132,7 @@ export async function resolveUserProfile(
       onTrackAnime: false,
       avatarDecorationId: null,
       avatarDecorationScale: 1,
+      profileFrameId: null,
     },
     shikimori,
   };

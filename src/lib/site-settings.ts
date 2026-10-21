@@ -1,5 +1,6 @@
 import { parseAnimeScore } from "@/lib/anime-score";
 import { normalizeAvatarDecorationId } from "@/lib/avatar-decorations";
+import { normalizeProfileFrameId } from "@/lib/profile-frames";
 import {
   parsePatternBackgroundId,
   patternBackgroundLabel,
@@ -127,6 +128,8 @@ export type SiteSettings = {
   avatarDecorationId: string | null;
   /** Масштаб украшения (1 = по размеру аватарки) */
   avatarDecorationScale: number;
+  /** Рамка карточки на странице профиля; null = без рамки */
+  profileFrameId: string | null;
   /** Использовать оригинальный legacy-плеер Kodik вместо основного TA-плеера */
   useLegacyKodikPlayer: boolean;
   /** Legacy: старый глобальный флаг автопропуска OP/ED */
@@ -313,6 +316,7 @@ export const DEFAULT_SITE_SETTINGS: SiteSettings = {
   translationIntroOffsets: {},
   avatarDecorationId: null,
   avatarDecorationScale: AVATAR_DECORATION_SCALE_DEFAULT,
+  profileFrameId: null,
   useLegacyKodikPlayer: false,
   autoSkipOpeningsEndings: false,
   autoSkipTranslationIds: {},
@@ -547,6 +551,7 @@ export function normalizeSiteSettings(raw: unknown): SiteSettings {
     translationIntroOffsets: parseTranslationIntroOffsets(raw.translationIntroOffsets),
     avatarDecorationId: normalizeAvatarDecorationId(raw.avatarDecorationId),
     avatarDecorationScale: normalizeAvatarDecorationScale(raw.avatarDecorationScale),
+    profileFrameId: normalizeProfileFrameId(raw.profileFrameId),
     useLegacyKodikPlayer: raw.useLegacyKodikPlayer === true,
     autoSkipOpeningsEndings: raw.autoSkipOpeningsEndings === true,
     autoSkipTranslationIds: parseAutoSkipTranslationIds(raw.autoSkipTranslationIds),

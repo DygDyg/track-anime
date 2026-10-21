@@ -1,6 +1,7 @@
 import Link from "next/link";
 import { RelativeTime } from "@/components/RelativeTime";
 import { ProfileAvatar } from "@/components/profile/ProfileAvatar";
+import { ProfileFrameShell } from "@/components/profile/ProfileFrameShell";
 import { ProfileFriendButton } from "@/components/profile/ProfileFriendButton";
 import { ProfileFriendsSection } from "@/components/profile/ProfileFriendsSection";
 import { ProfileSiteSettingsNote } from "@/components/profile/ProfileSiteSettingsNote";
@@ -19,6 +20,7 @@ type ProfileUser = Pick<AuthUser, "shikimoriId" | "nickname" | "avatar" | "isAdm
   Partial<Pick<AuthUser, "id">> & {
     avatarDecorationId?: string | null;
     avatarDecorationScale?: number;
+    profileFrameId?: string | null;
   };
 
 function formatMemberSince(iso: string): string {
@@ -210,6 +212,7 @@ export function ProfileCard({
     topStatuses.length > 0 ? topStatuses : (["watching", "planned", "completed"] as const);
 
   return (
+    <ProfileFrameShell frameId={user.profileFrameId} live={isOwn}>
     <div className="overflow-hidden rounded-2xl border border-border bg-card shadow-lg shadow-black/25">
       <div className="border-b border-border bg-gradient-to-br from-accent/20 via-accent/5 to-transparent px-6 pb-7 pt-8 sm:px-8 sm:pb-8">
         <div className="flex flex-col items-center gap-6 text-center sm:flex-row sm:items-center sm:gap-8 sm:text-left">
@@ -391,5 +394,6 @@ export function ProfileCard({
         </div>
       </div>
     </div>
+    </ProfileFrameShell>
   );
 }

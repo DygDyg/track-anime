@@ -12,6 +12,7 @@ export type PublicUserProfile = {
   createdAt: Date;
   avatarDecorationId: string | null;
   avatarDecorationScale: number;
+  profileFrameId: string | null;
 };
 
 export function parseShikimoriIdParam(value: string): number | null {
@@ -61,5 +62,6 @@ export async function getPublicUserByShikimoriId(
     createdAt: user.createdAt,
     avatarDecorationId: siteSettings.avatarDecorationId,
     avatarDecorationScale: siteSettings.avatarDecorationScale,
+    profileFrameId: siteSettings.profileFrameId,
   };
 }

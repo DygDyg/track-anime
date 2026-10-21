@@ -84,6 +84,7 @@ export default async function PublicUserProfilePage({ params }: Props) {
           isAdmin: profile.isAdmin,
           avatarDecorationId: profile.avatarDecorationId,
           avatarDecorationScale: profile.avatarDecorationScale,
+          profileFrameId: profile.profileFrameId,
         }}
         stats={stats}
         memberSince={profile.memberSince}
