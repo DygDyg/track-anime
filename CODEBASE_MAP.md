@@ -124,7 +124,7 @@ ta_new/
 
 ### Admin (`api/admin/`)
 
-`stats`, `audience`, `audience/markdown`, `anime/[shikimoriId]/skip-times-prefetch`, `anime-debug`, `import/status`, `import/episodes`, `import/pending-materials`, `sync`, `sync/settings`, `sync/history`, `backfill-dates`, `home-novelties/revalidate`, `home-feed/rebuild`, `brand-rotation/settings`, `cover-cache/settings`, `cover-cache/refresh-recent`, `discord/settings`, `notifications/settings`, `notifications/test`, `notifications/generate-vapid`, `search/settings`, `shikimori/settings`, `shikimori/anons-sync`, `shikimori/mal-id-sync`, `site-settings-defaults`, `translation-intro-offsets`, `watch-history/settings`, `device-presence/settings`, `watch-party/settings`, `watch-party/rooms`, `watch-party/history`, `player-proxy`, `users`, `db/search`, `db-backup/settings`, `db-backup/run`, `db-backup/test`, `deploy`, `deploy/discord-notify`, `todos`, `todos/[id]`
+`stats`, `audience`, `audience/markdown`, `anime/[shikimoriId]/skip-times-prefetch`, `anime-debug`, `import/status`, `import/episodes`, `import/pending-materials`, `sync`, `sync/settings`, `sync/history`, `backfill-dates`, `home-novelties/revalidate`, `home-feed/rebuild`, `brand-rotation/settings`, `cover-cache/settings`, `cover-cache/refresh-recent`, `discord/settings`, `notifications/settings`, `notifications/test`, `notifications/generate-vapid`, `search/settings`, `shikimori/settings`, `shikimori/anons-sync`, `shikimori/mal-id-sync`, `site-settings-defaults`, `translation-intro-offsets`, `watch-history/settings`, `device-presence/settings`, `watch-party/settings`, `watch-party/rooms`, `watch-party/history`, `player-proxy`, `player-proxy/check`, `users`, `db/search`, `db-backup/settings`, `db-backup/run`, `db-backup/test`, `deploy`, `deploy/discord-notify`, `todos`, `todos/[id]`
 
 Public analytics: `api/analytics/beacon` (POST) — visitor cookie + page aggregates; `api/analytics/play` (POST) — anime playback starts; `api/analytics/watch-share` (POST) — deep-link copy log
 
@@ -184,6 +184,7 @@ Git deploy webhook (HMAC, no session): `api/deploy/webhook` (POST)
 | `watch-history-settings.ts` | Watch history admin settings |
 | `watch-party-settings.ts` | TA-плеер совместный просмотр global admin settings |
 | `player-proxy-settings.ts` | TA Plus parser proxy (`/admin/player`); password stays server-side |
+| `player-proxy-check.ts` | Admin proxy check against «Необъятный океан» s3e8: direct region block vs header proxy |
 | `app-promo-settings.ts` | Soft-promo apps: mobile + desktop kill-switches |
 | `watch-party-rooms.ts` | Read-only active room overview for admin page, enriched with Kodik title/translation metadata |
 | `watch-party-history.ts` | Persisted watch-party session history for admin |

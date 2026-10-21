@@ -103,6 +103,13 @@ export function formatPlayerProxyUrl(parts: PlayerProxyParts): string {
   return `${parts.scheme}://${auth}${parts.host}:${parts.port}`;
 }
 
+export function playerProxyLogLabel(proxyUrl: string): string {
+  const parsed = parsePlayerProxyUrl(proxyUrl);
+  if (!parsed) return "прокси";
+  const auth = parsed.username ? `${parsed.username}@` : "";
+  return `${parsed.scheme}://${auth}${parsed.host}:${parsed.port}`;
+}
+
 export function toPlayerProxySettingsDto(row: {
   enabled: boolean;
   proxyUrl: string;
@@ -157,7 +164,7 @@ export async function getPlayerProxySettingsDto(): Promise<PlayerProxySettingsDt
   }
 }
 
-/** Full proxy URL for the parser header. Null keeps the proxy baked into index.php. */
+/** Full proxy URL for the parser header. Null means the parser connects to Kodik directly. */
 export async function getPlayerProxyUrlForParser(): Promise<string | null> {
   try {
     const row = await readRow();
@@ -169,6 +176,37 @@ export async function getPlayerProxyUrlForParser(): Promise<string | null> {
     console.warn("[player-proxy] parser url fallback:", error);
     return null;
   }
+}
+
+/** Proxy for an admin check. Empty address uses the saved URL even when playback proxy is off. */
+export async function resolvePlayerProxyUrlForCheck(input: {
+  proxyUrl?: string;
+  password?: string;
+}): Promise<string> {
+  const trimmed = input.proxyUrl?.trim() ?? "";
+  if (!trimmed) {
+    const parsed = parsePlayerProxyUrl((await readRow()).proxyUrl);
+    if (!parsed) throw new PlayerProxySettingsError("Укажите адрес прокси");
+    return formatPlayerProxyUrl(parsed);
+  }
+
+  const parsed = parsePlayerProxyUrl(trimmed);
+  if (!parsed) throw new PlayerProxySettingsError("Нужен адрес вида socks5://логин@хост:порт");
+  if (input.password) {
+    parsed.password = input.password;
+  } else if (!parsed.password) {
+    const existing = parsePlayerProxyUrl((await readRow()).proxyUrl);
+    if (
+      existing?.password &&
+      existing.scheme === parsed.scheme &&
+      existing.host === parsed.host &&
+      existing.port === parsed.port &&
+      existing.username === parsed.username
+    ) {
+      parsed.password = existing.password;
+    }
+  }
+  return formatPlayerProxyUrl(parsed);
 }
 
 export async function updatePlayerProxySettings(input: {
