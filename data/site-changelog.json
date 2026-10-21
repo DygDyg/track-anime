@@ -2,6 +2,25 @@
   "version": 1,
   "entries": [
     {
+      "id": "2026-10-21",
+      "recordedAt": "2026-10-21T17:05:00.000Z",
+      "gitSha": "6ded87f",
+      "title": "TA Plus",
+      "items": [
+        {
+          "kind": "improvement",
+          "topic": "ta-plus-stream-cache",
+          "text": "Повторное открытие серии в TA Plus берёт уже полученный поток, пока ссылка на видео жива."
+        },
+        {
+          "kind": "feature",
+          "audience": "admin",
+          "topic": "player-proxy",
+          "text": "В админке раздел «Плеер»: прокси, через который TA Plus получает поток."
+        }
+      ]
+    },
+    {
       "id": "2026-10-19",
       "recordedAt": "2026-10-19T02:04:00.000Z",
       "gitSha": "2e5a1fc",

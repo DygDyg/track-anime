@@ -247,6 +247,14 @@ model WatchPartySettings {
   updatedAt   DateTime @updatedAt
 }
 
+/// Прокси TA Plus для PHP-парсера Kodik. Пустой или выключенный — парсер берёт прокси из своего index.php.
+model PlayerProxySettings {
+  id        String   @id @default("default")
+  enabled   Boolean  @default(false)
+  proxyUrl  String   @default("") @db.Text
+  updatedAt DateTime @updatedAt
+}
+
 /// История запусков совместного просмотра (пишет watch-party WS-сервер)
 model WatchPartySession {
   id                                   String   @id @default(cuid())

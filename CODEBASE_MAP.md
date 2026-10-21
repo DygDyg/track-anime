@@ -84,7 +84,7 @@ ta_new/
 | `characters/[characterId]/hover-preview` | Character hover preview |
 | `anime/[shikimoriId]/comments` | Shikimori comments proxy |
 | `anime/[shikimoriId]/episodes` | Episode metadata |
-| `anime/[shikimoriId]/taplus` | TA Plus: decode Kodik `/ftor` → HLS qualities + idle `previews` + parser `skips` |
+| `anime/[shikimoriId]/taplus` | TA Plus: decode Kodik `/ftor` → HLS qualities + idle `previews` + parser `skips`; in-memory cache until the CDN hour stamp |
 | `taplus-tile` | Proxy Kodik storyboard/thumb JPEGs (idle/scrub preview; CDN hotlink bypass) |
 | `anime/[shikimoriId]/cvh` | VideoHUB playlist resolve |
 | `anime/[shikimoriId]/hover-preview` | Anime hover preview |
@@ -124,7 +124,7 @@ ta_new/
 
 ### Admin (`api/admin/`)
 
-`stats`, `audience`, `audience/markdown`, `anime/[shikimoriId]/skip-times-prefetch`, `anime-debug`, `import/status`, `import/episodes`, `import/pending-materials`, `sync`, `sync/settings`, `sync/history`, `backfill-dates`, `home-novelties/revalidate`, `home-feed/rebuild`, `brand-rotation/settings`, `cover-cache/settings`, `cover-cache/refresh-recent`, `discord/settings`, `notifications/settings`, `notifications/test`, `notifications/generate-vapid`, `search/settings`, `shikimori/settings`, `shikimori/anons-sync`, `shikimori/mal-id-sync`, `site-settings-defaults`, `translation-intro-offsets`, `watch-history/settings`, `device-presence/settings`, `watch-party/settings`, `watch-party/rooms`, `watch-party/history`, `users`, `db/search`, `db-backup/settings`, `db-backup/run`, `db-backup/test`, `deploy`, `deploy/discord-notify`, `todos`, `todos/[id]`
+`stats`, `audience`, `audience/markdown`, `anime/[shikimoriId]/skip-times-prefetch`, `anime-debug`, `import/status`, `import/episodes`, `import/pending-materials`, `sync`, `sync/settings`, `sync/history`, `backfill-dates`, `home-novelties/revalidate`, `home-feed/rebuild`, `brand-rotation/settings`, `cover-cache/settings`, `cover-cache/refresh-recent`, `discord/settings`, `notifications/settings`, `notifications/test`, `notifications/generate-vapid`, `search/settings`, `shikimori/settings`, `shikimori/anons-sync`, `shikimori/mal-id-sync`, `site-settings-defaults`, `translation-intro-offsets`, `watch-history/settings`, `device-presence/settings`, `watch-party/settings`, `watch-party/rooms`, `watch-party/history`, `player-proxy`, `users`, `db/search`, `db-backup/settings`, `db-backup/run`, `db-backup/test`, `deploy`, `deploy/discord-notify`, `todos`, `todos/[id]`
 
 Public analytics: `api/analytics/beacon` (POST) — visitor cookie + page aggregates; `api/analytics/play` (POST) — anime playback starts; `api/analytics/watch-share` (POST) — deep-link copy log
 
@@ -183,6 +183,7 @@ Git deploy webhook (HMAC, no session): `api/deploy/webhook` (POST)
 | `keyboard-layout.ts` | QWERTY↔ЙЦУКЕН layout switch for search queries |
 | `watch-history-settings.ts` | Watch history admin settings |
 | `watch-party-settings.ts` | TA-плеер совместный просмотр global admin settings |
+| `player-proxy-settings.ts` | TA Plus parser proxy (`/admin/player`); password stays server-side |
 | `app-promo-settings.ts` | Soft-promo apps: mobile + desktop kill-switches |
 | `watch-party-rooms.ts` | Read-only active room overview for admin page, enriched with Kodik title/translation metadata |
 | `watch-party-history.ts` | Persisted watch-party session history for admin |
@@ -212,7 +213,7 @@ Git deploy webhook (HMAC, no session): `api/deploy/webhook` (POST)
 |------|----------------|
 | `anime-page.ts` | Anime page data loader |
 | `cvh-player.ts` | CDN VideoHub pub/aggr (в т.ч. `shikimori`→MAL fallback), playlist helpers, URL для запасного `/cdn-iframe` |
-| `kodik-ftor.ts` | Серверный вызов PHP-парсера `/ftor` + ROT18/base64 decode HLS `src` для TA Plus |
+| `kodik-ftor.ts` | Серверный вызов PHP-парсера `/ftor` + ROT18/base64 decode HLS `src` для TA Plus; заголовок `X-Kodik-Proxy`; кеш потока до `YYYYMMDDHH` UTC минус 10 минут |
 | `kodik-parser-skip.ts` | Разбор `skip_timings` / `skip_raw` из ответа парсера → OP/ED для TA Plus |
 | `ta-plus-tiles.ts` | Client-safe storyboard tiles; `{index}` = 1-based `padStart(4,"0")` (`0001`…) для scrub-preview TA Plus |
 | `ta-plus-safe-mode.ts` | Safe mode: truncate `/ftor` URL at `.mp4` for progressive fallback |
@@ -325,6 +326,6 @@ Error page asset: `public/404.webm` is used by the custom App Router 404 page.
 | `UserAnimeListEntry`, `UserAnimeBookmark` | Shikimori list cache |
 | `UserWatchProgress` | Watch position |
 | `UserNotificationPreferences`, `UserNotificationLink`, `NotificationDelivery` | Notification settings, links, delivery log |
-| `DiscordSettings`, `DeployDiscordSettings`, `NotificationSettings`, `SiteSettingsDefaults`, `TranslationIntroSettings`, `WatchHistorySettings`, `WatchPartySettings`, `AppPromoSettings` | Admin-configurable settings |
+| `DiscordSettings`, `DeployDiscordSettings`, `NotificationSettings`, `SiteSettingsDefaults`, `TranslationIntroSettings`, `WatchHistorySettings`, `WatchPartySettings`, `AppPromoSettings`, `PlayerProxySettings` | Admin-configurable settings |
 | `KodikImportJob`, `KodikSyncRun`, `KodikSyncSettings` | Import/sync state |
 | `DbBackupSettings`, `DbBackupRun` | WebDAV cloud backup settings + run history |

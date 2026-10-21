@@ -72,6 +72,7 @@ const TABLE_LABELS: Record<string, string> = {
   DbBackupSettings: "Настройки WebDAV-бекапа",
   DbBackupRun: "История WebDAV-бекапа",
   WatchPartySettings: "Совместный просмотр",
+  PlayerProxySettings: "Прокси плеера",
   WatchPartySession: "Комнаты совместного просмотра",
   WatchPartySessionParticipant: "Участники совместного просмотра",
   BrandRotationSettings: "Ротация бренда",

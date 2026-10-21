@@ -36,6 +36,7 @@ const sections = [
       { href: "/admin/search", label: "Поиск" },
       { href: "/admin/site-settings", label: "Настройки сайта" },
       { href: "/admin/watch-party", label: "Совместный просмотр" },
+      { href: "/admin/player", label: "Плеер" },
       { href: "/admin/intro-offsets", label: "Интро озвучек" },
       { href: "/admin/watch-history", label: "История" },
       { href: "/admin/device-presence", label: "Устройства" },

@@ -1,10 +1,11 @@
 import "server-only";
 
+import { getPlayerProxyUrlForParser } from "@/lib/admin/player-proxy-settings";
 import {
   parseKodikParserSkipTimes,
   type KodikParserSkipTimes,
 } from "@/lib/kodik-parser-skip";
-import { toKodikPlayerEmbedUrl } from "@/lib/player-url";
+import { normalizeKodikPlayerLinkForCompare, toKodikPlayerEmbedUrl } from "@/lib/player-url";
 
 export const KODIK_PARSER_BASE_DEFAULT = "https://figame.dygdyg.win/kodik_parser/";
 
@@ -127,27 +128,103 @@ export function parseKodikFtorResponse(raw: unknown): KodikFtorStreamResult {
   };
 }
 
-export async function fetchKodikFtorStreams(
-  playerLink: string,
-  signal?: AbortSignal,
-): Promise<KodikFtorStreamResult> {
-  const embed = toKodikPlayerEmbedUrl(playerLink.trim());
-  if (!embed) {
-    throw new Error("Пустая ссылка плеера Kodik");
-  }
+const STREAM_CACHE_SKEW_MS = 10 * 60 * 1000;
 
+type StreamCacheEntry = {
+  value: KodikFtorStreamResult;
+  expiresAt: number;
+};
+
+const ftorGlobal = globalThis as typeof globalThis & {
+  __taKodikFtorCache?: Map<string, StreamCacheEntry>;
+  __taKodikFtorInflight?: Map<string, Promise<KodikFtorStreamResult>>;
+};
+
+function streamCache(): Map<string, StreamCacheEntry> {
+  if (!ftorGlobal.__taKodikFtorCache) ftorGlobal.__taKodikFtorCache = new Map();
+  return ftorGlobal.__taKodikFtorCache;
+}
+
+function streamInflight(): Map<string, Promise<KodikFtorStreamResult>> {
+  if (!ftorGlobal.__taKodikFtorInflight) ftorGlobal.__taKodikFtorInflight = new Map();
+  return ftorGlobal.__taKodikFtorInflight;
+}
+
+/** CDN path hour `YYYYMMDDHH` is UTC. Missing stamp → do not cache. */
+function streamCacheExpiryMs(result: KodikFtorStreamResult): number | null {
+  const urls = Object.values(result.qualities);
+  if (urls.length === 0) return null;
+  let earliest: number | null = null;
+  for (const url of urls) {
+    const match = /:(\d{10})(?=\/)/.exec(url);
+    if (!match) return null;
+    const stamp = match[1]!;
+    const year = Number(stamp.slice(0, 4));
+    const month = Number(stamp.slice(4, 6));
+    const day = Number(stamp.slice(6, 8));
+    const hour = Number(stamp.slice(8, 10));
+    if (month < 1 || month > 12 || day < 1 || day > 31 || hour > 23) return null;
+    const ms = Date.UTC(year, month - 1, day, hour, 0, 0, 0);
+    if (!Number.isFinite(ms)) return null;
+    earliest = earliest == null ? ms : Math.min(earliest, ms);
+  }
+  if (earliest == null) return null;
+  const expiresAt = earliest - STREAM_CACHE_SKEW_MS;
+  return expiresAt > Date.now() ? expiresAt : null;
+}
+
+function readStreamCache(key: string): KodikFtorStreamResult | null {
+  const entry = streamCache().get(key);
+  if (!entry) return null;
+  if (entry.expiresAt <= Date.now()) {
+    streamCache().delete(key);
+    return null;
+  }
+  return entry.value;
+}
+
+function abortError(): Error {
+  const error = new Error("Aborted");
+  error.name = "AbortError";
+  return error;
+}
+
+function raceAbort<T>(promise: Promise<T>, signal?: AbortSignal): Promise<T> {
+  if (!signal) return promise;
+  if (signal.aborted) return Promise.reject(abortError());
+  return new Promise((resolve, reject) => {
+    const onAbort = () => {
+      signal.removeEventListener("abort", onAbort);
+      reject(abortError());
+    };
+    signal.addEventListener("abort", onAbort, { once: true });
+    promise.then(
+      (value) => {
+        signal.removeEventListener("abort", onAbort);
+        resolve(value);
+      },
+      (error) => {
+        signal.removeEventListener("abort", onAbort);
+        reject(error);
+      },
+    );
+  });
+}
+
+async function requestKodikFtorStreams(embed: string): Promise<KodikFtorStreamResult> {
   const parserUrl = new URL(getKodikParserBase());
   parserUrl.searchParams.set("url", embed);
 
+  const headers: Record<string, string> = { Accept: "application/json" };
+  const proxyUrl = await getPlayerProxyUrlForParser();
+  if (proxyUrl) headers["X-Kodik-Proxy"] = proxyUrl;
+
   const controller = new AbortController();
   const timer = setTimeout(() => controller.abort(), PARSER_TIMEOUT_MS);
-  const onAbort = () => controller.abort();
-  signal?.addEventListener("abort", onAbort, { once: true });
-
   try {
     const res = await fetch(parserUrl.href, {
       method: "GET",
-      headers: { Accept: "application/json" },
+      headers,
       cache: "no-store",
       signal: controller.signal,
     });
@@ -167,6 +244,35 @@ export async function fetchKodikFtorStreams(
     throw error;
   } finally {
     clearTimeout(timer);
-    signal?.removeEventListener("abort", onAbort);
   }
+}
+
+export async function fetchKodikFtorStreams(
+  playerLink: string,
+  signal?: AbortSignal,
+): Promise<KodikFtorStreamResult> {
+  const embed = toKodikPlayerEmbedUrl(playerLink.trim());
+  if (!embed) {
+    throw new Error("Пустая ссылка плеера Kodik");
+  }
+
+  const key = normalizeKodikPlayerLinkForCompare(embed);
+  const cached = readStreamCache(key);
+  if (cached) return cached;
+  if (signal?.aborted) throw abortError();
+
+  const inflight = streamInflight().get(key);
+  if (inflight) return raceAbort(inflight, signal);
+
+  const promise = requestKodikFtorStreams(embed)
+    .then((result) => {
+      const expiresAt = streamCacheExpiryMs(result);
+      if (expiresAt != null) streamCache().set(key, { value: result, expiresAt });
+      return result;
+    })
+    .finally(() => {
+      streamInflight().delete(key);
+    });
+  streamInflight().set(key, promise);
+  return raceAbort(promise, signal);
 }
