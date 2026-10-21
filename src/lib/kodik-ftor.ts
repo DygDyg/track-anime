@@ -9,7 +9,8 @@ import { normalizeKodikPlayerLinkForCompare, toKodikPlayerEmbedUrl } from "@/lib
 
 export const KODIK_PARSER_BASE_DEFAULT = "https://figame.dygdyg.win/kodik_parser/";
 
-const PARSER_TIMEOUT_MS = 20_000;
+/** PHP curl waits 35s and the script limit is 45s. Cut earlier and Cloudflare shows HTML instead of the stream. */
+const PARSER_TIMEOUT_MS = 40_000;
 
 export type KodikFtorTiles = {
   interval: number;

@@ -110,7 +110,13 @@ export function useTaPlusStream(input: {
           cache: "no-store",
           signal: controller.signal,
         });
-        const data = (await res.json()) as StreamResponse;
+        const raw = await res.text();
+        let data: StreamResponse;
+        try {
+          data = JSON.parse(raw) as StreamResponse;
+        } catch {
+          throw new Error("Не удалось получить поток");
+        }
         if (controller.signal.aborted) return;
         if (!res.ok || !data.qualities || Object.keys(data.qualities).length === 0) {
           throw new Error(data.error || "Нет доступных качеств");

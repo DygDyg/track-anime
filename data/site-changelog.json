@@ -3,14 +3,19 @@
   "entries": [
     {
       "id": "2026-10-21",
-      "recordedAt": "2026-10-21T17:05:00.000Z",
-      "gitSha": "6ded87f",
+      "recordedAt": "2026-10-21T17:25:00.000Z",
+      "gitSha": "7e6e34f",
       "title": "TA Plus",
       "items": [
         {
           "kind": "improvement",
           "topic": "ta-plus-stream-cache",
           "text": "Повторное открытие серии в TA Plus берёт уже полученный поток, пока ссылка на видео жива."
+        },
+        {
+          "kind": "fix",
+          "topic": "ta-plus-parser-wait",
+          "text": "TA Plus дольше ждёт поток серии и не показывает в центре технический текст, если ответ пришёл с задержкой."
         },
         {
           "kind": "feature",

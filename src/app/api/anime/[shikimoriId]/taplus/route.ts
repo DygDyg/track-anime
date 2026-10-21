@@ -195,6 +195,7 @@ export async function GET(request: NextRequest, { params }: RouteParams) {
   } catch (error) {
     const message = error instanceof Error ? error.message : "Не удалось получить поток";
     console.error("[taplus]", shikimoriId, kodikId, message);
-    return NextResponse.json({ error: message }, { status: 502 });
+    // 422, not 502: Cloudflare replaces an origin 502 with an HTML page, and the player then fails JSON.parse.
+    return NextResponse.json({ error: message }, { status: 422 });
   }
 }
