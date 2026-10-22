@@ -1,7 +1,8 @@
 "use client";
 
 import { usePathname } from "next/navigation";
-import { useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
+import { createPortal } from "react-dom";
 import { useAuth } from "@/components/auth/AuthProvider";
 import { AvatarWithDecoration } from "@/components/profile/AvatarWithDecoration";
 import { useSiteSettings } from "@/components/SiteSettingsProvider";
@@ -11,6 +12,7 @@ import { LoadingSpinner } from "@/components/ui/LoadingSpinner";
 import { QrCodeScanner } from "@/components/auth/QrCodeScanner";
 import { QrLoginApprovalDialog } from "@/components/auth/QrLoginApprovalDialog";
 import { LocalCredentialWarningIcon, ProfileMenuItems } from "@/components/auth/ProfileMenuItems";
+import { ProfileMenuPanel } from "@/components/auth/ProfileMenuPanel";
 import { DevicePresenceModal } from "@/components/devices/DevicePresenceModal";
 
 function LoginIcon({ className = "h-5 w-5" }: { className?: string }) {
@@ -22,8 +24,8 @@ function LoginIcon({ className = "h-5 w-5" }: { className?: string }) {
   );
 }
 
-const profileMenuPanelClass =
-  "site-header-bg absolute z-50 mt-1 w-[min(16rem,calc(100vw-2rem))] overflow-hidden rounded-xl border border-border/90 py-1 shadow-lg shadow-black/30 backdrop-blur-lg backdrop-saturate-150";
+/** Только позиция/ширина — хром (фон, бордер) внутри ProfileMenuPanel. */
+const profileMenuPanelClass = "fixed z-[100] w-[min(18rem,calc(100vw-2rem))]";
 
 function ProfileMenu({ compact = false }: { compact?: boolean }) {
   const { user } = useAuth();
@@ -33,19 +35,39 @@ function ProfileMenu({ compact = false }: { compact?: boolean }) {
   const [scannerOpen, setScannerOpen] = useState(false);
   const [devicesOpen, setDevicesOpen] = useState(false);
   const [approvalCode, setApprovalCode] = useState<string | null>(null);
-  const rootRef = useRef<HTMLDivElement>(null);
+  const [menuPos, setMenuPos] = useState<{ top: number; right: number } | null>(null);
+  const buttonRef = useRef<HTMLButtonElement>(null);
+  const menuRef = useRef<HTMLDivElement>(null);
+
+  const updateMenuPos = useCallback(() => {
+    const el = buttonRef.current;
+    if (!el) return;
+    const rect = el.getBoundingClientRect();
+    setMenuPos({
+      top: rect.bottom + 4,
+      right: Math.max(8, window.innerWidth - rect.right),
+    });
+  }, []);
 
   useEffect(() => {
     setOpen(false);
   }, [pathname]);
 
   useEffect(() => {
-    if (!open) return;
+    if (!open) {
+      setMenuPos(null);
+      return;
+    }
+
+    updateMenuPos();
+    window.addEventListener("resize", updateMenuPos);
+    window.addEventListener("scroll", updateMenuPos, true);
 
     const onPointerDown = (event: PointerEvent) => {
-      if (rootRef.current && !rootRef.current.contains(event.target as Node)) {
-        setOpen(false);
-      }
+      const target = event.target as Node;
+      if (buttonRef.current?.contains(target)) return;
+      if (menuRef.current?.contains(target)) return;
+      setOpen(false);
     };
 
     const onKeyDown = (event: KeyboardEvent) => {
@@ -55,10 +77,12 @@ function ProfileMenu({ compact = false }: { compact?: boolean }) {
     document.addEventListener("pointerdown", onPointerDown);
     document.addEventListener("keydown", onKeyDown);
     return () => {
+      window.removeEventListener("resize", updateMenuPos);
+      window.removeEventListener("scroll", updateMenuPos, true);
       document.removeEventListener("pointerdown", onPointerDown);
       document.removeEventListener("keydown", onKeyDown);
     };
-  }, [open]);
+  }, [open, updateMenuPos]);
 
   if (!user) return null;
 
@@ -72,9 +96,48 @@ function ProfileMenu({ compact = false }: { compact?: boolean }) {
   const avatarDecorationScale = settings.avatarDecorationScale;
   const menuCentered = !compact;
 
+  const menu =
+    open && menuPos
+      ? createPortal(
+          <ProfileMenuPanel
+            ref={menuRef}
+            className={[
+              profileMenuPanelClass,
+              compact ? "left-4 right-4 w-auto max-w-none" : "",
+            ]
+              .filter(Boolean)
+              .join(" ")}
+            style={
+              compact
+                ? { top: menuPos.top, maxHeight: `min(70dvh, calc(100dvh - ${menuPos.top + 8}px))` }
+                : {
+                    top: menuPos.top,
+                    right: menuPos.right,
+                    maxHeight: `min(70dvh, calc(100dvh - ${menuPos.top + 8}px))`,
+                  }
+            }
+          >
+            <ProfileMenuItems
+              centered={menuCentered}
+              onNavigate={() => setOpen(false)}
+              onScanQr={() => {
+                setOpen(false);
+                setScannerOpen(true);
+              }}
+              onOpenDevices={() => {
+                setOpen(false);
+                setDevicesOpen(true);
+              }}
+            />
+          </ProfileMenuPanel>,
+          document.body,
+        )
+      : null;
+
   return (
-    <div ref={rootRef} className={compact ? "relative w-full" : "relative"}>
+    <div className={compact ? "relative w-full" : "relative"}>
       <button
+        ref={buttonRef}
         type="button"
         onClick={() => setOpen((value) => !value)}
         className={
@@ -99,36 +162,49 @@ function ProfileMenu({ compact = false }: { compact?: boolean }) {
       >
         {compact ? (
           <span className="inline-flex min-w-0 items-center gap-2">
-            <span className="relative inline-flex"><AvatarWithDecoration avatar={user.avatar} nickname={user.nickname} decorationId={avatarDecorationId} decorationScale={avatarDecorationScale} size="xs" />{!user.hasLocalCredential ? <LocalCredentialWarningIcon /> : null}</span>
-            <span className={`relative truncate rounded-md ${user.hasLocalCredential ? "" : "bg-amber-500/20 px-1.5 py-0.5 text-amber-100"}`}>
-              {user.nickname}{!user.hasLocalCredential ? <LocalCredentialWarningIcon className="absolute -right-2 -top-2 h-3.5 w-3.5 drop-shadow" /> : null}
+            <span className="relative inline-flex">
+              <AvatarWithDecoration
+                avatar={user.avatar}
+                nickname={user.nickname}
+                decorationId={avatarDecorationId}
+                decorationScale={avatarDecorationScale}
+                size="xs"
+              />
+              {!user.hasLocalCredential ? <LocalCredentialWarningIcon /> : null}
+            </span>
+            <span
+              className={`relative truncate rounded-md ${user.hasLocalCredential ? "" : "bg-amber-500/20 px-1.5 py-0.5 text-amber-100"}`}
+            >
+              {user.nickname}
+              {!user.hasLocalCredential ? (
+                <LocalCredentialWarningIcon className="absolute -right-2 -top-2 h-3.5 w-3.5 drop-shadow" />
+              ) : null}
             </span>
           </span>
         ) : (
-          <span className="relative inline-flex"><AvatarWithDecoration avatar={user.avatar} nickname={user.nickname} decorationId={avatarDecorationId} decorationScale={avatarDecorationScale} size="sm" />{!user.hasLocalCredential ? <LocalCredentialWarningIcon /> : null}</span>
+          <span className="relative inline-flex">
+            <AvatarWithDecoration
+              avatar={user.avatar}
+              nickname={user.nickname}
+              decorationId={avatarDecorationId}
+              decorationScale={avatarDecorationScale}
+              size="sm"
+            />
+            {!user.hasLocalCredential ? <LocalCredentialWarningIcon /> : null}
+          </span>
         )}
       </button>
 
-      {open ? (
-        <div
-          role="menu"
-          className={[profileMenuPanelClass, compact ? "left-0 right-0" : "right-0"].join(" ")}
-        >
-          <ProfileMenuItems
-            centered={menuCentered}
-            onNavigate={() => setOpen(false)}
-            onScanQr={() => {
-              setOpen(false);
-              setScannerOpen(true);
-            }}
-            onOpenDevices={() => {
-              setOpen(false);
-              setDevicesOpen(true);
-            }}
-          />
-        </div>
+      {menu}
+      {scannerOpen ? (
+        <QrCodeScanner
+          onClose={() => setScannerOpen(false)}
+          onDetected={(code) => {
+            setScannerOpen(false);
+            setApprovalCode(code);
+          }}
+        />
       ) : null}
-      {scannerOpen ? <QrCodeScanner onClose={() => setScannerOpen(false)} onDetected={(code) => { setScannerOpen(false); setApprovalCode(code); }} /> : null}
       {approvalCode ? <QrLoginApprovalDialog code={approvalCode} onClose={() => setApprovalCode(null)} /> : null}
       <DevicePresenceModal open={devicesOpen} onClose={() => setDevicesOpen(false)} />
     </div>

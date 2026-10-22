@@ -566,7 +566,7 @@ function ProfileFrameSection({
     <section className="space-y-3">
       <SectionTitle>Рамка профиля</SectionTitle>
       <SectionHint>
-        Снаружи карточки на странице профиля. В шапке и у друзей не показывается.
+        На странице профиля и в меню профиля. У аватара в шапке и у друзей не показывается.
       </SectionHint>
 
       <div className="rounded-xl border border-border bg-gradient-to-b from-surface-dim/80 to-card px-3 py-5 sm:px-5">

@@ -259,6 +259,40 @@ html.has-bottom-nav main {
   background-size: 100% 100%;
 }
 
+/*
+ * Меню профиля: как Discord / ProfileCard —
+ * back (z0) → карточка с бордером (z1) → front head/tail (z2).
+ * Не использовать .profile-frame-shell (position:relative ломает fixed).
+ * Масштаб чуть выше карточки профиля: меню узкое, иначе дракон мелкий.
+ * Вертикальный padding под слои не добавляем — пункты как в обычном меню.
+ */
+.profile-menu-panel {
+  /* position не задаём — fixed из className (relative здесь снова уедет меню) */
+  --profile-frame-menu-boost: 1.14;
+  container-type: inline-size;
+  overflow: visible;
+  max-height: min(70dvh, 28rem);
+  display: flex;
+  flex-direction: column;
+}
+
+.profile-menu-panel .profile-frame {
+  --profile-frame-scale: calc(
+    100cqw * var(--profile-frame-menu-boost, 1) / var(--profile-frame-design-width, 1200)
+  );
+}
+
+.profile-menu-frame-card {
+  position: relative;
+  z-index: 1;
+  flex: 1 1 auto;
+  min-height: 0;
+  max-height: 100%;
+  overflow-x: hidden;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+}
+
 .mobile-top-search-input-bar {
   top: calc(
     var(--site-header-height) + var(--site-app-promo-banner-height) + env(safe-area-inset-top, 0px)

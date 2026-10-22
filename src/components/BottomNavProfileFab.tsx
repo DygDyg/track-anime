@@ -20,6 +20,7 @@ import { userProfilePath } from "@/lib/public-user";
 import { QrCodeScanner } from "@/components/auth/QrCodeScanner";
 import { QrLoginApprovalDialog } from "@/components/auth/QrLoginApprovalDialog";
 import { ProfileMenuItems } from "@/components/auth/ProfileMenuItems";
+import { ProfileMenuPanel } from "@/components/auth/ProfileMenuPanel";
 import { DevicePresenceModal } from "@/components/devices/DevicePresenceModal";
 
 
@@ -202,18 +203,15 @@ export function BottomNavProfileFab() {
 
       ? createPortal(
 
-          <div
-
+          <ProfileMenuPanel
             ref={menuRef}
-
-            role="menu"
-
-            className="site-header-bg fixed z-[100] w-[min(16rem,calc(100vw-2rem))] -translate-x-1/2 overflow-hidden rounded-xl border border-border/90 py-1 shadow-lg shadow-black/30 backdrop-blur-lg backdrop-saturate-150"
-
-            style={{ left: menuPos.left, bottom: menuPos.bottom }}
-
+            className="fixed z-[100] w-[min(18rem,calc(100vw-2rem))] -translate-x-1/2"
+            style={{
+              left: menuPos.left,
+              bottom: menuPos.bottom,
+              maxHeight: `min(70dvh, calc(100dvh - ${menuPos.bottom + 8}px))`,
+            }}
           >
-
             <ProfileMenuItems
               centered
               onNavigate={() => setOpen(false)}
@@ -226,8 +224,7 @@ export function BottomNavProfileFab() {
                 setDevicesOpen(true);
               }}
             />
-
-          </div>,
+          </ProfileMenuPanel>,
 
           document.body,
 
