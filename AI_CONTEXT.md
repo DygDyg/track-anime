@@ -36,6 +36,7 @@ Next.js anime streaming site with Shikimori OAuth + Kodik player. Data lives in 
 | Fix posters | `src/lib/poster.ts`, `AnimePoster.tsx`, `src/lib/cover-cache.ts`, `src/lib/poster-fallback.ts`, `src/lib/admin/cover-cache-settings.ts`, `src/app/api/cover/route.ts`, `/admin/covers` |
 | Fix notifications | `src/lib/notifications/`, `src/app/api/notifications/`, `scripts/notification-worker.ts` |
 | Fix companion | `src/components/companion/AquaCoderCompanion.tsx`, `src/lib/companion/AquaCoderCanvas.ts`, `src/lib/companion/companion-bus.ts`, `src/lib/site-settings.ts` (`companionEnabled` local + `companionDisabledForAccount` synced, `isCompanionEnabledInSettings`), `public/companion/aqua-coder-chibi/`, `aqua-coder-web/` |
+| Holiday theme | `src/lib/holiday-theme.ts` + `holiday-theme-types.ts`, админка `/admin/holidays` (`HolidayThemeSettings` / `holiday-theme-settings.ts`), публично `GET /api/holiday-theme`, декор `HalloweenDecor.tsx`, user `holidaysEnabled` local (default on), admin preview `holidayAdminForceId`; макет: `preview/holidays/` |
 | Fix admin | `src/lib/auth/admin.ts`, `src/app/admin/` |
 | Fix DB WebDAV backup | `src/lib/admin/db-backup.ts`, `db-backup-settings.ts`, `db-backup-webdav.ts`, `DbBackupSettingsPanel.tsx`, `/admin/db`, cron в `kodik-sync-scheduled.ts` |
 | Fix app promo | `src/lib/admin/app-promo-settings.ts`, `AndroidAppPromoPrompt.tsx`, `DesktopAppPromoPrompt.tsx`, `/admin/app-promo` |
@@ -95,7 +96,7 @@ Details: `DECISIONS.md`, если файл присутствует. Если ф
 ## Data Flow Shortcuts
 
 ```
-Home:  KodikEpisodeRelease → home-feed-cache (HomeFeedItem) → releases.ts → ReleaseFeed; novelties → home-novelties.ts (24h cache) → HomeNoveltiesSection
+Home:  KodikEpisodeRelease → home-feed-cache (HomeFeedItem) → releases.ts → ReleaseFeed (visible-tab poll live=1, 60s + stale-on-resume 60s via useVisiblePoll); history/upcoming/novelties → HomeLiveRefresh router.refresh (5min / same stale); novelties → home-novelties.ts (24h cache) → HomeNoveltiesSection
 Anime: shikimoriId → anime-page.ts → Shikimori API + KodikMaterial DB
 Player: playerLink → KodikPlayer iframe → postMessage → watch-history API; TA player watch party → `useWatchParty` → WebSocket server
 Skip times: AnimeWatchPanel → /api/anime/[shikimoriId]/skip-times → aniskip.ts → AniSkip + DB cache → manual/auto OP/ED skip

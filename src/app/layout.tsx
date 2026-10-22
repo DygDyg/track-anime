@@ -35,6 +35,9 @@ import { getActiveBrandAsset } from "@/lib/brand-rotation";
 import { getSiteBuildFingerprint } from "@/lib/admin/build-info";
 import { ClientUpdateGuard } from "@/components/ClientUpdateGuard";
 import { SiteAnalyticsBeacon } from "@/components/SiteAnalyticsBeacon";
+import { HalloweenDecor } from "@/components/halloween/HalloweenDecor";
+import { HolidayThemeBootstrap } from "@/components/HolidayThemeBootstrap";
+import { getHolidayThemePublicConfig } from "@/lib/admin/holiday-theme-settings";
 import "./globals.css";
 import "./translation-badges.css";
 
@@ -101,16 +104,24 @@ export const viewport: Viewport = {
 
 export default async function RootLayout({ children }: { children: React.ReactNode }) {
   await getShikimoriEndpoints();
-  const [siteSettingsDefaults, buildFingerprint] = await Promise.all([
+  const [siteSettingsDefaults, buildFingerprint, holidayConfig] = await Promise.all([
     getSiteSettingsDefaults(),
     Promise.resolve(getSiteBuildFingerprint()),
+    getHolidayThemePublicConfig(),
   ]);
   const brand = await getActiveBrandAsset();
+  const holidayBootScript = `window.__TA_HOLIDAY__=${JSON.stringify(holidayConfig)};`;
 
   return (
-    <html lang="ru" suppressHydrationWarning data-theme="dark">
+    <html
+      lang="ru"
+      suppressHydrationWarning
+      data-theme="dark"
+      {...(holidayConfig.active ? { "data-holiday": holidayConfig.active } : {})}
+    >
       <head>
         <meta name="darkreader-lock" />
+        <script dangerouslySetInnerHTML={{ __html: holidayBootScript }} />
       </head>
       <body
         className={`${siteFontBodyClassName} min-h-screen font-sans antialiased`}
@@ -130,9 +141,11 @@ export default async function RootLayout({ children }: { children: React.ReactNo
               <InAppNotificationsListener />
               <TodayFromHistoryToastListener />
               <SiteSettingsProvider defaults={siteSettingsDefaults}>
+                <HolidayThemeBootstrap config={holidayConfig} />
                 <NotificationUiLayer />
                 <UserListStatusProvider>
                   <SiteBackground />
+                  <HalloweenDecor />
                   <NavigationProgressProvider>
                     <Suspense fallback={null}>
                       <ScrollRestoration />

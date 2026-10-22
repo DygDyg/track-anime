@@ -12,6 +12,7 @@ import { useThemeContext } from "@/components/ThemeProvider";
 import { parsePatternBackgroundId } from "@/lib/pattern-backgrounds";
 import { ProfileFramePreview } from "@/components/profile/ProfileFramePreview";
 import { PROFILE_FRAMES } from "@/lib/profile-frames";
+import { lockBodyScroll } from "@/lib/body-scroll-lock";
 import {
   AVATAR_DECORATION_SCALE_MAX,
   AVATAR_DECORATION_SCALE_MIN,
@@ -722,6 +723,16 @@ export function SiteSettingsAppearanceTab({
         </div>
       </section>
 
+      <section className="space-y-3">
+        <SectionTitle>Праздники</SectionTitle>
+        <ToggleRow
+          label="Включить праздники"
+          hint="Оформление по календарю из админки (сейчас Хэллоуин). Сохраняется в этом браузере."
+          checked={settings.holidaysEnabled}
+          onChange={(checked) => patchLocalSettings({ holidaysEnabled: checked })}
+        />
+      </section>
+
       {user ? (
         <>
           <AvatarDecorationSection
@@ -1092,7 +1103,7 @@ export function SiteSettingsModal() {
       }
     };
 
-    document.body.style.overflow = "hidden";
+    const unlockScroll = lockBodyScroll();
     document.addEventListener("keydown", onKeyDown);
     registerTvModalClose(() => {
       closeSettings();
@@ -1112,7 +1123,7 @@ export function SiteSettingsModal() {
     }, 0);
 
     return () => {
-      document.body.style.overflow = "";
+      unlockScroll();
       document.removeEventListener("keydown", onKeyDown);
       registerTvModalClose(null);
       window.clearTimeout(focusTimer);
@@ -1122,7 +1133,7 @@ export function SiteSettingsModal() {
   if (!mounted || !settingsOpen) return null;
 
   return createPortal(
-    <div className="fixed inset-0 z-[100] flex items-end justify-center p-0 sm:items-center sm:p-4">
+    <div className="fixed inset-0 z-[100] flex items-end justify-center overscroll-none p-0 sm:items-center sm:p-4">
       <button
         type="button"
         aria-label="Закрыть настройки"
@@ -1134,7 +1145,7 @@ export function SiteSettingsModal() {
         role="dialog"
         aria-modal="true"
         aria-labelledby="site-settings-title"
-        className="relative flex max-h-[min(92dvh,820px)] w-full max-w-2xl flex-col overflow-hidden rounded-t-2xl border border-border bg-card shadow-2xl shadow-black/40 sm:rounded-2xl"
+        className="relative flex max-h-[min(92dvh,820px)] w-full max-w-2xl flex-col overflow-hidden overscroll-contain rounded-t-2xl border border-border bg-card shadow-2xl shadow-black/40 sm:rounded-2xl"
       >
         <header className="flex items-start justify-between gap-3 border-b border-border px-4 py-4 sm:px-5">
           <div>
@@ -1180,7 +1191,7 @@ export function SiteSettingsModal() {
             ))}
           </nav>
 
-          <div className="min-h-0 min-w-0 flex-1 overflow-y-auto overflow-x-hidden px-4 py-4 sm:px-5 sm:py-5">
+          <div className="min-h-0 min-w-0 flex-1 overflow-y-auto overflow-x-hidden overscroll-contain px-4 py-4 sm:px-5 sm:py-5">
             {tab === "appearance" ? (
               <SiteSettingsAppearanceTab
                 settings={settings}

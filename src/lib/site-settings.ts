@@ -11,6 +11,16 @@ import {
   parseTranslationIntroOffsets,
   type TranslationIntroOffsets,
 } from "@/lib/translation-intro-offset";
+import {
+  applyHolidayThemeAttribute,
+  DEFAULT_HOLIDAY_WINDOWS,
+  holidayThemeInitSnippet,
+  normalizeHolidayAdminForceId,
+  normalizeHolidaysEnabled,
+  readHolidayPublicConfigFromWindow,
+  resolveHolidayTheme,
+  type HolidayThemeId,
+} from "@/lib/holiday-theme";
 
 export const SITE_FONT_IDS = [
   "inter",
@@ -161,6 +171,14 @@ export type SiteSettings = {
   /** Локально для браузера: без покадровой анимации — только первый кадр каждой позы */
   companionStaticAnimations: boolean;
   /**
+   * Локально: включать праздничное оформление по календарю из админки (default on).
+   */
+  holidaysEnabled: boolean;
+  /**
+   * Локально (админ): принудительный preview темы для себя; null = по календарю.
+   */
+  holidayAdminForceId: HolidayThemeId | null;
+  /**
    * Day id (`YYYY-MM-DD`) of the newest completed changelog entry the user dismissed.
    * Synced with account when logged in; localStorage for guests.
    */
@@ -183,6 +201,8 @@ export const LOCAL_ONLY_SITE_SETTING_KEYS = [
   "companionEnabled",
   "companionScale",
   "companionStaticAnimations",
+  "holidaysEnabled",
+  "holidayAdminForceId",
 ] as const;
 
 export type LocalOnlySiteSettingKey = (typeof LOCAL_ONLY_SITE_SETTING_KEYS)[number];
@@ -198,6 +218,8 @@ export function pickLocalOnlySiteSettings(
     companionEnabled: settings.companionEnabled,
     companionScale: settings.companionScale,
     companionStaticAnimations: settings.companionStaticAnimations,
+    holidaysEnabled: settings.holidaysEnabled,
+    holidayAdminForceId: settings.holidayAdminForceId,
   };
 }
 
@@ -212,6 +234,8 @@ export function stripLocalOnlySiteSettings(
     companionEnabled: _companionEnabled,
     companionScale: _companionScale,
     companionStaticAnimations: _companionStaticAnimations,
+    holidaysEnabled: _holidaysEnabled,
+    holidayAdminForceId: _holidayAdminForceId,
     ...remote
   } = settings;
   return remote;
@@ -329,6 +353,8 @@ export const DEFAULT_SITE_SETTINGS: SiteSettings = {
   companionDisabledForAccount: false,
   companionScale: COMPANION_SCALE_DEFAULT,
   companionStaticAnimations: false,
+  holidaysEnabled: true,
+  holidayAdminForceId: null,
   lastSeenChangelogDayId: null,
   showWhatsNewChangelog: true,
   adultContentEnabled: false,
@@ -566,6 +592,8 @@ export function normalizeSiteSettings(raw: unknown): SiteSettings {
     companionDisabledForAccount: raw.companionDisabledForAccount === true,
     companionScale: normalizeCompanionScale(raw.companionScale),
     companionStaticAnimations: raw.companionStaticAnimations === true,
+    holidaysEnabled: normalizeHolidaysEnabled(raw.holidaysEnabled, raw.holidayThemePreference),
+    holidayAdminForceId: normalizeHolidayAdminForceId(raw.holidayAdminForceId),
     lastSeenChangelogDayId: parseLastSeenChangelogDayId(raw.lastSeenChangelogDayId),
     showWhatsNewChangelog: raw.showWhatsNewChangelog !== false,
     adultContentEnabled: raw.adultContentEnabled === true,
@@ -709,7 +737,7 @@ export function buildSiteSettingsInitScript(defaults: SiteSettings): string {
   const localKeys = JSON.stringify([...LOCAL_ONLY_SITE_SETTING_KEYS]);
   const largeUiMigKey = PLAYER_LARGE_UI_DEFAULT_V2_STORAGE_KEY;
   const tvNavMigKey = TV_NAVIGATION_DEFAULT_OFF_V1_STORAGE_KEY;
-  return `(function(){try{var k="${SITE_SETTINGS_STORAGE_KEY}";var raw=localStorage.getItem(k);var d=raw?JSON.parse(raw):${fallback};try{var ck=document.cookie.split(";");var prefix="${cookieName}=";for(var i=0;i<ck.length;i++){var p=ck[i].trim();if(p.indexOf(prefix)===0){var local=JSON.parse(decodeURIComponent(p.slice(prefix.length)));var keys=${localKeys};for(var j=0;j<keys.length;j++){var key=keys[j];if(Object.prototype.hasOwnProperty.call(local,key))d[key]=local[key];}break;}}}catch(e){}try{var mk="${largeUiMigKey}";if(localStorage.getItem(mk)!=="1"){d.playerLargeUi=true;localStorage.setItem(mk,"1");try{localStorage.setItem(k,JSON.stringify(d));}catch(e3){}}}catch(e2){d.playerLargeUi=true;}try{var tmk="${tvNavMigKey}";if(localStorage.getItem(tmk)!=="1"){d.tvNavigationEnabled=false;localStorage.setItem(tmk,"1");try{localStorage.setItem(k,JSON.stringify(d));}catch(e4){}}}catch(e5){d.tvNavigationEnabled=false;}var el=document.documentElement;var f=d.fontFamily||"inter";var c=d.cursorStyle||"default";var s=d.cardSize||"normal";var a=d.accentPreset||"blue";var b=d.backgroundDim||"medium";var bg=typeof d.backgroundImageUrl==="string"&&d.backgroundImageUrl.length>0;var allowed=${JSON.stringify(SITE_FONT_IDS)};var cursors=${JSON.stringify(SITE_CURSOR_OPTIONS.map((item) => item.id))};if(allowed.indexOf(f)===-1)f="inter";if(cursors.indexOf(c)===-1)c="default";el.setAttribute("data-font",f);el.setAttribute("data-cursor",c);el.setAttribute("data-card-size",s);el.setAttribute("data-accent",a);el.setAttribute("data-bg-dim",b);el.setAttribute("data-site-bg",bg?"true":"false");el.setAttribute("data-tv-nav-enabled",d.tvNavigationEnabled===true?"true":"false");if(d.tvNavigationEnabled!==true)el.removeAttribute("data-tv-nav");if(d.playerLargeUi!==false)el.setAttribute("data-player-large-ui","true");else el.removeAttribute("data-player-large-ui");if(d.reduceMotion===true)el.setAttribute("data-reduce-motion","true");else el.removeAttribute("data-reduce-motion");}catch(e){}})();`;
+  return `(function(){try{var k="${SITE_SETTINGS_STORAGE_KEY}";var raw=localStorage.getItem(k);var d=raw?JSON.parse(raw):${fallback};try{var ck=document.cookie.split(";");var prefix="${cookieName}=";for(var i=0;i<ck.length;i++){var p=ck[i].trim();if(p.indexOf(prefix)===0){var local=JSON.parse(decodeURIComponent(p.slice(prefix.length)));var keys=${localKeys};for(var j=0;j<keys.length;j++){var key=keys[j];if(Object.prototype.hasOwnProperty.call(local,key))d[key]=local[key];}break;}}}catch(e){}try{var mk="${largeUiMigKey}";if(localStorage.getItem(mk)!=="1"){d.playerLargeUi=true;localStorage.setItem(mk,"1");try{localStorage.setItem(k,JSON.stringify(d));}catch(e3){}}}catch(e2){d.playerLargeUi=true;}try{var tmk="${tvNavMigKey}";if(localStorage.getItem(tmk)!=="1"){d.tvNavigationEnabled=false;localStorage.setItem(tmk,"1");try{localStorage.setItem(k,JSON.stringify(d));}catch(e4){}}}catch(e5){d.tvNavigationEnabled=false;}var el=document.documentElement;var f=d.fontFamily||"inter";var c=d.cursorStyle||"default";var s=d.cardSize||"normal";var a=d.accentPreset||"blue";var b=d.backgroundDim||"medium";var bg=typeof d.backgroundImageUrl==="string"&&d.backgroundImageUrl.length>0;var allowed=${JSON.stringify(SITE_FONT_IDS)};var cursors=${JSON.stringify(SITE_CURSOR_OPTIONS.map((item) => item.id))};if(allowed.indexOf(f)===-1)f="inter";if(cursors.indexOf(c)===-1)c="default";el.setAttribute("data-font",f);el.setAttribute("data-cursor",c);el.setAttribute("data-card-size",s);el.setAttribute("data-accent",a);el.setAttribute("data-bg-dim",b);el.setAttribute("data-site-bg",bg?"true":"false");el.setAttribute("data-tv-nav-enabled",d.tvNavigationEnabled===true?"true":"false");if(d.tvNavigationEnabled!==true)el.removeAttribute("data-tv-nav");if(d.playerLargeUi!==false)el.setAttribute("data-player-large-ui","true");else el.removeAttribute("data-player-large-ui");if(d.reduceMotion===true)el.setAttribute("data-reduce-motion","true");else el.removeAttribute("data-reduce-motion");${holidayThemeInitSnippet()}}catch(e){}})();`;
 }
 
 export const siteSettingsInitScript = buildSiteSettingsInitScript(DEFAULT_SITE_SETTINGS);
@@ -738,6 +766,18 @@ export function applySiteSettings(settings: SiteSettings): void {
     root.setAttribute("data-player-large-ui", "true");
   } else {
     root.removeAttribute("data-player-large-ui");
+  }
+  {
+    const holidayCfg = readHolidayPublicConfigFromWindow();
+    applyHolidayThemeAttribute(
+      resolveHolidayTheme(
+        settings.holidaysEnabled,
+        new Date(),
+        holidayCfg?.windows ?? DEFAULT_HOLIDAY_WINDOWS,
+        holidayCfg?.enabled !== false,
+        settings.holidayAdminForceId,
+      ),
+    );
   }
   localStorage.setItem(SITE_SETTINGS_STORAGE_KEY, JSON.stringify(settings));
   try {

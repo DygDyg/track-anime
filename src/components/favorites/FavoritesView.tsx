@@ -11,6 +11,7 @@ import { AnimeScoreBadge } from "@/components/AnimeScoreBadge";
 import { ListStatusBadge, ViewerListStatusBadge, useViewerListStatusAccent } from "@/components/favorites/ListStatusBadge";
 import { FavoriteRewatchBadge } from "@/components/favorites/FavoriteRewatchBadge";
 import { useUserListStatusMap } from "@/components/favorites/UserListStatusProvider";
+import { HolidayCoverFrame } from "@/components/halloween/HolidayCoverFrame";
 import { useAuth } from "@/components/auth/AuthProvider";
 import { labelKind, labelStatus } from "@/lib/anime-labels";
 import type { FavoriteAnimeItem, FavoritesAllData, FavoritesSortMode } from "@/lib/favorites-page";
@@ -194,6 +195,7 @@ function FavoriteAnimeCard({
             className="h-full w-full object-cover transition duration-300 group-hover:scale-105"
           />
         </div>
+        <HolidayCoverFrame />
         {showListBadge ? (
           <ListStatusBadge
             info={listInfo}

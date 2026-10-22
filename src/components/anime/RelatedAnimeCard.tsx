@@ -6,6 +6,7 @@ import { AnimePoster } from "@/components/AnimePoster";
 import { AnimeScoreBadge } from "@/components/AnimeScoreBadge";
 import { ListStatusBadge } from "@/components/favorites/ListStatusBadge";
 import { useUserListStatus } from "@/components/favorites/UserListStatusProvider";
+import { HolidayCoverFrame } from "@/components/halloween/HolidayCoverFrame";
 import { useSiteSettings } from "@/components/SiteSettingsProvider";
 import type { RelatedAnimeDto } from "@/lib/anime-related";
 import { formatReleaseYear, labelKind, labelStatus, statusBadgeClass } from "@/lib/anime-labels";
@@ -79,6 +80,7 @@ export function RelatedAnimeCard({
               alt={item.title}
               className="h-full w-full object-cover transition duration-300 group-hover:scale-105"
             />
+            <HolidayCoverFrame />
             <ListStatusBadge
               info={listInfo}
               className="pointer-events-none absolute right-1.5 top-1.5 z-10 w-fit max-w-[calc(100%-0.75rem)]"

@@ -1,6 +1,7 @@
 "use client";
 
 import { AnimeCardHoverShell } from "@/components/AnimeCardHoverShell";
+import { HolidayCoverFrame } from "@/components/halloween/HolidayCoverFrame";
 import { AnimeKindCornerBadge } from "@/components/AnimeKindCornerBadge";
 import { AnimeLink } from "@/components/AnimeLink";
 import { AnimePoster } from "@/components/AnimePoster";
@@ -148,6 +149,7 @@ export function ReleaseCard({
         <div className="relative z-10 flex min-w-0 flex-1 gap-3 md:flex-col md:gap-0">
           <div className="relative w-[88px] shrink-0 overflow-hidden rounded-md bg-surface-dim sm:w-[96px] md:w-full md:shrink-0 md:rounded-none">
             <div className="aspect-[3/4] h-full w-full">{posterLink}</div>
+            <HolidayCoverFrame />
             <ListStatusBadge
               info={listInfo}
               className="pointer-events-none absolute left-1 top-1 z-20 max-w-[calc(100%-0.5rem)] md:left-1.5 md:top-1.5"

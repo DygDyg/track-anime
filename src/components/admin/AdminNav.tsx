@@ -32,6 +32,7 @@ const sections = [
     title: "Настройки",
     items: [
       { href: "/admin/brand", label: "Бренд" },
+      { href: "/admin/holidays", label: "Праздники" },
       { href: "/admin/app-promo", label: "Промо приложений" },
       { href: "/admin/search", label: "Поиск" },
       { href: "/admin/site-settings", label: "Настройки сайта" },
@@ -57,11 +58,11 @@ export function AdminNav() {
   const pathname = usePathname();
 
   return (
-    <nav className="flex flex-col gap-4" aria-label="Разделы админ-панели">
+    <nav className="flex flex-col gap-3" aria-label="Разделы админ-панели">
       {sections.map((section) => (
         <div key={section.title} className="admin-nav-section">
           <p className="admin-nav-section-title">{section.title}</p>
-          <div className="flex flex-col gap-2">
+          <div className="flex flex-col gap-1">
             {section.items.map((item) => {
               const active = item.exact ? pathname === item.href : pathname.startsWith(item.href);
               return (

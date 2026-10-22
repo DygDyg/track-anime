@@ -7,6 +7,7 @@ import { AnimePoster } from "@/components/AnimePoster";
 import { AnimeScoreBadge } from "@/components/AnimeScoreBadge";
 import { ListStatusBadge } from "@/components/favorites/ListStatusBadge";
 import { useUserListStatus } from "@/components/favorites/UserListStatusProvider";
+import { HolidayCoverFrame } from "@/components/halloween/HolidayCoverFrame";
 import { SearchResultMeta } from "@/components/search/SearchResultMeta";
 import { siteClass } from "@/components/site/site-styles";
 import { searchResultToHoverRelease } from "@/lib/hover-panel-release";
@@ -31,6 +32,7 @@ export function SearchResultCard({ item }: { item: SearchResultDto }) {
             alt={item.title}
             className="h-full w-full object-cover transition duration-300 group-hover:scale-105"
           />
+          <HolidayCoverFrame />
           <ListStatusBadge info={listInfo} className="absolute left-1.5 top-1.5 z-10" />
           <AnimeScoreBadge score={item.score} className="absolute right-1.5 top-1.5" />
           <AnimeKindCornerBadge kind={item.kind} className="absolute bottom-0 left-0 z-10" />

@@ -18,6 +18,7 @@ import {
   restoreScrollY,
   saveFeedState,
 } from "@/lib/navigation-return";
+import { useVisiblePoll } from "@/hooks/useVisiblePoll";
 import type { ReleaseItemDto, ReleasesCursor } from "@/lib/releases";
 import { homeFeedGridClassName, homeFeedGutterX, homeFeedOuterGutterX } from "@/lib/home-feed-layout";
 
@@ -43,6 +44,7 @@ const RELEASES_FETCH_TIMEOUT_MS = 20_000;
 const HOME_PATH = "/";
 const HOME_FEED_POLL_MS = 60_000;
 const HOME_FEED_POLL_START_MS = 15_000;
+const HOME_FEED_POLL_STALE_ON_RESUME_MS = 60_000;
 const HOME_FEED_SCROLL_TOP_PX = 120;
 
 type ReleasesPageResponse = {
@@ -211,34 +213,12 @@ export function ReleaseFeed({
     }
   }, [pageSize]);
 
-  const pollForNewReleasesRef = useRef(pollForNewReleases);
-  pollForNewReleasesRef.current = pollForNewReleases;
-
-  useEffect(() => {
-    let intervalId: number | undefined;
-
-    const runPoll = () => {
-      if (document.hidden) return;
-      void pollForNewReleasesRef.current();
-    };
-
-    const startId = window.setTimeout(() => {
-      runPoll();
-      intervalId = window.setInterval(runPoll, HOME_FEED_POLL_MS);
-    }, HOME_FEED_POLL_START_MS);
-
-    const onVisibilityChange = () => {
-      if (!document.hidden) runPoll();
-    };
-
-    document.addEventListener("visibilitychange", onVisibilityChange);
-
-    return () => {
-      window.clearTimeout(startId);
-      if (intervalId !== undefined) window.clearInterval(intervalId);
-      document.removeEventListener("visibilitychange", onVisibilityChange);
-    };
-  }, []);
+  useVisiblePoll({
+    onPoll: pollForNewReleases,
+    intervalMs: HOME_FEED_POLL_MS,
+    minStaleOnResumeMs: HOME_FEED_POLL_STALE_ON_RESUME_MS,
+    startDelayMs: HOME_FEED_POLL_START_MS,
+  });
 
   const loadMoreRef = useRef(loadMore);
   loadMoreRef.current = loadMore;

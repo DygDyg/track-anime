@@ -99,6 +99,7 @@ ta_new/
 | `settings/translations` | Translation catalog |
 | `settings/watch-party` | Public global settings for TA-плеер совместный просмотр |
 | `settings/app-promo` | Public kill-switch for soft-promo приложений |
+| `holiday-theme` | Public active holiday + windows (Moscow calendar from admin) |
 | `site-build` | Process-cached build fingerprint for open-tab update banner (`ClientUpdateGuard`) |
 | `app/og.png` | PNG Open Graph card for the Android app download page |
 
@@ -186,6 +187,7 @@ Git deploy webhook (HMAC, no session): `api/deploy/webhook` (POST)
 | `player-proxy-settings.ts` | TA Plus parser proxy (`/admin/player`); password stays server-side |
 | `player-proxy-check.ts` | Admin proxy check against «Необъятный океан» s3e8: direct region block vs header proxy |
 | `app-promo-settings.ts` | Soft-promo apps: mobile + desktop kill-switches |
+| `holiday-theme-settings.ts` | Праздничные темы: окна дат + мастер-выключатель (`/admin/holidays`) |
 | `watch-party-rooms.ts` | Read-only active room overview for admin page, enriched with Kodik title/translation metadata |
 | `watch-party-history.ts` | Persisted watch-party session history for admin |
 | `db-explorer.ts` | Admin DB search |
@@ -282,7 +284,7 @@ Git deploy webhook (HMAC, no session): `api/deploy/webhook` (POST)
 | `user/` | `UsersSearchForm` |
 | `admin/` | Import/sync panels, MAL ID sync, notifications, DB explorer, stats |
 
-Root components: `ReleaseFeed`, `ReleaseCard`, `HomeNoveltiesSection`, `Header`, `RecentAnimeOpensButton`, `SiteBackground` → `PatternSiteBackground` (`pattern:*` only), `ThemeProvider`, `NavigationProgress`, `PullToRefresh`, `AquaCoderCompanion`, `ClientUpdateGuard` (checks new build in an open tab).
+Root components: `ReleaseFeed`, `ReleaseCard`, `HomeNoveltiesSection`, `HomeLiveRefresh` (visible-tab `router.refresh` for history/upcoming/novelties), `Header`, `RecentAnimeOpensButton`, `SiteBackground` → `PatternSiteBackground` (`pattern:*` only), `ThemeProvider`, `NavigationProgress`, `PullToRefresh`, `AquaCoderCompanion`, `ClientUpdateGuard` (checks new build in an open tab). Hook: `useVisiblePoll` (poll only while tab visible + stale-on-resume).
 
 Brand assets: `public/brand-logos/` contains optional `.webp` logos for global rotation; fallback remains `public/logo.webp`.
 Companion assets: `public/companion/aqua-coder-chibi/` (manifest + per-animation WebP atlases); renderer `src/lib/companion/AquaCoderCanvas.ts`; reactions bus `src/lib/companion/companion-bus.ts`; source package `aqua-coder-web/`.

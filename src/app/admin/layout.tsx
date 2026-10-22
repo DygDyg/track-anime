@@ -28,7 +28,7 @@ export default async function AdminLayout({ children }: { children: React.ReactN
       </div>
 
       <div className="grid gap-6 lg:grid-cols-[13rem_minmax(0,1fr)]">
-        <aside className={`${adminClass.sidebar} lg:sticky lg:top-20 lg:self-start`}>
+        <aside className={`${adminClass.sidebar} admin-sidebar-scroll lg:sticky lg:top-20 lg:self-start`}>
           <AdminNav />
         </aside>
         <div>{children}</div>

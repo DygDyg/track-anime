@@ -2,6 +2,7 @@ import type { Metadata } from "next";
 import { AdminStaleDbBanner } from "@/components/AdminStaleDbBanner";
 import { HistoryNewEpisodesSection, type HistoryNewEpisodeDto } from "@/components/HistoryNewEpisodesSection";
 import { HistoryUpcomingSoonPanel } from "@/components/history/HistoryUpcomingSoonPanel";
+import { HomeLiveRefresh } from "@/components/HomeLiveRefresh";
 import { HomeNoveltiesSection } from "@/components/HomeNoveltiesSection";
 import { ReleaseFeed } from "@/components/ReleaseFeed";
 import { getKodikDbFreshness } from "@/lib/admin/kodik-db-freshness";
@@ -57,6 +58,7 @@ export default async function HomePage({ searchParams }: HomePageProps) {
 
   return (
     <div className="py-5 sm:py-8">
+      <HomeLiveRefresh />
       {isAdmin ? (
         <AdminStaleDbBanner freshness={freshness} forcePreview={forcePreview} />
       ) : null}

@@ -5,6 +5,7 @@ import { AdminForceCoverButton } from "@/components/admin/AdminForceCoverButton"
 import { AnimePoster } from "@/components/AnimePoster";
 import { AnimePageListBadge } from "@/components/anime/AnimePageListBadge";
 import { ImageLightbox } from "@/components/anime/ImageLightbox";
+import { HolidayCoverFrame } from "@/components/halloween/HolidayCoverFrame";
 import { coverCacheUrl, isValidImageUrl, normalizeDirectImageUrl } from "@/lib/poster";
 
 export const COVER_CACHE_BUST_EVENT = "ta-cover-cache-bust";
@@ -81,6 +82,7 @@ export function AnimePosterCover({ shikimoriId, posterUrl, fallbackSrc, title }:
             size="md"
             className="pointer-events-none absolute left-2 top-2 z-10 max-w-[calc(100%-1rem)] sm:left-2 sm:top-2"
           />
+          <HolidayCoverFrame variant="page" />
         </button>
         <AdminForceCoverButton shikimoriId={shikimoriId} variant="poster" />
       </div>

@@ -225,6 +225,16 @@ model SiteSettingsDefaults {
   updatedAt DateTime @updatedAt
 }
 
+/// Календарь праздничных тем UI (окна дат, Europe/Moscow)
+model HolidayThemeSettings {
+  id        String   @id @default("default")
+  /// Мастер-выключатель всех праздничных тем
+  enabled   Boolean  @default(true)
+  /// JSON: HolidayWindowConfig[]
+  windows   Json     @default("[]")
+  updatedAt DateTime @updatedAt
+}
+
 /// Порог автоудаления из истории просмотра (последняя серия сезона)
 model WatchHistorySettings {
   id                          String   @id @default("default")
