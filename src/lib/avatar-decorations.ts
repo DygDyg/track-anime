@@ -1,4 +1,7 @@
-export const AVATAR_DECORATION_IDS = [
+import discordAvatarDecorations from "../../data/discord-avatar-decorations.json";
+
+/** Анимированные APNG (исторический набор). */
+export const LEGACY_AVATAR_DECORATION_IDS = [
   "01f04863-8675-49f0-95ff-2ae4c76635f5",
   "0745e3a1-78fd-4da4-aaba-bc1e7b5f9f48",
   "1b5557ff-1c93-48b8-a078-6a266531b07b",
@@ -20,11 +23,19 @@ export const AVATAR_DECORATION_IDS = [
   "fd42a7ac-bfa6-41ea-8b99-eee82477c03e",
 ] as const;
 
-export type AvatarDecorationId = (typeof AVATAR_DECORATION_IDS)[number];
+/** Discord shop static 288² (snowflake ids) — data/discord-avatar-decorations.json. */
+const DISCORD_AVATAR_IDS: readonly string[] = discordAvatarDecorations as string[];
+
+export const AVATAR_DECORATION_IDS: readonly string[] = [
+  ...LEGACY_AVATAR_DECORATION_IDS,
+  ...DISCORD_AVATAR_IDS,
+];
+
+export type AvatarDecorationId = string;
 
 const AVATAR_DECORATION_ID_SET = new Set<string>(AVATAR_DECORATION_IDS);
 
-export const AVATAR_DECORATION_OPTIONS: { id: AvatarDecorationId; label: string }[] =
+export const AVATAR_DECORATION_OPTIONS: { id: string; label: string }[] =
   AVATAR_DECORATION_IDS.map((id, index) => ({
     id,
     label: `Украшение ${index + 1}`,

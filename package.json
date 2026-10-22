@@ -14,6 +14,7 @@
     "android:brand:sync": "node scripts/sync-android-brand-assets.mjs",
     "avatar-decorations:thumbs": "tsx scripts/generate-avatar-decoration-thumbs.ts",
     "profile-frames:build": "tsx scripts/build-profile-frames.ts",
+    "discord-decorations:import": "tsx scripts/import-discord-decorations.ts",
     "start": "next start",
     "watch-party:server": "node scripts/watch-party-server.mjs",
     "lint": "next lint",

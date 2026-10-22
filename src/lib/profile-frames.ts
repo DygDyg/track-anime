@@ -2,11 +2,10 @@
  * Рамки профиля по модели Discord custom-profile-frame:
  * --container-width (контент карточки) + overflow top/bottom/horizontal в px дизайна.
  * Арт 1312 = 1200 + 56*2; слои рисуются на 100% расширенного холста.
+ *
+ * Legacy (драконы/КПК) + Discord collectibles из data/discord-profile-frames.json.
  */
-
-export const PROFILE_FRAME_IDS = ["jade", "rose", "ruby", "sapphire", "pda"] as const;
-
-export type ProfileFrameId = (typeof PROFILE_FRAME_IDS)[number];
+import discordProfileFrames from "../../data/discord-profile-frames.json";
 
 export type ProfileFramePlacement = "top" | "bottom" | "rail" | "stretch";
 
@@ -19,7 +18,7 @@ export type ProfileFrameLayer = {
 };
 
 export type ProfileFrame = {
-  id: ProfileFrameId;
+  id: string;
   label: string;
   /** Ширина контента карточки в макете (Discord: 1200). */
   designWidth: number;
@@ -51,7 +50,7 @@ const PDA_LAYERS: readonly ProfileFrameLayer[] = [
   { file: "bottom", placement: "bottom", depth: "front" },
 ];
 
-export const PROFILE_FRAMES: readonly ProfileFrame[] = [
+export const LEGACY_PROFILE_FRAMES: readonly ProfileFrame[] = [
   {
     id: "jade",
     label: "Нефритовый дракон",
@@ -87,7 +86,23 @@ export const PROFILE_FRAMES: readonly ProfileFrame[] = [
   },
 ];
 
-const PROFILE_FRAME_BY_ID = new Map<string, ProfileFrame>(PROFILE_FRAMES.map((frame) => [frame.id, frame]));
+const DISCORD_FRAMES: readonly ProfileFrame[] = (discordProfileFrames as ProfileFrame[]).map(
+  (frame) => ({
+    ...frame,
+    layers: frame.layers,
+  }),
+);
+
+export const PROFILE_FRAMES: readonly ProfileFrame[] = [...LEGACY_PROFILE_FRAMES, ...DISCORD_FRAMES];
+
+/** @deprecated используйте PROFILE_FRAMES[].id; оставлен для совместимости импортов */
+export const PROFILE_FRAME_IDS = LEGACY_PROFILE_FRAMES.map((f) => f.id);
+
+export type ProfileFrameId = string;
+
+const PROFILE_FRAME_BY_ID = new Map<string, ProfileFrame>(
+  PROFILE_FRAMES.map((frame) => [frame.id, frame]),
+);
 
 export function getProfileFrame(id: string | null | undefined): ProfileFrame | null {
   if (!id) return null;

@@ -493,7 +493,7 @@ function AvatarDecorationSection({
         />
       ) : null}
 
-      <div className="grid max-h-72 grid-cols-3 gap-2 overflow-y-auto pr-1 sm:grid-cols-4">
+      <div className="grid max-h-96 grid-cols-3 gap-2 overflow-y-auto pr-1 sm:grid-cols-4 md:grid-cols-5">
         <button
           type="button"
           disabled={disabled}
@@ -560,8 +560,6 @@ function ProfileFrameSection({
   const previewNickname = user?.nickname ?? "Вы";
   const previewAvatar = user?.avatar ?? null;
   const selectedId = settings.profileFrameId;
-  const selectedLabel =
-    PROFILE_FRAMES.find((frame) => frame.id === selectedId)?.label ?? "Без рамки";
 
   return (
     <section className="space-y-3">
@@ -571,24 +569,25 @@ function ProfileFrameSection({
       </SectionHint>
 
       <div className="rounded-xl border border-border bg-gradient-to-b from-surface-dim/80 to-card px-3 py-5 sm:px-5">
-        <div className="flex flex-col items-center gap-3">
+        <div className="flex flex-col items-center">
           <ProfileFramePreview
             frameId={selectedId}
             nickname={previewNickname}
             avatar={previewAvatar}
             size="hero"
           />
-          <p className="text-center text-sm text-muted">{selectedLabel}</p>
         </div>
       </div>
 
-      <div className="grid grid-cols-2 gap-2 sm:grid-cols-3">
+      <div className="grid max-h-[28rem] grid-cols-2 gap-2 overflow-y-auto pr-1 sm:grid-cols-3">
         <button
           type="button"
           disabled={disabled}
+          aria-label="Без рамки"
+          title="Без рамки"
           onClick={() => updateSettings({ profileFrameId: null })}
           className={[
-            "flex flex-col items-center gap-2 rounded-xl border px-2 pb-2 pt-3 text-center transition",
+            "flex items-center justify-center rounded-xl border px-2 py-3 text-center transition",
             selectedId === null
               ? "border-accent bg-accent/10 text-foreground ring-2 ring-accent/30"
               : "border-border bg-card text-muted hover:border-accent/40 hover:text-foreground",
@@ -603,7 +602,6 @@ function ProfileFrameSection({
               size="tile"
             />
           </div>
-          <span className="text-[11px] font-medium">Без рамки</span>
         </button>
 
         {PROFILE_FRAMES.map((frame) => {
@@ -613,10 +611,11 @@ function ProfileFrameSection({
               key={frame.id}
               type="button"
               disabled={disabled}
+              aria-label={frame.label}
               title={frame.label}
               onClick={() => updateSettings({ profileFrameId: frame.id })}
               className={[
-                "flex flex-col items-center gap-2 rounded-xl border px-2 pb-2 pt-3 text-center transition",
+                "flex items-center justify-center rounded-xl border px-2 py-3 text-center transition",
                 active
                   ? "border-accent bg-accent/10 text-foreground ring-2 ring-accent/30"
                   : "border-border bg-card text-muted hover:border-accent/40 hover:text-foreground",
@@ -631,9 +630,6 @@ function ProfileFrameSection({
                   size="tile"
                 />
               </div>
-              <span className="line-clamp-2 text-[11px] font-medium text-foreground">
-                {frame.label}
-              </span>
             </button>
           );
         })}

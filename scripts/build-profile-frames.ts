@@ -2,7 +2,7 @@ import fs from "fs/promises";
 import path from "path";
 import sharp from "sharp";
 import {
-  PROFILE_FRAMES,
+  LEGACY_PROFILE_FRAMES,
   type ProfileFrameLayer,
   type ProfileFramePlacement,
 } from "../src/lib/profile-frames";
@@ -117,7 +117,7 @@ function layerTop(
 async function main() {
   await fs.mkdir(path.join(OUT_ROOT, "thumbs"), { recursive: true });
 
-  for (const frame of PROFILE_FRAMES) {
+  for (const frame of LEGACY_PROFILE_FRAMES) {
     const source = SOURCE_FILES[frame.id];
     if (!source) throw new Error(`no source map for ${frame.id}`);
 
