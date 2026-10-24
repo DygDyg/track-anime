@@ -2,6 +2,24 @@
   "version": 1,
   "entries": [
     {
+      "id": "2026-10-24",
+      "recordedAt": "2026-10-24T05:04:00.000Z",
+      "gitSha": "f3e3eb2",
+      "title": "Хэллоуин",
+      "items": [
+        {
+          "kind": "change",
+          "topic": "halloween-cursor",
+          "text": "В хэллоуинской теме обычный курсор — череп."
+        },
+        {
+          "kind": "fix",
+          "topic": "bottom-nav-profile-menu",
+          "text": "Меню профиля в нижней навигации снова открывается поверх рамки аватара."
+        }
+      ]
+    },
+    {
       "id": "2026-10-22",
       "recordedAt": "2026-10-22T05:47:00.000Z",
       "gitSha": "caeca31",

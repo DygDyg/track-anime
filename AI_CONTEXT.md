@@ -7,9 +7,24 @@ Quick reference for AI assistants working on this codebase. Shared by Codex and 
 | Tool | Entrypoint | Notes |
 |------|------------|-------|
 | Codex | `AGENTS.md` | Primary Codex rules; also read this file and `AI_RULES.md` |
-| Cursor | `.cursorrules` + `.cursor/rules/` | Cursor entrypoint; helpers include `multi-task-dispatcher` and skill `ta-dispatcher`; also read this file and `AI_RULES.md` |
+| Cursor | `.cursorrules` + `.cursor/rules/` | Cursor entrypoint; helpers include `multi-task-dispatcher` and project skills below; also read this file and `AI_RULES.md` |
 | Hermes | `.hermes.md` | Hermes-only auto context (does not replace Cursor/Codex files); also read this file, `AI_RULES.md`, and skill `track-anime` |
 | Any AI | `PROJECT_OVERVIEW.md` → linked docs | Start here for full project onboarding |
+
+### Cursor project skills (`.cursor/skills/`)
+
+| Skill | When |
+|-------|------|
+| `ta-dispatcher` | Multi-topic request → themed start files; deploy last |
+| `ta-deploy` | Prod deploy + changelog; user usually QA on prod after ship |
+| `ta-debug` | Dev + prod; empty feed / OAuth / 502 — local DB may be stale |
+| `ta-player` | Kodik / TA Plus / CVH / skip / watch party |
+| `ta-posters` | Covers, `/api/cover`, thumb vs full |
+| `ta-lists-sync` | Favorites, rewatches, Shikimori list sync |
+| `ta-docs-sync` | Documentation impact after behavior changes |
+| `ta-invariants-gate` | Pre-merge / pre-deploy invariant checklist |
+
+MCP setup: `.cursor/MCP.md` (`sshpilot`, local read-only `postgres`, `context7`).
 
 ## What This Project Is
 
@@ -255,7 +270,7 @@ Final response should include either changed docs or `Docs: not needed`.
 - Codex: follow `AGENTS.md`, then this file, then task-specific docs/code.
 - Cursor: follow `.cursorrules`, then `.cursor/rules/` (always-on), then this file, then task-specific docs/code.
 - Hermes: follow `.hermes.md` (auto), then this file / `AI_RULES.md` / task docs; skill `track-anime` for deploy/dispatcher shortcuts. Do not edit `.cursor/**` unless asked.
-- Multi-topic requests: use the request routing table above; Cursor also has `.cursor/rules/multi-task-dispatcher.mdc` and skill `ta-dispatcher`; Hermes uses the same table via `.hermes.md` / skill `track-anime`.
+- Multi-topic requests: use the request routing table above; Cursor also has `.cursor/rules/multi-task-dispatcher.mdc` and skill `ta-dispatcher` (plus domain skills `ta-deploy` / `ta-player` / …); Hermes uses the same table via `.hermes.md` / skill `track-anime`.
 - Decisions log: `DECISIONS.md` if present.
 - Ignore for indexing: `.cursorignore` / tool-specific excludes for `.next/`, `node_modules/`, caches.
 

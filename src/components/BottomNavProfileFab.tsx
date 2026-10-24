@@ -205,7 +205,8 @@ export function BottomNavProfileFab() {
 
           <ProfileMenuPanel
             ref={menuRef}
-            className="fixed z-[100] w-[min(18rem,calc(100vw-2rem))] -translate-x-1/2"
+            /* Ниже .pwa-bottom-nav (z-50), чтобы FAB/аватар был поверх слоёв рамки */
+            className="fixed z-40 w-[min(18rem,calc(100vw-2rem))] -translate-x-1/2"
             style={{
               left: menuPos.left,
               bottom: menuPos.bottom,

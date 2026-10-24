@@ -3326,7 +3326,7 @@ html[data-holiday="halloween"][data-theme="light"] body {
     radial-gradient(ellipse 120% 80% at 50% -20%, var(--body-gradient) 0%, var(--background) 58%);
 }
 
-/* Cursor: staff (default) / spell book (interactive). Source: ilove-cursor «посох и книга заклинаний». */
+/* Cursor: angry skull (default) / spell book (interactive). Default asset from ilove-cursor angry-skull. */
 html[data-holiday="halloween"],
 html[data-holiday="halloween"] body {
   cursor: url("/holidays/halloween/cursor-pointer-32.png") 4 2, auto;

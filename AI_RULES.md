@@ -126,6 +126,8 @@ Shared rules for Codex, Cursor, Hermes, and local model workflows. Codex should 
 
 * `AGENTS.md` — Codex entrypoint и ключевые project invariants
 * `.cursorrules` + `.cursor/rules/` — Cursor entrypoint и always-on helpers
+* `.cursor/skills/` — Cursor project skills (deploy, player, prod debug, …); см. таблицу в `AI_CONTEXT.md`
+* `.cursor/MCP.md` — project MCP (sshpilot, local postgres, context7)
 * `.hermes.md` — Hermes entrypoint (не ломать Cursor/Codex файлы ради Hermes)
 * `AI_CONTEXT.md` — quick reference для AI
 * `PROJECT_OVERVIEW.md` — назначение и user flows

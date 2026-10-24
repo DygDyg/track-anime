@@ -106,6 +106,6 @@ Rules:
 ## Codex vs Cursor vs Hermes
 
 - Codex: use this `AGENTS.md` plus `AI_RULES.md` and `AI_CONTEXT.md`.
-- Cursor: use `.cursorrules`, `.cursor/rules/`, skill `ta-dispatcher`, plus the same shared docs.
+- Cursor: use `.cursorrules`, `.cursor/rules/`, project skills under `.cursor/skills/` (`ta-dispatcher`, `ta-deploy`, `ta-debug`, `ta-player`, `ta-posters`, `ta-lists-sync`, `ta-docs-sync`, `ta-invariants-gate`), plus the same shared docs. MCP: `.cursor/MCP.md`.
 - Hermes: use `.hermes.md` (Hermes-only auto entrypoint) plus the same shared docs and skill `track-anime`. Do not treat Hermes setup as a reason to change Cursor files.
 - If Cursor helpers under `.cursor/` are missing, fall back to `AI_CONTEXT.md` request routing and the task-specific files.

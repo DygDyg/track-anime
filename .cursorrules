@@ -9,7 +9,8 @@ Cursor compatibility entrypoint. Shared sources of truth:
 Project helpers:
 
 - `.cursor/rules/` — always-on and topic routing rules
-- `.cursor/skills/ta-dispatcher/` — multi-topic request dispatcher
+- `.cursor/skills/` — `ta-dispatcher`, `ta-deploy`, `ta-debug`, `ta-player`, `ta-posters`, `ta-lists-sync`, `ta-docs-sync`, `ta-invariants-gate`
+- `.cursor/MCP.md` — project MCP (`sshpilot`, local `postgres`, `context7`)
 
 ## Role
 
