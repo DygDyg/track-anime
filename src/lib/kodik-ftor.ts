@@ -248,9 +248,15 @@ async function requestKodikFtorStreams(embed: string): Promise<KodikFtorStreamRe
   }
 }
 
+export type FetchKodikFtorStreamsOptions = {
+  /** Drop in-memory entry and re-hit the parser (dead CDN links before TTL). */
+  bypassCache?: boolean;
+};
+
 export async function fetchKodikFtorStreams(
   playerLink: string,
   signal?: AbortSignal,
+  options?: FetchKodikFtorStreamsOptions,
 ): Promise<KodikFtorStreamResult> {
   const embed = toKodikPlayerEmbedUrl(playerLink.trim());
   if (!embed) {
@@ -258,8 +264,12 @@ export async function fetchKodikFtorStreams(
   }
 
   const key = normalizeKodikPlayerLinkForCompare(embed);
-  const cached = readStreamCache(key);
-  if (cached) return cached;
+  if (options?.bypassCache) {
+    streamCache().delete(key);
+  } else {
+    const cached = readStreamCache(key);
+    if (cached) return cached;
+  }
   if (signal?.aborted) throw abortError();
 
   const inflight = streamInflight().get(key);

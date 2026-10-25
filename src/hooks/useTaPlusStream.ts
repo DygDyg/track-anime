@@ -67,6 +67,8 @@ export function useTaPlusStream(input: {
   /** Manual choice (`auto` or height). Restored from localStorage; written only on setQuality. */
   const preferredQualityRef = useRef<string>(TA_PLUS_QUALITY_AUTO);
   const prefsHydratedRef = useRef(false);
+  /** Next fetch should bypass server ftor cache (reload / fatal HLS). */
+  const bypassCacheRef = useRef(false);
 
   useEffect(() => {
     if (prefsHydratedRef.current) return;
@@ -99,6 +101,7 @@ export function useTaPlusStream(input: {
     setPreviews([]);
     setSkips(null);
 
+    const bypassCache = bypassCacheRef.current;
     void (async () => {
       try {
         const params = new URLSearchParams({
@@ -106,6 +109,9 @@ export function useTaPlusStream(input: {
           season: String(input.seasonNumber),
           episode: String(input.episodeNumber),
         });
+        // Keep bypassCacheRef set until this attempt finishes so React Strict Mode
+        // remount still sends refresh=1 (clearing at start would drop it).
+        if (bypassCache) params.set("refresh", "1");
         const res = await fetch(`/api/anime/${input.shikimoriId}/taplus?${params.toString()}`, {
           cache: "no-store",
           signal: controller.signal,
@@ -141,6 +147,10 @@ export function useTaPlusStream(input: {
         if (controller.signal.aborted) return;
         setError(err instanceof Error ? err.message : "Не удалось получить поток");
         setLoading(false);
+      } finally {
+        if (bypassCache && !controller.signal.aborted) {
+          bypassCacheRef.current = false;
+        }
       }
     })();
 
@@ -170,6 +180,7 @@ export function useTaPlusStream(input: {
   }, []);
 
   const reload = useCallback(() => {
+    bypassCacheRef.current = true;
     setReloadNonce((value) => value + 1);
   }, []);
 

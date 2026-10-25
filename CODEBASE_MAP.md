@@ -84,7 +84,7 @@ ta_new/
 | `characters/[characterId]/hover-preview` | Character hover preview |
 | `anime/[shikimoriId]/comments` | Shikimori comments proxy |
 | `anime/[shikimoriId]/episodes` | Episode metadata |
-| `anime/[shikimoriId]/taplus` | TA Plus: decode Kodik `/ftor` → HLS qualities + idle `previews` + parser `skips`; in-memory cache until the CDN hour stamp |
+| `anime/[shikimoriId]/taplus` | TA Plus: decode Kodik `/ftor` → HLS qualities + idle `previews` + parser `skips`; in-memory cache until the CDN hour stamp; `refresh=1` bypasses that cache |
 | `taplus-tile` | Proxy Kodik storyboard/thumb JPEGs (idle/scrub preview; CDN hotlink bypass) |
 | `anime/[shikimoriId]/cvh` | VideoHUB playlist resolve |
 | `anime/[shikimoriId]/hover-preview` | Anime hover preview |
@@ -216,7 +216,7 @@ Git deploy webhook (HMAC, no session): `api/deploy/webhook` (POST)
 |------|----------------|
 | `anime-page.ts` | Anime page data loader |
 | `cvh-player.ts` | CDN VideoHub pub/aggr (в т.ч. `shikimori`→MAL fallback), playlist helpers, URL для запасного `/cdn-iframe` |
-| `kodik-ftor.ts` | Серверный вызов PHP-парсера `/ftor` + ROT18/base64 decode HLS `src` для TA Plus; заголовок `X-Kodik-Proxy`; кеш потока до `YYYYMMDDHH` UTC минус 10 минут |
+| `kodik-ftor.ts` | Серверный вызов PHP-парсера `/ftor` + ROT18/base64 decode HLS `src` для TA Plus; заголовок `X-Kodik-Proxy`; кеш потока до `YYYYMMDDHH` UTC минус 10 минут; `bypassCache` / `refresh=1` |
 | `kodik-parser-skip.ts` | Разбор `skip_timings` / `skip_raw` из ответа парсера → OP/ED для TA Plus |
 | `ta-plus-tiles.ts` | Client-safe storyboard tiles; `{index}` = 1-based `padStart(4,"0")` (`0001`…) для scrub-preview TA Plus |
 | `ta-plus-safe-mode.ts` | Safe mode: truncate `/ftor` URL at `.mp4` for progressive fallback |

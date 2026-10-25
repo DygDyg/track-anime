@@ -144,6 +144,8 @@ export async function GET(request: NextRequest, { params }: RouteParams) {
   const kodikId = request.nextUrl.searchParams.get("kodikId")?.trim() || null;
   const seasonNumber = parseNonNegativeInt(request.nextUrl.searchParams.get("season")) ?? 1;
   const episodeNumber = parsePositiveInt(request.nextUrl.searchParams.get("episode")) ?? 1;
+  const refreshRaw = request.nextUrl.searchParams.get("refresh")?.trim().toLowerCase() ?? "";
+  const bypassCache = refreshRaw === "1" || refreshRaw === "true" || refreshRaw === "yes";
 
   let playerLink = urlParam ? normalizePlayerLink(urlParam) : null;
   let episodeScreenshots: unknown = null;
@@ -168,7 +170,7 @@ export async function GET(request: NextRequest, { params }: RouteParams) {
   }
 
   try {
-    const streams = await fetchKodikFtorStreams(playerLink, request.signal);
+    const streams = await fetchKodikFtorStreams(playerLink, request.signal, { bypassCache });
     const qualities = Object.fromEntries(
       Object.entries(streams.qualities).sort((a, b) => Number(b[0]) - Number(a[0])),
     );

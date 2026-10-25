@@ -2,6 +2,19 @@
   "version": 1,
   "entries": [
     {
+      "id": "2026-10-25",
+      "recordedAt": "2026-10-25T00:42:00.000Z",
+      "gitSha": "35da62f",
+      "title": "TA Plus",
+      "items": [
+        {
+          "kind": "fix",
+          "topic": "ta-plus-dead-stream-refresh",
+          "text": "Если поток TA Plus не открылся, сайт заново получает ссылки на видео вместо устаревших."
+        }
+      ]
+    },
+    {
       "id": "2026-10-24",
       "recordedAt": "2026-10-24T05:04:00.000Z",
       "gitSha": "f3e3eb2",
