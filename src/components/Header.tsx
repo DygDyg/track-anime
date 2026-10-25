@@ -23,6 +23,7 @@ import {
   SITE_LOGO_ALT,
   SITE_LOGO_PATH,
   SITE_LOGO_RANDOM_API_PATH,
+  SITE_MIRROR_ROUTER_URL,
   SITE_NAME,
 } from "@/lib/site-brand";
 
@@ -94,12 +95,8 @@ function handleLogoHomeClick(event: MouseEvent<HTMLAnchorElement>) {
   }
 
   event.preventDefault();
-  const url = new URL(window.location.href);
-  if (url.pathname === "/" && url.search === "" && url.hash === "") {
-    window.location.reload();
-    return;
-  }
-  window.location.assign("/");
+  // Via Pages mirror router so a blocked origin can still land on a live mirror.
+  window.location.assign(SITE_MIRROR_ROUTER_URL);
 }
 
 function NavLinks({
@@ -196,7 +193,7 @@ export function Header({ logoSrc: initialLogoSrc = SITE_LOGO_PATH }: { logoSrc?:
       <div className="site-header-text relative flex h-14 items-center gap-2 px-3 sm:h-16 sm:gap-2.5 sm:px-6 lg:px-8">
         <div className="flex min-w-0 shrink-0 items-center gap-2 md:gap-2.5">
           <a
-            href="/"
+            href={SITE_MIRROR_ROUTER_URL}
             onClick={handleLogoHomeClick}
             className={`${headerControl.text} inline-flex shrink-0 items-center gap-2 font-semibold tracking-tight`}
           >

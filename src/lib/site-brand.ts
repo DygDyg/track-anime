@@ -4,6 +4,9 @@ export const SITE_LOGO_ALT = SITE_NAME;
 export const SITE_LOGO_ROTATION_PUBLIC_PATH = "/brand-logos";
 export const SITE_LOGO_RANDOM_API_PATH = "/api/site-logo/random";
 
+/** GitHub Pages mirror router («Подбор сервера») — picks a live origin. */
+export const SITE_MIRROR_ROUTER_URL = "https://track-anime.github.io/";
+
 export { SITE_LOGO_VERSION } from "./site-brand.generated";
 
 import { SITE_LOGO_VERSION } from "./site-brand.generated";
