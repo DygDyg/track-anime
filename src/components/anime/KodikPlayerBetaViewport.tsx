@@ -191,8 +191,10 @@ type Props = {
   previews?: string[] | null;
   /** Optional known episode length (AniSkip / last play) for idle scrub before HLS. */
   episodeDurationHint?: number | null;
-  /** HLS recovery exhausted — re-fetch /taplus (parent). */
+  /** HLS recovery — re-fetch /taplus with refresh=1 (parent). */
   onStreamFailed?: () => void;
+  /** Parent `/taplus` in flight (silent refresh / episode load). */
+  streamLoading?: boolean;
   /**
    * Mount+play HLS immediately (Continue / deep-link «Воспроизвести»).
    * Balancer switch alone must NOT set this — idle storyboard stays until user plays.
@@ -254,6 +256,7 @@ export function KodikPlayerBetaViewport({
   previews = null,
   episodeDurationHint = null,
   onStreamFailed,
+  streamLoading = false,
   autoStart = false,
   onReady,
   onContinueStateChange,
@@ -2480,6 +2483,7 @@ export function KodikPlayerBetaViewport({
                 onPlaybackStateChange={handlePlaybackStateChange}
                 onEnded={onEnded}
                 onStreamFailed={onStreamFailed}
+                streamLoading={streamLoading}
                 onBufferedEndChange={setBufferedEndSeconds}
                 onActiveQualityChange={setActiveQualityHeight}
               />

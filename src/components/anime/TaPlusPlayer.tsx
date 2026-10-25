@@ -73,8 +73,13 @@ type Props = {
   onPlaying?: () => void;
   onPlaybackStateChange?: (state: KodikPlayerPlaybackState) => void;
   onEnded?: (progress?: KodikPlayerProgressPayload | null) => void;
-  /** Exhausted local HLS recovery — parent should re-fetch /taplus. */
+  /**
+   * Parent re-fetches /taplus with refresh=1 (silent recovery before safe-mode offer).
+   * Also used after progressive MP4 failure / manual refresh.
+   */
   onStreamFailed?: () => void;
+  /** True while parent `/taplus` fetch is in flight (silent refresh / episode load). */
+  streamLoading?: boolean;
   /** Furthest buffered end (seconds) for timeline UI. */
   onBufferedEndChange?: (bufferedEndSeconds: number) => void;
   /** Active ABR / locked height for UI label (e.g. 720). */
@@ -178,6 +183,7 @@ export const TaPlusPlayer = forwardRef<TaPlusPlayerHandle, Props>(function TaPlu
     onPlaybackStateChange,
     onEnded,
     onStreamFailed,
+    streamLoading = false,
     onBufferedEndChange,
     onActiveQualityChange,
     ambientGlowActive = false,
@@ -226,6 +232,9 @@ export const TaPlusPlayer = forwardRef<TaPlusPlayerHandle, Props>(function TaPlu
   const safeModeResumeRef = useRef<number | null>(null);
   const playUrlForOfferRef = useRef<string | null>(null);
   const fatalSafeModePendingRef = useRef(false);
+  /** One silent /taplus?refresh=1 per episode before showing safe-mode offer. */
+  const silentRefreshDoneRef = useRef(false);
+  const awaitingSilentRefreshRef = useRef(false);
   const autoMode = quality === TA_PLUS_QUALITY_AUTO || quality == null;
   const posterUrl = poster?.trim() || undefined;
 
@@ -248,15 +257,55 @@ export const TaPlusPlayer = forwardRef<TaPlusPlayerHandle, Props>(function TaPlu
     setStallSpinner(false);
   };
 
+  const trySilentStreamRefresh = (): boolean => {
+    if (awaitingSilentRefreshRef.current) return true;
+    if (silentRefreshDoneRef.current) return false;
+    if (!onStreamFailedRef.current) return false;
+    silentRefreshDoneRef.current = true;
+    awaitingSilentRefreshRef.current = true;
+    setStallSpinner(true);
+    clearSafeModeOfferTimer();
+    setSafeModeOffer(false);
+    setError(null);
+    // Allow parent notify even if a prior load already flagged failure.
+    streamFailedSentRef.current = false;
+    notifyStreamFailed();
+    return true;
+  };
+
+  const offerSafeModeUi = (fromFatal: boolean) => {
+    if (!canUseTaPlusSafeMode(playUrlForOfferRef.current)) return false;
+    if (safeModeDismissedRef.current) return false;
+    if (fromFatal) fatalSafeModePendingRef.current = true;
+    setStallSpinner(true);
+    setSafeModeOffer(true);
+    return true;
+  };
+
+  /** First: silent refresh=1. Then: safe-mode offer. Then: hard error. */
+  const recoverOrOfferSafeMode = (fromFatal: boolean) => {
+    if (safeModeRef.current) {
+      setError("Не удалось воспроизвести поток");
+      notifyStreamFailed();
+      return;
+    }
+    if (trySilentStreamRefresh()) return;
+    if (offerSafeModeUi(fromFatal)) return;
+    setError("Не удалось воспроизвести поток");
+    notifyStreamFailed();
+  };
+  const recoverOrOfferSafeModeRef = useRef(recoverOrOfferSafeMode);
+  recoverOrOfferSafeModeRef.current = recoverOrOfferSafeMode;
+
   const scheduleSafeModeOffer = () => {
     if (safeModeRef.current || safeModeDismissedRef.current) return;
-    if (!canUseTaPlusSafeMode(playUrlForOfferRef.current)) return;
+    if (awaitingSilentRefreshRef.current) return;
     if (safeModeOfferTimerRef.current != null) return;
     safeModeOfferTimerRef.current = window.setTimeout(() => {
       safeModeOfferTimerRef.current = null;
       if (safeModeRef.current || safeModeDismissedRef.current) return;
-      if (!canUseTaPlusSafeMode(playUrlForOfferRef.current)) return;
-      setSafeModeOffer(true);
+      if (awaitingSilentRefreshRef.current) return;
+      recoverOrOfferSafeModeRef.current(false);
     }, SAFE_MODE_OFFER_AFTER_MS);
   };
 
@@ -321,8 +370,8 @@ export const TaPlusPlayer = forwardRef<TaPlusPlayerHandle, Props>(function TaPlu
     setSafeModeOffer(false);
     if (fatalSafeModePendingRef.current) {
       fatalSafeModePendingRef.current = false;
+      // Silent refresh already ran before this offer — just surface the error.
       setError("Не удалось воспроизвести поток");
-      notifyStreamFailed();
     }
   };
 
@@ -434,6 +483,15 @@ export const TaPlusPlayer = forwardRef<TaPlusPlayerHandle, Props>(function TaPlu
   const bootSeekRef = useRef(bootSeekSeconds);
   bootSeekRef.current = bootSeekSeconds;
 
+  // New episode → allow another silent refresh before safe-mode offer.
+  const episodeIdentity = `${seasonNumber}|${episodeNumber}`;
+  const [trackedEpisodeIdentity, setTrackedEpisodeIdentity] = useState(episodeIdentity);
+  if (episodeIdentity !== trackedEpisodeIdentity) {
+    setTrackedEpisodeIdentity(episodeIdentity);
+    silentRefreshDoneRef.current = false;
+    awaitingSilentRefreshRef.current = false;
+  }
+
   // New episode / quality / source → leave safe mode and re-offer on next hang.
   const streamIdentity = `${src ?? ""}|${quality ?? ""}|${seasonNumber}|${episodeNumber}`;
   const [trackedStreamIdentity, setTrackedStreamIdentity] = useState(streamIdentity);
@@ -445,6 +503,16 @@ export const TaPlusPlayer = forwardRef<TaPlusPlayerHandle, Props>(function TaPlu
     fatalSafeModePendingRef.current = false;
     clearSafeModeOfferTimer();
   }
+
+  // Silent refresh finished without a playable URL (parser/network error).
+  useEffect(() => {
+    if (!awaitingSilentRefreshRef.current) return;
+    if (streamLoading) return;
+    if (src?.trim()) return;
+    awaitingSilentRefreshRef.current = false;
+    setStallSpinner(false);
+    setError("Не удалось получить поток");
+  }, [streamLoading, src]);
 
   useEffect(() => {
     const video = videoRef.current;
@@ -507,6 +575,9 @@ export const TaPlusPlayer = forwardRef<TaPlusPlayerHandle, Props>(function TaPlu
     setError(null);
     streamFailedSentRef.current = false;
     fatalSafeModePendingRef.current = false;
+    if (awaitingSilentRefreshRef.current) {
+      awaitingSilentRefreshRef.current = false;
+    }
     seekAppliedForSrcRef.current = null;
     clearSafeModeOfferTimer();
     setSafeModeOffer(false);
@@ -583,17 +654,7 @@ export const TaPlusPlayer = forwardRef<TaPlusPlayerHandle, Props>(function TaPlu
 
     const offerSafeModeOrFail = () => {
       if (disposed) return;
-      if (
-        !safeMode &&
-        canUseTaPlusSafeMode(safeSourceUrl) &&
-        !safeModeDismissedRef.current
-      ) {
-        fatalSafeModePendingRef.current = true;
-        setStallSpinner(true);
-        setSafeModeOffer(true);
-        return;
-      }
-      failHard("Не удалось воспроизвести поток");
+      recoverOrOfferSafeModeRef.current(true);
     };
 
     const reportLevelHeight = (levelIndex: number, hls: Hls) => {

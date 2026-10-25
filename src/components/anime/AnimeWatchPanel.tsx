@@ -4414,6 +4414,7 @@ export function AnimeWatchPanel({
                         : undefined
                     }
                     onStreamFailed={isTaPlus ? handleTaPlusStreamFailed : undefined}
+                    streamLoading={isTaPlus ? taPlusStream.loading : false}
                     autoStart={isTaPlus && continueLoading}
                     onQualityChange={
                       isTaPlus
