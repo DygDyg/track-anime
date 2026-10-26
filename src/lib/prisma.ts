@@ -19,9 +19,9 @@ function getPrismaClient(): PrismaClient {
   }
 
   const client = createPrismaClient();
-  if (process.env.NODE_ENV !== "production") {
-    globalForPrisma.prisma = client;
-  }
+  // Always pin on globalThis: Next server chunks can otherwise create multiple clients
+  // and exhaust Postgres with several tiny pools (default ~num_cpus*2+1).
+  globalForPrisma.prisma = client;
   return client;
 }
 

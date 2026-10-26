@@ -59,20 +59,13 @@ async function recordContentHit(params: {
   shikimoriId: number;
   identityKey: string;
 }): Promise<void> {
-  let isNewIdentityForContent = false;
-  try {
-    await prisma.siteContentIdentityDay.create({
-      data: {
-        day: params.day,
-        section: params.section,
-        shikimoriId: params.shikimoriId,
-        identityKey: params.identityKey,
-      },
-    });
-    isNewIdentityForContent = true;
-  } catch {
-    // unique violation — already counted today
-  }
+  // ON CONFLICT DO NOTHING — без P2002/исключений, которые засоряют лог и держат пул.
+  const inserted = await prisma.$executeRaw`
+    INSERT INTO "SiteContentIdentityDay" ("day", "section", "shikimoriId", "identityKey")
+    VALUES (${params.day}, ${params.section}, ${params.shikimoriId}, ${params.identityKey})
+    ON CONFLICT DO NOTHING
+  `;
+  const isNewIdentityForContent = inserted === 1;
 
   await prisma.siteContentDay.upsert({
     where: {

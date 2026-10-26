@@ -72,7 +72,7 @@ nano .env
 Пример для **production**:
 
 ```env
-DATABASE_URL="postgresql://track_anime:СЛОЖНЫЙ_ПАРОЛЬ@127.0.0.1:5432/track_anime"
+DATABASE_URL="postgresql://track_anime:СЛОЖНЫЙ_ПАРОЛЬ@127.0.0.1:5432/track_anime?connection_limit=15&pool_timeout=20"
 KODIK_API_TOKEN="ваш_токен_с_kodik"
 KODIK_API_URL="https://kodik-api.com"
 KODIK_SYNC_PAGES="3"

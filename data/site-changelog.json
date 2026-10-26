@@ -27,6 +27,12 @@
           "audience": "admin",
           "topic": "favorites-sync-tx-timeout",
           "text": "Синхронизация больших списков Shikimori пишется одним bulk-запросом и больше не роняет сайт по таймауту транзакции."
+        },
+        {
+          "kind": "fix",
+          "audience": "admin",
+          "topic": "prisma-pool-exhaustion",
+          "text": "Пул Prisma увеличен, синглтон клиента и учёт analytics без шторма unique-ошибок — меньше падений при steal CPU."
         }
       ]
     },
