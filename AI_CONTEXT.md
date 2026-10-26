@@ -181,6 +181,7 @@ Calendar: `/calendar` → calendar.ts → local Kodik DB or Shikimori `/api/cale
 | Viewport click pauses while chrome hidden | `handleViewportClick`: hidden UI → `revealUi` only; play/pause only when `uiVisible` |
 | TA Plus white stub on episode switch | Empty `<video>` after `load()` — set `poster` + cover overlay until first frame (`TaPlusPlayer`) |
 | TA Plus hang / safe mode | After ~5s stall (or fatal HLS) offer progressive MP4: cut URL at `.mp4` (`ta-plus-safe-mode.ts`, `TaPlusPlayer`) |
+| TA Plus safe-mode but CDN OK | Apex `cloudN.solodcdn.com` often blocked in browsers; rewrite to `lynx.cloudN.solodcdn.com` in `preferSolodcdnBrowserEdge` (`kodik-ftor.ts`). `refresh=1` alone returns the same hour-stamped paths |
 | TA Plus dead HLS after retry | Client reload must use `/taplus?refresh=1` so `kodik-ftor` drops in-memory cache; plain GET re-serves same CDN URLs until hour stamp |
 | TA Plus safe-mode before refresh | Offer progressive MP4 only after one silent `refresh=1` for the episode failed again (`TaPlusPlayer` `silentRefreshDoneRef`) |
 | TA Plus Auto stuck at 480p | Use optimistic `abrEwmaDefaultEstimate` + `startLevel=max` on synthetic master; don't lock Auto to a single max URL |

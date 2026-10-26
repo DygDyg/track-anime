@@ -76,9 +76,40 @@ export function kodikDecodeSrc(src: string): string {
 export function kodikSrcToHttpsUrl(src: string): string | null {
   const decoded = kodikDecodeSrc(src).trim();
   if (!decoded) return null;
-  if (decoded.startsWith("//")) return `https:${decoded}`;
-  if (decoded.startsWith("https://") || decoded.startsWith("http://")) return decoded;
+  if (decoded.startsWith("//")) return preferSolodcdnBrowserEdge(`https:${decoded}`);
+  if (decoded.startsWith("https://") || decoded.startsWith("http://")) {
+    return preferSolodcdnBrowserEdge(decoded);
+  }
   return null;
+}
+
+/**
+ * Apex `cloudN.solodcdn.com` is often unreachable from browsers (no TCP), while
+ * `lynx.cloudN.solodcdn.com` serves the same path. Curl from the server follows
+ * 302 → lynx; the client never gets that redirect if the apex is blocked.
+ */
+export function preferSolodcdnBrowserEdge(url: string): string {
+  try {
+    const parsed = new URL(url);
+    const host = parsed.hostname.toLowerCase();
+    const match = /^(cloud\d+)\.solodcdn\.com$/i.exec(host);
+    if (!match) return url;
+    parsed.hostname = `lynx.${match[1]!.toLowerCase()}.solodcdn.com`;
+    return parsed.href;
+  } catch {
+    return url;
+  }
+}
+
+function rewriteSolodcdnEdges(result: KodikFtorStreamResult): KodikFtorStreamResult {
+  const qualities: Record<string, string> = {};
+  for (const [quality, streamUrl] of Object.entries(result.qualities)) {
+    qualities[quality] = preferSolodcdnBrowserEdge(streamUrl);
+  }
+  const tiles = result.tiles
+    ? { ...result.tiles, pattern: preferSolodcdnBrowserEdge(result.tiles.pattern) }
+    : null;
+  return { ...result, qualities, tiles };
 }
 
 function asPositiveInt(value: unknown): number | null {
@@ -96,7 +127,7 @@ function parseTiles(raw: unknown): KodikFtorTiles | null {
     width: asPositiveInt(tiles.width) ?? 160,
     x: asPositiveInt(tiles.x) ?? 5,
     y: asPositiveInt(tiles.y) ?? 5,
-    pattern,
+    pattern: preferSolodcdnBrowserEdge(pattern),
   };
 }
 
@@ -266,9 +297,12 @@ export async function fetchKodikFtorStreams(
   const key = normalizeKodikPlayerLinkForCompare(embed);
   if (options?.bypassCache) {
     streamCache().delete(key);
+    // Drop in-flight non-refresh fetch so refresh=1 does not reuse its result.
+    streamInflight().delete(key);
   } else {
     const cached = readStreamCache(key);
-    if (cached) return cached;
+    // Rewrite on read: in-memory entries may predate lynx edge rewrite.
+    if (cached) return rewriteSolodcdnEdges(cached);
   }
   if (signal?.aborted) throw abortError();
 
@@ -277,9 +311,10 @@ export async function fetchKodikFtorStreams(
 
   const promise = requestKodikFtorStreams(embed)
     .then((result) => {
-      const expiresAt = streamCacheExpiryMs(result);
-      if (expiresAt != null) streamCache().set(key, { value: result, expiresAt });
-      return result;
+      const rewritten = rewriteSolodcdnEdges(result);
+      const expiresAt = streamCacheExpiryMs(rewritten);
+      if (expiresAt != null) streamCache().set(key, { value: rewritten, expiresAt });
+      return rewritten;
     })
     .finally(() => {
       streamInflight().delete(key);
