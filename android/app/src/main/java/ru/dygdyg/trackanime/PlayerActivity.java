@@ -4,14 +4,21 @@ import android.app.Activity;
 import android.app.AlertDialog;
 import android.content.Intent;
 import android.content.pm.ActivityInfo;
+import android.graphics.Color;
+import android.graphics.drawable.GradientDrawable;
+import android.media.AudioManager;
 import android.os.Bundle;
 import android.os.Handler;
 import android.os.Looper;
 import android.util.Log;
+import android.view.Gravity;
 import android.view.KeyEvent;
 import android.view.View;
+import android.view.ViewGroup;
 import android.view.WindowManager;
 import android.widget.Button;
+import android.widget.FrameLayout;
+import android.widget.LinearLayout;
 import android.widget.ProgressBar;
 import android.widget.SeekBar;
 import android.widget.TextView;
@@ -24,13 +31,17 @@ import androidx.media3.exoplayer.ExoPlayer;
 import androidx.media3.session.MediaSession;
 import androidx.media3.ui.PlayerView;
 
+import org.json.JSONObject;
+
 import java.util.ArrayList;
 import java.util.LinkedHashMap;
 import java.util.List;
+import java.util.Locale;
 import java.util.Map;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 
+import ru.dygdyg.trackanime.player.GestureSeekHelper;
 import ru.dygdyg.trackanime.player.NativePlayerPayload;
 import ru.dygdyg.trackanime.player.SkipController;
 import ru.dygdyg.trackanime.player.TaPlusApiClient;
@@ -39,17 +50,20 @@ import ru.dygdyg.trackanime.player.WatchProgressReporter;
 public final class PlayerActivity extends Activity {
     public static final String EXTRA_PAYLOAD_JSON = "payload_json";
     public static final String EXTRA_IS_TV = "is_tv";
+    public static final String EXTRA_RESULT_JSON = "result_json";
 
     private static final String LOG_TAG = "TaPlusNativePlayer";
     private static final String QUALITY_AUTO = "auto";
     private static final long UI_TICK_MS = 500L;
     private static final long CHROME_HIDE_MS = 4_000L;
+    private static final float[] SPEEDS = {0.75f, 1f, 1.25f, 1.5f, 1.75f, 2f};
 
     private final Handler main = new Handler(Looper.getMainLooper());
     private final ExecutorService io = Executors.newSingleThreadExecutor();
     private final SkipController skipController = new SkipController();
 
     private boolean tvMode;
+    private boolean immersiveFs;
     private NativePlayerPayload launch;
     private TaPlusApiClient api;
     private WatchProgressReporter progressReporter;
@@ -62,17 +76,26 @@ public final class PlayerActivity extends Activity {
     private TextView episodeLabel;
     private TextView timeText;
     private TextView errorText;
+    private TextView gestureHud;
     private ProgressBar loading;
     private SeekBar seekBar;
+    private SeekBar volumeBar;
+    private FrameLayout skipMarkers;
     private Button btnPlayPause;
+    private Button btnCenterPlay;
     private Button btnSkip;
-    private Button btnEpisodes;
-    private Button btnTranslations;
+    private Button btnMute;
+    private Button btnSpeed;
     private Button btnQuality;
+    private Button btnTranslations;
     private View chromeTop;
     private View chromeBottom;
     private View continueOverlay;
     private TextView continueMessage;
+    private LinearLayout episodeRow;
+    private LinearLayout seasonRow;
+    private LinearLayout translationsList;
+    private View translationsSheet;
 
     private String kodikId;
     private int seasonNumber;
@@ -82,11 +105,15 @@ public final class PlayerActivity extends Activity {
     private List<TaPlusApiClient.EpisodeItem> episodes = new ArrayList<>();
     private List<Integer> seasons = new ArrayList<>();
     private List<NativePlayerPayload.Translation> translations = new ArrayList<>();
+    private float playbackSpeed = 1f;
+    private boolean muted;
+    private float volumeBeforeMute = 1f;
 
     private double pendingSeekSeconds = -1;
     private boolean awaitingContinueChoice;
     private boolean userSeeking;
     private boolean chromeVisible = true;
+    private boolean unauthorizedToasted;
 
     private final Runnable uiTick = new Runnable() {
         @Override
@@ -95,14 +122,13 @@ public final class PlayerActivity extends Activity {
             main.postDelayed(this, UI_TICK_MS);
         }
     };
-
     private final Runnable hideChromeRunnable = this::hideChrome;
 
     public static void start(Activity from, String payloadJson, boolean isTv) {
         Intent intent = new Intent(from, PlayerActivity.class);
         intent.putExtra(EXTRA_PAYLOAD_JSON, payloadJson);
         intent.putExtra(EXTRA_IS_TV, isTv);
-        from.startActivity(intent);
+        from.startActivityForResult(intent, BaseWebActivity.NATIVE_PLAYER_REQUEST);
     }
 
     @Override
@@ -112,7 +138,7 @@ public final class PlayerActivity extends Activity {
         if (tvMode) {
             setRequestedOrientation(ActivityInfo.SCREEN_ORIENTATION_LANDSCAPE);
             getWindow().addFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON);
-            setImmersive();
+            applyImmersiveMode(true);
         }
 
         String json = getIntent().getStringExtra(EXTRA_PAYLOAD_JSON);
@@ -126,9 +152,44 @@ public final class PlayerActivity extends Activity {
 
         setContentView(tvMode ? R.layout.activity_player_tv : R.layout.activity_player);
         bindViews();
+        wireControls();
 
         api = new TaPlusApiClient(launch.baseUrl);
         progressReporter = new WatchProgressReporter(api, launch.shikimoriId);
+        progressReporter.setListener(new WatchProgressReporter.Listener() {
+            @Override
+            public void onUnauthorized() {
+                if (unauthorizedToasted) return;
+                unauthorizedToasted = true;
+                Toast.makeText(PlayerActivity.this, "Войдите на сайте, чтобы сохранять прогресс", Toast.LENGTH_LONG).show();
+            }
+
+            @Override
+            public void onSaved(String id, int season, int episode, double position) {
+                if (!tvMode) return;
+                try {
+                    JSONObject o = new JSONObject();
+                    o.put("shikimoriId", launch.shikimoriId);
+                    o.put("title", launch.title);
+                    o.put("seasonNumber", season);
+                    o.put("episodeNumber", episode);
+                    o.put("positionSeconds", position);
+                    o.put("posterUrl", launch.posterUrl);
+                    WatchNextPublisher.Item item = new WatchNextPublisher.Item(
+                            launch.shikimoriId,
+                            launch.title.isEmpty() ? "Track Anime" : launch.title,
+                            "Сезон " + season + " · серия " + episode,
+                            launch.posterUrl,
+                            launch.baseUrl + "/anime/" + launch.shikimoriId,
+                            Math.round(position * 1000.0),
+                            Math.round(24 * 60 * 1000.0)
+                    );
+                    WatchNextPublisher.upsert(PlayerActivity.this, item);
+                } catch (Exception ignored) {
+                }
+            }
+        });
+
         kodikId = launch.kodikId;
         seasonNumber = launch.seasonNumber;
         episodeNumber = launch.episodeNumber;
@@ -143,13 +204,14 @@ public final class PlayerActivity extends Activity {
         playerView.setPlayer(player);
         playerView.setUseController(false);
         mediaSession = new MediaSession.Builder(this, player).build();
+        player.setVolume(1f);
+        syncVolumeBar();
 
         player.addListener(new Player.Listener() {
             @Override
             public void onPlaybackStateChanged(int state) {
                 if (state == Player.STATE_READY && pendingSeekSeconds >= 0 && !awaitingContinueChoice) {
-                    long ms = (long) (pendingSeekSeconds * 1000.0);
-                    player.seekTo(ms);
+                    player.seekTo((long) (pendingSeekSeconds * 1000.0));
                     pendingSeekSeconds = -1;
                 }
                 if (state == Player.STATE_ENDED) {
@@ -163,9 +225,7 @@ public final class PlayerActivity extends Activity {
             @Override
             public void onIsPlayingChanged(boolean isPlaying) {
                 updatePlayPauseLabel();
-                if (!isPlaying) {
-                    progressReporter.onPause();
-                }
+                if (!isPlaying) progressReporter.onPause();
             }
 
             @Override
@@ -175,71 +235,98 @@ public final class PlayerActivity extends Activity {
             }
         });
 
-        btnPlayPause.setOnClickListener(v -> togglePlayPause());
-        findViewById(R.id.btn_seek_back).setOnClickListener(v -> seekBy(-10));
-        findViewById(R.id.btn_seek_fwd).setOnClickListener(v -> seekBy(10));
-        btnSkip.setOnClickListener(v -> {
-            TaPlusApiClient.SkipInterval skip = skipController.findActionable(currentPositionSeconds());
-            if (skip != null) player.seekTo((long) (skip.endTime * 1000.0));
-        });
-        btnEpisodes.setOnClickListener(v -> showEpisodesPicker());
-        btnTranslations.setOnClickListener(v -> showTranslationsPicker());
-        btnQuality.setOnClickListener(v -> showQualityPicker());
-        findViewById(R.id.btn_continue).setOnClickListener(v -> resolveContinue(true));
-        findViewById(R.id.btn_from_start).setOnClickListener(v -> resolveContinue(false));
-
-        if (!tvMode && seekBar != null) {
-            seekBar.setOnSeekBarChangeListener(new SeekBar.OnSeekBarChangeListener() {
-                @Override
-                public void onProgressChanged(SeekBar bar, int progress, boolean fromUser) {
-                    if (!fromUser || player == null) return;
-                    long duration = player.getDuration();
-                    if (duration <= 0) return;
-                    long pos = (long) (duration * (progress / 1000.0));
-                    timeText.setText(
-                            TaPlusApiClient.formatTime(pos / 1000.0)
-                                    + " / "
-                                    + TaPlusApiClient.formatTime(duration / 1000.0)
-                    );
+        if (!tvMode) {
+            new GestureSeekHelper(findViewById(R.id.gesture_surface), new GestureSeekHelper.Callbacks() {
+                @Override public void onSingleTap() {
+                    if (awaitingContinueChoice) return;
+                    if (chromeVisible) hideChrome();
+                    else showChrome(true);
                 }
-
-                @Override
-                public void onStartTrackingTouch(SeekBar bar) {
-                    userSeeking = true;
-                    showChrome(true);
+                @Override public void onSeekDelta(int deltaSeconds) { seekBy(deltaSeconds); }
+                @Override public void onVerticalLeft(float deltaFraction) {
+                    adjustVolume(deltaFraction);
                 }
-
-                @Override
-                public void onStopTrackingTouch(SeekBar bar) {
-                    userSeeking = false;
-                    long duration = player.getDuration();
-                    if (duration > 0) {
-                        player.seekTo((long) (duration * (bar.getProgress() / 1000.0)));
-                    }
-                    scheduleHideChrome();
+                @Override public void onVerticalRight(float deltaFraction) {
+                    adjustBrightness(deltaFraction);
                 }
+                @Override public void onGestureHud(String text) {
+                    gestureHud.setText(text);
+                    gestureHud.setVisibility(View.VISIBLE);
+                }
+                @Override public void onGestureHudClear() {
+                    gestureHud.setVisibility(View.GONE);
+                }
+                @Override public boolean isFullscreen() { return immersiveFs || tvMode; }
+            });
+        } else {
+            findViewById(R.id.gesture_surface).setOnClickListener(v -> {
+                if (awaitingContinueChoice) return;
+                if (chromeVisible) hideChrome();
+                else showChrome(true);
             });
         }
 
-        View root = findViewById(R.id.player_root);
-        root.setOnClickListener(v -> {
-            if (awaitingContinueChoice) return;
-            if (chromeVisible) hideChrome();
-            else showChrome(true);
-        });
-
-        if (launch.positionSeconds >= WatchProgressReporter.MIN_SAVE_POSITION_SECONDS) {
-            showContinueOverlay(launch.positionSeconds);
-        } else {
-            pendingSeekSeconds = launch.positionSeconds > 1 ? launch.positionSeconds : -1;
-            loadEpisode(true);
-        }
-
+        bootFromPayloadOrHistory();
         progressReporter.start();
         main.post(uiTick);
-        if (tvMode) {
-            btnPlayPause.post(btnPlayPause::requestFocus);
+        if (tvMode) btnPlayPause.post(btnPlayPause::requestFocus);
+    }
+
+    private void bootFromPayloadOrHistory() {
+        boolean suppress = launch.suppressContinuePrompt;
+        double position = launch.positionSeconds;
+        if (position >= WatchProgressReporter.MIN_SAVE_POSITION_SECONDS && !suppress) {
+            pendingSeekSeconds = position;
+            showContinueOverlay(position);
+            loadEpisode(false);
+            return;
         }
+        if (position >= 1) {
+            pendingSeekSeconds = position;
+            loadEpisode(true);
+            return;
+        }
+        // Safety net: reconcile with server history when web sent a cold start.
+        loading.setVisibility(View.VISIBLE);
+        io.execute(() -> {
+            try {
+                TaPlusApiClient.WatchProgress history = api.fetchWatchProgress(launch.shikimoriId);
+                main.post(() -> applyHistoryThenLoad(history));
+            } catch (Exception error) {
+                main.post(() -> {
+                    loading.setVisibility(View.GONE);
+                    loadEpisode(true);
+                });
+            }
+        });
+    }
+
+    private void applyHistoryThenLoad(TaPlusApiClient.WatchProgress history) {
+        if (history != null && history.episodeNumber > 0) {
+            boolean knownTranslation = false;
+            for (NativePlayerPayload.Translation t : translations) {
+                if (t.kodikId.equals(history.kodikId)) {
+                    knownTranslation = true;
+                    break;
+                }
+            }
+            if (knownTranslation) kodikId = history.kodikId;
+            seasonNumber = history.seasonNumber;
+            episodeNumber = history.episodeNumber;
+            progressReporter.setEpisode(kodikId, seasonNumber, episodeNumber);
+            updateEpisodeLabel();
+            if (history.positionSeconds >= WatchProgressReporter.MIN_SAVE_POSITION_SECONDS
+                    && !launch.suppressContinuePrompt) {
+                pendingSeekSeconds = history.positionSeconds;
+                showContinueOverlay(history.positionSeconds);
+                loadEpisode(false);
+                return;
+            }
+            if (history.positionSeconds >= 1) {
+                pendingSeekSeconds = history.positionSeconds;
+            }
+        }
+        loadEpisode(true);
     }
 
     private void bindViews() {
@@ -248,17 +335,81 @@ public final class PlayerActivity extends Activity {
         episodeLabel = findViewById(R.id.episode_label);
         timeText = findViewById(R.id.time_text);
         errorText = findViewById(R.id.error_text);
+        gestureHud = findViewById(R.id.gesture_hud);
         loading = findViewById(R.id.loading);
         seekBar = findViewById(R.id.seek_bar);
+        volumeBar = findViewById(R.id.volume_bar);
+        skipMarkers = findViewById(R.id.skip_markers);
         btnPlayPause = findViewById(R.id.btn_play_pause);
+        btnCenterPlay = findViewById(R.id.btn_center_play);
         btnSkip = findViewById(R.id.btn_skip);
-        btnEpisodes = findViewById(R.id.btn_episodes);
-        btnTranslations = findViewById(R.id.btn_translations);
+        btnMute = findViewById(R.id.btn_mute);
+        btnSpeed = findViewById(R.id.btn_speed);
         btnQuality = findViewById(R.id.btn_quality);
+        btnTranslations = findViewById(R.id.btn_translations);
         chromeTop = findViewById(R.id.chrome_top);
         chromeBottom = findViewById(R.id.chrome_bottom);
         continueOverlay = findViewById(R.id.continue_overlay);
         continueMessage = findViewById(R.id.continue_message);
+        episodeRow = findViewById(R.id.episode_row);
+        seasonRow = findViewById(R.id.season_row);
+        translationsList = findViewById(R.id.translations_list);
+        translationsSheet = findViewById(R.id.translations_sheet);
+    }
+
+    private void wireControls() {
+        btnPlayPause.setOnClickListener(v -> togglePlayPause());
+        btnCenterPlay.setOnClickListener(v -> togglePlayPause());
+        findViewById(R.id.btn_seek_back).setOnClickListener(v -> seekBy(-10));
+        findViewById(R.id.btn_seek_fwd).setOnClickListener(v -> seekBy(10));
+        findViewById(R.id.btn_seek_back_90).setOnClickListener(v -> seekBy(-90));
+        findViewById(R.id.btn_seek_fwd_90).setOnClickListener(v -> seekBy(90));
+        findViewById(R.id.btn_prev).setOnClickListener(v -> changeEpisodeBy(-1));
+        findViewById(R.id.btn_next).setOnClickListener(v -> changeEpisodeBy(1));
+        btnSkip.setOnClickListener(v -> {
+            TaPlusApiClient.SkipInterval skip = skipController.findActionable(currentPositionSeconds());
+            if (skip != null) player.seekTo((long) (skip.endTime * 1000.0));
+        });
+        btnMute.setOnClickListener(v -> toggleMute());
+        btnSpeed.setOnClickListener(v -> showSpeedPicker());
+        btnQuality.setOnClickListener(v -> showQualityPicker());
+        btnTranslations.setOnClickListener(v -> toggleTranslationsSheet());
+        findViewById(R.id.btn_fullscreen).setOnClickListener(v -> toggleFullscreen());
+        findViewById(R.id.btn_continue).setOnClickListener(v -> resolveContinue(true));
+        findViewById(R.id.btn_from_start).setOnClickListener(v -> resolveContinue(false));
+
+        seekBar.setOnSeekBarChangeListener(new SeekBar.OnSeekBarChangeListener() {
+            @Override public void onProgressChanged(SeekBar bar, int progress, boolean fromUser) {
+                if (!fromUser || player == null) return;
+                long duration = player.getDuration();
+                if (duration <= 0) return;
+                long pos = (long) (duration * (progress / 1000.0));
+                timeText.setText(TaPlusApiClient.formatTime(pos / 1000.0) + " / "
+                        + TaPlusApiClient.formatTime(duration / 1000.0));
+            }
+            @Override public void onStartTrackingTouch(SeekBar bar) {
+                userSeeking = true;
+                showChrome(true);
+            }
+            @Override public void onStopTrackingTouch(SeekBar bar) {
+                userSeeking = false;
+                long duration = player.getDuration();
+                if (duration > 0) player.seekTo((long) (duration * (bar.getProgress() / 1000.0)));
+                scheduleHideChrome();
+            }
+        });
+
+        volumeBar.setOnSeekBarChangeListener(new SeekBar.OnSeekBarChangeListener() {
+            @Override public void onProgressChanged(SeekBar bar, int progress, boolean fromUser) {
+                if (!fromUser || player == null) return;
+                float vol = Math.max(0f, Math.min(1f, progress / 100f));
+                player.setVolume(vol);
+                muted = vol <= 0.001f;
+                updateMuteLabel();
+            }
+            @Override public void onStartTrackingTouch(SeekBar bar) { }
+            @Override public void onStopTrackingTouch(SeekBar bar) { }
+        });
     }
 
     private void showContinueOverlay(double positionSeconds) {
@@ -267,23 +418,22 @@ public final class PlayerActivity extends Activity {
         continueOverlay.setVisibility(View.VISIBLE);
         hideChrome();
         findViewById(R.id.btn_continue).requestFocus();
-        // Prefetch stream while user chooses.
-        loadEpisode(false);
     }
 
     private void resolveContinue(boolean resume) {
         awaitingContinueChoice = false;
         continueOverlay.setVisibility(View.GONE);
         if (resume) {
-            pendingSeekSeconds = launch.positionSeconds;
+            // keep pendingSeek / current history position already set
+            if (pendingSeekSeconds < 0 && launch.positionSeconds >= 1) {
+                pendingSeekSeconds = launch.positionSeconds;
+            }
         } else {
             pendingSeekSeconds = -1;
             if (player != null) player.seekTo(0);
         }
         showChrome(true);
-        if (launch.autoplay || resume) {
-            player.play();
-        }
+        if (player != null) player.play();
         if (tvMode) btnPlayPause.requestFocus();
     }
 
@@ -329,11 +479,14 @@ public final class PlayerActivity extends Activity {
             return;
         }
         qualities = stream.qualities != null ? new LinkedHashMap<>(stream.qualities) : new LinkedHashMap<>();
-        skipController.setIntervals(skips);
+        applyStreamSkips(skips);
         if (eps != null) {
             episodes = new ArrayList<>(eps.episodes);
             seasons = new ArrayList<>(eps.seasons);
         }
+        rebuildSeasonRow();
+        rebuildEpisodeRow();
+        rebuildSkipMarkers();
         String url = resolveStreamUrl();
         if (url == null) {
             showError("Нет HLS-потока");
@@ -343,15 +496,98 @@ public final class PlayerActivity extends Activity {
         boolean keep = keepPos > 2 && !awaitingContinueChoice && pendingSeekSeconds < 0;
         player.setMediaItem(MediaItem.fromUri(url));
         player.prepare();
-        if (keep) {
-            pendingSeekSeconds = keepPos;
-        }
-        if (autoPlay && !awaitingContinueChoice) {
-            player.play();
-        }
+        player.setPlaybackSpeed(playbackSpeed);
+        if (keep) pendingSeekSeconds = keepPos;
+        if (autoPlay && !awaitingContinueChoice) player.play();
         updateQualityButton();
         showChrome(true);
     }
+
+    private void rebuildSeasonRow() {
+        seasonRow.removeAllViews();
+        if (seasons.size() <= 1) {
+            seasonRow.setVisibility(View.GONE);
+            return;
+        }
+        seasonRow.setVisibility(View.VISIBLE);
+        for (int season : seasons) {
+            Button b = chromeChip("S" + season, season == seasonNumber);
+            b.setOnClickListener(v -> {
+                if (seasonNumber == season) return;
+                seasonNumber = season;
+                episodeNumber = 1;
+                pendingSeekSeconds = -1;
+                loadEpisode(true);
+            });
+            seasonRow.addView(b);
+        }
+    }
+
+    private void rebuildEpisodeRow() {
+        episodeRow.removeAllViews();
+        List<TaPlusApiClient.EpisodeItem> items = new ArrayList<>();
+        for (TaPlusApiClient.EpisodeItem item : episodes) {
+            if (item.seasonNumber == seasonNumber) items.add(item);
+        }
+        if (items.isEmpty()) items.addAll(episodes);
+        for (TaPlusApiClient.EpisodeItem item : items) {
+            boolean active = item.seasonNumber == seasonNumber && item.episodeNumber == episodeNumber;
+            Button b = chromeChip(String.valueOf(item.episodeNumber), active);
+            b.setOnClickListener(v -> changeEpisode(item.seasonNumber, item.episodeNumber));
+            episodeRow.addView(b);
+        }
+    }
+
+    private Button chromeChip(String label, boolean active) {
+        Button b = new Button(this);
+        LinearLayout.LayoutParams lp = new LinearLayout.LayoutParams(
+                ViewGroup.LayoutParams.WRAP_CONTENT, dp(36));
+        lp.setMargins(dp(4), 0, dp(4), 0);
+        b.setLayoutParams(lp);
+        b.setMinWidth(dp(40));
+        b.setText(label);
+        b.setTextColor(Color.WHITE);
+        b.setFocusable(true);
+        GradientDrawable bg = new GradientDrawable();
+        bg.setCornerRadius(dp(8));
+        if (active) {
+            bg.setColor(getResources().getColor(R.color.accent));
+        } else {
+            bg.setColor(Color.parseColor("#14FFFFFF"));
+            bg.setStroke(dp(1), Color.parseColor("#26FFFFFF"));
+        }
+        b.setBackground(bg);
+        return b;
+    }
+
+    private void rebuildSkipMarkers() {
+        skipMarkers.removeAllViews();
+        long duration = player != null ? player.getDuration() : 0;
+        if (duration <= 0) return;
+        // markers redrawn on tick when duration known
+    }
+
+    private void redrawSkipMarkers(long durationMs) {
+        skipMarkers.removeAllViews();
+        if (durationMs <= 0) return;
+        List<TaPlusApiClient.SkipInterval> intervals = new ArrayList<>();
+        // SkipController doesn't expose list — re-query actionable by sampling is enough for button;
+        // markers use last applied skips via findActionable windows is limited. Rebuild from stream each apply.
+        // Store last skips on field:
+        if (lastSkips == null) return;
+        for (TaPlusApiClient.SkipInterval skip : lastSkips) {
+            View mark = new View(this);
+            boolean ed = skip.skipType != null && skip.skipType.toLowerCase(Locale.US).contains("ed");
+            mark.setBackgroundColor(ed ? Color.parseColor("#99FBBF24") : Color.parseColor("#8F34D399"));
+            FrameLayout.LayoutParams lp = new FrameLayout.LayoutParams(
+                    Math.max(dp(4), (int) ((skip.endTime - skip.startTime) * 1000.0 / durationMs * skipMarkers.getWidth())),
+                    ViewGroup.LayoutParams.MATCH_PARENT);
+            lp.leftMargin = (int) (skip.startTime * 1000.0 / durationMs * Math.max(1, skipMarkers.getWidth()));
+            skipMarkers.addView(mark, lp);
+        }
+    }
+
+    private List<TaPlusApiClient.SkipInterval> lastSkips = new ArrayList<>();
 
     private String resolveStreamUrl() {
         if (qualities.isEmpty()) return null;
@@ -368,27 +604,26 @@ public final class PlayerActivity extends Activity {
     private void reloadCurrentQualityKeepingPosition() {
         String url = resolveStreamUrl();
         if (url == null || player == null) return;
-        double pos = currentPositionSeconds();
+        pendingSeekSeconds = currentPositionSeconds();
         player.setMediaItem(MediaItem.fromUri(url));
         player.prepare();
-        pendingSeekSeconds = pos;
+        player.setPlaybackSpeed(playbackSpeed);
         player.play();
         updateQualityButton();
     }
 
     private void playNextEpisodeIfAny() {
-        int next = episodeNumber + 1;
-        boolean found = false;
+        changeEpisodeBy(1);
+    }
+
+    private void changeEpisodeBy(int delta) {
+        int next = episodeNumber + delta;
         for (TaPlusApiClient.EpisodeItem item : episodes) {
             if (item.seasonNumber == seasonNumber && item.episodeNumber == next) {
-                found = true;
-                break;
+                changeEpisode(item.seasonNumber, item.episodeNumber);
+                return;
             }
         }
-        if (!found) return;
-        episodeNumber = next;
-        pendingSeekSeconds = -1;
-        loadEpisode(true);
     }
 
     private void changeEpisode(int season, int episode) {
@@ -400,12 +635,35 @@ public final class PlayerActivity extends Activity {
     }
 
     private void changeTranslation(String nextKodikId) {
-        if (nextKodikId == null || nextKodikId.equals(kodikId)) return;
+        if (nextKodikId == null || nextKodikId.equals(kodikId)) {
+            translationsSheet.setVisibility(View.GONE);
+            return;
+        }
         kodikId = nextKodikId;
         progressReporter.setEpisode(kodikId, seasonNumber, episodeNumber);
         progressReporter.forceSave();
         pendingSeekSeconds = currentPositionSeconds();
+        translationsSheet.setVisibility(View.GONE);
         loadEpisode(true);
+    }
+
+    private void toggleTranslationsSheet() {
+        if (translationsSheet.getVisibility() == View.VISIBLE) {
+            translationsSheet.setVisibility(View.GONE);
+            return;
+        }
+        translationsList.removeAllViews();
+        for (NativePlayerPayload.Translation t : translations) {
+            Button b = new Button(this);
+            boolean active = t.kodikId.equals(kodikId);
+            b.setText(t.title + (active ? " ✓" : ""));
+            b.setTextColor(Color.WHITE);
+            b.setBackgroundResource(active ? R.drawable.player_accent_btn : R.drawable.player_btn_bg);
+            b.setOnClickListener(v -> changeTranslation(t.kodikId));
+            translationsList.addView(b);
+        }
+        translationsSheet.setVisibility(View.VISIBLE);
+        showChrome(false);
     }
 
     private void updateUiFromPlayer() {
@@ -426,13 +684,11 @@ public final class PlayerActivity extends Activity {
         }
         long duration = player.getDuration();
         if (!userSeeking && duration > 0) {
-            timeText.setText(
-                    TaPlusApiClient.formatTime(pos)
-                            + " / "
-                            + TaPlusApiClient.formatTime(duration / 1000.0)
-            );
-            if (seekBar != null && seekBar.getVisibility() == View.VISIBLE) {
-                seekBar.setProgress((int) Math.min(1000, Math.round(1000.0 * (pos * 1000.0) / duration)));
+            timeText.setText(TaPlusApiClient.formatTime(pos) + " / "
+                    + TaPlusApiClient.formatTime(duration / 1000.0));
+            seekBar.setProgress((int) Math.min(1000, Math.round(1000.0 * (pos * 1000.0) / duration)));
+            if (skipMarkers.getWidth() > 0 && lastSkips != null) {
+                redrawSkipMarkers(duration);
             }
         }
     }
@@ -458,78 +714,70 @@ public final class PlayerActivity extends Activity {
         showChrome(true);
     }
 
-    private void updatePlayPauseLabel() {
-        if (btnPlayPause == null || player == null) return;
-        btnPlayPause.setText(player.isPlaying() ? "Пауза" : "Смотреть");
-    }
-
-    private void updateEpisodeLabel() {
-        episodeLabel.setText("S" + seasonNumber + "E" + episodeNumber);
-    }
-
-    private void updateQualityButton() {
-        if (QUALITY_AUTO.equals(selectedQualityKey)) {
-            String auto = TaPlusApiClient.pickAutoQuality(qualities);
-            btnQuality.setText(auto != null ? "Авто (" + auto + ")" : "Качество");
+    private void toggleMute() {
+        if (player == null) return;
+        if (muted) {
+            player.setVolume(volumeBeforeMute > 0 ? volumeBeforeMute : 1f);
+            muted = false;
         } else {
-            btnQuality.setText(selectedQualityKey + "p");
+            volumeBeforeMute = player.getVolume();
+            player.setVolume(0f);
+            muted = true;
         }
+        syncVolumeBar();
+        updateMuteLabel();
+        showChrome(true);
     }
 
-    private void showEpisodesPicker() {
-        if (episodes.isEmpty()) {
-            Toast.makeText(this, "Список серий загружается…", Toast.LENGTH_SHORT).show();
-            io.execute(() -> {
-                try {
-                    TaPlusApiClient.EpisodesResult eps = api.fetchEpisodes(
-                            launch.shikimoriId, kodikId, seasonNumber);
-                    main.post(() -> {
-                        episodes = new ArrayList<>(eps.episodes);
-                        seasons = new ArrayList<>(eps.seasons);
-                        showEpisodesPicker();
-                    });
-                } catch (Exception error) {
-                    main.post(() -> Toast.makeText(this, "Не удалось загрузить серии", Toast.LENGTH_SHORT).show());
-                }
-            });
-            return;
+    private void syncVolumeBar() {
+        if (player == null || volumeBar == null) return;
+        volumeBar.setProgress(Math.round(player.getVolume() * 100));
+    }
+
+    private void updateMuteLabel() {
+        btnMute.setText(muted ? "Без звука" : "Звук");
+    }
+
+    private void adjustVolume(float deltaFraction) {
+        if (player == null) return;
+        float next = Math.max(0f, Math.min(1f, player.getVolume() + deltaFraction));
+        player.setVolume(next);
+        muted = next <= 0.001f;
+        syncVolumeBar();
+        updateMuteLabel();
+        AudioManager am = (AudioManager) getSystemService(AUDIO_SERVICE);
+        if (am != null) {
+            int max = am.getStreamMaxVolume(AudioManager.STREAM_MUSIC);
+            if (max > 0) am.setStreamVolume(AudioManager.STREAM_MUSIC, Math.round(next * max), 0);
         }
-        List<String> labels = new ArrayList<>();
-        List<TaPlusApiClient.EpisodeItem> items = new ArrayList<>();
-        for (TaPlusApiClient.EpisodeItem item : episodes) {
-            if (item.seasonNumber != seasonNumber) continue;
-            labels.add("Серия " + item.episodeNumber);
-            items.add(item);
-        }
-        if (labels.isEmpty()) {
-            for (TaPlusApiClient.EpisodeItem item : episodes) {
-                labels.add("S" + item.seasonNumber + "E" + item.episodeNumber);
-                items.add(item);
-            }
+        gestureHud.setText(Math.round(next * 100) + "%");
+        gestureHud.setVisibility(View.VISIBLE);
+    }
+
+    private void adjustBrightness(float deltaFraction) {
+        WindowManager.LayoutParams lp = getWindow().getAttributes();
+        float current = lp.screenBrightness;
+        if (current < 0) current = 0.85f;
+        float next = Math.max(0.01f, Math.min(1f, current + deltaFraction));
+        lp.screenBrightness = next;
+        getWindow().setAttributes(lp);
+        gestureHud.setText(Math.round(next * 100) + "%");
+        gestureHud.setVisibility(View.VISIBLE);
+    }
+
+    private void showSpeedPicker() {
+        String[] labels = new String[SPEEDS.length];
+        for (int i = 0; i < SPEEDS.length; i++) {
+            labels[i] = String.format(Locale.US, "%.2g×", SPEEDS[i]).replace(".00", "");
+            if (Math.abs(SPEEDS[i] - playbackSpeed) < 0.01f) labels[i] += " ✓";
         }
         new AlertDialog.Builder(this)
-                .setTitle("Серии")
-                .setItems(labels.toArray(new String[0]), (d, which) -> {
-                    TaPlusApiClient.EpisodeItem item = items.get(which);
-                    changeEpisode(item.seasonNumber, item.episodeNumber);
+                .setTitle("Скорость")
+                .setItems(labels, (d, which) -> {
+                    playbackSpeed = SPEEDS[which];
+                    if (player != null) player.setPlaybackSpeed(playbackSpeed);
+                    btnSpeed.setText(String.format(Locale.US, "%.2g×", playbackSpeed).replace(".00", ""));
                 })
-                .setNegativeButton("Закрыть", null)
-                .show();
-    }
-
-    private void showTranslationsPicker() {
-        if (translations.isEmpty()) {
-            Toast.makeText(this, "Нет озвучек", Toast.LENGTH_SHORT).show();
-            return;
-        }
-        String[] labels = new String[translations.size()];
-        for (int i = 0; i < translations.size(); i++) {
-            NativePlayerPayload.Translation t = translations.get(i);
-            labels[i] = t.title + (t.kodikId.equals(kodikId) ? " ✓" : "");
-        }
-        new AlertDialog.Builder(this)
-                .setTitle("Озвучка")
-                .setItems(labels, (d, which) -> changeTranslation(translations.get(which).kodikId))
                 .setNegativeButton("Закрыть", null)
                 .show();
     }
@@ -557,6 +805,38 @@ public final class PlayerActivity extends Activity {
                 .show();
     }
 
+    private void toggleFullscreen() {
+        immersiveFs = !immersiveFs;
+        applyImmersiveMode(immersiveFs);
+        if (!tvMode) {
+            setRequestedOrientation(immersiveFs
+                    ? ActivityInfo.SCREEN_ORIENTATION_SENSOR_LANDSCAPE
+                    : ActivityInfo.SCREEN_ORIENTATION_UNSPECIFIED);
+        }
+        showChrome(true);
+    }
+
+    private void updatePlayPauseLabel() {
+        if (btnPlayPause == null || player == null) return;
+        boolean playing = player.isPlaying();
+        btnPlayPause.setText(playing ? "Пауза" : "Смотреть");
+        btnCenterPlay.setText(playing ? "❚❚" : "▶");
+        btnCenterPlay.setVisibility(chromeVisible && !awaitingContinueChoice ? View.VISIBLE : View.GONE);
+    }
+
+    private void updateEpisodeLabel() {
+        episodeLabel.setText("S" + seasonNumber + "E" + episodeNumber);
+    }
+
+    private void updateQualityButton() {
+        if (QUALITY_AUTO.equals(selectedQualityKey)) {
+            String auto = TaPlusApiClient.pickAutoQuality(qualities);
+            btnQuality.setText(auto != null ? "Авто " + auto + "p" : "Качество");
+        } else {
+            btnQuality.setText(selectedQualityKey + "p");
+        }
+    }
+
     private void showError(String message) {
         if (message == null || message.isEmpty()) {
             errorText.setVisibility(View.GONE);
@@ -570,10 +850,9 @@ public final class PlayerActivity extends Activity {
         chromeVisible = true;
         chromeTop.setVisibility(View.VISIBLE);
         chromeBottom.setVisibility(View.VISIBLE);
+        updatePlayPauseLabel();
         main.removeCallbacks(hideChromeRunnable);
-        if (scheduleHide && !awaitingContinueChoice) {
-            scheduleHideChrome();
-        }
+        if (scheduleHide && !awaitingContinueChoice) scheduleHideChrome();
     }
 
     private void hideChrome() {
@@ -581,6 +860,8 @@ public final class PlayerActivity extends Activity {
         chromeVisible = false;
         chromeTop.setVisibility(View.GONE);
         chromeBottom.setVisibility(View.GONE);
+        translationsSheet.setVisibility(View.GONE);
+        btnCenterPlay.setVisibility(View.GONE);
     }
 
     private void scheduleHideChrome() {
@@ -588,16 +869,42 @@ public final class PlayerActivity extends Activity {
         main.postDelayed(hideChromeRunnable, CHROME_HIDE_MS);
     }
 
-    private void setImmersive() {
+    private void applyImmersiveMode(boolean on) {
         View decor = getWindow().getDecorView();
-        decor.setSystemUiVisibility(
-                View.SYSTEM_UI_FLAG_IMMERSIVE_STICKY
-                        | View.SYSTEM_UI_FLAG_FULLSCREEN
-                        | View.SYSTEM_UI_FLAG_HIDE_NAVIGATION
-                        | View.SYSTEM_UI_FLAG_LAYOUT_STABLE
-                        | View.SYSTEM_UI_FLAG_LAYOUT_FULLSCREEN
-                        | View.SYSTEM_UI_FLAG_LAYOUT_HIDE_NAVIGATION
-        );
+        if (on) {
+            decor.setSystemUiVisibility(
+                    View.SYSTEM_UI_FLAG_IMMERSIVE_STICKY
+                            | View.SYSTEM_UI_FLAG_FULLSCREEN
+                            | View.SYSTEM_UI_FLAG_HIDE_NAVIGATION
+                            | View.SYSTEM_UI_FLAG_LAYOUT_STABLE
+                            | View.SYSTEM_UI_FLAG_LAYOUT_FULLSCREEN
+                            | View.SYSTEM_UI_FLAG_LAYOUT_HIDE_NAVIGATION
+            );
+        } else {
+            decor.setSystemUiVisibility(View.SYSTEM_UI_FLAG_VISIBLE);
+        }
+    }
+
+    private int dp(int value) {
+        return Math.round(value * getResources().getDisplayMetrics().density);
+    }
+
+    private void deliverResult() {
+        try {
+            JSONObject o = new JSONObject();
+            o.put("shikimoriId", launch.shikimoriId);
+            o.put("kodikId", kodikId);
+            o.put("seasonNumber", seasonNumber);
+            o.put("episodeNumber", episodeNumber);
+            o.put("positionSeconds", progressReporter != null
+                    ? progressReporter.getPositionSeconds()
+                    : currentPositionSeconds());
+            Intent data = new Intent();
+            data.putExtra(EXTRA_RESULT_JSON, o.toString());
+            setResult(RESULT_OK, data);
+        } catch (Exception ignored) {
+            setResult(RESULT_CANCELED);
+        }
     }
 
     @Override
@@ -606,28 +913,19 @@ public final class PlayerActivity extends Activity {
         if (awaitingContinueChoice) return super.onKeyDown(keyCode, event);
         switch (keyCode) {
             case KeyEvent.KEYCODE_DPAD_LEFT:
-                if (!chromeVisible) {
-                    seekBy(-10);
-                    return true;
-                }
+                if (!chromeVisible) { seekBy(-10); return true; }
                 break;
             case KeyEvent.KEYCODE_DPAD_RIGHT:
-                if (!chromeVisible) {
-                    seekBy(10);
-                    return true;
-                }
+                if (!chromeVisible) { seekBy(10); return true; }
                 break;
             case KeyEvent.KEYCODE_DPAD_CENTER:
             case KeyEvent.KEYCODE_ENTER:
-                if (!chromeVisible) {
-                    togglePlayPause();
-                    return true;
-                }
+                if (!chromeVisible) { togglePlayPause(); return true; }
                 break;
             case KeyEvent.KEYCODE_DPAD_UP:
                 if (!chromeVisible) {
                     showChrome(true);
-                    btnEpisodes.requestFocus();
+                    if (episodeRow.getChildCount() > 0) episodeRow.getChildAt(0).requestFocus();
                     return true;
                 }
                 break;
@@ -644,18 +942,25 @@ public final class PlayerActivity extends Activity {
             default:
                 break;
         }
-        if (!chromeVisible && keyCode != KeyEvent.KEYCODE_BACK) {
-            showChrome(true);
-        }
+        if (!chromeVisible && keyCode != KeyEvent.KEYCODE_BACK) showChrome(true);
         return super.onKeyDown(keyCode, event);
     }
 
     @Override
     public void onBackPressed() {
-        if (chromeVisible && !awaitingContinueChoice && tvMode) {
+        if (translationsSheet.getVisibility() == View.VISIBLE) {
+            translationsSheet.setVisibility(View.GONE);
+            return;
+        }
+        if (chromeVisible && !awaitingContinueChoice && (tvMode || immersiveFs)) {
+            if (immersiveFs && !tvMode) {
+                toggleFullscreen();
+                return;
+            }
             hideChrome();
             return;
         }
+        deliverResult();
         super.onBackPressed();
     }
 
@@ -667,6 +972,7 @@ public final class PlayerActivity extends Activity {
 
     @Override
     protected void onDestroy() {
+        deliverResult();
         main.removeCallbacks(uiTick);
         main.removeCallbacks(hideChromeRunnable);
         if (progressReporter != null) progressReporter.shutdown();
@@ -680,5 +986,11 @@ public final class PlayerActivity extends Activity {
         }
         io.shutdownNow();
         super.onDestroy();
+    }
+
+    // Fix applyStream to store skips for markers
+    private void applyStreamSkips(List<TaPlusApiClient.SkipInterval> skips) {
+        lastSkips = skips != null ? new ArrayList<>(skips) : new ArrayList<>();
+        skipController.setIntervals(lastSkips);
     }
 }

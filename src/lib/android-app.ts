@@ -10,6 +10,8 @@ export type AndroidNativePlayerTranslation = {
   type?: string;
 };
 
+export type AndroidNativePlayerSource = "continue" | "watch" | "episode" | "deep-link";
+
 export type AndroidNativePlayerPayload = {
   baseUrl: string;
   shikimoriId: number;
@@ -21,7 +23,18 @@ export type AndroidNativePlayerPayload = {
   positionSeconds?: number;
   autoplay?: boolean;
   autoSkip?: boolean;
+  /** User already confirmed Continue on the site — seek immediately. */
+  suppressContinuePrompt?: boolean;
+  source?: AndroidNativePlayerSource;
   translations: AndroidNativePlayerTranslation[];
+};
+
+export type AndroidNativePlayerClosedPayload = {
+  shikimoriId: number;
+  kodikId: string;
+  seasonNumber: number;
+  episodeNumber: number;
+  positionSeconds: number;
 };
 
 export type TrackAnimeAndroidBridge = {
@@ -94,4 +107,26 @@ export function openAndroidNativePlayer(payload: AndroidNativePlayerPayload): bo
   } catch {
     return false;
   }
+}
+
+/** Install callback invoked when native PlayerActivity finishes. */
+export function installAndroidNativePlayerClosedHandler(
+  handler: (payload: AndroidNativePlayerClosedPayload) => void,
+): () => void {
+  if (typeof window === "undefined") return () => {};
+  const win = window as Window & {
+    __taOnNativePlayerClosed?: (json: string) => void;
+  };
+  win.__taOnNativePlayerClosed = (json: string) => {
+    try {
+      const parsed = JSON.parse(json) as AndroidNativePlayerClosedPayload;
+      if (!parsed || !Number.isFinite(parsed.shikimoriId)) return;
+      handler(parsed);
+    } catch {
+      /* ignore */
+    }
+  };
+  return () => {
+    if (win.__taOnNativePlayerClosed) delete win.__taOnNativePlayerClosed;
+  };
 }

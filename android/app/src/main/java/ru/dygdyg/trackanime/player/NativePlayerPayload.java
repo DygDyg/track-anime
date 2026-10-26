@@ -19,6 +19,8 @@ public final class NativePlayerPayload {
     public final double positionSeconds;
     public final boolean autoplay;
     public final boolean autoSkip;
+    public final boolean suppressContinuePrompt;
+    public final String source;
     public final List<Translation> translations;
 
     public static final class Translation {
@@ -44,6 +46,8 @@ public final class NativePlayerPayload {
             double positionSeconds,
             boolean autoplay,
             boolean autoSkip,
+            boolean suppressContinuePrompt,
+            String source,
             List<Translation> translations
     ) {
         this.baseUrl = baseUrl;
@@ -56,6 +60,8 @@ public final class NativePlayerPayload {
         this.positionSeconds = positionSeconds;
         this.autoplay = autoplay;
         this.autoSkip = autoSkip;
+        this.suppressContinuePrompt = suppressContinuePrompt;
+        this.source = source;
         this.translations = translations;
     }
 
@@ -99,6 +105,8 @@ public final class NativePlayerPayload {
                 Math.max(0, o.optDouble("positionSeconds", 0)),
                 o.optBoolean("autoplay", true),
                 o.optBoolean("autoSkip", false),
+                o.optBoolean("suppressContinuePrompt", false),
+                o.optString("source", "").trim(),
                 Collections.unmodifiableList(translations)
         );
     }

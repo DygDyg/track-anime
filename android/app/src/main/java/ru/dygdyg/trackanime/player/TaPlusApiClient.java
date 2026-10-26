@@ -22,6 +22,12 @@ import java.util.Map;
 
 /** Site API calls with WebView ta.session cookie. */
 public final class TaPlusApiClient {
+    public static final class UnauthorizedException extends Exception {
+        public UnauthorizedException() {
+            super("unauthorized");
+        }
+    }
+
     private final String baseUrl;
 
     public TaPlusApiClient(String baseUrl) {
@@ -291,7 +297,7 @@ public final class TaPlusApiClient {
         int code = conn.getResponseCode();
         String body = readBody(conn, code);
         conn.disconnect();
-        if (code == 401) return;
+        if (code == 401) throw new UnauthorizedException();
         if (code < 200 || code >= 300) {
             throw new IllegalStateException("HTTP " + code + (body.isEmpty() ? "" : ": " + body));
         }

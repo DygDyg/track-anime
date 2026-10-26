@@ -45,10 +45,12 @@ import { applyIntroOffset, resolveTranslationIntroOffsetSec } from "@/lib/transl
 import { matchesFuzzyText } from "@/lib/fuzzy-text-match";
 import type { WatchPartyCommand, WatchPartyPlaybackState } from "@/lib/watch-party/types";
 import {
+  installAndroidNativePlayerClosedHandler,
   isAndroidNativePlayerEnabled,
   isTrackAnimeAndroidApp,
   openAndroidNativePlayer,
   setAndroidKeepScreenOn,
+  type AndroidNativePlayerSource,
 } from "@/lib/android-app";
 import { publishAndroidWatchNext, removeAndroidWatchNext } from "@/lib/android-watch-next";
 import { withKodikPlayerCacheBust, resolveKodikPlayerEpisodeSwitch, isSingleEpisodeKodikPlayerLink } from "@/lib/player-url";
@@ -688,13 +690,26 @@ export function AnimeWatchPanel({
     useState<KodikPlayerBetaTheaterMode>("normal");
   const [playerEpisode, setPlayerEpisode] = useState({ seasonNumber: 1, episodeNumber: 1 });
   const [androidNativeTaPlus, setAndroidNativeTaPlus] = useState(false);
-  useEffect(() => {
+  const refreshAndroidNativeFlag = useCallback(() => {
     setAndroidNativeTaPlus(
       isTrackAnimeAndroidApp() &&
         isAndroidNativePlayerEnabled() &&
-        playerBalancer === "taplus",
+        playerBalancerRef.current === "taplus",
     );
-  }, [playerBalancer]);
+  }, []);
+  useEffect(() => {
+    refreshAndroidNativeFlag();
+  }, [playerBalancer, refreshAndroidNativeFlag]);
+  useEffect(() => {
+    if (!isTrackAnimeAndroidApp()) return;
+    const onVis = () => refreshAndroidNativeFlag();
+    window.addEventListener("visibilitychange", onVis);
+    window.addEventListener("focus", onVis);
+    return () => {
+      window.removeEventListener("visibilitychange", onVis);
+      window.removeEventListener("focus", onVis);
+    };
+  }, [refreshAndroidNativeFlag]);
   const taPlusStream = useTaPlusStream({
     enabled: playerBalancer === "taplus" && !androidNativeTaPlus,
     shikimoriId,
@@ -1094,6 +1109,56 @@ export function AnimeWatchPanel({
     window.addEventListener(WATCH_HISTORY_UPDATED_EVENT, onHistoryUpdated);
     return () => window.removeEventListener(WATCH_HISTORY_UPDATED_EVENT, onHistoryUpdated);
   }, [shikimoriId]);
+
+  useEffect(() => {
+    if (!isTrackAnimeAndroidApp()) return;
+    return installAndroidNativePlayerClosedHandler((closed) => {
+      if (closed.shikimoriId !== shikimoriId) return;
+      void (async () => {
+        try {
+          const res = await fetch(`/api/user/watch-history/${shikimoriId}`, { cache: "no-store" });
+          if (!res.ok) return;
+          const data = (await res.json()) as { progress?: WatchProgressDto | null };
+          const progress = data.progress ?? null;
+          if (progress) {
+            setContinueProgress(progress);
+            window.dispatchEvent(
+              new CustomEvent(WATCH_HISTORY_UPDATED_EVENT, {
+                detail: { shikimoriId, progress },
+              }),
+            );
+            if (!isWatchHistoryBookmark(progress) && progress.positionSeconds >= MIN_SAVE_POSITION_SECONDS) {
+              publishAndroidWatchNext({
+                shikimoriId,
+                title: animeTitle,
+                seasonNumber: progress.seasonNumber,
+                episodeNumber: progress.episodeNumber,
+                positionSeconds: progress.positionSeconds,
+                posterUrl: coverCacheUrl(shikimoriId),
+              });
+            }
+          } else {
+            setContinueProgress(null);
+          }
+          if (closed.kodikId) setSelectedId(closed.kodikId);
+          if (closed.episodeNumber > 0) {
+            setPlayerEpisode({
+              seasonNumber: Math.max(1, closed.seasonNumber),
+              episodeNumber: closed.episodeNumber,
+            });
+            liveProgressRef.current = {
+              seasonNumber: Math.max(1, closed.seasonNumber),
+              episodeNumber: closed.episodeNumber,
+              positionSeconds: Math.max(0, closed.positionSeconds),
+            };
+          }
+        } catch {
+          /* ignore */
+        }
+        refreshAndroidNativeFlag();
+      })();
+    });
+  }, [animeTitle, refreshAndroidNativeFlag, shikimoriId]);
 
   useEffect(() => {
     if (!playable.some((tr) => tr.kodikId === selectedId)) {
@@ -1654,6 +1719,8 @@ export function AnimeWatchPanel({
       episodeNumber: number;
       positionSeconds: number;
       autoplay?: boolean;
+      suppressContinuePrompt?: boolean;
+      source?: AndroidNativePlayerSource;
     }) => {
       if (!isTrackAnimeAndroidApp() || !isAndroidNativePlayerEnabled()) return false;
       if (playerBalancerRef.current !== "taplus" && playerBalancer !== "taplus") return false;
@@ -1677,6 +1744,8 @@ export function AnimeWatchPanel({
         positionSeconds: Math.max(0, target.positionSeconds),
         autoplay: target.autoplay !== false,
         autoSkip,
+        suppressContinuePrompt: target.suppressContinuePrompt === true,
+        source: target.source,
         translations: playable.map((tr) => ({
           kodikId: tr.kodikId,
           title: tr.translationTitle,
@@ -1720,6 +1789,8 @@ export function AnimeWatchPanel({
           episodeNumber: resume.episodeNumber,
           positionSeconds: resume.positionSeconds,
           autoplay: true,
+          suppressContinuePrompt: true,
+          source: "continue",
         })
       ) {
         return;
@@ -3068,6 +3139,8 @@ export function AnimeWatchPanel({
             episodeNumber,
             positionSeconds: 0,
             autoplay: true,
+            suppressContinuePrompt: true,
+            source: "episode",
           })
         ) {
           setPlayerEpisode({ seasonNumber, episodeNumber });
@@ -4470,12 +4543,33 @@ export function AnimeWatchPanel({
                       data-tv-focus
                       data-tv-player-primary={!showContinue}
                       onClick={() => {
+                        const historyMatch =
+                          continueProgress &&
+                          continueProgress.positionSeconds >= MIN_SAVE_POSITION_SECONDS &&
+                          playable.some((tr) => tr.kodikId === continueProgress.kodikId)
+                            ? continueProgress
+                            : null;
+                        const useHistory =
+                          historyMatch != null &&
+                          (historyMatch.kodikId === selected.kodikId ||
+                            !playable.some((tr) => tr.kodikId === selected.kodikId));
+                        const kodikId = useHistory ? historyMatch!.kodikId : selected.kodikId;
+                        const seasonNumber = useHistory
+                          ? historyMatch!.seasonNumber
+                          : playerEpisode.seasonNumber;
+                        const episodeNumber = useHistory
+                          ? historyMatch!.episodeNumber
+                          : playerEpisode.episodeNumber;
+                        const positionSeconds = useHistory ? historyMatch!.positionSeconds : 0;
                         tryOpenAndroidNativeTaPlus({
-                          kodikId: selected.kodikId,
-                          seasonNumber: playerEpisode.seasonNumber,
-                          episodeNumber: playerEpisode.episodeNumber,
-                          positionSeconds: 0,
+                          kodikId,
+                          seasonNumber,
+                          episodeNumber,
+                          positionSeconds,
                           autoplay: true,
+                          // Offer Continue inside native when resuming from history.
+                          suppressContinuePrompt: positionSeconds < MIN_SAVE_POSITION_SECONDS,
+                          source: "watch",
                         });
                       }}
                       className="rounded-md border border-white/15 bg-black/60 px-4 py-2 text-sm font-medium text-white hover:bg-black/75"

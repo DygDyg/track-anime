@@ -12,6 +12,26 @@
         android:layout_height="match_parent"
         android:background="@color/background" />
 
+    <View
+        android:id="@+id/gesture_surface"
+        android:layout_width="match_parent"
+        android:layout_height="match_parent"
+        android:background="@android:color/transparent"
+        android:clickable="true"
+        android:focusable="false" />
+
+    <TextView
+        android:id="@+id/gesture_hud"
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:layout_gravity="center"
+        android:background="@drawable/player_chrome_bg"
+        android:paddingHorizontal="16dp"
+        android:paddingVertical="10dp"
+        android:textColor="@color/foreground"
+        android:textSize="18sp"
+        android:visibility="gone" />
+
     <LinearLayout
         android:id="@+id/chrome_top"
         android:layout_width="match_parent"
@@ -41,14 +61,83 @@
             android:textSize="13sp" />
     </LinearLayout>
 
+    <Button
+        android:id="@+id/btn_center_play"
+        android:layout_width="72dp"
+        android:layout_height="72dp"
+        android:layout_gravity="center"
+        android:background="@drawable/player_accent_btn"
+        android:focusable="true"
+        android:text="▶"
+        android:textColor="@color/foreground"
+        android:textSize="22sp" />
+
     <LinearLayout
         android:id="@+id/chrome_bottom"
         android:layout_width="match_parent"
         android:layout_height="wrap_content"
         android:layout_gravity="bottom"
-        android:background="#CC0C0E14"
+        android:background="#E60F0F0F"
         android:orientation="vertical"
-        android:padding="12dp">
+        android:padding="10dp">
+
+        <HorizontalScrollView
+            android:id="@+id/season_scroll"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:scrollbars="none">
+
+            <LinearLayout
+                android:id="@+id/season_row"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:orientation="horizontal"
+                android:paddingBottom="4dp" />
+        </HorizontalScrollView>
+
+        <HorizontalScrollView
+            android:id="@+id/episode_scroll"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:scrollbars="none">
+
+            <LinearLayout
+                android:id="@+id/episode_row"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:orientation="horizontal"
+                android:paddingBottom="6dp" />
+        </HorizontalScrollView>
+
+        <FrameLayout
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content">
+
+            <android.widget.SeekBar
+                android:id="@+id/seek_bar"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:max="1000"
+                android:progressTint="@color/accent"
+                android:thumbTint="@color/foreground" />
+
+            <FrameLayout
+                android:id="@+id/skip_markers"
+                android:layout_width="match_parent"
+                android:layout_height="6dp"
+                android:layout_gravity="center_vertical"
+                android:layout_marginHorizontal="16dp"
+                android:clickable="false"
+                android:focusable="false" />
+        </FrameLayout>
+
+        <TextView
+            android:id="@+id/time_text"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:paddingBottom="4dp"
+            android:textColor="@color/muted"
+            android:textSize="12sp" />
 
         <LinearLayout
             android:layout_width="match_parent"
@@ -57,72 +146,94 @@
             android:orientation="horizontal">
 
             <Button
-                android:id="@+id/btn_play_pause"
-                android:layout_width="wrap_content"
+                android:id="@+id/btn_prev"
+                android:layout_width="40dp"
                 android:layout_height="40dp"
-                android:background="@drawable/settings_btn_accent"
+                android:background="@drawable/player_btn_bg"
                 android:focusable="true"
-                android:minWidth="88dp"
-                android:text="Пауза"
-                android:textAllCaps="false"
+                android:text="⏮"
                 android:textColor="@color/foreground" />
+
+            <Button
+                android:id="@+id/btn_seek_back_90"
+                android:layout_width="48dp"
+                android:layout_height="40dp"
+                android:background="@drawable/player_btn_bg"
+                android:focusable="true"
+                android:text="−90"
+                android:textColor="@color/foreground"
+                android:textSize="11sp" />
 
             <Button
                 android:id="@+id/btn_seek_back"
-                android:layout_width="wrap_content"
+                android:layout_width="40dp"
                 android:layout_height="40dp"
-                android:layout_marginStart="8dp"
-                android:background="@drawable/settings_btn_ghost"
+                android:background="@drawable/player_btn_bg"
                 android:focusable="true"
                 android:text="−10"
+                android:textColor="@color/foreground"
+                android:textSize="11sp" />
+
+            <Button
+                android:id="@+id/btn_play_pause"
+                android:layout_width="48dp"
+                android:layout_height="40dp"
+                android:background="@drawable/player_accent_btn"
+                android:focusable="true"
+                android:focusableInTouchMode="true"
+                android:text="Пауза"
                 android:textAllCaps="false"
-                android:textColor="@color/foreground" />
+                android:textColor="@color/foreground"
+                android:textSize="11sp" />
 
             <Button
                 android:id="@+id/btn_seek_fwd"
-                android:layout_width="wrap_content"
+                android:layout_width="40dp"
                 android:layout_height="40dp"
-                android:layout_marginStart="8dp"
-                android:background="@drawable/settings_btn_ghost"
+                android:background="@drawable/player_btn_bg"
                 android:focusable="true"
                 android:text="+10"
-                android:textAllCaps="false"
+                android:textColor="@color/foreground"
+                android:textSize="11sp" />
+
+            <Button
+                android:id="@+id/btn_seek_fwd_90"
+                android:layout_width="48dp"
+                android:layout_height="40dp"
+                android:background="@drawable/player_btn_bg"
+                android:focusable="true"
+                android:text="+90"
+                android:textColor="@color/foreground"
+                android:textSize="11sp" />
+
+            <Button
+                android:id="@+id/btn_next"
+                android:layout_width="40dp"
+                android:layout_height="40dp"
+                android:background="@drawable/player_btn_bg"
+                android:focusable="true"
+                android:text="⏭"
                 android:textColor="@color/foreground" />
 
             <Button
                 android:id="@+id/btn_skip"
                 android:layout_width="wrap_content"
                 android:layout_height="40dp"
-                android:layout_marginStart="8dp"
-                android:background="@drawable/settings_btn_accent"
+                android:layout_marginStart="4dp"
+                android:background="@drawable/player_accent_btn"
                 android:focusable="true"
+                android:paddingHorizontal="10dp"
                 android:text="Пропустить"
                 android:textAllCaps="false"
                 android:textColor="@color/foreground"
+                android:textSize="11sp"
                 android:visibility="gone" />
-
-            <TextView
-                android:id="@+id/time_text"
-                android:layout_width="0dp"
-                android:layout_height="wrap_content"
-                android:layout_marginStart="12dp"
-                android:layout_weight="1"
-                android:gravity="end"
-                android:textColor="@color/muted"
-                android:textSize="13sp" />
         </LinearLayout>
-
-        <android.widget.SeekBar
-            android:id="@+id/seek_bar"
-            android:layout_width="match_parent"
-            android:layout_height="wrap_content"
-            android:layout_marginTop="8dp"
-            android:max="1000" />
 
         <HorizontalScrollView
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
-            android:layout_marginTop="8dp"
+            android:layout_marginTop="6dp"
             android:scrollbars="none">
 
             <LinearLayout
@@ -131,38 +242,98 @@
                 android:orientation="horizontal">
 
                 <Button
-                    android:id="@+id/btn_episodes"
+                    android:id="@+id/btn_mute"
                     android:layout_width="wrap_content"
-                    android:layout_height="40dp"
-                    android:background="@drawable/settings_btn_ghost"
+                    android:layout_height="36dp"
+                    android:background="@drawable/player_btn_bg"
                     android:focusable="true"
-                    android:text="Серии"
+                    android:text="Звук"
                     android:textAllCaps="false"
-                    android:textColor="@color/foreground" />
+                    android:textColor="@color/foreground"
+                    android:textSize="12sp" />
+
+                <android.widget.SeekBar
+                    android:id="@+id/volume_bar"
+                    android:layout_width="100dp"
+                    android:layout_height="36dp"
+                    android:max="100"
+                    android:progressTint="@color/accent" />
 
                 <Button
-                    android:id="@+id/btn_translations"
+                    android:id="@+id/btn_speed"
                     android:layout_width="wrap_content"
-                    android:layout_height="40dp"
-                    android:layout_marginStart="8dp"
-                    android:background="@drawable/settings_btn_ghost"
+                    android:layout_height="36dp"
+                    android:background="@drawable/player_btn_bg"
                     android:focusable="true"
-                    android:text="Озвучка"
+                    android:text="1×"
                     android:textAllCaps="false"
-                    android:textColor="@color/foreground" />
+                    android:textColor="@color/foreground"
+                    android:textSize="12sp" />
 
                 <Button
                     android:id="@+id/btn_quality"
                     android:layout_width="wrap_content"
-                    android:layout_height="40dp"
-                    android:layout_marginStart="8dp"
-                    android:background="@drawable/settings_btn_ghost"
+                    android:layout_height="36dp"
+                    android:background="@drawable/player_btn_bg"
                     android:focusable="true"
                     android:text="Качество"
                     android:textAllCaps="false"
-                    android:textColor="@color/foreground" />
+                    android:textColor="@color/foreground"
+                    android:textSize="12sp" />
+
+                <Button
+                    android:id="@+id/btn_translations"
+                    android:layout_width="wrap_content"
+                    android:layout_height="36dp"
+                    android:background="@drawable/player_btn_bg"
+                    android:focusable="true"
+                    android:text="Озвучка"
+                    android:textAllCaps="false"
+                    android:textColor="@color/foreground"
+                    android:textSize="12sp" />
+
+                <Button
+                    android:id="@+id/btn_fullscreen"
+                    android:layout_width="wrap_content"
+                    android:layout_height="36dp"
+                    android:background="@drawable/player_btn_bg"
+                    android:focusable="true"
+                    android:text="Экран"
+                    android:textAllCaps="false"
+                    android:textColor="@color/foreground"
+                    android:textSize="12sp" />
             </LinearLayout>
         </HorizontalScrollView>
+    </LinearLayout>
+
+    <LinearLayout
+        android:id="@+id/translations_sheet"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:layout_gravity="bottom"
+        android:background="@drawable/player_chrome_bg"
+        android:orientation="vertical"
+        android:padding="12dp"
+        android:visibility="gone">
+
+        <TextView
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:paddingBottom="8dp"
+            android:text="Озвучка"
+            android:textColor="@color/muted"
+            android:textSize="12sp" />
+
+        <ScrollView
+            android:layout_width="match_parent"
+            android:layout_height="180dp">
+
+            <LinearLayout
+                android:id="@+id/translations_list"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:orientation="vertical" />
+        </ScrollView>
     </LinearLayout>
 
     <LinearLayout
@@ -193,7 +364,7 @@
                 android:id="@+id/btn_continue"
                 android:layout_width="wrap_content"
                 android:layout_height="48dp"
-                android:background="@drawable/settings_btn_accent"
+                android:background="@drawable/player_accent_btn"
                 android:focusable="true"
                 android:focusableInTouchMode="true"
                 android:minWidth="140dp"
@@ -206,7 +377,7 @@
                 android:layout_width="wrap_content"
                 android:layout_height="48dp"
                 android:layout_marginStart="12dp"
-                android:background="@drawable/settings_btn_ghost"
+                android:background="@drawable/player_btn_bg"
                 android:focusable="true"
                 android:minWidth="140dp"
                 android:text="С начала"
@@ -232,5 +403,12 @@
         android:padding="24dp"
         android:textColor="#FF8A8A"
         android:textSize="15sp"
+        android:visibility="gone" />
+
+    <!-- Legacy ids kept for shared code paths / TV copy -->
+    <Button
+        android:id="@+id/btn_episodes"
+        android:layout_width="0dp"
+        android:layout_height="0dp"
         android:visibility="gone" />
 </FrameLayout>

@@ -81,6 +81,7 @@ abstract class BaseWebActivity extends Activity {
     private static final String SYSTEM_BARS_MODE_VIDEO = "video";
     /** Hybrid Media3 TA Plus player (default off — safe rollout). */
     static final String NATIVE_TA_PLUS_PLAYER_KEY = "native-ta-plus-player";
+    static final int NATIVE_PLAYER_REQUEST = 77;
     private static final int CAMERA_PERMISSION_REQUEST_CODE = 11;
     private static final int NOTIFICATION_PERMISSION_REQUEST_CODE = 12;
     private final Handler handler = new Handler(Looper.getMainLooper());
@@ -1531,6 +1532,28 @@ abstract class BaseWebActivity extends Activity {
             Log.w(LOG_TAG, "openNativePlayer failed", error);
             Toast.makeText(this, "Не удалось открыть нативный плеер", Toast.LENGTH_LONG).show();
         }
+    }
+
+    @Override
+    protected void onActivityResult(int requestCode, int resultCode, Intent data) {
+        super.onActivityResult(requestCode, resultCode, data);
+        if (requestCode != NATIVE_PLAYER_REQUEST) return;
+        String payload = "{}";
+        if (resultCode == RESULT_OK && data != null) {
+            String json = data.getStringExtra(PlayerActivity.EXTRA_RESULT_JSON);
+            if (json != null && !json.isEmpty()) payload = json;
+        }
+        final String jsPayload = payload
+                .replace("\\", "\\\\")
+                .replace("'", "\\'")
+                .replace("\n", "\\n")
+                .replace("\r", "");
+        if (webView == null) return;
+        webView.post(() -> webView.evaluateJavascript(
+                "(function(){try{if(typeof window.__taOnNativePlayerClosed==='function')"
+                        + "{window.__taOnNativePlayerClosed('" + jsPayload + "');}}catch(e){}})();",
+                null
+        ));
     }
 
     boolean isNativeTaPlusPlayerEnabled() {
