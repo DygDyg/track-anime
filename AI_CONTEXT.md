@@ -90,6 +90,8 @@ Codex: использовать эту таблицу напрямую и чит
 | Sync pull (upsert update) | status, score, episodes, dates | **rewatches not overwritten** on update |
 | Watch progress (Kodik) | not synced | `UserWatchProgress` only |
 
+**Canon vs snapshot:** rows `UserAnimeListEntry` / `UserAnimeBookmark` are the local canon (badges, mutations, profile stats). `UserListSync.ratesSnapshot` / `bookmarksSnapshot` are a full-list response cache written only on successful full sync; point mutations call `invalidateFavoritesListSnapshot` (null) so favorites fall back to rows until the next sync. Persist uses one bulk `INSERT … ON CONFLICT`, not N Prisma upserts.
+
 Details: `DECISIONS.md`, если файл присутствует. Если файла нет — считать таблицу выше текущей зафиксированной политикой и писать `ФАЙЛ НЕ НАЙДЕН: DECISIONS.md` при ссылке на него.
 
 ## Hidden Assumptions
@@ -115,7 +117,7 @@ Home:  KodikEpisodeRelease → home-feed-cache (HomeFeedItem) → releases.ts �
 Anime: shikimoriId → anime-page.ts → Shikimori API + KodikMaterial DB
 Player: playerLink → KodikPlayer iframe → postMessage → watch-history API; TA player watch party → `useWatchParty` → WebSocket server
 Skip times: AnimeWatchPanel → /api/anime/[shikimoriId]/skip-times → aniskip.ts → AniSkip + DB cache → manual/auto OP/ED skip
-Lists: favorites-sync.ts → Shikimori user_rates → UserAnimeListEntry
+Lists: favorites-sync.ts → Shikimori user_rates → bulk UserAnimeListEntry (+ optional UserListSync snapshot cache)
 Notifications: preferences + links → notification-worker.ts → browser/FCM/Discord/Telegram/VK + in-app feed
 Calendar: `/calendar` → calendar.ts → local Kodik DB or Shikimori `/api/calendar` → CalendarView
 ```

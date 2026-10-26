@@ -37,54 +37,43 @@
         android:layout_width="match_parent"
         android:layout_height="wrap_content"
         android:layout_gravity="top"
-        android:background="#CC0C0E14"
-        android:gravity="center_vertical"
-        android:orientation="horizontal"
-        android:padding="12dp">
-
-        <TextView
-            android:id="@+id/title_text"
-            android:layout_width="0dp"
-            android:layout_height="wrap_content"
-            android:layout_weight="1"
-            android:ellipsize="end"
-            android:maxLines="2"
-            android:textColor="@color/foreground"
-            android:textSize="15sp" />
-
-        <TextView
-            android:id="@+id/episode_label"
-            android:layout_width="wrap_content"
-            android:layout_height="wrap_content"
-            android:paddingStart="8dp"
-            android:textColor="@color/muted"
-            android:textSize="13sp" />
-    </LinearLayout>
-
-    <Button
-        android:id="@+id/btn_center_play"
-        android:layout_width="72dp"
-        android:layout_height="72dp"
-        android:layout_gravity="center"
-        android:background="@drawable/player_accent_btn"
-        android:focusable="true"
-        android:text="▶"
-        android:textColor="@color/foreground"
-        android:textSize="22sp" />
-
-    <LinearLayout
-        android:id="@+id/chrome_bottom"
-        android:layout_width="match_parent"
-        android:layout_height="wrap_content"
-        android:layout_gravity="bottom"
-        android:background="#E60F0F0F"
+        android:background="#99000000"
         android:orientation="vertical"
-        android:padding="10dp">
+        android:paddingTop="8dp"
+        android:paddingBottom="4dp">
+
+        <LinearLayout
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:gravity="center_vertical"
+            android:orientation="horizontal"
+            android:paddingHorizontal="12dp"
+            android:paddingBottom="6dp">
+
+            <TextView
+                android:id="@+id/title_text"
+                android:layout_width="0dp"
+                android:layout_height="wrap_content"
+                android:layout_weight="1"
+                android:ellipsize="end"
+                android:maxLines="2"
+                android:textColor="@color/foreground"
+                android:textSize="15sp" />
+
+            <TextView
+                android:id="@+id/episode_label"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:paddingStart="8dp"
+                android:textColor="@color/muted"
+                android:textSize="13sp" />
+        </LinearLayout>
 
         <HorizontalScrollView
             android:id="@+id/season_scroll"
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
+            android:paddingHorizontal="8dp"
             android:scrollbars="none">
 
             <LinearLayout
@@ -99,6 +88,7 @@
             android:id="@+id/episode_scroll"
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
+            android:paddingHorizontal="8dp"
             android:scrollbars="none">
 
             <LinearLayout
@@ -108,6 +98,65 @@
                 android:orientation="horizontal"
                 android:paddingBottom="6dp" />
         </HorizontalScrollView>
+    </LinearLayout>
+
+    <Button
+        android:id="@+id/btn_center_play"
+        android:layout_width="72dp"
+        android:layout_height="72dp"
+        android:layout_gravity="center"
+        android:background="@drawable/player_accent_btn"
+        android:focusable="true"
+        android:text="▶"
+        android:textColor="@color/foreground"
+        android:textSize="22sp" />
+
+    <LinearLayout
+        android:id="@+id/continue_pill_bar"
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:layout_gravity="bottom|center_horizontal"
+        android:layout_marginBottom="112dp"
+        android:gravity="center"
+        android:orientation="horizontal"
+        android:visibility="gone">
+
+        <Button
+            android:id="@+id/btn_continue"
+            android:layout_width="wrap_content"
+            android:layout_height="44dp"
+            android:background="@drawable/player_chrome_bg"
+            android:focusable="true"
+            android:focusableInTouchMode="true"
+            android:minWidth="160dp"
+            android:paddingHorizontal="18dp"
+            android:text="Продолжить"
+            android:textAllCaps="false"
+            android:textColor="@color/foreground"
+            android:textSize="14sp" />
+
+        <Button
+            android:id="@+id/btn_from_start"
+            android:layout_width="wrap_content"
+            android:layout_height="40dp"
+            android:layout_marginStart="8dp"
+            android:background="@android:color/transparent"
+            android:focusable="true"
+            android:minWidth="72dp"
+            android:text="С начала"
+            android:textAllCaps="false"
+            android:textColor="@color/muted"
+            android:textSize="13sp" />
+    </LinearLayout>
+
+    <LinearLayout
+        android:id="@+id/chrome_bottom"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:layout_gravity="bottom"
+        android:background="@drawable/player_chrome_bar"
+        android:orientation="vertical"
+        android:padding="12dp">
 
         <FrameLayout
             android:layout_width="match_parent"
@@ -336,56 +385,6 @@
         </ScrollView>
     </LinearLayout>
 
-    <LinearLayout
-        android:id="@+id/continue_overlay"
-        android:layout_width="match_parent"
-        android:layout_height="match_parent"
-        android:background="#E60C0E14"
-        android:gravity="center"
-        android:orientation="vertical"
-        android:padding="24dp"
-        android:visibility="gone">
-
-        <TextView
-            android:id="@+id/continue_message"
-            android:layout_width="wrap_content"
-            android:layout_height="wrap_content"
-            android:gravity="center"
-            android:textColor="@color/foreground"
-            android:textSize="18sp" />
-
-        <LinearLayout
-            android:layout_width="wrap_content"
-            android:layout_height="wrap_content"
-            android:layout_marginTop="20dp"
-            android:orientation="horizontal">
-
-            <Button
-                android:id="@+id/btn_continue"
-                android:layout_width="wrap_content"
-                android:layout_height="48dp"
-                android:background="@drawable/player_accent_btn"
-                android:focusable="true"
-                android:focusableInTouchMode="true"
-                android:minWidth="140dp"
-                android:text="Продолжить"
-                android:textAllCaps="false"
-                android:textColor="@color/foreground" />
-
-            <Button
-                android:id="@+id/btn_from_start"
-                android:layout_width="wrap_content"
-                android:layout_height="48dp"
-                android:layout_marginStart="12dp"
-                android:background="@drawable/player_btn_bg"
-                android:focusable="true"
-                android:minWidth="140dp"
-                android:text="С начала"
-                android:textAllCaps="false"
-                android:textColor="@color/foreground" />
-        </LinearLayout>
-    </LinearLayout>
-
     <ProgressBar
         android:id="@+id/loading"
         android:layout_width="48dp"
@@ -408,6 +407,19 @@
     <!-- Legacy ids kept for shared code paths / TV copy -->
     <Button
         android:id="@+id/btn_episodes"
+        android:layout_width="0dp"
+        android:layout_height="0dp"
+        android:visibility="gone" />
+
+    <!-- Removed fullscreen continue_overlay; stub for older references -->
+    <View
+        android:id="@+id/continue_overlay"
+        android:layout_width="0dp"
+        android:layout_height="0dp"
+        android:visibility="gone" />
+
+    <TextView
+        android:id="@+id/continue_message"
         android:layout_width="0dp"
         android:layout_height="0dp"
         android:visibility="gone" />

@@ -1,4 +1,5 @@
 import { effectiveRewatches, showsRewatchCount } from "@/lib/anime-rewatches";
+import { invalidateFavoritesListSnapshot } from "@/lib/favorites-sync";
 import { prisma } from "@/lib/prisma";
 import { ShikimoriAuthError, shikimoriAuthFetch } from "@/lib/shikimori/auth-client";
 import {
@@ -7,6 +8,11 @@ import {
 } from "@/lib/shikimori/user-rates";
 import type { ShikimoriListStatus } from "@/lib/shikimori/user-rates.types";
 import { normalizeUserAnimeScore, type UserAnimeListInfo } from "@/lib/user-anime-list-status";
+
+async function afterLocalListMutation(userId: string, shikimoriUserId: number): Promise<void> {
+  invalidateUserAnimeRatesCache(userId, shikimoriUserId);
+  await invalidateFavoritesListSnapshot(userId);
+}
 
 type UserRatePatch = {
   listStatus?: ShikimoriListStatus;
@@ -303,7 +309,7 @@ export async function setUserAnimeScore(
 
   const rate = await mutateUserRateOnShikimori(userId, shikimoriUserId, shikimoriId, { score });
   await persistRateLocally(userId, rate);
-  invalidateUserAnimeRatesCache(userId, shikimoriUserId);
+  await afterLocalListMutation(userId, shikimoriUserId);
 
   const listInfo = await buildListInfo(userId, shikimoriId, rate);
   if (!listInfo) {
@@ -333,7 +339,7 @@ export async function setUserAnimeListStatus(
   }
 
   await persistRateLocally(userId, rate);
-  invalidateUserAnimeRatesCache(userId, shikimoriUserId);
+  await afterLocalListMutation(userId, shikimoriUserId);
 
   const listInfo = await buildListInfo(userId, shikimoriId, rate);
   if (!listInfo) {
@@ -362,7 +368,7 @@ export async function incrementUserAnimeRewatch(
   });
 
   await persistRateLocally(userId, rate);
-  invalidateUserAnimeRatesCache(userId, shikimoriUserId);
+  await afterLocalListMutation(userId, shikimoriUserId);
 
   const listInfo = await buildListInfo(userId, shikimoriId, rate);
   if (!listInfo) {
@@ -391,6 +397,7 @@ export async function setUserAnimeRewatches(
     where: { userId_shikimoriId: { userId, shikimoriId } },
     data: { rewatches },
   });
+  await invalidateFavoritesListSnapshot(userId);
 
   const listInfo = await buildListInfo(userId, shikimoriId);
   if (!listInfo) {
@@ -419,7 +426,7 @@ export async function removeUserAnimeListStatus(
   }
 
   await removeRateLocally(userId, shikimoriId);
-  invalidateUserAnimeRatesCache(userId, shikimoriUserId);
+  await afterLocalListMutation(userId, shikimoriUserId);
 
   return buildListInfo(userId, shikimoriId);
 }
@@ -442,7 +449,7 @@ export async function setUserAnimeBookmark(
     await setBookmarkLocally(userId, shikimoriId, false);
   }
 
-  invalidateUserAnimeRatesCache(userId, shikimoriUserId);
+  await afterLocalListMutation(userId, shikimoriUserId);
   return buildListInfo(userId, shikimoriId);
 }
 

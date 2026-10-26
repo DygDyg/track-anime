@@ -604,6 +604,8 @@ function Write-TaDeployConfigStatus {
     }
     if ($script:TaDeployHttpProxyUrl) {
         Write-Host "$Prefix httpProxy: $($script:TaDeployHttpProxyUrl)" -ForegroundColor Cyan
+    } elseif ($script:TaDeployProxyCommand) {
+        Write-Host "$Prefix proxy: ProxyCommand (no httpProxy)" -ForegroundColor Cyan
     } elseif ($script:TaDeployWantedProxyUrl) {
         Write-Host "$Prefix proxy: direct (configured proxy unavailable)" -ForegroundColor Yellow
     } else {

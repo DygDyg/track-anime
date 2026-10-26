@@ -45,6 +45,7 @@ import { applyIntroOffset, resolveTranslationIntroOffsetSec } from "@/lib/transl
 import { matchesFuzzyText } from "@/lib/fuzzy-text-match";
 import type { WatchPartyCommand, WatchPartyPlaybackState } from "@/lib/watch-party/types";
 import {
+  buildAndroidNativeTranslations,
   installAndroidNativePlayerClosedHandler,
   isAndroidNativePlayerEnabled,
   isTrackAnimeAndroidApp,
@@ -1746,11 +1747,7 @@ export function AnimeWatchPanel({
         autoSkip,
         suppressContinuePrompt: target.suppressContinuePrompt === true,
         source: target.source,
-        translations: playable.map((tr) => ({
-          kodikId: tr.kodikId,
-          title: tr.translationTitle,
-          type: tr.translationType,
-        })),
+        translations: buildAndroidNativeTranslations(playable),
       });
     },
     [animeTitle, playable, playerBalancer, settings.autoSkipOpeningsEndings, settings.autoSkipTranslationIds, shikimoriId],
@@ -4545,29 +4542,29 @@ export function AnimeWatchPanel({
                       onClick={() => {
                         const historyMatch =
                           continueProgress &&
-                          continueProgress.positionSeconds >= MIN_SAVE_POSITION_SECONDS &&
+                          continueProgress.episodeNumber > 0 &&
+                          !isWatchHistoryBookmark(continueProgress) &&
                           playable.some((tr) => tr.kodikId === continueProgress.kodikId)
                             ? continueProgress
                             : null;
-                        const useHistory =
-                          historyMatch != null &&
-                          (historyMatch.kodikId === selected.kodikId ||
-                            !playable.some((tr) => tr.kodikId === selected.kodikId));
-                        const kodikId = useHistory ? historyMatch!.kodikId : selected.kodikId;
-                        const seasonNumber = useHistory
-                          ? historyMatch!.seasonNumber
-                          : playerEpisode.seasonNumber;
-                        const episodeNumber = useHistory
-                          ? historyMatch!.episodeNumber
-                          : playerEpisode.episodeNumber;
-                        const positionSeconds = useHistory ? historyMatch!.positionSeconds : 0;
+                        const kodikId = historyMatch?.kodikId ?? selected.kodikId;
+                        const seasonNumber = historyMatch?.seasonNumber ?? playerEpisode.seasonNumber;
+                        const episodeNumber = historyMatch?.episodeNumber ?? playerEpisode.episodeNumber;
+                        const positionSeconds = historyMatch?.positionSeconds ?? 0;
+                        if (historyMatch) {
+                          setSelectedId(historyMatch.kodikId);
+                          setPlayerEpisode({
+                            seasonNumber: historyMatch.seasonNumber,
+                            episodeNumber: historyMatch.episodeNumber,
+                          });
+                        }
                         tryOpenAndroidNativeTaPlus({
                           kodikId,
                           seasonNumber,
                           episodeNumber,
-                          positionSeconds,
+                          positionSeconds: Math.max(0, positionSeconds),
                           autoplay: true,
-                          // Offer Continue inside native when resuming from history.
+                          // Offer Continue pill inside native when resuming ≥60s.
                           suppressContinuePrompt: positionSeconds < MIN_SAVE_POSITION_SECONDS,
                           source: "watch",
                         });

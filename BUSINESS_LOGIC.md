@@ -105,9 +105,9 @@ Shikimori anime.id  ===  Kodik shikimori_id  ===  URL /anime/[shikimoriId]
 
 **Local-first pattern:**
 1. При входе / ручном sync: pull `user_rates` + `favourites` с Shikimori
-2. Сохранение в `UserAnimeListEntry`, `UserAnimeBookmark`
-3. Мутации на сайте: PUT `/api/user/anime-lists/[shikimoriId]` → обновление Shikimori API + локальный кэш
-4. Метаданные sync в `UserListSync` (lastSyncedAt, errors)
+2. Сохранение в `UserAnimeListEntry`, `UserAnimeBookmark` (bulk `INSERT … ON CONFLICT`; на update sync **не** перезаписывает `rewatches`)
+3. Мутации на сайте: PUT `/api/user/anime-lists/[shikimoriId]` → обновление Shikimori API + локальные строки; ответный кеш snapshot сбрасывается
+4. Метаданные sync в `UserListSync` (`lastSyncedAt`, errors). Опционально `ratesSnapshot` / `bookmarksSnapshot` — только кеш полного ответа избранного после full sync (канон по-прежнему строки; после точечной мутации snapshot = null → чтение снова из строк)
 
 **Страницы:** канон UI списков — `/user/[shikimoriId]/favorites` (`FavoritesView`). Свой профиль: editable + background sync (`getAllFavoritesData`); чужой — read-only (`getResolvedUserFavorites`) и фильтр «У вас есть/нет». `/favorites` — legacy redirect на свой канон (сохраняет `?tab=` / `?sort=`).
 

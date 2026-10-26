@@ -1,13 +1,35 @@
 import { getTrackAnimeWindowsBridge } from "@/lib/windows-app";
+import {
+  resolveTranslationColors,
+  resolveTranslationStudioId,
+} from "@/lib/translation-colors";
 
 /** Native Track Anime Android / Android TV WebView shell. */
 export const TRACK_ANIME_ANDROID_UA_MARKER = "TrackAnimeAndroid/";
 export const TRACK_ANIME_ANDROID_SETTINGS_URL = "trackanime://settings";
 
+/** Convert CSS rgb/rgba to #AARRGGBB for Android Color.parseColor. */
+export function cssColorToArgbHex(css: string): string | undefined {
+  const m = css.trim().match(/^rgba?\(\s*(\d+)\s*,\s*(\d+)\s*,\s*(\d+)(?:\s*,\s*([\d.]+))?\s*\)$/i);
+  if (!m) return undefined;
+  const r = Number(m[1]);
+  const g = Number(m[2]);
+  const b = Number(m[3]);
+  const a = m[4] != null ? Math.round(Math.max(0, Math.min(1, Number(m[4]))) * 255) : 255;
+  const hex = (n: number) => n.toString(16).padStart(2, "0");
+  return `#${hex(a)}${hex(r)}${hex(g)}${hex(b)}`;
+}
+
 export type AndroidNativePlayerTranslation = {
   kodikId: string;
   title: string;
   type?: string;
+  studioId?: string;
+  /** #AARRGGBB */
+  bg?: string;
+  text?: string;
+  border?: string;
+  bgActive?: string;
 };
 
 export type AndroidNativePlayerSource = "continue" | "watch" | "episode" | "deep-link";
@@ -94,6 +116,24 @@ export function isAndroidNativePlayerEnabled(): boolean {
   } catch {
     return false;
   }
+}
+
+export function buildAndroidNativeTranslations(
+  playable: Array<{ kodikId: string; translationTitle: string; translationType: string }>,
+): AndroidNativePlayerTranslation[] {
+  return playable.map((tr) => {
+    const colors = resolveTranslationColors(tr.translationTitle, "dark");
+    return {
+      kodikId: tr.kodikId,
+      title: tr.translationTitle,
+      type: tr.translationType,
+      studioId: resolveTranslationStudioId(tr.translationTitle) ?? undefined,
+      bg: colors ? cssColorToArgbHex(colors.bg) : undefined,
+      text: colors ? cssColorToArgbHex(colors.text) : undefined,
+      border: colors ? cssColorToArgbHex(colors.border) : undefined,
+      bgActive: colors ? cssColorToArgbHex(colors.bgActive) : undefined,
+    };
+  });
 }
 
 export function openAndroidNativePlayer(payload: AndroidNativePlayerPayload): boolean {

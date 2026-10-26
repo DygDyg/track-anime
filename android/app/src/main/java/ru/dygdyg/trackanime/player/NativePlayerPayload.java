@@ -27,11 +27,31 @@ public final class NativePlayerPayload {
         public final String kodikId;
         public final String title;
         public final String type;
+        public final String studioId;
+        /** #AARRGGBB from site translation-colors */
+        public final String bg;
+        public final String text;
+        public final String border;
+        public final String bgActive;
 
-        public Translation(String kodikId, String title, String type) {
+        public Translation(
+                String kodikId,
+                String title,
+                String type,
+                String studioId,
+                String bg,
+                String text,
+                String border,
+                String bgActive
+        ) {
             this.kodikId = kodikId;
             this.title = title != null ? title : "";
             this.type = type != null ? type : "";
+            this.studioId = studioId != null ? studioId : "";
+            this.bg = bg != null ? bg : "";
+            this.text = text != null ? text : "";
+            this.border = border != null ? border : "";
+            this.bgActive = bgActive != null ? bgActive : "";
         }
     }
 
@@ -65,6 +85,11 @@ public final class NativePlayerPayload {
         this.translations = translations;
     }
 
+    private static String optColor(JSONObject t, String key) {
+        String v = t.optString(key, "").trim();
+        return v.isEmpty() ? "" : v;
+    }
+
     public static NativePlayerPayload parse(String json) throws Exception {
         JSONObject o = new JSONObject(json);
         String baseUrl = o.optString("baseUrl", "").trim();
@@ -87,12 +112,17 @@ public final class NativePlayerPayload {
                 translations.add(new Translation(
                         id,
                         t.optString("title", id),
-                        t.optString("type", "")
+                        t.optString("type", ""),
+                        optColor(t, "studioId"),
+                        optColor(t, "bg"),
+                        optColor(t, "text"),
+                        optColor(t, "border"),
+                        optColor(t, "bgActive")
                 ));
             }
         }
         if (translations.isEmpty()) {
-            translations.add(new Translation(kodikId, kodikId, ""));
+            translations.add(new Translation(kodikId, kodikId, "", "", "", "", "", ""));
         }
         return new NativePlayerPayload(
                 baseUrl,

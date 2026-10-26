@@ -709,6 +709,11 @@ model UserListSync {
   lastSyncedAt       DateTime?
   lastSyncError      String?
   mangaBookmarkCount Int       @default(0)
+  /// Кеш полного snapshot rates после full sync (не канон; канон — UserAnimeListEntry).
+  /// null = читать из строк (после мутации или до первого sync с snapshot).
+  ratesSnapshot      Json?
+  /// Кеш id закладок аниме после full sync; null = читать UserAnimeBookmark.
+  bookmarksSnapshot  Json?
   updatedAt          DateTime  @updatedAt
 }
 
