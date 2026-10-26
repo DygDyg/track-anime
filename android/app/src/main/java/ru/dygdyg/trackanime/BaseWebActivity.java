@@ -621,7 +621,9 @@ abstract class BaseWebActivity extends Activity {
     private boolean isInAppUrl(Uri uri) {
         if (uri == null || !"https".equalsIgnoreCase(uri.getScheme())) return false;
         String host = uri.getHost();
+        // Mirror router on Pages only — not github.com / other GitHub hosts.
         return isSiteHost(host)
+                || "track-anime.github.io".equalsIgnoreCase(host)
                 || "shikimori.one".equalsIgnoreCase(host)
                 || "shikimori.io".equalsIgnoreCase(host)
                 || "shiki.one".equalsIgnoreCase(host);

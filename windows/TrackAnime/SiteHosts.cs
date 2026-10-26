@@ -135,7 +135,9 @@ internal static class SiteHosts
     {
         if (uri is not { Scheme: "https" }) return false;
         if (IsSiteHost(uri.Host)) return true;
-        return string.Equals(uri.Host, "shikimori.one", StringComparison.OrdinalIgnoreCase)
+        // Mirror router on Pages only — not github.com / other GitHub hosts.
+        return string.Equals(uri.Host, "track-anime.github.io", StringComparison.OrdinalIgnoreCase)
+            || string.Equals(uri.Host, "shikimori.one", StringComparison.OrdinalIgnoreCase)
             || string.Equals(uri.Host, "shikimori.io", StringComparison.OrdinalIgnoreCase)
             || string.Equals(uri.Host, "shiki.one", StringComparison.OrdinalIgnoreCase);
     }

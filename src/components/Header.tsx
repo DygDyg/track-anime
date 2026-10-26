@@ -95,7 +95,7 @@ function handleLogoHomeClick(event: MouseEvent<HTMLAnchorElement>) {
   }
 
   event.preventDefault();
-  // Via Pages mirror router so a blocked origin can still land on a live mirror.
+  // Pages mirror router (Android/Windows keep track-anime.github.io in-app; not github.com).
   window.location.assign(SITE_MIRROR_ROUTER_URL);
 }
 

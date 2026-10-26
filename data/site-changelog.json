@@ -2,6 +2,19 @@
   "version": 1,
   "entries": [
     {
+      "id": "2026-10-26",
+      "recordedAt": "2026-10-26T00:38:00.000Z",
+      "gitSha": "6e6f96a",
+      "title": "Приложение",
+      "items": [
+        {
+          "kind": "fix",
+          "topic": "logo-mirror-router-in-app",
+          "text": "В Android и Windows клик по логотипу снова остаётся в приложении и открывает подбор рабочего зеркала."
+        }
+      ]
+    },
+    {
       "id": "2026-10-25",
       "recordedAt": "2026-10-25T01:30:00.000Z",
       "gitSha": "2658213",
