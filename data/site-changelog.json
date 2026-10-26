@@ -3,8 +3,8 @@
   "entries": [
     {
       "id": "2026-10-26",
-      "recordedAt": "2026-10-26T08:15:00.000Z",
-      "gitSha": "0477947",
+      "recordedAt": "2026-10-26T08:44:00.000Z",
+      "gitSha": "edbb6a8",
       "title": "Приложение",
       "items": [
         {
@@ -21,6 +21,12 @@
           "kind": "fix",
           "topic": "logo-mirror-router-in-app",
           "text": "В Android и Windows клик по логотипу снова остаётся в приложении и открывает подбор рабочего зеркала."
+        },
+        {
+          "kind": "fix",
+          "audience": "admin",
+          "topic": "favorites-sync-tx-timeout",
+          "text": "Синхронизация больших списков Shikimori больше не рвёт транзакцию за 5 с и не разгоняет CPU/502 на сайте."
         }
       ]
     },

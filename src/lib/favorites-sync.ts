@@ -28,7 +28,10 @@ export type FavoritesPayloadLoadResult = {
 };
 
 export const LIST_SYNC_TTL_MS = 5 * 60 * 1000;
-const PERSIST_CHUNK_SIZE = 100;
+/** Smaller than before: Promise.all(100) inside a 5s interactive tx timed out on 1k–2k lists and flooded prisma errors / CPU. */
+const PERSIST_CHUNK_SIZE = 40;
+const PERSIST_TX_TIMEOUT_MS = 120_000;
+const PERSIST_TX_MAX_WAIT_MS = 20_000;
 
 function parseShikimoriDate(value: string | null | undefined): Date | null {
   if (!value) return null;
@@ -73,34 +76,33 @@ async function upsertRatesChunk(
   userId: string,
   rates: ShikimoriUserRate[],
 ): Promise<void> {
-  await Promise.all(
-    rates.map((rate) =>
-      tx.userAnimeListEntry.upsert({
-        where: {
-          userId_shikimoriId: { userId, shikimoriId: rate.target_id },
-        },
-        create: {
-          userId,
-          shikimoriId: rate.target_id,
-          shikimoriRateId: rate.id,
-          listStatus: rate.status,
-          userScore: rate.score,
-          watchedEpisodes: rate.episodes,
-          rewatches: rate.rewatches,
-          addedAt: parseShikimoriDate(rate.created_at),
-          listUpdatedAt: parseShikimoriDate(rate.updated_at),
-        },
-        update: {
-          shikimoriRateId: rate.id,
-          listStatus: rate.status,
-          userScore: rate.score,
-          watchedEpisodes: rate.episodes,
-          addedAt: parseShikimoriDate(rate.created_at),
-          listUpdatedAt: parseShikimoriDate(rate.updated_at),
-        },
-      }),
-    ),
-  );
+  // Sequential upserts: parallel batches competed for the pool and blew the interactive timeout.
+  for (const rate of rates) {
+    await tx.userAnimeListEntry.upsert({
+      where: {
+        userId_shikimoriId: { userId, shikimoriId: rate.target_id },
+      },
+      create: {
+        userId,
+        shikimoriId: rate.target_id,
+        shikimoriRateId: rate.id,
+        listStatus: rate.status,
+        userScore: rate.score,
+        watchedEpisodes: rate.episodes,
+        rewatches: rate.rewatches,
+        addedAt: parseShikimoriDate(rate.created_at),
+        listUpdatedAt: parseShikimoriDate(rate.updated_at),
+      },
+      update: {
+        shikimoriRateId: rate.id,
+        listStatus: rate.status,
+        userScore: rate.score,
+        watchedEpisodes: rate.episodes,
+        addedAt: parseShikimoriDate(rate.created_at),
+        listUpdatedAt: parseShikimoriDate(rate.updated_at),
+      },
+    });
+  }
 }
 
 async function persistFavoritesSnapshot(
@@ -112,46 +114,49 @@ async function persistFavoritesSnapshot(
   const rateIds = rates.map((rate) => rate.target_id);
   const mangaBookmarkCount = (favourites.mangas?.length ?? 0) + (favourites.ranobe?.length ?? 0);
 
-  await prisma.$transaction(async (tx) => {
-    if (rateIds.length > 0) {
-      await tx.userAnimeListEntry.deleteMany({
-        where: { userId, shikimoriId: { notIn: rateIds } },
-      });
-    } else {
-      await tx.userAnimeListEntry.deleteMany({ where: { userId } });
-    }
+  await prisma.$transaction(
+    async (tx) => {
+      if (rateIds.length > 0) {
+        await tx.userAnimeListEntry.deleteMany({
+          where: { userId, shikimoriId: { notIn: rateIds } },
+        });
+      } else {
+        await tx.userAnimeListEntry.deleteMany({ where: { userId } });
+      }
 
-    for (let i = 0; i < rates.length; i += PERSIST_CHUNK_SIZE) {
-      await upsertRatesChunk(tx, userId, rates.slice(i, i + PERSIST_CHUNK_SIZE));
-    }
+      for (let i = 0; i < rates.length; i += PERSIST_CHUNK_SIZE) {
+        await upsertRatesChunk(tx, userId, rates.slice(i, i + PERSIST_CHUNK_SIZE));
+      }
 
-    if (bookmarkIds.length > 0) {
-      await tx.userAnimeBookmark.deleteMany({
-        where: { userId, shikimoriId: { notIn: bookmarkIds } },
-      });
-      await tx.userAnimeBookmark.createMany({
-        data: bookmarkIds.map((shikimoriId) => ({ userId, shikimoriId })),
-        skipDuplicates: true,
-      });
-    } else {
-      await tx.userAnimeBookmark.deleteMany({ where: { userId } });
-    }
+      if (bookmarkIds.length > 0) {
+        await tx.userAnimeBookmark.deleteMany({
+          where: { userId, shikimoriId: { notIn: bookmarkIds } },
+        });
+        await tx.userAnimeBookmark.createMany({
+          data: bookmarkIds.map((shikimoriId) => ({ userId, shikimoriId })),
+          skipDuplicates: true,
+        });
+      } else {
+        await tx.userAnimeBookmark.deleteMany({ where: { userId } });
+      }
 
-    await tx.userListSync.upsert({
-      where: { userId },
-      create: {
-        userId,
-        lastSyncedAt: new Date(),
-        lastSyncError: null,
-        mangaBookmarkCount,
-      },
-      update: {
-        lastSyncedAt: new Date(),
-        lastSyncError: null,
-        mangaBookmarkCount,
-      },
-    });
-  });
+      await tx.userListSync.upsert({
+        where: { userId },
+        create: {
+          userId,
+          lastSyncedAt: new Date(),
+          lastSyncError: null,
+          mangaBookmarkCount,
+        },
+        update: {
+          lastSyncedAt: new Date(),
+          lastSyncError: null,
+          mangaBookmarkCount,
+        },
+      });
+    },
+    { maxWait: PERSIST_TX_MAX_WAIT_MS, timeout: PERSIST_TX_TIMEOUT_MS },
+  );
 }
 
 export async function loadFavoritesPayloadFromDb(
