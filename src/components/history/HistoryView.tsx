@@ -13,6 +13,7 @@ import { homeFeedGridClassName, homeFeedGutterX, homeHistoryOuterGutterX } from 
 import { watchHistoryItemToReleaseDto } from "@/lib/history-watch-card";
 import type { HistoryUpcomingSoonItemDto } from "@/lib/history-upcoming-soon";
 import { LIST_STATUS_LABELS, LIST_STATUS_LABELS_MOBILE } from "@/lib/shikimori/user-rates";
+import { removeAndroidWatchNext } from "@/lib/android-watch-next";
 import type { WatchHistoryItemDto } from "@/lib/watch-history";
 
 export const HISTORY_NOTIFICATIONS_SECTION_ID = "history-notifications-settings";
@@ -121,6 +122,7 @@ function HistoryWatchCardItem({
     try {
       const res = await fetch(`/api/user/watch-history/${item.shikimoriId}`, { method: "DELETE" });
       if (!res.ok) return;
+      removeAndroidWatchNext(item.shikimoriId);
       onDelete(item.shikimoriId);
     } finally {
       setDeleting(false);

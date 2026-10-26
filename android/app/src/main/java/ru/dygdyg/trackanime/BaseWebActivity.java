@@ -79,6 +79,8 @@ abstract class BaseWebActivity extends Activity {
     private static final String SYSTEM_BARS_MODE_SHOW = "show";
     private static final String SYSTEM_BARS_MODE_ALWAYS = "always";
     private static final String SYSTEM_BARS_MODE_VIDEO = "video";
+    /** Hybrid Media3 TA Plus player (default off — safe rollout). */
+    static final String NATIVE_TA_PLUS_PLAYER_KEY = "native-ta-plus-player";
     private static final int CAMERA_PERMISSION_REQUEST_CODE = 11;
     private static final int NOTIFICATION_PERMISSION_REQUEST_CODE = 12;
     private final Handler handler = new Handler(Looper.getMainLooper());
@@ -1063,7 +1065,7 @@ abstract class BaseWebActivity extends Activity {
         title.setTextSize(TypedValue.COMPLEX_UNIT_SP, 18);
         title.setTypeface(Typeface.DEFAULT_BOLD);
         TextView subtitle = new TextView(this);
-        subtitle.setText("HTTP-прокси, панели, кэш и сведения об устройстве");
+        subtitle.setText("Плеер, HTTP-прокси, панели, кэш и сведения об устройстве");
         subtitle.setTextColor(color(R.color.muted));
         subtitle.setTextSize(TypedValue.COMPLEX_UNIT_SP, 13);
         LinearLayout.LayoutParams subtitleParams = new LinearLayout.LayoutParams(
@@ -1095,6 +1097,7 @@ abstract class BaseWebActivity extends Activity {
         }
 
         TextView navBars = settingsNavItem("Панели");
+        TextView navPlayer = settingsNavItem("Плеер");
         TextView navProxy = settingsNavItem("HTTP-прокси");
         TextView navCache = settingsNavItem("Кэш");
         TextView navDevice = settingsNavItem("Устройство");
@@ -1103,15 +1106,18 @@ abstract class BaseWebActivity extends Activity {
                     ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT);
             tabParams.setMargins(dp(2), 0, dp(2), 0);
             navBars.setLayoutParams(new LinearLayout.LayoutParams(tabParams));
+            navPlayer.setLayoutParams(new LinearLayout.LayoutParams(tabParams));
             navProxy.setLayoutParams(new LinearLayout.LayoutParams(tabParams));
             navCache.setLayoutParams(new LinearLayout.LayoutParams(tabParams));
             navDevice.setLayoutParams(new LinearLayout.LayoutParams(tabParams));
             navBars.setGravity(Gravity.CENTER);
+            navPlayer.setGravity(Gravity.CENTER);
             navProxy.setGravity(Gravity.CENTER);
             navCache.setGravity(Gravity.CENTER);
             navDevice.setGravity(Gravity.CENTER);
         }
         nav.addView(navBars);
+        nav.addView(navPlayer);
         nav.addView(navProxy);
         nav.addView(navCache);
         nav.addView(navDevice);
@@ -1155,6 +1161,21 @@ abstract class BaseWebActivity extends Activity {
         int barsCheckedId = SYSTEM_BARS_MODE_ALWAYS.equals(barsMode) ? barsAlways.getId()
                 : SYSTEM_BARS_MODE_SHOW.equals(barsMode) ? barsShow.getId() : barsVideo.getId();
         barsModes.check(barsCheckedId);
+
+        boolean nativePlayerOn = preferences.getBoolean(NATIVE_TA_PLUS_PLAYER_KEY, false);
+        LinearLayout playerPanel = settingsTabPanel();
+        playerPanel.addView(settingsSectionTitle("Плеер TA Plus"));
+        playerPanel.addView(settingsSectionHint(
+                "Нативный плеер лучше управляется с телефона и пульта TV.\n"
+                        + "Работает только для TA Plus. TA Old и VideoHUB остаются во встроенном WebView."));
+        RadioGroup playerModes = new RadioGroup(this);
+        playerModes.setOrientation(RadioGroup.VERTICAL);
+        RadioButton playerWebView = settingsOption("Встроенный (WebView)");
+        RadioButton playerNative = settingsOption("Нативный (TA Plus)");
+        playerModes.addView(playerWebView);
+        playerModes.addView(playerNative);
+        playerPanel.addView(playerModes);
+        playerModes.check(nativePlayerOn ? playerNative.getId() : playerWebView.getId());
 
         LinearLayout proxyPanel = settingsTabPanel();
         proxyPanel.addView(settingsSectionTitle("HTTP-прокси"));
@@ -1301,6 +1322,9 @@ abstract class BaseWebActivity extends Activity {
         ScrollView barsScroll = new ScrollView(this);
         barsScroll.setDescendantFocusability(ViewGroup.FOCUS_AFTER_DESCENDANTS);
         barsScroll.addView(barsPanel);
+        ScrollView playerScroll = new ScrollView(this);
+        playerScroll.setDescendantFocusability(ViewGroup.FOCUS_AFTER_DESCENDANTS);
+        playerScroll.addView(playerPanel);
         ScrollView proxyScroll = new ScrollView(this);
         proxyScroll.setDescendantFocusability(ViewGroup.FOCUS_AFTER_DESCENDANTS);
         proxyScroll.addView(proxyPanel);
@@ -1313,6 +1337,7 @@ abstract class BaseWebActivity extends Activity {
         FrameLayout.LayoutParams panelLp = new FrameLayout.LayoutParams(
                 ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT);
         panelsHost.addView(barsScroll, panelLp);
+        panelsHost.addView(playerScroll, panelLp);
         panelsHost.addView(proxyScroll, panelLp);
         panelsHost.addView(cacheScroll, panelLp);
         panelsHost.addView(deviceScroll, panelLp);
@@ -1323,18 +1348,20 @@ abstract class BaseWebActivity extends Activity {
                 ViewGroup.LayoutParams.MATCH_PARENT, Math.max(dp(280), bodyHeight)));
         shell.addView(body);
 
-        TextView[] navItems = { navBars, navProxy, navCache, navDevice };
-        View[] panelViews = { barsScroll, proxyScroll, cacheScroll, deviceScroll };
+        TextView[] navItems = { navBars, navPlayer, navProxy, navCache, navDevice };
+        View[] panelViews = { barsScroll, playerScroll, proxyScroll, cacheScroll, deviceScroll };
         View.OnClickListener selectTab = clicked -> {
-            int index = clicked == navProxy ? 1
-                    : clicked == navCache ? 2
-                    : clicked == navDevice ? 3 : 0;
+            int index = clicked == navPlayer ? 1
+                    : clicked == navProxy ? 2
+                    : clicked == navCache ? 3
+                    : clicked == navDevice ? 4 : 0;
             for (int i = 0; i < navItems.length; i++) {
                 setSettingsNavSelected(navItems[i], i == index);
                 panelViews[i].setVisibility(i == index ? View.VISIBLE : View.GONE);
             }
         };
         navBars.setOnClickListener(selectTab);
+        navPlayer.setOnClickListener(selectTab);
         navProxy.setOnClickListener(selectTab);
         navCache.setOnClickListener(selectTab);
         navDevice.setOnClickListener(selectTab);
@@ -1385,6 +1412,8 @@ abstract class BaseWebActivity extends Activity {
                     : barsModes.getCheckedRadioButtonId() == barsShow.getId()
                             ? SYSTEM_BARS_MODE_SHOW : SYSTEM_BARS_MODE_VIDEO;
             saveSystemBarsMode(nextBarsMode);
+            boolean nextNativePlayer = playerModes.getCheckedRadioButtonId() == playerNative.getId();
+            preferences.edit().putBoolean(NATIVE_TA_PLUS_PLAYER_KEY, nextNativePlayer).apply();
             proxyFallback.saveSettings(new ProxyFallback.Settings(
                     mode,
                     host.getText().toString(),
@@ -1493,6 +1522,46 @@ abstract class BaseWebActivity extends Activity {
 
     private void openExternal(Uri uri) {
         try { startActivity(new Intent(Intent.ACTION_VIEW, uri)); } catch (Exception ignored) { }
+    }
+
+    private void launchNativePlayer(String json) {
+        try {
+            PlayerActivity.start(this, json, isTvMode());
+        } catch (Exception error) {
+            Log.w(LOG_TAG, "openNativePlayer failed", error);
+            Toast.makeText(this, "Не удалось открыть нативный плеер", Toast.LENGTH_LONG).show();
+        }
+    }
+
+    boolean isNativeTaPlusPlayerEnabled() {
+        return preferences != null && preferences.getBoolean(NATIVE_TA_PLUS_PLAYER_KEY, false);
+    }
+
+    /** Absolute anime page URL on the current (or last successful) mirror for Watch Next intents. */
+    private String resolveWatchNextPageUrl(int shikimoriId) {
+        String base = null;
+        if (webView != null) {
+            String current = webView.getUrl();
+            if (isAllowedSiteUrl(current == null ? null : Uri.parse(current))) {
+                base = current;
+            }
+        }
+        if (base == null && isAllowedSiteUrl(Uri.parse(lastSuccessfulUrl))) {
+            base = lastSuccessfulUrl;
+        }
+        if (base == null) base = getPrimaryUrl();
+        try {
+            Uri uri = Uri.parse(base);
+            return new Uri.Builder()
+                    .scheme(uri.getScheme() != null ? uri.getScheme() : "https")
+                    .encodedAuthority(uri.getEncodedAuthority())
+                    .appendPath("anime")
+                    .appendPath(String.valueOf(shikimoriId))
+                    .build()
+                    .toString();
+        } catch (Exception ignored) {
+            return getPrimaryUrl() + "anime/" + shikimoriId;
+        }
     }
 
     private final class TrackAnimeJsBridge {
@@ -1639,6 +1708,76 @@ abstract class BaseWebActivity extends Activity {
             } else {
                 handler.post(() -> applyStreamVolume(clamped));
             }
+        }
+
+        @JavascriptInterface
+        public boolean isNativePlayerEnabled() {
+            return preferences.getBoolean(NATIVE_TA_PLUS_PLAYER_KEY, false);
+        }
+
+        @JavascriptInterface
+        public void openNativePlayer(String json) {
+            if (json == null || json.isEmpty()) return;
+            if (Looper.myLooper() == Looper.getMainLooper()) {
+                launchNativePlayer(json);
+            } else {
+                handler.post(() -> launchNativePlayer(json));
+            }
+        }
+
+        /** Google TV / Android TV Continue watching (Watch Next). No-op on phone shell. */
+        @JavascriptInterface
+        public void publishWatchNext(String json) {
+            if (!isTvMode() || json == null || json.isEmpty()) return;
+            try {
+                org.json.JSONObject o = new org.json.JSONObject(json);
+                int shikimoriId = o.optInt("shikimoriId", 0);
+                if (shikimoriId <= 0) return;
+                String title = o.optString("title", "").trim();
+                if (title.isEmpty()) return;
+
+                int seasonNumber = Math.max(1, o.optInt("seasonNumber", 1));
+                int episodeNumber = Math.max(0, o.optInt("episodeNumber", 1));
+                double positionSeconds = Math.max(0, o.optDouble("positionSeconds", 0));
+                double durationSeconds = Math.max(0, o.optDouble("durationSeconds", 0));
+                if (durationSeconds <= 0) durationSeconds = 24 * 60;
+
+                String posterUrl = o.optString("posterUrl", "").trim();
+                String pageUrl = o.optString("pageUrl", "").trim();
+                if (pageUrl.isEmpty()) {
+                    pageUrl = resolveWatchNextPageUrl(shikimoriId);
+                }
+
+                String description = o.optString("description", "").trim();
+                if (description.isEmpty()) {
+                    description = "Сезон " + seasonNumber + " · серия " + episodeNumber;
+                }
+
+                WatchNextPublisher.Item item = new WatchNextPublisher.Item(
+                        shikimoriId,
+                        title,
+                        description,
+                        posterUrl,
+                        pageUrl,
+                        Math.round(positionSeconds * 1000.0),
+                        Math.round(durationSeconds * 1000.0)
+                );
+                WatchNextPublisher.upsert(BaseWebActivity.this, item);
+            } catch (Exception error) {
+                Log.w(LOG_TAG, "publishWatchNext failed", error);
+            }
+        }
+
+        @JavascriptInterface
+        public void removeWatchNext(int shikimoriId) {
+            if (!isTvMode() || shikimoriId <= 0) return;
+            WatchNextPublisher.remove(BaseWebActivity.this, shikimoriId);
+        }
+
+        @JavascriptInterface
+        public void clearWatchNext() {
+            if (!isTvMode()) return;
+            WatchNextPublisher.clearAll(BaseWebActivity.this);
         }
 
         private void applyWindowBrightness(float clamped) {

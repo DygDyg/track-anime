@@ -1,0 +1,233 @@
+<?xml version="1.0" encoding="utf-8"?>
+<FrameLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    android:id="@+id/player_root"
+    android:layout_width="match_parent"
+    android:layout_height="match_parent"
+    android:background="@color/background"
+    android:keepScreenOn="true">
+
+    <androidx.media3.ui.PlayerView
+        android:id="@+id/player_view"
+        android:layout_width="match_parent"
+        android:layout_height="match_parent"
+        android:background="@color/background"
+        android:focusable="false" />
+
+    <LinearLayout
+        android:id="@+id/chrome_top"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:layout_gravity="top"
+        android:background="#990C0E14"
+        android:orientation="vertical"
+        android:padding="20dp">
+
+        <TextView
+            android:id="@+id/title_text"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:ellipsize="end"
+            android:maxLines="1"
+            android:textColor="@color/foreground"
+            android:textSize="22sp" />
+
+        <TextView
+            android:id="@+id/episode_label"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="4dp"
+            android:textColor="@color/muted"
+            android:textSize="16sp" />
+    </LinearLayout>
+
+    <LinearLayout
+        android:id="@+id/chrome_bottom"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:layout_gravity="bottom"
+        android:background="#990C0E14"
+        android:gravity="center_vertical"
+        android:orientation="horizontal"
+        android:padding="20dp">
+
+        <Button
+            android:id="@+id/btn_play_pause"
+            android:layout_width="wrap_content"
+            android:layout_height="56dp"
+            android:background="@drawable/settings_btn_accent"
+            android:focusable="true"
+            android:focusableInTouchMode="true"
+            android:minWidth="120dp"
+            android:nextFocusUp="@+id/btn_episodes"
+            android:nextFocusDown="@+id/btn_translations"
+            android:nextFocusLeft="@+id/btn_seek_back"
+            android:nextFocusRight="@+id/btn_seek_fwd"
+            android:text="Пауза"
+            android:textAllCaps="false"
+            android:textColor="@color/foreground"
+            android:textSize="18sp" />
+
+        <Button
+            android:id="@+id/btn_seek_back"
+            android:layout_width="wrap_content"
+            android:layout_height="56dp"
+            android:layout_marginStart="12dp"
+            android:background="@drawable/settings_btn_ghost"
+            android:focusable="true"
+            android:minWidth="88dp"
+            android:text="−10"
+            android:textAllCaps="false"
+            android:textColor="@color/foreground"
+            android:textSize="18sp" />
+
+        <Button
+            android:id="@+id/btn_seek_fwd"
+            android:layout_width="wrap_content"
+            android:layout_height="56dp"
+            android:layout_marginStart="12dp"
+            android:background="@drawable/settings_btn_ghost"
+            android:focusable="true"
+            android:minWidth="88dp"
+            android:text="+10"
+            android:textAllCaps="false"
+            android:textColor="@color/foreground"
+            android:textSize="18sp" />
+
+        <Button
+            android:id="@+id/btn_skip"
+            android:layout_width="wrap_content"
+            android:layout_height="56dp"
+            android:layout_marginStart="12dp"
+            android:background="@drawable/settings_btn_accent"
+            android:focusable="true"
+            android:minWidth="160dp"
+            android:text="Пропустить"
+            android:textAllCaps="false"
+            android:textColor="@color/foreground"
+            android:textSize="18sp"
+            android:visibility="gone" />
+
+        <TextView
+            android:id="@+id/time_text"
+            android:layout_width="0dp"
+            android:layout_height="wrap_content"
+            android:layout_marginStart="16dp"
+            android:layout_weight="1"
+            android:textColor="@color/muted"
+            android:textSize="16sp" />
+
+        <Button
+            android:id="@+id/btn_episodes"
+            android:layout_width="wrap_content"
+            android:layout_height="56dp"
+            android:layout_marginStart="8dp"
+            android:background="@drawable/settings_btn_ghost"
+            android:focusable="true"
+            android:text="Серии"
+            android:textAllCaps="false"
+            android:textColor="@color/foreground"
+            android:textSize="16sp" />
+
+        <Button
+            android:id="@+id/btn_translations"
+            android:layout_width="wrap_content"
+            android:layout_height="56dp"
+            android:layout_marginStart="8dp"
+            android:background="@drawable/settings_btn_ghost"
+            android:focusable="true"
+            android:text="Озвучка"
+            android:textAllCaps="false"
+            android:textColor="@color/foreground"
+            android:textSize="16sp" />
+
+        <Button
+            android:id="@+id/btn_quality"
+            android:layout_width="wrap_content"
+            android:layout_height="56dp"
+            android:layout_marginStart="8dp"
+            android:background="@drawable/settings_btn_ghost"
+            android:focusable="true"
+            android:text="Качество"
+            android:textAllCaps="false"
+            android:textColor="@color/foreground"
+            android:textSize="16sp" />
+    </LinearLayout>
+
+    <!-- Hidden seek bar for shared code paths; TV uses D-pad seek. -->
+    <android.widget.SeekBar
+        android:id="@+id/seek_bar"
+        android:layout_width="0dp"
+        android:layout_height="0dp"
+        android:visibility="gone" />
+
+    <LinearLayout
+        android:id="@+id/continue_overlay"
+        android:layout_width="match_parent"
+        android:layout_height="match_parent"
+        android:background="#E60C0E14"
+        android:gravity="center"
+        android:orientation="vertical"
+        android:padding="48dp"
+        android:visibility="gone">
+
+        <TextView
+            android:id="@+id/continue_message"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:gravity="center"
+            android:textColor="@color/foreground"
+            android:textSize="24sp" />
+
+        <LinearLayout
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="28dp"
+            android:orientation="horizontal">
+
+            <Button
+                android:id="@+id/btn_continue"
+                android:layout_width="wrap_content"
+                android:layout_height="64dp"
+                android:background="@drawable/settings_btn_accent"
+                android:focusable="true"
+                android:focusableInTouchMode="true"
+                android:minWidth="200dp"
+                android:text="Продолжить"
+                android:textAllCaps="false"
+                android:textColor="@color/foreground"
+                android:textSize="20sp" />
+
+            <Button
+                android:id="@+id/btn_from_start"
+                android:layout_width="wrap_content"
+                android:layout_height="64dp"
+                android:layout_marginStart="20dp"
+                android:background="@drawable/settings_btn_ghost"
+                android:focusable="true"
+                android:minWidth="200dp"
+                android:text="С начала"
+                android:textAllCaps="false"
+                android:textColor="@color/foreground"
+                android:textSize="20sp" />
+        </LinearLayout>
+    </LinearLayout>
+
+    <ProgressBar
+        android:id="@+id/loading"
+        android:layout_width="64dp"
+        android:layout_height="64dp"
+        android:layout_gravity="center"
+        android:indeterminate="true"
+        android:visibility="gone" />
+
+    <TextView
+        android:id="@+id/error_text"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:layout_gravity="center"
+        android:gravity="center"
+        android:padding="32dp"
+        android:textColor="#FF8A8A"
+        android:textSize="18sp"
+        android:visibility="gone" />
+</FrameLayout>

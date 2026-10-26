@@ -12,6 +12,7 @@ import {
 } from "react";
 import { usePathname } from "next/navigation";
 import { AuthLoginPanel } from "@/components/auth/AuthLoginPanel";
+import { clearAndroidWatchNext } from "@/lib/android-watch-next";
 import { SHIKIMORI_RELOGIN_MESSAGE } from "@/lib/shikimori/auth-messages";
 
 export type AuthUser = {
@@ -231,6 +232,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     setShikimoriExpiredOpen(false);
     try {
       await fetch("/api/auth/logout", { method: "POST" });
+      clearAndroidWatchNext();
       setUser(null);
       setNeedsShikimoriFriendsReconnect(false);
       setShikimoriFriendsEnabled(false);

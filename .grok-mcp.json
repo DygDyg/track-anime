@@ -1,4 +1,0 @@
-{
-  "preset": "standard",
-  "note": "Everyday work; full reasoning, moderate leash. Bridge verifier: always pass test_commands [npm run typecheck] on execute/fix — default pytest fallback is wrong for this repo."
-}

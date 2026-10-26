@@ -24,6 +24,7 @@ public/companion/* — копия/
 .cursorignore
 .chats/
 .cursor/
+.grok/
 .workspace.json
 android/.idea/
 android/app/google-services.json

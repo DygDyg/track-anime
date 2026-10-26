@@ -44,7 +44,13 @@ import { coverCacheUrl } from "@/lib/poster";
 import { applyIntroOffset, resolveTranslationIntroOffsetSec } from "@/lib/translation-intro-offset";
 import { matchesFuzzyText } from "@/lib/fuzzy-text-match";
 import type { WatchPartyCommand, WatchPartyPlaybackState } from "@/lib/watch-party/types";
-import { setAndroidKeepScreenOn } from "@/lib/android-app";
+import {
+  isAndroidNativePlayerEnabled,
+  isTrackAnimeAndroidApp,
+  openAndroidNativePlayer,
+  setAndroidKeepScreenOn,
+} from "@/lib/android-app";
+import { publishAndroidWatchNext, removeAndroidWatchNext } from "@/lib/android-watch-next";
 import { withKodikPlayerCacheBust, resolveKodikPlayerEpisodeSwitch, isSingleEpisodeKodikPlayerLink } from "@/lib/player-url";
 import {
   buildAnimeWatchShareUrl,
@@ -681,8 +687,16 @@ export function AnimeWatchPanel({
   const [betaTheaterMode, setBetaTheaterMode] =
     useState<KodikPlayerBetaTheaterMode>("normal");
   const [playerEpisode, setPlayerEpisode] = useState({ seasonNumber: 1, episodeNumber: 1 });
+  const [androidNativeTaPlus, setAndroidNativeTaPlus] = useState(false);
+  useEffect(() => {
+    setAndroidNativeTaPlus(
+      isTrackAnimeAndroidApp() &&
+        isAndroidNativePlayerEnabled() &&
+        playerBalancer === "taplus",
+    );
+  }, [playerBalancer]);
   const taPlusStream = useTaPlusStream({
-    enabled: playerBalancer === "taplus",
+    enabled: playerBalancer === "taplus" && !androidNativeTaPlus,
     shikimoriId,
     kodikId: selectedId || null,
     seasonNumber: playerEpisode.seasonNumber,
@@ -1146,6 +1160,7 @@ export function AnimeWatchPanel({
         if (data.cleared || data.progress === null) {
           lastSavedFingerprintRef.current = fingerprint;
           setContinueProgress(null);
+          removeAndroidWatchNext(shikimoriId);
           if (data.cleared) {
             pendingWatchingPromptRef.current = false;
             setShowAddToWatchingBanner(false);
@@ -1156,6 +1171,15 @@ export function AnimeWatchPanel({
         if (data.progress) {
           lastSavedFingerprintRef.current = fingerprint;
           setContinueProgress(data.progress);
+          publishAndroidWatchNext({
+            shikimoriId,
+            title: animeTitle,
+            seasonNumber: data.progress.seasonNumber,
+            episodeNumber: data.progress.episodeNumber,
+            positionSeconds: data.progress.positionSeconds,
+            durationSeconds: durationSecondsRef.current,
+            posterUrl: coverCacheUrl(shikimoriId),
+          });
         }
       } catch {
         /* ignore network errors */
@@ -1163,7 +1187,7 @@ export function AnimeWatchPanel({
         savingRef.current = false;
       }
     },
-    [shikimoriId, user],
+    [animeTitle, shikimoriId, user],
   );
 
   const saveTranslation = useCallback(
@@ -1623,6 +1647,46 @@ export function AnimeWatchPanel({
     [],
   );
 
+  const tryOpenAndroidNativeTaPlus = useCallback(
+    (target: {
+      kodikId: string;
+      seasonNumber: number;
+      episodeNumber: number;
+      positionSeconds: number;
+      autoplay?: boolean;
+    }) => {
+      if (!isTrackAnimeAndroidApp() || !isAndroidNativePlayerEnabled()) return false;
+      if (playerBalancerRef.current !== "taplus" && playerBalancer !== "taplus") return false;
+      const kodikId = target.kodikId || selectedIdRef.current;
+      if (!kodikId) return false;
+      const translation = playable.find((tr) => tr.kodikId === kodikId);
+      const hasExplicitAutoSkip = Object.keys(settings.autoSkipTranslationIds).length > 0;
+      const autoSkip = translation
+        ? settings.autoSkipTranslationIds[String(translation.translationId)] === true ||
+          (!hasExplicitAutoSkip && settings.autoSkipOpeningsEndings)
+        : false;
+      const origin = typeof window !== "undefined" ? window.location.origin : "";
+      return openAndroidNativePlayer({
+        baseUrl: origin,
+        shikimoriId,
+        title: animeTitle,
+        posterUrl: origin ? `${origin}${coverCacheUrl(shikimoriId)}` : coverCacheUrl(shikimoriId),
+        kodikId,
+        seasonNumber: target.seasonNumber,
+        episodeNumber: target.episodeNumber,
+        positionSeconds: Math.max(0, target.positionSeconds),
+        autoplay: target.autoplay !== false,
+        autoSkip,
+        translations: playable.map((tr) => ({
+          kodikId: tr.kodikId,
+          title: tr.translationTitle,
+          type: tr.translationType,
+        })),
+      });
+    },
+    [animeTitle, playable, playerBalancer, settings.autoSkipOpeningsEndings, settings.autoSkipTranslationIds, shikimoriId],
+  );
+
   const startContinueResume = useCallback(
     (target: {
       kodikId: string;
@@ -1648,6 +1712,18 @@ export function AnimeWatchPanel({
       );
 
       lastContinueResumeRef.current = resume;
+
+      if (
+        tryOpenAndroidNativeTaPlus({
+          kodikId: target.kodikId,
+          seasonNumber: resume.seasonNumber,
+          episodeNumber: resume.episodeNumber,
+          positionSeconds: resume.positionSeconds,
+          autoplay: true,
+        })
+      ) {
+        return;
+      }
 
       if (playerBalancer === "taplus" || playerBalancerRef.current === "taplus") {
         setTaPlusSeekSeconds(resume.positionSeconds);
@@ -1730,6 +1806,7 @@ export function AnimeWatchPanel({
       rememberSeriaLink,
       remountToEpisodeEmbed,
       shikimoriId,
+      tryOpenAndroidNativeTaPlus,
     ],
   );
 
@@ -2984,6 +3061,19 @@ export function AnimeWatchPanel({
       lastContinueResumeRef.current = resume;
 
       if (playerBalancerRef.current === "taplus") {
+        if (
+          tryOpenAndroidNativeTaPlus({
+            kodikId: selectedIdRef.current,
+            seasonNumber,
+            episodeNumber,
+            positionSeconds: 0,
+            autoplay: true,
+          })
+        ) {
+          setPlayerEpisode({ seasonNumber, episodeNumber });
+          liveProgressRef.current = resume;
+          return;
+        }
         setPlayerEpisode({ seasonNumber, episodeNumber });
         liveProgressRef.current = resume;
         setTaPlusSeekSeconds(0);
@@ -3050,6 +3140,7 @@ export function AnimeWatchPanel({
       rememberSeriaLink,
       remountToEpisodeEmbed,
       shikimoriId,
+      tryOpenAndroidNativeTaPlus,
     ],
   );
 
@@ -4347,7 +4438,55 @@ export function AnimeWatchPanel({
         ) : !ready ? (
           <div className="aspect-video animate-pulse rounded-lg bg-surface-dim" />
         ) : selected?.playerLink ? (
-          isTaPlus || betaChromeless ? (
+          androidNativeTaPlus ? (
+            <div className="relative overflow-hidden rounded-lg border border-border bg-black">
+              {renderDeepLinkInviteOverlay()}
+              <div className="relative aspect-video">
+                {/* eslint-disable-next-line @next/next/no-img-element */}
+                <img
+                  src={coverCacheUrl(shikimoriId)}
+                  alt=""
+                  className="absolute inset-0 h-full w-full object-cover opacity-40"
+                />
+                <div className="absolute inset-0 flex flex-col items-center justify-center gap-3 bg-black/55 px-4 text-center">
+                  <p className="text-sm text-white/80">Нативный плеер TA Plus</p>
+                  <p className="max-w-md text-xs text-white/55">
+                    Серии, озвучка и прогресс открываются в отдельном плеере приложения
+                  </p>
+                  <div className="flex flex-wrap items-center justify-center gap-2">
+                    {showContinue && continueProgress ? (
+                      <button
+                        type="button"
+                        data-tv-focus
+                        data-tv-player-primary
+                        onClick={handleContinue}
+                        className="rounded-md border border-white/15 bg-primary px-4 py-2 text-sm font-medium text-white"
+                      >
+                        Продолжить · {formatWatchPosition(continueProgress.positionSeconds)}
+                      </button>
+                    ) : null}
+                    <button
+                      type="button"
+                      data-tv-focus
+                      data-tv-player-primary={!showContinue}
+                      onClick={() => {
+                        tryOpenAndroidNativeTaPlus({
+                          kodikId: selected.kodikId,
+                          seasonNumber: playerEpisode.seasonNumber,
+                          episodeNumber: playerEpisode.episodeNumber,
+                          positionSeconds: 0,
+                          autoplay: true,
+                        });
+                      }}
+                      className="rounded-md border border-white/15 bg-black/60 px-4 py-2 text-sm font-medium text-white hover:bg-black/75"
+                    >
+                      Смотреть
+                    </button>
+                  </div>
+                </div>
+              </div>
+            </div>
+          ) : isTaPlus || betaChromeless ? (
             <div
               ref={betaFullscreenRef}
               className={[

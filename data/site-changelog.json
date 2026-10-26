@@ -3,10 +3,15 @@
   "entries": [
     {
       "id": "2026-10-26",
-      "recordedAt": "2026-10-26T01:34:00.000Z",
-      "gitSha": "bac280b",
+      "recordedAt": "2026-10-26T08:15:00.000Z",
+      "gitSha": "0477947",
       "title": "Приложение",
       "items": [
+        {
+          "kind": "feature",
+          "topic": "android-native-ta-plus-player",
+          "text": "В Android и Android TV для TA Plus можно включить нативный плеер: удобнее с телефона и пульта, с продолжением, сериями, озвучками и пропуском опенингов. Переключатель — в настройках приложения."
+        },
         {
           "kind": "fix",
           "topic": "ta-plus-solodcdn-lynx",

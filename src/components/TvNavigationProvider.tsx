@@ -1,7 +1,9 @@
 "use client";
 
 import { useEffect } from "react";
+import { useAuth } from "@/components/auth/AuthProvider";
 import { useSiteSettings } from "@/components/SiteSettingsProvider";
+import { syncAndroidWatchNextFromHistory } from "@/lib/android-watch-next";
 import {
   exitTvSearchEditingIfNeeded,
   findTvFocusNeighbor,
@@ -56,11 +58,17 @@ function isTvLikeDevice(): boolean {
 
 export function TvNavigationProvider() {
   const { settings } = useSiteSettings();
+  const { user, loading: authLoading } = useAuth();
 
   useEffect(() => {
     if (settings.tvNavigationEnabled) return;
     delete document.documentElement.dataset.tvNav;
   }, [settings.tvNavigationEnabled]);
+
+  useEffect(() => {
+    if (!settings.tvNavigationEnabled || authLoading || !user) return;
+    syncAndroidWatchNextFromHistory();
+  }, [settings.tvNavigationEnabled, authLoading, user]);
 
   useEffect(() => {
     if (!settings.tvNavigationEnabled) return;

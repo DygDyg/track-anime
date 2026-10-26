@@ -77,7 +77,7 @@ Codex: использовать эту таблицу напрямую и чит
 | Home feed | главная, лента, новинки | `releases.ts`, `home-feed-cache.ts`, `ReleaseFeed.tsx`, `home-novelties.ts`, `HomeNoveltiesSection.tsx` |
 | Notifications | уведомлен, push, telegram, vk, discord | `src/lib/notifications/`, `src/app/api/notifications/`, `NotificationSettingsPanel.tsx` |
 | Brand rotation | лого, логотип, favicon, бренд | `src/lib/brand-rotation.ts`, `src/components/admin/BrandRotationSettingsPanel.tsx`, `public/brand-logos/` |
-| Android TV | android tv, d-pad, тв-навигац | `TvNavigationProvider.tsx`, `tv-navigation.ts`, `HeaderSearch.tsx`, `BaseWebActivity.java`, `docs/ANDROID.md` |
+| Android TV | android tv, d-pad, тв-навигац, watch next, continue watching, нативный плеер | `TvNavigationProvider.tsx`, `tv-navigation.ts`, `android-watch-next.ts`, `WatchNextPublisher.java`, `PlayerActivity.java`, `android-app.ts`, `BaseWebActivity.java`, `docs/ANDROID.md` |
 | Windows app | windows app, webview2, win shell | `windows/TrackAnime/`, `src/lib/windows-app.ts`, `docs/WINDOWS.md` |
 | Devices / last tab | устройства, вкладки, resume, handoff | `DevicePresenceRecorder.tsx`, `DevicePresenceModal.tsx`, `src/lib/device-presence.ts`, `/admin/device-presence` |
 

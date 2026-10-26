@@ -4,6 +4,7 @@ import { useCallback, useEffect, useState } from "react";
 import { useAuth } from "@/components/auth/AuthProvider";
 import { WATCH_HISTORY_UPDATED_EVENT } from "@/components/anime/AnimePosterWatchActions";
 import { LoadingSpinner } from "@/components/ui/LoadingSpinner";
+import { removeAndroidWatchNext } from "@/lib/android-watch-next";
 import type { WatchProgressDto } from "@/lib/watch-history";
 
 type Props = {
@@ -137,6 +138,7 @@ export function ReleaseCardWatchHistoryAction({
     try {
       const res = await fetch(`/api/user/watch-history/${shikimoriId}`, { method: "DELETE" });
       if (!res.ok) return;
+      removeAndroidWatchNext(shikimoriId);
       setHasProgress(false);
       dispatchHistoryUpdated(shikimoriId, null);
     } finally {
