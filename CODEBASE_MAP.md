@@ -218,7 +218,7 @@ Git deploy webhook (HMAC, no session): `api/deploy/webhook` (POST)
 | `cvh-player.ts` | CDN VideoHub pub/aggr (в т.ч. `shikimori`→MAL fallback), playlist helpers, URL для запасного `/cdn-iframe` |
 | `kodik-ftor.ts` | Серверный вызов PHP-парсера `/ftor` + ROT18/base64 decode HLS `src` для TA Plus; заголовок `X-Kodik-Proxy`; кеш потока до `YYYYMMDDHH` UTC минус 10 минут; `bypassCache` / `refresh=1` |
 | `kodik-parser-skip.ts` | Разбор `skip_timings` / `skip_raw` из ответа парсера → OP/ED для TA Plus |
-| `ta-plus-tiles.ts` | Client-safe storyboard tiles; `{index}` = 1-based `padStart(4,"0")` (`0001`…) для scrub-preview TA Plus |
+| `ta-plus-tiles.ts` | Client-safe storyboard tiles; `{index}` = 1-based `padStart(4,"0")` (`0001`…); нормализация `%7Bindex%7D` → `{index}` для scrub-preview TA Plus |
 | `ta-plus-safe-mode.ts` | Safe mode: truncate `/ftor` URL at `.mp4` for progressive fallback |
 | `ta-plus-previews.ts` | Idle `previews`: скриншоты серии + derived `thumb001…005` + display proxy |
 | `kodik-ensure-materials.ts` | On-demand Kodik materials by shikimoriId when page has none |

@@ -21,14 +21,24 @@ export type TaPlusTilePreview = {
  * Kodik `tiles.pattern` placeholder `{index}` is 1-based and always 4 digits
  * (`0001`, `0002`, …) — same as player JS `String(n).padStart(4, "0")`.
  * Callers pass a 0-based sheet index from `floor(frame / (x*y))`.
+ *
+ * Parser/CDN sometimes URL-encodes the placeholder as `%7Bindex%7D`; normalize
+ * before replace or sheet URLs stay literal and 404 (black scrub preview).
  */
+export function normalizeTaPlusTilePattern(pattern: string): string {
+  return pattern.replace(/%7Bindex%7D/gi, "{index}");
+}
+
 export function formatTaPlusTileSheetIndex(sheetIndex: number): string {
   const oneBased = Math.max(1, Math.floor(sheetIndex) + 1);
   return String(oneBased).padStart(4, "0");
 }
 
 export function taPlusTileSheetUrl(tiles: TaPlusTiles, sheetIndex: number): string {
-  return tiles.pattern.replace("{index}", formatTaPlusTileSheetIndex(sheetIndex));
+  return normalizeTaPlusTilePattern(tiles.pattern).replace(
+    "{index}",
+    formatTaPlusTileSheetIndex(sheetIndex),
+  );
 }
 
 export function taPlusTileSheetDisplayUrl(

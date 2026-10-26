@@ -3,8 +3,8 @@
   "entries": [
     {
       "id": "2026-10-26",
-      "recordedAt": "2026-10-26T09:42:00.000Z",
-      "gitSha": "b1b3095",
+      "recordedAt": "2026-10-26T11:50:00.000Z",
+      "gitSha": "6eca138",
       "title": "Приложение",
       "items": [
         {
@@ -16,6 +16,11 @@
           "kind": "fix",
           "topic": "ta-plus-solodcdn-lynx",
           "text": "В TA Plus снова открываются серии, которые зависали и предлагали безопасный режим из‑за недоступного CDN."
+        },
+        {
+          "kind": "fix",
+          "topic": "ta-plus-scrub-tile-preview",
+          "text": "В TA Plus снова показываются кадры при перемотке и при наведении на шкалу."
         },
         {
           "kind": "fix",

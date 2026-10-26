@@ -117,6 +117,11 @@ function asPositiveInt(value: unknown): number | null {
   return Number.isFinite(n) && n > 0 ? Math.trunc(n) : null;
 }
 
+function normalizeTilesPatternPlaceholder(pattern: string): string {
+  // `/ftor` may return `tiles%7Bindex%7D.jpg` instead of `tiles{index}.jpg`.
+  return pattern.replace(/%7Bindex%7D/gi, "{index}");
+}
+
 function parseTiles(raw: unknown): KodikFtorTiles | null {
   if (!raw || typeof raw !== "object") return null;
   const tiles = raw as Record<string, unknown>;
@@ -127,7 +132,7 @@ function parseTiles(raw: unknown): KodikFtorTiles | null {
     width: asPositiveInt(tiles.width) ?? 160,
     x: asPositiveInt(tiles.x) ?? 5,
     y: asPositiveInt(tiles.y) ?? 5,
-    pattern: preferSolodcdnBrowserEdge(pattern),
+    pattern: preferSolodcdnBrowserEdge(normalizeTilesPatternPlaceholder(pattern)),
   };
 }
 
