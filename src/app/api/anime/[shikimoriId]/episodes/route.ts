@@ -3,7 +3,7 @@ import type { KodikEpisodeValue, KodikSeason } from "@/kodik/types";
 import { kodikSearch } from "@/kodik/client";
 import { loadEpisodeSeasonStats, resolveEffectiveSeasonNumber } from "@/lib/episode-totals";
 import { prisma } from "@/lib/prisma";
-import { toKodikPlayerEmbedUrl } from "@/lib/player-url";
+import { resolveKodikFilmMaterialPlayerLink, toKodikPlayerEmbedUrl } from "@/lib/player-url";
 
 type RouteParams = {
   params: Promise<{ shikimoriId: string }>;
@@ -116,12 +116,24 @@ export async function GET(request: NextRequest, { params }: RouteParams) {
 
   const material = await prisma.kodikMaterial.findFirst({
     where: { kodikId, shikimoriId },
-    select: { lastEpisode: true, episodesCount: true, lastSeason: true },
+    select: {
+      lastEpisode: true,
+      episodesCount: true,
+      lastSeason: true,
+      playerLink: true,
+      type: true,
+    },
   });
 
   if (!material) {
     return NextResponse.json({ error: "Озвучка не найдена" }, { status: 404 });
   }
+
+  const filmPlayerLink = resolveKodikFilmMaterialPlayerLink(
+    kodikId,
+    material.playerLink,
+    material.type,
+  );
 
   const episodeStats = await loadEpisodeSeasonStats([kodikId]);
   const [dbSeasons, dbEpisodeSeasons] = await Promise.all([
@@ -151,9 +163,11 @@ export async function GET(request: NextRequest, { params }: RouteParams) {
     }
   }
 
-  const liveSeasons = seasonNumbers.size <= 1 || seasonNumbers.has(0)
-    ? await loadLiveKodikSeasons(kodikId)
-    : null;
+  // Films have no seasons tree in Kodik — skip live fetch when `/video/` material link is enough.
+  const liveSeasons =
+    !filmPlayerLink && (seasonNumbers.size <= 1 || seasonNumbers.has(0))
+      ? await loadLiveKodikSeasons(kodikId)
+      : null;
   if (liveSeasons) {
     for (const [seasonKey, season] of Object.entries(liveSeasons)) {
       const liveSeasonNumber = Number(seasonKey);
@@ -171,7 +185,8 @@ export async function GET(request: NextRequest, { params }: RouteParams) {
     (exactSeason || requestedSeason !== 1) && seasonNumbers.has(requestedSeason)
       ? requestedSeason
       : resolveEffectiveSeasonNumber(requestedSeason, kodikId, material, episodeStats);
-  const seasonPlayerLink = await loadSeasonPlayerLink(kodikId, seasonNumber, liveSeasons);
+  const seasonPlayerLink =
+    (await loadSeasonPlayerLink(kodikId, seasonNumber, liveSeasons)) ?? filmPlayerLink;
   const seasons: SeasonItemDto[] = [...seasonNumbers]
     .sort((a, b) => a - b)
     .map((value) => ({
@@ -206,9 +221,14 @@ export async function GET(request: NextRequest, { params }: RouteParams) {
     return NextResponse.json({ seasonNumber, seasonPlayerLink, seasons, episodes: liveEpisodes });
   }
 
-  const count = seasonNumber === (material.lastSeason ?? 1)
-    ? (material.episodesCount ?? material.lastEpisode ?? 0)
-    : 0;
+  let count =
+    seasonNumber === (material.lastSeason ?? 1)
+      ? (material.episodesCount ?? material.lastEpisode ?? 0)
+      : 0;
+  // Films: lastEpisode/episodesCount are null — still one playable unit via material `/video/`.
+  if (count <= 0 && filmPlayerLink) {
+    count = 1;
+  }
 
   const episodes: EpisodeItemDto[] = Array.from({ length: Math.max(0, count) }, (_, index) => ({
     episodeNumber: index + 1,

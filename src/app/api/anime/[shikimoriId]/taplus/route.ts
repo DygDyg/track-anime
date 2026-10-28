@@ -5,6 +5,7 @@ import { fetchKodikFtorStreams } from "@/lib/kodik-ftor";
 import { prisma } from "@/lib/prisma";
 import {
   isSingleEpisodeKodikPlayerLink,
+  resolveKodikFilmMaterialPlayerLink,
   toKodikPlayerEmbedUrl,
 } from "@/lib/player-url";
 import { buildTaPlusPreviewUrls } from "@/lib/ta-plus-previews";
@@ -70,11 +71,17 @@ async function resolveEpisodeContext(input: {
 }> {
   const material = await prisma.kodikMaterial.findFirst({
     where: { kodikId: input.kodikId, shikimoriId: input.shikimoriId },
-    select: { playerLink: true, materialData: true },
+    select: { playerLink: true, materialData: true, type: true },
   });
   if (!material) {
     return { playerLink: null, episodeScreenshots: null, materialData: null };
   }
+
+  const filmMaterialLink = resolveKodikFilmMaterialPlayerLink(
+    input.kodikId,
+    material.playerLink,
+    material.type,
+  );
 
   const episode = await prisma.kodikEpisode.findUnique({
     where: {
@@ -125,9 +132,10 @@ async function resolveEpisodeContext(input: {
     },
     select: { playerLink: true },
   });
-  // Never fall back to material `/serial/` for a concrete episode — Kodik opens last_episode.
+  // Films: material `/video/` is the whole title. Never fall back to material `/serial/` —
+  // Kodik opens last_episode for serials.
   return {
-    playerLink: normalizePlayerLink(season?.playerLink),
+    playerLink: normalizePlayerLink(season?.playerLink) ?? filmMaterialLink,
     episodeScreenshots: episode?.screenshots ?? null,
     materialData: material.materialData,
   };

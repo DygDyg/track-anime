@@ -188,6 +188,7 @@ Calendar: `/calendar` → calendar.ts → local Kodik DB or Shikimori `/api/cale
 | TA Plus safe-mode before refresh | Offer progressive MP4 only after one silent `refresh=1` for the episode failed again (`TaPlusPlayer` `silentRefreshDoneRef`) |
 | TA Plus Auto stuck at 480p | Use optimistic `abrEwmaDefaultEstimate` + `startLevel=max` on synthetic master; don't lock Auto to a single max URL |
 | Cold start plays last episode, strip unhighlighted | No history → `resolveFirstPlayableEpisode`; taplus must not use material `/serial/` (Kodik last_episode) |
+| TA Plus «Нет ссылки Kodik» on movies | Films are `/video/` without seasons/episodes; taplus + `/episodes` must use `resolveKodikFilmMaterialPlayerLink` (never `/serial/`) |
 | Tablet cards look desktop, no preview popup | Hover panel needs mouse; sheet used to be `md:hidden`. Long-press opens sheet on touch even at `md+` (`AnimeCardHoverShell` + `ReleaseCardMobileSheet`) |
 
 ## Debugging Notes

@@ -15,6 +15,7 @@ import {
   normalizeAnimeStatus,
 } from "@/lib/shikimori/relation-snapshot";
 import { upsertAnimeCatalogFromMaterial } from "@/lib/anime-catalog";
+import { isKodikAnimeFilmMaterial } from "@/lib/player-url";
 
 function parseShikimoriId(value?: string | number | null): number | null {
   if (value === undefined || value === null || value === "") return null;
@@ -96,7 +97,7 @@ export type SaveMaterialResult = {
 
 /** Kodik anime films (`type=anime` / movie-*) have no seasons tree — playerLink is enough. */
 export function isKodikAnimeFilm(material: Pick<KodikMaterial, "id" | "type">): boolean {
-  return material.type === "anime" || material.id.startsWith("movie-");
+  return isKodikAnimeFilmMaterial({ kodikId: material.id, type: material.type });
 }
 
 function resolveEpisodesLoaded(

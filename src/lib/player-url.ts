@@ -43,6 +43,50 @@ export function isSingleEpisodeKodikPlayerLink(link: string): boolean {
   }
 }
 
+/** Фильм Kodik (`/video/…`) — весь тайтл в одном embed, без дерева сезонов. */
+export function isDirectVideoKodikPlayerLink(link: string): boolean {
+  try {
+    return /\/video\//i.test(new URL(toKodikPlayerEmbedUrl(link)).pathname);
+  } catch {
+    return /kodikplayer\.com\/video\//i.test(link);
+  }
+}
+
+/** Kodik id фильма (`movie-123`). */
+export function isKodikFilmMaterialId(kodikId: string): boolean {
+  return kodikId.startsWith("movie-");
+}
+
+/**
+ * Фильм в API/БД Kodik: `type=anime` (сериалы — `anime-serial`) или id `movie-*`.
+ * Совпадает с `isKodikAnimeFilm` при сохранении материала.
+ */
+export function isKodikAnimeFilmMaterial(input: {
+  kodikId: string;
+  type?: string | null;
+}): boolean {
+  return isKodikFilmMaterialId(input.kodikId) || input.type === "anime";
+}
+
+/**
+ * Material `playerLink` для episode-scoped API (taplus / episodes).
+ * Разрешает `/video/` (и movie-* без `/serial/`). Никогда не отдаёт `/serial/` —
+ * Kodik открыл бы last_episode вместо запрошенной серии.
+ */
+export function resolveKodikFilmMaterialPlayerLink(
+  kodikId: string,
+  materialPlayerLink: string | null | undefined,
+  type?: string | null,
+): string | null {
+  if (!materialPlayerLink?.trim()) return null;
+  const link = toKodikPlayerEmbedUrl(materialPlayerLink.trim());
+  if (isDirectVideoKodikPlayerLink(link)) return link;
+  if (isKodikAnimeFilmMaterial({ kodikId, type }) && !/\/serial\//i.test(link)) {
+    return link;
+  }
+  return null;
+}
+
 export function normalizeKodikPlayerLinkForCompare(link: string): string {
   try {
     const url = new URL(toKodikPlayerEmbedUrl(link));
@@ -67,7 +111,7 @@ export function resolveKodikEpisodePlayerLink(
 export type KodikPlayerLinkMode = "serial" | "season" | "single";
 
 export function detectKodikPlayerLinkMode(src: string): KodikPlayerLinkMode {
-  if (isSingleEpisodeKodikPlayerLink(src)) return "single";
+  if (isSingleEpisodeKodikPlayerLink(src) || isDirectVideoKodikPlayerLink(src)) return "single";
   if (isSeasonScopedKodikPlayerLink(src)) return "season";
   return "serial";
 }

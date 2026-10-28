@@ -2,6 +2,19 @@
   "version": 1,
   "entries": [
     {
+      "id": "2026-10-28",
+      "recordedAt": "2026-10-28T17:54:00.000Z",
+      "gitSha": "9ab1bcc",
+      "title": "Фильмы в TA Plus",
+      "items": [
+        {
+          "kind": "fix",
+          "topic": "ta-plus-kodik-film-link",
+          "text": "В TA Plus снова открываются фильмы и OVA с Kodik."
+        }
+      ]
+    },
+    {
       "id": "2026-10-26",
       "recordedAt": "2026-10-26T11:50:00.000Z",
       "gitSha": "6eca138",
