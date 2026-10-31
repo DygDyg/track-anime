@@ -234,6 +234,7 @@ Git deploy webhook (HMAC, no session): `api/deploy/webhook` (POST)
 | `anime-watch-share.ts` | Deep-link GET params + share URL (player/season/episode/translation/t/nosave) |
 | `anime-related.ts` | Related/similar sections: snapshot SWR + enrich briefs |
 | `history-new-episodes.ts` | Home history block |
+| `watch-ahead.ts` | Personal feed badge: max episode across all translations vs watch progress |
 | `history-upcoming-soon.ts` | History page «Скоро выйдут» block (last ep in dub + 7d, 12h window) |
 | `calendar.ts` | Release calendar, Shikimori/Kodik ongoing sources and anons grouping |
 | `cover-cache.ts` | Poster caching + freshness jitter |

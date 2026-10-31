@@ -5,6 +5,7 @@ import { HistoryUpcomingSoonPanel } from "@/components/history/HistoryUpcomingSo
 import { HomeLiveRefresh } from "@/components/HomeLiveRefresh";
 import { HomeNoveltiesSection } from "@/components/HomeNoveltiesSection";
 import { ReleaseFeed } from "@/components/ReleaseFeed";
+import { WatchAheadProvider } from "@/components/WatchAheadProvider";
 import { getKodikDbFreshness } from "@/lib/admin/kodik-db-freshness";
 import { getSession } from "@/lib/auth/session";
 import { getHistoryNewEpisodes } from "@/lib/history-new-episodes";
@@ -12,6 +13,7 @@ import { getHistoryUpcomingSoon } from "@/lib/history-upcoming-soon";
 import { getHomeNovelties } from "@/lib/home-novelties";
 import { getRecentReleasesPage, serializeRelease } from "@/lib/releases";
 import { buildSitePageMetadata, defaultSiteDescription } from "@/lib/site-metadata";
+import { getWatchAheadMap } from "@/lib/watch-ahead";
 
 export const revalidate = 300;
 
@@ -33,14 +35,21 @@ export default async function HomePage({ searchParams }: HomePageProps) {
   const session = await getSession();
   const isAdmin = Boolean(session?.user.isAdmin);
 
-  const [{ items, hasMore, nextCursor }, novelties, historyNewEpisodes, upcomingSoon, freshness] =
-    await Promise.all([
-      getRecentReleasesPage(PAGE_SIZE),
-      getHomeNovelties(),
-      session ? getHistoryNewEpisodes(session.user.id) : Promise.resolve([]),
-      session ? getHistoryUpcomingSoon(session.user.id) : Promise.resolve([]),
-      isAdmin ? getKodikDbFreshness() : Promise.resolve(null),
-    ]);
+  const [
+    { items, hasMore, nextCursor },
+    novelties,
+    historyNewEpisodes,
+    upcomingSoon,
+    watchAheadMap,
+    freshness,
+  ] = await Promise.all([
+    getRecentReleasesPage(PAGE_SIZE),
+    getHomeNovelties(),
+    session ? getHistoryNewEpisodes(session.user.id) : Promise.resolve([]),
+    session ? getHistoryUpcomingSoon(session.user.id) : Promise.resolve([]),
+    session ? getWatchAheadMap(session.user.id) : Promise.resolve({}),
+    isAdmin ? getKodikDbFreshness() : Promise.resolve(null),
+  ]);
 
   const initialItems = items.map(serializeRelease);
   const noveltyItems = novelties.map(serializeRelease);
@@ -57,38 +66,40 @@ export default async function HomePage({ searchParams }: HomePageProps) {
     noveltyItems.length > 0 || historyItems.length > 0 || upcomingSoon.length > 0;
 
   return (
-    <div className="py-5 sm:py-8">
-      <HomeLiveRefresh />
-      {isAdmin ? (
-        <AdminStaleDbBanner freshness={freshness} forcePreview={forcePreview} />
-      ) : null}
+    <WatchAheadProvider initialMap={watchAheadMap}>
+      <div className="py-5 sm:py-8">
+        <HomeLiveRefresh />
+        {isAdmin ? (
+          <AdminStaleDbBanner freshness={freshness} forcePreview={forcePreview} />
+        ) : null}
 
-      {upcomingSoon.length > 0 ? (
-        <div className="mb-6 sm:mb-8">
-          <HistoryUpcomingSoonPanel items={upcomingSoon} />
-        </div>
-      ) : null}
+        {upcomingSoon.length > 0 ? (
+          <div className="mb-6 sm:mb-8">
+            <HistoryUpcomingSoonPanel items={upcomingSoon} />
+          </div>
+        ) : null}
 
-      {noveltyItems.length > 0 ? <HomeNoveltiesSection items={noveltyItems} /> : null}
+        {noveltyItems.length > 0 ? <HomeNoveltiesSection items={noveltyItems} /> : null}
 
-      {historyItems.length > 0 ? <HistoryNewEpisodesSection items={historyItems} /> : null}
+        {historyItems.length > 0 ? <HistoryNewEpisodesSection items={historyItems} /> : null}
 
-      {initialItems.length === 0 && !hasHomeBlocks ? (
-        <div className="mx-3 rounded-xl border border-dashed border-border bg-card/50 p-6 text-center sm:mx-6 sm:p-10 lg:mx-8">
-          <p className="text-muted">Пока нет данных. Запустите синхронизацию:</p>
-          <code className="mt-3 inline-block rounded bg-background px-3 py-1 text-sm text-accent">
-            npm run kodik:sync
-          </code>
-        </div>
-      ) : (
-        <ReleaseFeed
-          initialItems={initialItems}
-          initialHasMore={hasMore}
-          initialNextCursor={nextCursor}
-          pageSize={PAGE_SIZE}
-          excludeIds={historyIds}
-        />
-      )}
-    </div>
+        {initialItems.length === 0 && !hasHomeBlocks ? (
+          <div className="mx-3 rounded-xl border border-dashed border-border bg-card/50 p-6 text-center sm:mx-6 sm:p-10 lg:mx-8">
+            <p className="text-muted">Пока нет данных. Запустите синхронизацию:</p>
+            <code className="mt-3 inline-block rounded bg-background px-3 py-1 text-sm text-accent">
+              npm run kodik:sync
+            </code>
+          </div>
+        ) : (
+          <ReleaseFeed
+            initialItems={initialItems}
+            initialHasMore={hasMore}
+            initialNextCursor={nextCursor}
+            pageSize={PAGE_SIZE}
+            excludeIds={historyIds}
+          />
+        )}
+      </div>
+    </WatchAheadProvider>
   );
 }

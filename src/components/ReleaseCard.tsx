@@ -9,6 +9,7 @@ import { AnimeScoreBadge } from "@/components/AnimeScoreBadge";
 import { RelativeTime } from "@/components/RelativeTime";
 import { ReleaseCardGenresRow, ReleaseCardMetaRow } from "@/components/ReleaseCardPreviewMeta";
 import { TranslationBadge } from "@/components/TranslationBadge";
+import { useWatchAhead } from "@/components/WatchAheadProvider";
 import { ListStatusBadge } from "@/components/favorites/ListStatusBadge";
 import { useUserListStatus } from "@/components/favorites/UserListStatusProvider";
 import { listStatusCardAccentClass } from "@/components/favorites/favorites-tab-theme";
@@ -51,6 +52,24 @@ function EarlySeriesNewBadge({ className = "" }: { className?: string }) {
   );
 }
 
+/** Личная метка: max по всем озвучкам новее прогресса в истории */
+function WatchAheadBadge({ label, className = "" }: { label: string; className?: string }) {
+  return (
+    <div
+      title="Есть более новая серия"
+      aria-label="Есть более новая серия"
+      className={[
+        "rounded-md border border-sky-300/90 bg-sky-600 px-1.5 py-0.5 text-[10px] font-extrabold leading-none tracking-wide text-white shadow-[0_1px_4px_rgba(0,0,0,0.85)] ring-1 ring-black/50 sm:px-2 sm:text-[11px]",
+        className,
+      ]
+        .filter(Boolean)
+        .join(" ")}
+    >
+      {label}
+    </div>
+  );
+}
+
 export function ReleaseCard({
   release,
   hoverPanelPortal = false,
@@ -64,6 +83,7 @@ export function ReleaseCard({
   const listAccentClass = listInfo ? listStatusCardAccentClass(listInfo.listStatus) : null;
   const showListMark = shouldShowListBadge(listInfo);
   const showEarlySeriesMark = isEarlySeriesRelease(release.episodeNumber, release.kind);
+  const watchAhead = useWatchAhead(release.shikimoriId);
 
   const watchHref = release.playerLink ?? "#";
   const animeHref = release.shikimoriId ? `/anime/${release.shikimoriId}` : null;
@@ -160,10 +180,15 @@ export function ReleaseCard({
             />
             <AnimeKindCornerBadge kind={release.kind} className="absolute bottom-0 left-0 z-20" />
             <div className="pointer-events-none absolute bottom-0 right-0 z-20 flex flex-col items-end gap-0.5">
-              {/* Desktop: NEW над номером серии. На мобиле — в ряду метаданных перед рейтингом. */}
+              {/* Desktop: NEW / catch-up над номером серии. На мобиле — в ряду метаданных. */}
               {showEarlySeriesMark ? (
                 <div className="hidden md:block">
                   <EarlySeriesNewBadge />
+                </div>
+              ) : null}
+              {watchAhead ? (
+                <div className="hidden md:block">
+                  <WatchAheadBadge label={watchAhead.label} />
                 </div>
               ) : null}
               <EpisodeNumberBadge episode={release.episodeNumber} status={release.status} />
@@ -176,7 +201,14 @@ export function ReleaseCard({
               <ReleaseCardMetaRow
                 release={release}
                 leading={
-                  showEarlySeriesMark ? <EarlySeriesNewBadge className="shrink-0" /> : null
+                  showEarlySeriesMark || watchAhead ? (
+                    <span className="inline-flex shrink-0 items-center gap-1">
+                      {showEarlySeriesMark ? <EarlySeriesNewBadge className="shrink-0" /> : null}
+                      {watchAhead ? (
+                        <WatchAheadBadge label={watchAhead.label} className="shrink-0" />
+                      ) : null}
+                    </span>
+                  ) : null
                 }
               />
               <ReleaseCardGenresRow genres={release.genres} max={4} />
